@@ -34,12 +34,13 @@ interface ServiceTrackerModalProps {
     tripUpdate: TripUpdate
     has: boolean
     routeColor: string
+    targetStopName?: string
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
     onlyVehicle?: boolean
 }
 
-export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle }: ServiceTrackerModalProps) {
+export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopName }: ServiceTrackerModalProps) {
     const { loading, location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
 
@@ -94,7 +95,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                                 ...(stops ? stops.stops.map((item) => ({
                                     lat: item.stop_lat,
                                     lon: item.stop_lon,
-                                    icon: "dot",
+                                    icon: targetStopName && item.stop_name.toLowerCase().includes(targetStopName.toLowerCase()) ? "stop marker" : "dot",
                                     id: item.stop_name + " " + item.stop_code,
                                     routeID: "",
                                     description: item.stop_name + " " + item.stop_code,
@@ -107,6 +108,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                             height={"300px"}
                             variant={onlyVehicle || location[0] === 0 ? "firstItem" : "userAndFirstPoint"}
                         />
+                        {targetStopName}
                     </Suspense>
 
                     <Drawer>
