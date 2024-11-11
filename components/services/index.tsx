@@ -44,54 +44,56 @@ export default function Services({ stopName }: ServicesProps) {
     return (
         <>
             {services.length >= 1 ? (
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
+                <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
                     {services.map(({ service_data, vehicle, trip_update, has }, index) => (
-                        <Card key={index}>
-                            <CardHeader>
-                                <CardTitle>
-                                    <div className="flex items-center justify-between overflow-hidden">
-                                        <div className="shrink flex-1 truncate">
-                                            {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
-                                                <>
-                                                    <span className="text-orange-500">Departed | </span>
-                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))} </span>
-                                                </>
-                                            ) : (
-                                                <span className="truncate">
-                                                    {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))}
-                                                </span>
-                                            )}
+                        <li key={index}>
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>
+                                        <div className="flex items-center justify-between overflow-hidden">
+                                            <div className="shrink flex-1 truncate">
+                                                {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
+                                                    <>
+                                                        <span className="text-orange-500">Departed | </span>
+                                                        <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))} </span>
+                                                    </>
+                                                ) : (
+                                                    <span className="truncate">
+                                                        {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <span
+                                                className="shrink-0 bg-zinc-400 p-2 rounded text-zinc-100"
+                                                style={service_data.route_color !== "" ? { background: "#" + service_data.route_color } : {}}
+                                            >
+                                                {service_data.trip_data.route_id}
+                                            </span>
                                         </div>
-                                        <span
-                                            className="shrink-0 bg-zinc-400 p-2 rounded text-zinc-100"
-                                            style={service_data.route_color !== "" ? { background: "#" + service_data.route_color } : {}}
-                                        >
-                                            {service_data.trip_data.route_id}
+                                    </CardTitle>
+
+                                    <CardDescription>
+                                        <p>Scheduled: {convert24hTo12h(service_data.arrival_time)}</p>
+                                        <p className="underline text-blue-400">Predicted: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
+                                        <p className="text-pink-400 underline">Platform: {service_data.platform}</p>
+                                        <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
+                                        <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="grid grid-cols-2 items-center justify-items-center">
+
+                                        <ServiceTrackerModal targetStopName={stopName} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                        <span aria-label="Arriving in">
+                                            {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
                                         </span>
                                     </div>
-                                </CardTitle>
-
-                                <CardDescription>
-                                    <p>Scheduled: {convert24hTo12h(service_data.arrival_time)}</p>
-                                    <p className="underline text-blue-400">Predicted: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
-                                    <p className="text-pink-400 underline">Platform: {service_data.platform}</p>
-                                    <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
-                                    <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
-
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="grid grid-cols-2 items-center justify-items-center">
-
-                                    <ServiceTrackerModal targetStopName={stopName} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
-                                    <span>
-                                        {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
-                                    </span>
-                                </div>
-                            </CardContent>
-                        </Card>
+                                </CardContent>
+                            </Card>
+                        </li>
                     ))}
-                </div>
+                </ul>
             ) : null}
 
             {errorMessage !== "" ? (

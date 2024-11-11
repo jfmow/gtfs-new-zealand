@@ -46,10 +46,12 @@ export default function NavBar() {
                 className={`fixed inset-0 bg-white z-40 md:hidden transition-transform duration-300 ease-in-out ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'
                     }`}
             >
-                <div className="flex flex-col h-full pt-20 px-6 overflow-y-auto list-none">
+                <div className="flex flex-col pt-20 px-6">
                     <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">Menu</h1>
-                    <NavItems mobile />
                 </div>
+                <ul className="flex flex-col h-full px-6 overflow-y-auto list-none">
+                    <NavItems mobile />
+                </ul>
             </div>
         </nav>
     )

@@ -59,7 +59,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
             <Dialog defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
                 {!defaultOpen ? (
                     <DialogTrigger asChild>
-                        <Button disabled={!has} className="w-full" variant="default">
+                        <Button aria-label="Track service on map" disabled={!has} className="w-full" variant="default">
                             <Navigation />
                         </Button>
                     </DialogTrigger>
