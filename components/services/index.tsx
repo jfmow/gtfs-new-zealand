@@ -9,7 +9,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import { Service } from "./types"
-import { addSecondsToTime, convert24hTo12h, timeTillArrival } from "@/lib/formating"
+import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import LoadingSpinner from "../loading-spinner"
@@ -58,12 +58,12 @@ export default function Services({ stopName }: ServicesProps) {
                                         <div className="shrink flex-1 truncate">
                                             {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
                                                 <>
-                                                    <span className="line-through">{service_data.stop_headsign} </span>
-                                                    <span className="text-orange-300 ml-1">Departed</span>
+                                                    <span className="text-orange-500">Departed | </span>
+                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))} </span>
                                                 </>
                                             ) : (
                                                 <span className="truncate">
-                                                    {service_data.stop_headsign}
+                                                    {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign))}
                                                 </span>
                                             )}
                                         </div>
@@ -137,7 +137,7 @@ async function getServicesAtStop(stopName: string): Promise<GetServicesAtStopRes
 
         // Parse the response JSON and return services
         const services: Service[] = await response.json();
-        return { error: undefined, services: services.filter((item) => timeTillArrival(addSecondsToTime(item.service_data.arrival_time, item.trip_update.delay)) >= 0) };
+        return { error: undefined, services: services.filter((item) => (timeTillArrival(addSecondsToTime(item.service_data.arrival_time, item.trip_update.delay)) >= 0) && (!item.service_data.stop_headsign.toLowerCase().includes("non stopping"))).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))) };
     } catch (error) {
         // Handle unexpected errors
         return { error: (error as Error).message, services: undefined };
@@ -146,3 +146,10 @@ async function getServicesAtStop(stopName: string): Promise<GetServicesAtStopRes
 
 
 
+function removeShortHands(name: string) {
+    let newName = name;
+    if (name.endsWith("/N")) { // Check if the name ends with "/N"
+        newName = name.replace("/N", " via Newmarket"); // Replace "/N" with " via Newmarket"
+    }
+    return newName;
+}

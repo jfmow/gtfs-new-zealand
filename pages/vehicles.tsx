@@ -25,6 +25,11 @@ export default function Vehicles() {
             }
         }
         getData()
+
+        const intervalId = setInterval(getData, 15000);
+
+        // Clean up the interval when the component unmounts or stopName changes
+        return () => clearInterval(intervalId);
     }, [])
 
     if (loading) {
@@ -51,7 +56,7 @@ export default function Vehicles() {
                                     icon: vehicle.vehicle.type,
                                     id: vehicle.trip.trip_id,
                                     routeID: vehicle.trip.route_id,
-                                    description: vehicle.vehicle.license_plate + vehicle.vehicle.label,
+                                    description: `${vehicle.trip.route_id} | ${Math.round(vehicle.position.speed)}km/h`,
                                     zIndex: 1,
                                     onClick: () => {
                                         setSelectedVehicle({ vehicle, trip_update })
