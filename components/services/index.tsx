@@ -80,7 +80,7 @@ export default function Services({ stopName }: ServicesProps) {
                                     <p>Scheduled: {convert24hTo12h(service_data.arrival_time)}</p>
                                     <p className="underline text-blue-400">Predicted: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
                                     <p className="text-pink-400 underline">Platform: {service_data.platform}</p>
-                                    <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence)}</p>
+                                    <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
                                     <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
 
                                 </CardDescription>
