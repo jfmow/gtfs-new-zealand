@@ -26,7 +26,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
     const stops = stopsData.sort((a, b) => a.stop_sequence - b.stop_sequence);
     const totalNumberOfStops = stops.length;
 
-    const nextStopIndex = Math.min(currentStopSequence + 1, totalNumberOfStops - 1);
+    const nextStopIndex = Math.min(currentStopSequence, totalNumberOfStops - 1);
     const nextStop = stops[nextStopIndex];
     const finalStop = stops[totalNumberOfStops - 1];
 
@@ -36,7 +36,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
         lon: nextStop.stop_lon,
         name: nextStopName,
         platformNumber: nextStopPlatformNumber,
-        index: nextStop.stop_sequence,
+        index: nextStop.stop_sequence - 1,
     };
 
     const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.stop_name);
@@ -45,7 +45,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
         lon: finalStop.stop_lon,
         name: finalStopName,
         platformNumber: finalStopPlatformNumber,
-        index: finalStop.stop_sequence,
+        index: finalStop.stop_sequence - 1,
     };
 
     return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? item.stop_sequence > currentStopSequence + 1 : true) };

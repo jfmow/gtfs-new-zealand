@@ -27,6 +27,7 @@ import { getStopsForTrip, StopForTripsData } from "./stops";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
 import LoadingSpinner from "../loading-spinner";
+import { Separator } from "../ui/separator";
 
 
 interface ServiceTrackerModalProps {
@@ -70,7 +71,10 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                     <DialogHeader>
                         <DialogTitle>Service tracker</DialogTitle>
                         <DialogDescription>
-                            Track your services current location and see any past and future stops.
+                            <p className="text-green-500">Next stop: {stops?.next_stop.name} (Platform {stops?.next_stop.platformNumber})</p>
+                            <p className="">Final stop: {stops?.final_stop.name} (Platform {stops?.final_stop.platformNumber})</p>
+                            <Separator className="my-1" />
+                            <p>Speed: {Math.round(vehicle.position.speed)}km/h</p>
                         </DialogDescription>
                     </DialogHeader>
                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
@@ -134,7 +138,6 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                                 </ol>
                             </ScrollArea>
 
-
                             <DrawerFooter>
                                 <DrawerClose asChild>
                                     <Button variant="outline" className="w-full">Close</Button>
@@ -142,8 +145,6 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                             </DrawerFooter>
                         </DrawerContent>
                     </Drawer>
-
-
                 </DialogContent>
             </Dialog>
 
