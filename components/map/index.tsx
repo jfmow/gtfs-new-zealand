@@ -103,7 +103,7 @@ export default function LeafletMap({
 
     useEffect(() => {
         if (mapRef.current && mapItems) {
-            if (variant === "firstItem") {
+            if (variant === "firstItem" || variant === "userAndFirstPoint") {
                 addSingleVehicleLocationButton(mapRef.current, [mapItems[0].lat, mapItems[0].lon], vehicleFlyControlRef)
             }
             renderMapItems(mapRef.current, markersRef, clusterGroupRef, mapItems, onMapItemClick);

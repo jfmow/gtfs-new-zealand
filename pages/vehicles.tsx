@@ -40,7 +40,7 @@ export default function Vehicles() {
         <>
             <Header />
             <NavBar />
-            <div className="w-full bg-zinc-50 text-zinc-800">
+            <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     {selectedVehicle !== null ? (
                         <ServiceTrackerModal onlyVehicle defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} vehicle={selectedVehicle.vehicle} tripUpdate={selectedVehicle.trip_update} routeColor="" />

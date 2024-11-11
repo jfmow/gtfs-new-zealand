@@ -42,7 +42,7 @@ interface ServiceTrackerModalProps {
 }
 
 export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopName }: ServiceTrackerModalProps) {
-    const { loading, location } = useUserLocation()
+    const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
 
     useEffect(() => {
@@ -54,9 +54,6 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
         getData()
     }, [has, tripUpdate, vehicle])
 
-    if (loading) {
-        return "Finding you..."
-    }
     return (
         <>
             <Dialog defaultOpen={defaultOpen} onOpenChange={onOpenChange}>

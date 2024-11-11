@@ -31,7 +31,7 @@ export default function Stops() {
         <>
             <Header />
             <NavBar />
-            <div className="w-full bg-zinc-50 text-zinc-800">
+            <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
 
                     {error !== "" ? (
