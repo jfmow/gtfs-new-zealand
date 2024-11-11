@@ -4,6 +4,7 @@ import { useUserLocation } from "@/lib/userLocation";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map"));
 import ServiceTrackerModal from "@/components/services/tracker";
+import Head from "next/head";
 
 
 export default function Vehicles() {
@@ -32,6 +33,7 @@ export default function Vehicles() {
 
     return (
         <>
+            <Header />
             <NavBar />
             <div className="w-full bg-zinc-50 text-zinc-800">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
@@ -141,4 +143,37 @@ export enum Type {
     Empty = "",
     Ferry = "ferry",
     Train = "train",
+}
+
+
+
+
+function Header() {
+    return (
+        <Head>
+            <title>Vehicles</title>
+
+            <link rel="manifest" href="manifest.json" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="application-name" content="Trains" />
+            <meta name="apple-mobile-web-app-title" content="Trains" />
+            <meta name="theme-color" content="#ffffff" />
+            <meta name="msapplication-navbutton-color" content="#ffffff" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+            <meta name="msapplication-starturl" content="/" />
+            <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+            <link rel='icon' type='image/png' href={`/Favicon.png`} />
+            <link rel="apple-touch-icon" href={`/Favicon.png`} />
+            <link rel="shortcut icon" href={`/Favicon.png`} />
+
+            <meta name="description" content="Track public transport vehicles live!" />
+            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
+            <link rel="canonical" href="https://trains.suddsy.dev/"></link>
+            <meta property="og:title" content="Live vehicle locations!" />
+            <meta property="og:url" content="https://trains.suddsy.dev/" />
+            <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
+            <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
+        </Head>
+    )
 }
