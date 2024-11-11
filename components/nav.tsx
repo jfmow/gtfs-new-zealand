@@ -24,7 +24,7 @@ export default function NavBar() {
     return (
         <nav className="w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
             <div className="flex items-center">
-                <img src="/icon512_rounded.png" alt="Logo" className="w-8 h-8 mr-2" />
+                <img src="/nav-logo.png" alt="Logo" className="w-8 h-8 mr-2" />
             </div>
 
             {/* Desktop menu */}
