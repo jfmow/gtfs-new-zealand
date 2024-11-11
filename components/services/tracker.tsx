@@ -108,7 +108,6 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                             height={"300px"}
                             variant={onlyVehicle || location[0] === 0 ? "firstItem" : "userAndFirstPoint"}
                         />
-                        {targetStopName}
                     </Suspense>
 
                     <Drawer>
