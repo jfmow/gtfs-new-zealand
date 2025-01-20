@@ -55,6 +55,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		now := time.Now().In(time.FixedZone("NZST", 13*60*60))
 		currentWeekDay := now.Weekday().String()
+		currentTime := now.Format("15:04:05")
 
 		// Format the date as YYYYMMDD string
 		dateString := now.Format("20060102")
@@ -63,7 +64,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId)
+			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId, currentTime, 30)
 			if err != nil {
 				fmt.Println(err)
 			}
