@@ -35,13 +35,13 @@ interface ServiceTrackerModalProps {
     tripUpdate: TripUpdate
     has: boolean
     routeColor: string
-    targetStopName?: string
+    targetStopId?: string
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
     onlyVehicle?: boolean
 }
 
-export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopName }: ServiceTrackerModalProps) {
+export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -77,6 +77,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                         <DialogDescription>
                             <p className="text-green-500">Next stop: {stops?.next_stop.name} (Platform {stops?.next_stop.platformNumber})</p>
                             <p className="">Final stop: {stops?.final_stop.name} (Platform {stops?.final_stop.platformNumber})</p>
+                            <p>{tripUpdate.trip.trip_id} | {tripUpdate.stop_time_update.stop_sequence} | {vehicle.vehicle.id}</p>
                             <Separator className="my-1" />
                             <p>Speed: {Math.round(vehicle.position.speed)}km/h</p>
                         </DialogDescription>
@@ -103,7 +104,9 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                                 ...(stops ? stops.stops.map((item) => ({
                                     lat: item.stop_lat,
                                     lon: item.stop_lon,
-                                    icon: targetStopName && item.stop_name.toLowerCase().includes(targetStopName.toLowerCase()) ? "stop marker" : "dot",
+                                    icon: targetStopId === item.stop_id
+                                        ? "stop marker"
+                                        : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
                                     id: item.stop_name + " " + item.stop_code,
                                     routeID: "",
                                     description: item.stop_name + " " + item.stop_code,

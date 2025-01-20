@@ -127,7 +127,7 @@ function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, 
 
     if (mapItems.length) {
         const useCluster = mapItems.length > 100 ? clusterGroup : null;
-        mapItems.forEach(item =>
+        mapItems.forEach(item => {
             addMarkerToMap(
                 markersRef.current,
                 map,
@@ -140,6 +140,7 @@ function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, 
                 item.zIndex,
                 item.description
             )
+        }
         );
     }
 
@@ -208,7 +209,8 @@ function getIconUrl(icon: string): string {
         dot: "/vehicle_icons/stop_dot.png",
         pin: "/vehicle_icons/pin.png",
         user: "/vehicle_icons/location.png",
-        "stop marker": "/vehicle_icons/stop marker.png"
+        "stop marker": "/vehicle_icons/stop marker.png",
+        "end marker": "/vehicle_icons/end marker.png"
     };
     return iconMap[icon] || icon; // Return icon URL or use the provided custom URL
 }

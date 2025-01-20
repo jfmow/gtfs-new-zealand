@@ -3,6 +3,7 @@ export interface StopForTripsData {
         lat: number;
         lon: number;
         name: string;
+        stop_id: string;
         platformNumber: string;
         index: number;
     };
@@ -10,6 +11,7 @@ export interface StopForTripsData {
         lat: number;
         lon: number;
         name: string;
+        stop_id: string;
         platformNumber: string;
         index: number;
     };
@@ -35,6 +37,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
         lat: nextStop.stop_lat,
         lon: nextStop.stop_lon,
         name: nextStopName,
+        stop_id: nextStop.stop_id,
         platformNumber: nextStopPlatformNumber,
         index: nextStop.stop_sequence - 1,
     };
@@ -44,6 +47,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
         lat: finalStop.stop_lat,
         lon: finalStop.stop_lon,
         name: finalStopName,
+        stop_id: finalStop.stop_id,
         platformNumber: finalStopPlatformNumber,
         index: finalStop.stop_sequence - 1,
     };
@@ -57,6 +61,7 @@ interface Stop {
     stop_name: string;
     stop_sequence: number;
     stop_code: string;
+    stop_id: string;
 }
 
 type GetStopsForTripResult =

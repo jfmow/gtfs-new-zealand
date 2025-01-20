@@ -3,7 +3,7 @@ module github.com/jfmow/at-trains-api
 go 1.21.6
 
 require (
-	github.com/jfmow/gtfs v0.1.4-0.20250120032815-d69c6d3c9590
+	github.com/jfmow/gtfs v0.1.4-0.20250120050556-6e0734149d10
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
 )
