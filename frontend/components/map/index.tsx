@@ -210,7 +210,8 @@ function getIconUrl(icon: string): string {
         pin: "/vehicle_icons/pin.png",
         user: "/vehicle_icons/location.png",
         "stop marker": "/vehicle_icons/stop marker.png",
-        "end marker": "/vehicle_icons/end marker.png"
+        "end marker": "/vehicle_icons/end marker.png",
+        "marked stop marker": "/vehicle_icons/marked stop marker.png",
     };
     return iconMap[icon] || icon; // Return icon URL or use the provided custom URL
 }
