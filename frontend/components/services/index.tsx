@@ -25,7 +25,6 @@ export default function Services({ stopName }: ServicesProps) {
     useEffect(() => {
 
         async function getData() {
-            await new Promise(resolve => setTimeout(resolve, 2000)); // 2000 ms = 2 seconds
             const result = await getServicesAtStop(stopName);
             if (result.error !== undefined) {
                 setErrorMessage(result.error);
