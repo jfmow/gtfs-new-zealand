@@ -1,6 +1,7 @@
 package apis
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -45,7 +46,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	e.GET("/services/:stationName", func(c echo.Context) error {
 		stopName := c.PathParam("stationName")
-
+		// Fetch stop data, child stops, etc.
 		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
 		if err != nil || len(stops) == 0 {
 			fmt.Println(err)
@@ -89,13 +90,23 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				Vehicle    bool `json:"vehicle"`
 			} `json:"has"`
 		}
+		// Set up SSE response
+		writer := c.Response().Writer
+		c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
+		c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
+		c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
+		c.Response().WriteHeader(http.StatusOK)
 
-		//TODO: put in wg
+		flusher, ok := writer.(http.Flusher)
+		if !ok {
+			return fmt.Errorf("streaming unsupported by ResponseWriter")
+		}
 
-		var wg sync.WaitGroup
 		var tripUpdatesData rt.TripUpdatesMap
 		var vehicleLocations rt.VehiclesMap
 
+		// Fetch trip updates and vehicle data concurrently
+		var wg sync.WaitGroup
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
@@ -105,35 +116,35 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			defer wg.Done()
 			vehicleLocations, _ = vehicles.GetVehicles()
 		}()
-
 		wg.Wait()
 
-		var result []Response
+		// Stream services data
+		for _, service := range services {
+			var response Response
 
-		for _, i := range services {
-			var item Response
-			vehicleloc, err := vehicleLocations.GetVehicleByTripID(i.TripID)
-			if err == nil {
-				item.Has.Vehicle = true
-				route, err := AucklandTransportGTFSData.GetRouteByID((string)(vehicleloc.Trip.RouteID))
-				if err == nil {
-					vehicleloc.Trip.RouteID = rt.RouteID(route.RouteId)
-					vehicleloc.Vehicle.Type = route.VehicleType
-				}
-				item.Vehicle = vehicleloc
+			response.ServiceData = service
 
+			// Populate TripUpdate and Vehicle if available
+			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
+				response.TripUpdate = tripUpdate
+				response.Has.TripUpdate = true
 			}
-			tripUpdate, err := tripUpdatesData.ByTripID(i.TripID)
-			if err == nil {
-				item.Has.TripUpdate = true
-				item.TripUpdate = tripUpdate
+			if vehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
+				response.Vehicle = vehicle
+				response.Has.Vehicle = true
 			}
 
-			item.ServiceData = i
-			result = append(result, item)
+			// Stream data
+			jsonData, _ := json.Marshal(response)
+			fmt.Fprintf(writer, "data: %s\n\n", jsonData)
+			flusher.Flush()
 		}
 
-		return c.JSON(http.StatusOK, result)
+		// Signal end of stream
+		fmt.Fprint(writer, "event: end\ndata: {}\n\n")
+		flusher.Flush()
+
+		return nil
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data

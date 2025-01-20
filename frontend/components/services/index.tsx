@@ -12,7 +12,6 @@ import { Service } from "./types"
 import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
-import LoadingSpinner from "../loading-spinner"
 
 interface ServicesProps {
     stopName: string
@@ -21,32 +20,46 @@ interface ServicesProps {
 export default function Services({ stopName }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
-    const [loading, setLoading] = useState(true)
     useEffect(() => {
+        // Function to initialize SSE connection
+        function initializeSSE() {
+            const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
 
-        async function getData() {
-            const result = await getServicesAtStop(stopName);
-            if (result.error !== undefined) {
-                setErrorMessage(result.error);
-            } else {
-                setServices(result.services);
-                setErrorMessage("");
-            }
-            setLoading(false);
+            // Listen for data events
+            eventSource.onmessage = (event) => {
+                try {
+                    const parsedData = JSON.parse(event.data);
+                    if (Object.keys(parsedData).length !== 0) {
+                        setServices((prevServices) => [...prevServices, parsedData]);
+                        setErrorMessage("");
+                    }
+                } catch (error) {
+                    console.error("Error parsing event data:", error);
+                }
+            };
+
+            // Listen for error events
+            eventSource.onerror = (error) => {
+                console.error("SSE error:", error);
+                setErrorMessage("Failed to fetch data from the server.");
+                eventSource.close();
+            };
+
+            // Handle end-of-stream if your server signals it with a specific event
+            eventSource.addEventListener("end", () => {
+                console.log("Stream ended.");
+                eventSource.close();
+            });
+
+            return eventSource;
         }
 
-        getData(); // Initial fetch
+        // Initialize SSE connection when the component mounts
+        const eventSource = initializeSSE();
 
-        // Set up an interval to refresh the data every 15 seconds
-        const intervalId = setInterval(getData, 15000);
-
-        // Clean up the interval when the component unmounts or stopName changes
-        return () => clearInterval(intervalId);
+        // Clean up the SSE connection when the component unmounts or stopName changes
+        return () => eventSource.close();
     }, [stopName]);
-
-    if (loading && stopName !== "") {
-        return <LoadingSpinner description="Loading services..." />
-    }
 
     return (
         <>
@@ -118,35 +131,6 @@ export default function Services({ stopName }: ServicesProps) {
 
 
 
-type GetServicesAtStopResult =
-    | { error: string; services: undefined }
-    | { error: undefined; services: Service[] };
-
-async function getServicesAtStop(stopName: string): Promise<GetServicesAtStopResult> {
-    // Ensure the stop name length is valid
-    if (stopName.length <= 3) {
-        console.warn("Stop name must be >3 char");
-        return { error: "", services: undefined };
-    }
-
-
-    try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
-
-        // Check if the response is OK
-        if (!response.ok) {
-            const errorMessage = await response.text();
-            return { error: errorMessage, services: undefined };
-        }
-
-        // Parse the response JSON and return services
-        const services: Service[] = await response.json();
-        return { error: undefined, services: services.filter((item) => (timeTillArrival(addSecondsToTime(item.service_data.arrival_time, item.trip_update.delay)) >= 0) && (!item.service_data.stop_headsign.toLowerCase().includes("non stopping"))).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))) };
-    } catch (error) {
-        // Handle unexpected errors
-        return { error: (error as Error).message, services: undefined };
-    }
-}
 
 
 
