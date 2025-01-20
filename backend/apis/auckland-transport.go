@@ -10,7 +10,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jfmow/at-trains-api/api/geojson"
@@ -46,50 +45,38 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	e.GET("/services/:stationName", func(c echo.Context) error {
 		stopName := c.PathParam("stationName")
+
 		// Fetch stop data, child stops, etc.
 		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
 		if err != nil || len(stops) == 0 {
-			fmt.Println(err)
-			return c.String(404, "No stop found with name")
+			return c.String(http.StatusNotFound, "No stop found with name")
 		}
 		stop := stops[0]
 
 		now := time.Now().In(time.FixedZone("NZST", 13*60*60))
 		currentWeekDay := now.Weekday().String()
 		currentTime := now.Format("15:04:05")
-
-		// Format the date as YYYYMMDD string
 		dateString := now.Format("20060102")
 
+		// Collect services
 		var services []gtfs.StopTimes
-
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
 			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId, currentTime, 30)
-			if err != nil {
-				fmt.Println(err)
+			if err == nil {
+				services = append(services, servicesAtStop...)
 			}
-
-			services = append(services, servicesAtStop...)
 		}
 
 		if len(services) == 0 {
-			return c.String(500, "No services found for stop")
+			return c.String(http.StatusInternalServerError, "No services found for stop")
 		}
 
+		// Sort services by arrival time
 		sort.Slice(services, func(i, j int) bool {
 			return services[i].ArrivalTime < services[j].ArrivalTime
 		})
 
-		type Response struct {
-			ServiceData gtfs.StopTimes `json:"service_data"`
-			TripUpdate  rt.TripUpdate  `json:"trip_update"`
-			Vehicle     rt.Vehicle     `json:"vehicle"`
-			Has         struct {
-				TripUpdate bool `json:"trip_update"`
-				Vehicle    bool `json:"vehicle"`
-			} `json:"has"`
-		}
 		// Set up SSE response
 		writer := c.Response().Writer
 		c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
@@ -102,44 +89,67 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return fmt.Errorf("streaming unsupported by ResponseWriter")
 		}
 
-		var tripUpdatesData rt.TripUpdatesMap
-		var vehicleLocations rt.VehiclesMap
+		type Response struct {
+			ServiceData gtfs.StopTimes `json:"service_data"`
+			TripUpdate  rt.TripUpdate  `json:"trip_update"`
+			Vehicle     rt.Vehicle     `json:"vehicle"`
+			Has         struct {
+				TripUpdate bool `json:"trip_update"`
+				Vehicle    bool `json:"vehicle"`
+			} `json:"has"`
+			ResponseDone bool `json:"response_done"`
+		}
 
-		// Fetch trip updates and vehicle data concurrently
-		var wg sync.WaitGroup
-		wg.Add(2)
-		go func() {
-			defer wg.Done()
-			tripUpdatesData, _ = tripUpdates.GetTripUpdates()
-		}()
-		go func() {
-			defer wg.Done()
-			vehicleLocations, _ = vehicles.GetVehicles()
-		}()
-		wg.Wait()
-
-		// Stream services data
+		// Send services first
 		for _, service := range services {
-			var response Response
-
-			response.ServiceData = service
-
-			// Populate TripUpdate and Vehicle if available
-			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-				response.TripUpdate = tripUpdate
-				response.Has.TripUpdate = true
+			response := Response{
+				ServiceData: service,
+				TripUpdate:  rt.TripUpdate{},
+				Vehicle:     rt.Vehicle{},
+				Has: struct {
+					TripUpdate bool `json:"trip_update"`
+					Vehicle    bool `json:"vehicle"`
+				}{
+					TripUpdate: false,
+					Vehicle:    false,
+				},
+				ResponseDone: false,
 			}
-			if vehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
-				response.Vehicle = vehicle
-				response.Has.Vehicle = true
-			}
-
-			// Stream data
 			jsonData, _ := json.Marshal(response)
 			fmt.Fprintf(writer, "data: %s\n\n", jsonData)
 			flusher.Flush()
 		}
 
+		// Fetch trip updates and vehicle data concurrently
+
+		tripUpdatesData, _ := tripUpdates.GetTripUpdates()
+		vehicleLocations, _ := vehicles.GetVehicles()
+
+		// Send trip updates and vehicle data
+		for _, service := range services {
+			var item Response
+			item.ServiceData = service
+			tripUpdate, err := tripUpdatesData.ByTripID(service.TripID)
+			if err == nil {
+				item.Has.TripUpdate = true
+				item.TripUpdate = tripUpdate
+			}
+			vehicleloc, err := vehicleLocations.GetVehicleByTripID(service.TripID)
+			if err == nil {
+				item.Has.Vehicle = true
+				route, err := AucklandTransportGTFSData.GetRouteByID((string)(vehicleloc.Trip.RouteID))
+				if err == nil {
+					vehicleloc.Trip.RouteID = rt.RouteID(route.RouteId)
+					vehicleloc.Vehicle.Type = route.VehicleType
+				}
+				item.Vehicle = vehicleloc
+
+			}
+			item.ResponseDone = true
+			jsonData, _ := json.Marshal(item)
+			fmt.Fprintf(writer, "data: %s\n\n", jsonData)
+			flusher.Flush()
+		}
 		// Signal end of stream
 		fmt.Fprint(writer, "event: end\ndata: {}\n\n")
 		flusher.Flush()

@@ -94,7 +94,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                                 {
                                     lat: vehicle.position.latitude,
                                     lon: vehicle.position.longitude,
-                                    icon: vehicle.vehicle.type,
+                                    icon: vehicle.vehicle.type || "bus",
                                     id: vehicle.trip.trip_id,
                                     routeID: vehicle.trip.route_id,
                                     description: "Vehicle you're tracking",

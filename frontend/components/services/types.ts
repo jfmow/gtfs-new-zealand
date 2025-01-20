@@ -3,6 +3,7 @@ export interface Service {
     trip_update: TripUpdate;
     vehicle: TripUpdateVehicle;
     has: Has;
+    response_done: boolean;
 }
 
 export interface Has {

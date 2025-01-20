@@ -20,52 +20,79 @@ interface ServicesProps {
 export default function Services({ stopName }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
+
     useEffect(() => {
-        // Function to initialize SSE connection
-        function initializeSSE() {
-            const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
-
-            // Listen for data events
-            eventSource.onmessage = (event) => {
-                try {
-                    const parsedData = JSON.parse(event.data);
-                    if (Object.keys(parsedData).length !== 0) {
-                        setServices((prevServices) => [...prevServices, parsedData]);
-                        setErrorMessage("");
-                    }
-                } catch (error) {
-                    console.error("Error parsing event data:", error);
-                }
-            };
-
-            // Listen for error events
-            eventSource.onerror = (error) => {
-                console.error("SSE error:", error);
-                setErrorMessage("Failed to fetch data from the server.");
-                eventSource.close();
-            };
-
-            // Handle end-of-stream if your server signals it with a specific event
-            eventSource.addEventListener("end", () => {
-                console.log("Stream ended.");
-                eventSource.close();
-            });
-
-            return eventSource;
+        if (stopName === "") {
+            return;
         }
 
-        // Initialize SSE connection when the component mounts
-        const eventSource = initializeSSE();
+        // Create EventSource instance
+        const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
 
-        // Clean up the SSE connection when the component unmounts or stopName changes
-        return () => eventSource.close();
-    }, [stopName]);
+        // Handle incoming messages
+        eventSource.onmessage = (event) => {
+            try {
+                const parsedData = JSON.parse(event.data);
+
+                if (Object.keys(parsedData).length === 0) {
+                    return;
+                }
+
+                // Identify the trip ID
+                const tripId = parsedData.service_data.trip_id;
+
+                if (tripId) {
+                    setServices((prevServices) => {
+                        // Create a new list of services
+                        const updatedServices = [...prevServices];
+
+                        // Check if the service is already in the list
+                        const existingServiceIndex = updatedServices.findIndex(
+                            (item) => item.service_data.trip_id === tripId
+                        );
+
+                        if (existingServiceIndex !== -1) {
+                            // If service already exists, check if it's already marked as done
+                            const existingService = updatedServices[existingServiceIndex];
+
+                            if (existingService.service_data.trip_id === tripId && existingService.response_done) {
+                                return prevServices; // No update needed
+                            }
+
+                            // Otherwise, update the existing service
+                            updatedServices[existingServiceIndex] = parsedData;
+                        } else {
+                            // Add new service to the list
+                            updatedServices.push(parsedData);
+                        }
+
+                        return updatedServices; // Return the updated list
+                    });
+                }
+            } catch (error) {
+                console.error("Error parsing SSE data:", error);
+            }
+        };
+
+        // Handle errors
+        eventSource.onerror = () => {
+            console.error("SSE connection error.");
+            setErrorMessage("Failed to fetch data from the server.");
+            eventSource.close();
+        };
+
+        // Cleanup function on unmount or stopName change
+        return () => {
+            eventSource.close();
+        };
+    }, [stopName]); // Cleanup and re-initiate on stopName change
+
 
     return (
         <>
             {services.length >= 1 ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                    {services.map(({ service_data, vehicle, trip_update, has }, index) => (
+                    {services.sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has }, index) => (
                         <li key={index}>
                             <Card>
                                 <CardHeader>
