@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -71,8 +72,14 @@ func main() {
 		log.Fatal("Invalid --http address format. Use IP:PORT")
 	}
 
-	ip := httpParts[0]   // Extract the IP address
-	port := httpParts[1] // Extract the port
+	var port = httpParts[1]
+
+	ip := httpParts[0] // Extract the IP address
+
+	portEnv, found := os.LookupEnv("port")
+	if found {
+		port = portEnv
+	}
 
 	// Start server using the extracted IP and port
 	if err := e.Start(fmt.Sprintf("%s:%s", ip, port)); err != nil {

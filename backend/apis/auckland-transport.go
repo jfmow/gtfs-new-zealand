@@ -140,7 +140,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stopName := c.PathParam("stopName")
 
-		stops, err := AucklandTransportGTFSData.SearchForStopsByName(stopName)
+		stops, err := AucklandTransportGTFSData.SearchForStopsByName(stopName, false)
 		if err != nil {
 			return c.String(404, "Unable to find stops for search")
 		}
@@ -150,7 +150,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Returns a list of all stops from the AT api
 	e.GET("/stops", func(c echo.Context) error {
-		stops, err := AucklandTransportGTFSData.GetStops()
+		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
 			return c.String(404, "No stops found")
 		}
@@ -180,7 +180,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	//Returns a list of stops by type, bus, train, ferry, etc...
 	e.GET("/stops/typeof/:type", func(c echo.Context) error {
 		stopType := c.PathParam("type")
-		stops, err := AucklandTransportGTFSData.GetStops()
+		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
 			fmt.Println(err)
 			return c.String(404, "No stops found")
@@ -427,7 +427,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return c.String(400, "Invalid location data")
 		}
 
-		stops, err := AucklandTransportGTFSData.GetStops()
+		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if err != nil {
 			return c.JSON(500, "An error occurred retrieving stops")
 		}
