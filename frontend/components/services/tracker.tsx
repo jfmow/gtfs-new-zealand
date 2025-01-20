@@ -77,7 +77,6 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                         <DialogDescription>
                             <p className="text-green-500">Next stop: {stops?.next_stop.name} (Platform {stops?.next_stop.platformNumber})</p>
                             <p className="">Final stop: {stops?.final_stop.name} (Platform {stops?.final_stop.platformNumber})</p>
-                            <p>{tripUpdate.trip.trip_id} | {tripUpdate.stop_time_update.stop_sequence} | {vehicle.vehicle.id}</p>
                             <Separator className="my-1" />
                             <p>Speed: {Math.round(vehicle.position.speed)}km/h</p>
                         </DialogDescription>
