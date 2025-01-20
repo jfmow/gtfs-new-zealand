@@ -12,6 +12,7 @@ import { Service } from "./types"
 import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
+import LoadingSpinner from "../loading-spinner"
 
 interface ServicesProps {
     stopName: string
@@ -20,9 +21,11 @@ interface ServicesProps {
 export default function Services({ stopName }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
+    const [loading, setLoading] = useState(true)
     useEffect(() => {
 
         async function getData() {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // 2000 ms = 2 seconds
             const result = await getServicesAtStop(stopName);
             if (result.error !== undefined) {
                 setErrorMessage(result.error);
@@ -30,6 +33,7 @@ export default function Services({ stopName }: ServicesProps) {
                 setServices(result.services);
                 setErrorMessage("");
             }
+            setLoading(false);
         }
 
         getData(); // Initial fetch
@@ -40,6 +44,10 @@ export default function Services({ stopName }: ServicesProps) {
         // Clean up the interval when the component unmounts or stopName changes
         return () => clearInterval(intervalId);
     }, [stopName]);
+
+    if (loading && stopName !== "") {
+        return <LoadingSpinner description="Loading services..." />
+    }
 
     return (
         <>

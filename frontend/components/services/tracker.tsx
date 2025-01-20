@@ -57,6 +57,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
         }
     }, [has, tripUpdate, vehicle, open])
 
+
     return (
         <>
             <Dialog open={open} onOpenChange={(v) => {
