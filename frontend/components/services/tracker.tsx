@@ -104,7 +104,7 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                                     lat: item.stop_lat,
                                     lon: item.stop_lon,
                                     icon: targetStopId === item.stop_id
-                                        ? "stop marker"
+                                        ? "marked stop marker"
                                         : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
                                     id: item.stop_name + " " + item.stop_code,
                                     routeID: "",
