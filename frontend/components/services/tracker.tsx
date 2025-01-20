@@ -44,6 +44,7 @@ interface ServiceTrackerModalProps {
 export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopName }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
+    const [open, setOpen] = useState(defaultOpen)
 
     useEffect(() => {
         async function getData() {
@@ -51,12 +52,17 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
             const data = await getStopsForTrip(vehicle.trip.trip_id, tripUpdate.stop_time_update.stop_sequence, false)
             setStops(data)
         }
-        getData()
-    }, [has, tripUpdate, vehicle])
+        if (open) {
+            getData()
+        }
+    }, [has, tripUpdate, vehicle, open])
 
     return (
         <>
-            <Dialog defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
+            <Dialog open={open} onOpenChange={(v) => {
+                setOpen(v)
+                if (onOpenChange) onOpenChange(v)
+            }}>
                 {!defaultOpen ? (
                     <DialogTrigger asChild>
                         <Button aria-label="Track service on map" disabled={!has} className="w-full" variant="default">
