@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Train, MapPin, Map } from 'lucide-react'
+import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
 
 export default function NavBar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -76,6 +76,12 @@ function NavItems({ mobile = false }: { mobile?: boolean }) {
             label: 'Vehicles',
             description: 'View real-time vehicle locations',
             icon: Map,
+        },
+        {
+            href: '/alerts',
+            label: 'Travel Alerts',
+            description: 'Travel advisories and alerts',
+            icon: MessageCircleWarningIcon,
         },
     ]
 

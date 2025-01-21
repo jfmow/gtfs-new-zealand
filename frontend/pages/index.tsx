@@ -2,12 +2,13 @@ import NavBar from "@/components/nav";
 import Services from "@/components/services";
 import SearchForStop from "@/components/stops/search";
 import TrainStation from "@/components/stops/train stations";
+import { Button } from "@/components/ui/button";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
 export default function Home() {
-  const { found, value } = useStopQueryParam(); // Get the 's' parameter and if it's found
+  const { found, value } = useAQueryParam("s"); // Get the 's' parameter and if it's found
   const [selectedStop, setSelectedStop] = useState<string>("");
 
   useEffect(() => {
@@ -27,11 +28,16 @@ export default function Home() {
               setSelectedStop(v)
               window.history.pushState({}, '', `/?s=${v}`)
             }} />
-            <SearchForStop />
+            <SearchForStop url="/?s=" />
           </div>
-          <h4 className="mt-4 text-center scroll-m-20 text-xl font-semibold tracking-tight">
-            {selectedStop}
-          </h4>
+          <div className="mt-4 flex items-center justify-between flex-wrap gap-5">
+            <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight">
+              {selectedStop}
+            </h4>
+            <Button variant={"secondary"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
+              View alerts for stop
+            </Button>
+          </div>
           <Services stopName={selectedStop} />
         </div>
       </div>
@@ -39,14 +45,14 @@ export default function Home() {
   );
 }
 
-export function useStopQueryParam(): { value: string; found: boolean } {
+export function useAQueryParam(id: string): { value: string; found: boolean } {
   const [value, setValue] = useState<string>(""); // State for the query param 's'
   const [found, setFound] = useState<boolean>(false); // State to track if 's' was found
   const router = useRouter(); // Use the router hook to listen for URL changes
 
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search); // Get query parameters from the URL
-    const paramValue = urlParams.get('s'); // Extract the 's' parameter
+    const paramValue = urlParams.get(id); // Extract the 's' parameter
 
     if (paramValue !== null) {
       setValue(paramValue); // Set the value if 's' is found
@@ -55,7 +61,7 @@ export function useStopQueryParam(): { value: string; found: boolean } {
       setValue(""); // Set value to empty string if not found
       setFound(false); // Mark as not found
     }
-  }, [router.query.s]); // Run when the query parameter `s` changes
+  }, [router.query.s, id]); // Run when the query parameter `s` changes
 
   return { value, found };
 }

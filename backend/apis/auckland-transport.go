@@ -161,10 +161,23 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	e.GET("/stops/find-stop/:stopName", func(c echo.Context) error {
 
 		stopName := c.PathParam("stopName")
+		children := c.QueryParam("children")
 
-		stops, err := AucklandTransportGTFSData.SearchForStopsByName(stopName, false)
+		stops, err := AucklandTransportGTFSData.SearchForStopsByName(stopName, children == "true")
 		if err != nil {
 			return c.String(404, "Unable to find stops for search")
+		}
+
+		return c.JSON(http.StatusOK, stops)
+	})
+
+	e.GET("/routes/find-route/:routeId", func(c echo.Context) error {
+
+		stopName := c.PathParam("routeId")
+
+		stops, err := AucklandTransportGTFSData.SearchForRouteByID(stopName)
+		if err != nil {
+			return c.String(404, "Unable to find routes for search")
 		}
 
 		return c.JSON(http.StatusOK, stops)
@@ -332,6 +345,106 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 	})
+
+	e.GET("/stops/alerts/:stopName", func(c echo.Context) error {
+		stopName := c.PathParam("stopName")
+
+		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
+		if err != nil || len(stops) == 0 {
+			return c.String(http.StatusNotFound, "No stop found with name")
+		}
+		stop := stops[0]
+		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
+
+		alerts, err := alerts.GetAlerts()
+		if err != nil {
+			return c.String(500, "No alerts found")
+		}
+
+		var foundRoutes []gtfs.Route
+
+		for _, child := range childStops {
+			routes, err := AucklandTransportGTFSData.GetRoutesByStopId(child.StopId)
+			if err != nil {
+				continue
+			}
+			for _, v := range routes {
+				if containsRoute(foundRoutes, v.RouteId) {
+					continue
+				}
+				foundRoutes = append(foundRoutes, v)
+			}
+
+		}
+
+		if len(foundRoutes) == 0 {
+			return c.String(404, "No routes found for stop")
+		}
+
+		var foundAlerts rt.AlertMap
+
+		for _, route := range foundRoutes {
+			alertsForRoute, err := alerts.FindAlertsByRouteId(route.RouteId)
+			if err != nil {
+				return c.String(404, "No alerts found for route")
+			}
+			foundAlerts = append(foundAlerts, alertsForRoute...)
+		}
+
+		date := c.QueryParam("date")
+
+		// Validate that the date is a 13-digit millisecond timestamp
+		dateRegex := regexp.MustCompile(`^\d{13}$`)
+
+		if date != "" {
+			// If the date format is invalid, return an error
+			if !dateRegex.MatchString(date) {
+				return c.String(400, "Invalid date format")
+			}
+
+			// Try to parse the date as an integer
+			dateNumber, err := strconv.ParseInt(date, 10, 64)
+			if err != nil {
+				return c.String(500, "Failed to parse date")
+			}
+
+			// Convert the timestamp to a date, truncating to the day
+			dateTime := time.UnixMilli(dateNumber)
+			roundedDate := time.Date(dateTime.Year(), dateTime.Month(), dateTime.Day(), 0, 0, 0, 0, dateTime.Location())
+
+			var filteredAlerts []rt.Alert
+			// Iterate through alerts and compare dates
+			for _, alert := range foundAlerts {
+				// Convert alert active period times from milliseconds to time.Time
+				startTime := time.Unix(int64(alert.ActivePeriod[0].Start), 0)
+				endTime := time.Unix(int64(alert.ActivePeriod[0].End), 0)
+
+				// Create dates set to midnight of the start and end days
+				startDate := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location()) // Midnight of start time
+				endDate := time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, endTime.Location())           // Midnight of end time
+
+				// Check if roundedDate is within the range of startDate and endDate
+				if roundedDate.After(startDate) && roundedDate.Before(endDate.AddDate(0, 0, 1)) {
+					filteredAlerts = append(filteredAlerts, alert) // Inside the period
+				} else if roundedDate.Equal(startDate) || roundedDate.Equal(endDate) {
+					filteredAlerts = append(filteredAlerts, alert) // Exact start or end day
+				} else if roundedDate.Equal(endDate) {
+					filteredAlerts = append(filteredAlerts, alert) // The day after the end day
+				}
+			}
+
+			if len(filteredAlerts) >= 1 {
+				return c.JSON(http.StatusOK, filteredAlerts)
+			} else {
+				return c.String(404, "No alerts found for route")
+			}
+		} else {
+			return c.JSON(http.StatusOK, foundAlerts)
+		}
+
+	})
+
+	// containsRoute checks if a route is already in the list
 
 	//Returns the route of a route as geo json
 	e.GET("/map/geojson/:routeId/:typeOfVehicle", func(c echo.Context) error {
@@ -533,4 +646,13 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		return c.JSON(http.StatusOK, result)
 	})
+}
+
+func containsRoute(routes []gtfs.Route, routeID string) bool {
+	for _, r := range routes {
+		if r.RouteId == routeID {
+			return true
+		}
+	}
+	return false
 }

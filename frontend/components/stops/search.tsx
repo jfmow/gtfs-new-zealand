@@ -1,11 +1,10 @@
 import { useEffect, useState, useRef } from "react"
 import { SearchInput } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import Link from "next/link"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export default function SearchForStop() {
+export default function SearchForStop({ url }: { url: string }) {
     const [searchTerm, setSearchTerm] = useState("")
     const [result, setResult] = useState<StopSearch[]>([])
     const [isLoading, setIsLoading] = useState(false)
@@ -70,7 +69,7 @@ export default function SearchForStop() {
                             <ul className="p-2 space-y-1">
                                 {result.map((item) => (
                                     <li key={item.name}>
-                                        <Link href={`/?s=${encodeURIComponent(item.name)}`}>
+                                        <a href={`${url}${encodeURIComponent(item.name)}`}>
                                             <Button
                                                 variant="ghost"
                                                 className="w-full justify-start text-left font-normal"
@@ -81,7 +80,7 @@ export default function SearchForStop() {
                                                     {item.type_of_stop}
                                                 </span>
                                             </Button>
-                                        </Link>
+                                        </a>
                                     </li>
                                 ))}
                             </ul>
