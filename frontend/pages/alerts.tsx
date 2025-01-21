@@ -45,7 +45,7 @@ export default function Alerts() {
                         <LoadingSpinner description="Loading alerts..." />
                     ) : (
                         <>
-                            <div className="grid grid-cols-3 gap-4 p-4">
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-4">
                                 {alerts.length > 0 ? (
                                     <>
                                         {alerts.map((alert) => (
