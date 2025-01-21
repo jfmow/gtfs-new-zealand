@@ -67,7 +67,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		var services []gtfs.StopTimes
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId, currentTime, 30)
+			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId, currentTime, 12)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
