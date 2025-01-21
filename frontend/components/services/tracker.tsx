@@ -1,7 +1,7 @@
 import { useUserLocation } from "@/lib/userLocation";
 const LeafletMap = lazy(() => import("../map"));
 import { lazy, Suspense, useEffect, useState } from "react";
-import { TripUpdate, TripUpdateVehicle } from "./types";
+import { ServiceData, TripUpdate, TripUpdateVehicle } from "./types";
 import {
     Dialog,
     DialogContent,
@@ -28,6 +28,8 @@ import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
 import LoadingSpinner from "../loading-spinner";
 import { Separator } from "../ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import Navigate from "../map/navigate";
 
 
 interface ServiceTrackerModalProps {
@@ -39,9 +41,10 @@ interface ServiceTrackerModalProps {
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
     onlyVehicle?: boolean
+    currentStop: ServiceData
 }
 
-export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId }: ServiceTrackerModalProps) {
+export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId, currentStop }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -81,76 +84,104 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
                             <p>Speed: {Math.round(vehicle.position.speed)}km/h</p>
                         </DialogDescription>
                     </DialogHeader>
-                    <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
-                        <LeafletMap
-                            routeLine={{
-                                routeId: vehicle.trip.route_id,
-                                routeColor: routeColor,
-                                tripId: vehicle.trip.trip_id,
-                                vehicleType: vehicle.vehicle.type
-                            }}
-                            userLocation={location}
-                            mapItems={[
-                                {
-                                    lat: vehicle.position.latitude,
-                                    lon: vehicle.position.longitude,
-                                    icon: vehicle.vehicle.type || "bus",
-                                    id: vehicle.trip.trip_id,
-                                    routeID: vehicle.trip.route_id,
-                                    description: "Vehicle you're tracking",
-                                    zIndex: 1
-                                },
-                                ...(stops ? stops.stops.map((item) => ({
-                                    lat: item.stop_lat,
-                                    lon: item.stop_lon,
-                                    icon: targetStopId === item.stop_id
-                                        ? "marked stop marker"
-                                        : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
-                                    id: item.stop_name + " " + item.stop_code,
-                                    routeID: "",
-                                    description: item.stop_name + " " + item.stop_code,
-                                    zIndex: 1,
-                                    onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
-                                })) : [])
-                            ]}
-                            navPoints={undefined}
-                            mapID={"tracker" + Math.random()}
-                            height={"300px"}
-                            variant={onlyVehicle || location[0] === 0 ? "firstItem" : "userAndFirstPoint"}
-                        />
-                    </Suspense>
+                    <Tabs defaultValue="track" className="w-full">
+                        <TabsList className="w-full">
+                            <TabsTrigger className="w-full" value="track">Track</TabsTrigger>
+                            <TabsTrigger disabled={!currentStop || currentStop.trip_id === ""} className="w-full" value="navigate">Navigate</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="track">
+                            <>
+                                <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
+                                    <LeafletMap
+                                        routeLine={{
+                                            routeId: vehicle.trip.route_id,
+                                            routeColor: routeColor,
+                                            tripId: vehicle.trip.trip_id,
+                                            vehicleType: vehicle.vehicle.type.toLowerCase()
+                                        }}
+                                        userLocation={location}
+                                        mapItems={[
+                                            {
+                                                lat: vehicle.position.latitude,
+                                                lon: vehicle.position.longitude,
+                                                icon: vehicle.vehicle.type || "bus",
+                                                id: vehicle.trip.trip_id,
+                                                routeID: vehicle.trip.route_id,
+                                                description: "Vehicle you're tracking",
+                                                zIndex: 1
+                                            },
+                                            ...(stops ? stops.stops.map((item) => ({
+                                                lat: item.stop_lat,
+                                                lon: item.stop_lon,
+                                                icon: targetStopId === item.stop_id
+                                                    ? "marked stop marker"
+                                                    : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
+                                                id: item.stop_name + " " + item.stop_code,
+                                                routeID: "",
+                                                description: item.stop_name + " " + item.stop_code,
+                                                zIndex: 1,
+                                                onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
+                                            })) : [])
+                                        ]}
+                                        navPoints={undefined}
+                                        mapID={"tracker" + Math.random()}
+                                        height={"300px"}
+                                        variant={onlyVehicle || location[0] === 0 ? "firstItem" : "userAndFirstPoint"}
+                                    />
+                                </Suspense>
 
-                    <Drawer>
-                        <DrawerTrigger asChild>
-                            <Button>
-                                List of stops
-                            </Button>
-                        </DrawerTrigger>
-                        <DrawerContent>
-                            <DrawerHeader>
-                                <DrawerTitle>{vehicle.trip.route_id} stops</DrawerTitle>
-                                <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
-                            </DrawerHeader>
-                            <ScrollArea className="h-[50vh] w-full">
-                                <ol className="flex items-center justify-center flex-col gap-1">
-                                    {stops?.stops.map((item, index) => (
-                                        <li key={item.stop_code} className="flex items-center justify-center flex-col gap-1">
-                                            <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.stop_name)}</p>
-                                            {index < stops.stops.length - 1 ? (
-                                                <ChevronDown className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
-                                            ) : null}
-                                        </li>
-                                    ))}
-                                </ol>
-                            </ScrollArea>
+                                <Drawer>
+                                    <DrawerTrigger asChild>
+                                        <Button>
+                                            List of stops
+                                        </Button>
+                                    </DrawerTrigger>
+                                    <DrawerContent>
+                                        <DrawerHeader>
+                                            <DrawerTitle>{vehicle.trip.route_id} stops</DrawerTitle>
+                                            <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
+                                        </DrawerHeader>
+                                        <ScrollArea className="h-[50vh] w-full">
+                                            <ol className="flex items-center justify-center flex-col gap-1">
+                                                {stops?.stops.map((item, index) => (
+                                                    <li key={item.stop_code} className="flex items-center justify-center flex-col gap-1">
+                                                        <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.stop_name)}</p>
+                                                        {index < stops.stops.length - 1 ? (
+                                                            <ChevronDown className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
+                                                        ) : null}
+                                                    </li>
+                                                ))}
+                                            </ol>
+                                        </ScrollArea>
 
-                            <DrawerFooter>
-                                <DrawerClose asChild>
-                                    <Button variant="outline" className="w-full">Close</Button>
-                                </DrawerClose>
-                            </DrawerFooter>
-                        </DrawerContent>
-                    </Drawer>
+                                        <DrawerFooter>
+                                            <DrawerClose asChild>
+                                                <Button variant="outline" className="w-full">Close</Button>
+                                            </DrawerClose>
+                                        </DrawerFooter>
+                                    </DrawerContent>
+                                </Drawer>
+                            </>
+                        </TabsContent>
+                        {currentStop && currentStop.trip_id !== "" ? (
+                            <>
+                                <TabsContent value="navigate">
+                                    <Navigate start={{
+                                        lat: location[0],
+                                        lon: location[1],
+                                        name: "Your location"
+                                    }} end={{
+                                        lat: currentStop.stop_data.stop_lat,
+                                        lon: currentStop.stop_data.stop_lon,
+                                        name: currentStop.stop_data.stop_name
+                                    }} />
+                                </TabsContent>
+                            </>
+                        ) : null}
+
+                    </Tabs>
+
+
                 </DialogContent>
             </Dialog>
 

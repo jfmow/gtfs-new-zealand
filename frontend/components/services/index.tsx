@@ -131,7 +131,7 @@ export default function Services({ stopName }: ServicesProps) {
                                 <CardContent>
                                     <div className="grid grid-cols-2 items-center justify-items-center">
 
-                                        <ServiceTrackerModal targetStopId={services[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                        <ServiceTrackerModal currentStop={service_data} targetStopId={services[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
                                         <span aria-label="Arriving in">
                                             {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
                                         </span>

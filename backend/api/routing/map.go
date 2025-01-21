@@ -56,6 +56,8 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 	// Final URL
 	url := baseURL + query + queryParams
 
+	fmt.Println(url)
+
 	// Make HTTP request
 	resp, err := http.Get(url)
 	if err != nil {
@@ -83,6 +85,7 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 			Legs []struct {
 				Steps    []Step  `json:"steps"`
 				Duration float64 `json:"duration"` // Duration in seconds
+				Distance float64 `json:"distance"`
 			} `json:"legs"`
 		} `json:"routes"`
 	}
