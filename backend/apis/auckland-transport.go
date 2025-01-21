@@ -190,7 +190,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns a list of all stops from the AT api
-	stopsRouter.GET("/", func(c echo.Context) error {
+	router.GET("/stops", func(c echo.Context) error {
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
 			return c.String(404, "No stops found")
@@ -252,7 +252,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns a list of routes from the AT api
-	routesRouter.GET("/", func(c echo.Context) error {
+	router.GET("/routes", func(c echo.Context) error {
 		routes2, err := AucklandTransportGTFSData.GetRoutes()
 
 		if len(routes2) == 0 || err != nil {

@@ -41,7 +41,7 @@ interface ServiceTrackerModalProps {
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
     onlyVehicle?: boolean
-    currentStop: ServiceData
+    currentStop?: ServiceData
 }
 
 export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId, currentStop }: ServiceTrackerModalProps) {
