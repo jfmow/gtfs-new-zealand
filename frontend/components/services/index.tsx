@@ -7,7 +7,7 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { AlertCircle, Loader2 } from "lucide-react"
 import { Service } from "./types"
 import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
@@ -92,7 +92,7 @@ export default function Services({ stopName }: ServicesProps) {
         <>
             {services.length >= 1 ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                    {services.sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has }, index) => (
+                    {services.sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has, response_done }, index) => (
                         <li key={index}>
                             <Card>
                                 <CardHeader>
@@ -131,9 +131,16 @@ export default function Services({ stopName }: ServicesProps) {
                                 <CardContent>
                                     <div className="grid grid-cols-2 items-center justify-items-center">
 
-                                        <ServiceTrackerModal currentStop={service_data} targetStopId={services[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                        <ServiceTrackerModal loaded={response_done} currentStop={service_data} targetStopId={services[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
                                         <span aria-label="Arriving in">
-                                            {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
+
+                                            {!response_done ? (
+                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                            ) : (
+                                                <>
+                                                    {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
+                                                </>
+                                            )}
                                         </span>
                                     </div>
                                 </CardContent>

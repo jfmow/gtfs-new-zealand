@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/drawer"
 
 import { Button } from "../ui/button";
-import { ChevronDown, Navigation } from "lucide-react";
+import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
@@ -42,9 +42,10 @@ interface ServiceTrackerModalProps {
     onOpenChange?: (v: boolean) => void
     onlyVehicle?: boolean
     currentStop?: ServiceData
+    loaded: boolean
 }
 
-export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId, currentStop }: ServiceTrackerModalProps) {
+export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId, currentStop }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -69,8 +70,12 @@ export default function ServiceTrackerModal({ vehicle, tripUpdate, has, routeCol
             }}>
                 {!defaultOpen ? (
                     <DialogTrigger asChild>
-                        <Button aria-label="Track service on map" disabled={!has} className="w-full" variant="default">
-                            <Navigation />
+                        <Button aria-label="Track service on map" disabled={!has || !loaded} className="w-full" variant="default">
+                            {!loaded ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-secondary" />
+                            ) : (
+                                <Navigation />
+                            )}
                         </Button>
                     </DialogTrigger>
                 ) : null}
