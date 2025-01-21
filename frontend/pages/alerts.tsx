@@ -74,7 +74,7 @@ export default function Alerts() {
                                                                 <ul className="list-disc list-inside">
                                                                     {alert.informed_entity.map((item) => (
                                                                         <>
-                                                                            {item.route_id !== "" ? <li>Route: {item.route_id}</li> : <li>Stop: {item.stop_id}</li>}
+                                                                            {item.stop_id !== "" ? <li>Stop: {item.stop_id}</li> : <li>Route: {item.route_id}</li>}
                                                                         </>
                                                                     ))}
                                                                 </ul>
