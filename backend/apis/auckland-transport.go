@@ -20,7 +20,6 @@ import (
 )
 
 func SetupAucklandTransportAPI(router *echo.Group) {
-	e := router
 
 	//Looks for the at api key from the loaded env vars or sys env if docker
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
@@ -42,8 +41,14 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	tripUpdates, _ := realtimeData.TripUpdates("https://api.at.govt.nz/realtime/legacy/tripupdates")
 	alerts, _ := realtimeData.Alerts("https://api.at.govt.nz/realtime/legacy/servicealerts")
 
+	servicesRouter := router.Group("/services")
+	stopsRouter := router.Group("/stops")
+	routesRouter := router.Group("/routes")
+	vehiclesRouter := router.Group("/vehicles")
+	navigationRouter := router.Group("/map")
+
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
-	e.GET("/services/:stationName", func(c echo.Context) error {
+	servicesRouter.GET("/:stationName", func(c echo.Context) error {
 		stopName := c.PathParam("stationName")
 
 		// Fetch stop data, child stops, etc.
@@ -158,7 +163,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
-	e.GET("/stops/find-stop/:stopName", func(c echo.Context) error {
+	stopsRouter.GET("/find-stop/:stopName", func(c echo.Context) error {
 
 		stopName := c.PathParam("stopName")
 		children := c.QueryParam("children")
@@ -171,7 +176,8 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		return c.JSON(http.StatusOK, stops)
 	})
 
-	e.GET("/routes/find-route/:routeId", func(c echo.Context) error {
+	//Returns a route by routeId
+	routesRouter.GET("/find-route/:routeId", func(c echo.Context) error {
 
 		stopName := c.PathParam("routeId")
 
@@ -184,7 +190,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns a list of all stops from the AT api
-	e.GET("/stops", func(c echo.Context) error {
+	stopsRouter.GET("/", func(c echo.Context) error {
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
 			return c.String(404, "No stops found")
@@ -213,7 +219,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns a list of stops by type, bus, train, ferry, etc...
-	e.GET("/stops/typeof/:type", func(c echo.Context) error {
+	stopsRouter.GET("/typeof/:type", func(c echo.Context) error {
 		stopType := c.PathParam("type")
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
@@ -246,7 +252,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns a list of routes from the AT api
-	e.GET("/routes", func(c echo.Context) error {
+	routesRouter.GET("/", func(c echo.Context) error {
 		routes2, err := AucklandTransportGTFSData.GetRoutes()
 
 		if len(routes2) == 0 || err != nil {
@@ -257,7 +263,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Return a route by routeId
-	e.GET("/routes/:routeID", func(c echo.Context) error {
+	routesRouter.GET("/:routeID", func(c echo.Context) error {
 		routeID := c.PathParam("routeID")
 		routes2, err := AucklandTransportGTFSData.SearchForRouteByID(routeID)
 
@@ -269,7 +275,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns stops for a trip by tripId
-	e.GET("/stops/:tripId", func(c echo.Context) error {
+	stopsRouter.GET("/:tripId", func(c echo.Context) error {
 		tripId := c.PathParam("tripId")
 
 		stops, err := AucklandTransportGTFSData.GetStopsForTripID(tripId)
@@ -280,73 +286,8 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		return c.JSON(http.StatusOK, stops)
 	})
 
-	//Returns alerts from AT for a route
-	e.GET("/routes/alerts/:routeId", func(c echo.Context) error {
-		routeId := c.PathParam("routeId")
-
-		alerts, err := alerts.GetAlerts()
-		if err != nil {
-			return c.String(500, "No alerts found")
-		}
-
-		alertsForRoute, err := alerts.FindAlertsByRouteId(routeId)
-		if err != nil {
-			return c.String(404, "No alerts found for route")
-		}
-		date := c.QueryParam("date")
-
-		// Validate that the date is a 13-digit millisecond timestamp
-		dateRegex := regexp.MustCompile(`^\d{13}$`)
-
-		if date != "" {
-			// If the date format is invalid, return an error
-			if !dateRegex.MatchString(date) {
-				return c.String(400, "Invalid date format")
-			}
-
-			// Try to parse the date as an integer
-			dateNumber, err := strconv.ParseInt(date, 10, 64)
-			if err != nil {
-				return c.String(500, "Failed to parse date")
-			}
-
-			// Convert the timestamp to a date, truncating to the day
-			dateTime := time.UnixMilli(dateNumber)
-			roundedDate := time.Date(dateTime.Year(), dateTime.Month(), dateTime.Day(), 0, 0, 0, 0, dateTime.Location())
-
-			var filteredAlerts []rt.Alert
-			// Iterate through alerts and compare dates
-			for _, alert := range alertsForRoute {
-				// Convert alert active period times from milliseconds to time.Time
-				startTime := time.Unix(int64(alert.ActivePeriod[0].Start), 0)
-				endTime := time.Unix(int64(alert.ActivePeriod[0].End), 0)
-
-				// Create dates set to midnight of the start and end days
-				startDate := time.Date(startTime.Year(), startTime.Month(), startTime.Day(), 0, 0, 0, 0, startTime.Location()) // Midnight of start time
-				endDate := time.Date(endTime.Year(), endTime.Month(), endTime.Day(), 0, 0, 0, 0, endTime.Location())           // Midnight of end time
-
-				// Check if roundedDate is within the range of startDate and endDate
-				if roundedDate.After(startDate) && roundedDate.Before(endDate.AddDate(0, 0, 1)) {
-					filteredAlerts = append(filteredAlerts, alert) // Inside the period
-				} else if roundedDate.Equal(startDate) || roundedDate.Equal(endDate) {
-					filteredAlerts = append(filteredAlerts, alert) // Exact start or end day
-				} else if roundedDate.Equal(endDate) {
-					filteredAlerts = append(filteredAlerts, alert) // The day after the end day
-				}
-			}
-
-			if len(filteredAlerts) >= 1 {
-				return c.JSON(http.StatusOK, filteredAlerts)
-			} else {
-				return c.String(404, "No alerts found for route")
-			}
-		} else {
-			return c.JSON(http.StatusOK, alertsForRoute)
-		}
-
-	})
-
-	e.GET("/stops/alerts/:stopName", func(c echo.Context) error {
+	//Returns alerts from AT for a stop
+	stopsRouter.GET("/alerts/:stopName", func(c echo.Context) error {
 		stopName := c.PathParam("stopName")
 
 		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
@@ -457,10 +398,8 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	})
 
-	// containsRoute checks if a route is already in the list
-
 	//Returns the route of a route as geo json
-	e.GET("/map/geojson/:routeId/:typeOfVehicle", func(c echo.Context) error {
+	navigationRouter.GET("/geojson/:routeId/:typeOfVehicle", func(c echo.Context) error {
 		typeOfVehicle := c.PathParam("typeOfVehicle")
 		routeId := c.PathParam("routeId")
 		tripId := c.QueryParam("tripId")
@@ -486,7 +425,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns all the locations of vehicles from the AT api
-	e.GET("/vehicles/locations", func(c echo.Context) error {
+	vehiclesRouter.GET("/locations", func(c echo.Context) error {
 		vehicleType := c.QueryParam("type")
 
 		vehicles, err := vehicles.GetVehicles()
@@ -520,7 +459,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns the location of a vehicle by tripId
-	e.GET("/vehicles/locations/:tripid", func(c echo.Context) error {
+	vehiclesRouter.GET("/locations/:tripid", func(c echo.Context) error {
 		tripID := c.PathParam("tripid")
 
 		vehicles, err := vehicles.GetVehicles()
@@ -558,7 +497,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns the closest stop to a given lat,lon
-	e.POST("/stops/closest-stop", func(c echo.Context) error {
+	stopsRouter.POST("/closest-stop", func(c echo.Context) error {
 		latStr := c.FormValue("lat")
 		lonStr := c.FormValue("lon")
 
@@ -595,7 +534,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Finds a walking route from lat,lon to lat,lon using osrm
-	e.POST("/journey/nav", func(c echo.Context) error {
+	navigationRouter.POST("/nav", func(c echo.Context) error {
 		slatStr := c.FormValue("startLat")
 		slonStr := c.FormValue("startLon")
 		elatStr := c.FormValue("endLat")
