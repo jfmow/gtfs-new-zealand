@@ -391,6 +391,19 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			foundAlerts = append(foundAlerts, alertsForRoute...)
 		}
 
+		for _, a := range foundAlerts {
+			for i := range a.InformedEntity {
+				if a.InformedEntity[i].StopID != "" {
+					stops, err := AucklandTransportGTFSData.GetStopByStopID(a.InformedEntity[i].StopID)
+					if err != nil {
+						continue
+					}
+					stop := stops[0]
+					a.InformedEntity[i].StopID = stop.StopName
+				}
+			}
+		}
+
 		date := c.QueryParam("date")
 
 		// Validate that the date is a 13-digit millisecond timestamp
