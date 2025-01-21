@@ -70,6 +70,7 @@ export default function Navigate({ start, end }: NavigateProps) {
     return (
         <>
             <div className="mb-2 min-h-[400px]">
+
                 {data && Object.keys(data).length >= 3 ? (
                     <>
                         <div className="w-full rounded-xl overflow-hidden">
@@ -89,6 +90,7 @@ export default function Navigate({ start, end }: NavigateProps) {
                     <LoadingSpinner height={"400px"} description="Loading map..." />
                 )}
             </div>
+            <p className="text-sm font-medium leading-none p-2 my-2 text-center text-red-400">DIRECTIONS MAY NOT BE 100% ACCURATE OR SAFE. Always take care when around roads and in unfamiliar places</p>
             <Drawer>
                 <DrawerTrigger asChild>
                     <Button className="w-full">
