@@ -213,7 +213,7 @@ function getIconUrl(icon: string): string {
         "end marker": "/vehicle_icons/end marker.png",
         "marked stop marker": "/vehicle_icons/marked stop marker.png",
     };
-    return iconMap[icon] || icon; // Return icon URL or use the provided custom URL
+    return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }
 
 function setMapView(map: Map, zoom: number, firstItem: [number, number], secondItem?: [number, number]) {
