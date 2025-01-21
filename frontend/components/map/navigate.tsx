@@ -7,6 +7,7 @@ import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerT
 import { Button } from "../ui/button"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { GeoJSONResponse } from "./geojson-types";
+import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
 
 interface NavigateProps {
     start: { lat: number, lon: number, name: string },
@@ -70,7 +71,10 @@ export default function Navigate({ start, end }: NavigateProps) {
     return (
         <>
             <div className="mb-2 min-h-[400px]">
-
+                <div className="my-2 flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground ">Walking time: {convertSecondsToTimeNoDecimal(data?.duration || 0)}</p>
+                    <p className="text-sm text-muted-foreground ">Distance: {formatDistance(data?.distance || 0)}</p>
+                </div>
                 {data && Object.keys(data).length >= 3 ? (
                     <>
                         <div className="w-full rounded-xl overflow-hidden">
@@ -90,7 +94,6 @@ export default function Navigate({ start, end }: NavigateProps) {
                     <LoadingSpinner height={"400px"} description="Loading map..." />
                 )}
             </div>
-            <p className="text-sm font-medium leading-none p-2 my-2 text-center text-red-400">DIRECTIONS MAY NOT BE 100% ACCURATE OR SAFE. Always take care when around roads and in unfamiliar places</p>
             <Drawer>
                 <DrawerTrigger asChild>
                     <Button className="w-full">
@@ -126,7 +129,7 @@ export default function Navigate({ start, end }: NavigateProps) {
                     </DrawerFooter>
                 </DrawerContent>
             </Drawer>
-
+            <p className="text-xs font-medium leading-none p-2 my-2 text-center text-red-400">DIRECTIONS MAY NOT BE 100% ACCURATE OR SAFE. Always take care when around roads and in unfamiliar places</p>
 
         </>
     )
@@ -159,6 +162,7 @@ export interface OSRMResponse {
     instructions: string;
     duration: number;
     travelTime: number;
+    distance: number;
 }
 
 export interface Feature {

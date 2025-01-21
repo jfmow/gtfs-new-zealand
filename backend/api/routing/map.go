@@ -20,6 +20,7 @@ type GeoJSONResponse struct {
 	Features     []Feature `json:"features"`
 	Instructions string    `json:"instructions"`
 	Duration     float64   `json:"duration"` // Duration in seconds
+	Distance     float64   `json:"distance"`
 }
 
 type Feature struct {
@@ -109,13 +110,21 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 			},
 		},
 		Duration: osrmResponse.Routes[0].Legs[0].Duration, // Set duration from OSRM response
+		Distance: 0,
 	}
 
 	// Collect directions as text, filtering out empty instructions
 	var directions []string
 	for _, step := range osrmResponse.Routes[0].Legs[0].Steps {
 		if step.Maneuver.Modifier != "" {
-			direction := fmt.Sprintf("%s onto %s for %.1f meters", step.Maneuver.Modifier, step.Name, step.Distance)
+			geoJSONResponse.Distance = geoJSONResponse.Distance + step.Distance
+			var direction string
+			if step.Name == "" {
+				direction = fmt.Sprintf("%s for %.1f meters", step.Maneuver.Modifier, step.Distance)
+			} else {
+				direction = fmt.Sprintf("%s onto %s for %.1f meters", step.Maneuver.Modifier, step.Name, step.Distance)
+			}
+
 			directions = append(directions, direction)
 		}
 	}
