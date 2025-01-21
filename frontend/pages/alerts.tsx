@@ -19,10 +19,11 @@ import LoadingSpinner from "@/components/loading-spinner"
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
     const { value, found } = useAQueryParam("r")
-    const [loading, setLoading] = useState(true)
+    const [loading, setLoading] = useState(false)
 
     useEffect(() => {
         if (found) {
+            setLoading(true)
             fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops/alerts/${value}`)
                 .then(res => res.json())
                 .then(data => setAlerts(data))
