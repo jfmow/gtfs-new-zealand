@@ -126,10 +126,13 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		type ServicesResponse struct {
 			Type string               `json:"type"` // trip_update, vehicle, service_data
 			Data ServicesResponseData `json:"data"`
+			Time int64                `json:"time"`
 		}
 
 		var wg sync.WaitGroup
-		wg.Add(3)
+		var mu sync.Mutex // Mutex for serializing writes
+
+		wg.Add(1)
 
 		// Goroutine to send initial service data
 		go func() {
@@ -143,78 +146,78 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				response.Data.Done.Service = true
 
 				jsonData, _ := json.Marshal(response)
+
+				mu.Lock() // Lock before writing
 				fmt.Fprintf(w, "data: %s\n\n", jsonData)
 				flusher.Flush()
+				mu.Unlock() // Unlock after writing
 			}
-
 		}()
 
 		sendTripUpdates := func(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
 			go func() {
-				defer wg.Done()
 				tripUpdatesData, _ := tripUpdates.GetTripUpdates()
 
 				for _, service := range services {
+					var ResponseData ServicesResponseData
+					if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
+						ResponseData.Has.TripUpdate = true
+						ResponseData.TripUpdate = tripUpdate
+					}
+					ResponseData.TripId = service.TripID
+					ResponseData.Done.TripUpdate = true
+					response := ServicesResponse{Type: "trip_update", Data: ResponseData, Time: time.Now().In(time.FixedZone("NZST", 13*60*60)).Unix()}
+					jsonData, _ := json.Marshal(response)
+
 					select {
 					case <-ctx.Done(): // Stop processing if the context is canceled
-						//log.Printf("Stopping trip updates due to client disconnect")
+						log.Printf("Stopping trip updates due to client disconnect")
 						return
 					default:
-						var ResponseData ServicesResponseData
-						if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-							ResponseData.Has.TripUpdate = true
-							ResponseData.TripUpdate = tripUpdate
-						}
-						ResponseData.TripId = service.TripID
-						ResponseData.Done.TripUpdate = true
-						response := ServicesResponse{Type: "trip_update", Data: ResponseData}
-						jsonData, _ := json.Marshal(response)
-
-						// Ensure writer is still valid
+						mu.Lock() // Lock before writing
 						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
 							log.Printf("Error writing trip updates: %v", err)
+							mu.Unlock()
 							return
 						}
-						if flusher != nil {
-							flusher.Flush()
-						}
+						flusher.Flush()
+						mu.Unlock() // Unlock after writing
 					}
 				}
 			}()
 
 			go func() {
-				defer wg.Done()
 				vehicleLocations, _ := vehicles.GetVehicles()
 
 				for _, service := range services {
+					var ResponseData ServicesResponseData
+					if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
+						ResponseData.Has.Vehicle = true
+						route, err := AucklandTransportGTFSData.GetRouteByID((string)(foundVehicle.Trip.RouteID))
+						if err == nil {
+							foundVehicle.Trip.RouteID = rt.RouteID(route.RouteId)
+							foundVehicle.Vehicle.Type = route.VehicleType
+						}
+						ResponseData.Vehicle = foundVehicle
+					}
+					ResponseData.TripId = service.TripID
+					ResponseData.Done.Vehicle = true
+					response := ServicesResponse{Type: "vehicle", Data: ResponseData, Time: time.Now().In(time.FixedZone("NZST", 13*60*60)).Unix()}
+					jsonData, _ := json.Marshal(response)
+
 					select {
 					case <-ctx.Done(): // Stop processing if the context is canceled
-						//log.Printf("Stopping vehicle updates due to client disconnect")
+						log.Printf("Stopping vehicle updates due to client disconnect")
 						return
 					default:
-						var ResponseData ServicesResponseData
-						if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
-							ResponseData.Has.Vehicle = true
-							route, err := AucklandTransportGTFSData.GetRouteByID((string)(foundVehicle.Trip.RouteID))
-							if err == nil {
-								foundVehicle.Trip.RouteID = rt.RouteID(route.RouteId)
-								foundVehicle.Vehicle.Type = route.VehicleType
-							}
-							ResponseData.Vehicle = foundVehicle
-						}
-						ResponseData.TripId = service.TripID
-						ResponseData.Done.Vehicle = true
-						response := ServicesResponse{Type: "vehicle", Data: ResponseData}
-						jsonData, _ := json.Marshal(response)
-
-						// Ensure writer is still valid
+						mu.Lock() // Lock before writing
 						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
 							log.Printf("Error writing vehicle updates: %v", err)
+							mu.Unlock()
 							return
 						}
-						if flusher != nil {
-							flusher.Flush()
-						}
+						flusher.Flush()
+						mu.Unlock() // Unlock after writing
 					}
 				}
 			}()
@@ -225,14 +228,24 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		go func() {
 			<-ctx.Done() // Wait for the client to disconnect
-			//log.Printf("The client is disconnected: %v\n", c.RealIP())
+			log.Printf("The client is disconnected: %v\n", c.RealIP())
 		}()
 
 		sendTripUpdates(ctx, w, flusher)
 
 		wg.Wait()
 
-		return nil
+		ticker := time.NewTicker(15 * time.Second) //How often gtfs realtime updates
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				log.Printf("SSE client disconnected, ip: %v", c.RealIP())
+				return nil
+			case <-ticker.C:
+				sendTripUpdates(ctx, w, flusher)
+			}
+		}
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data

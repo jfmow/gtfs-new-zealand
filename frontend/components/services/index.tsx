@@ -20,6 +20,7 @@ interface ServicesProps {
 interface SSEData {
     type: "service_data" | "vehicle" | "trip_update"
     data: Service
+    time: number
 }
 
 export default function Services({ stopName }: ServicesProps) {
@@ -139,8 +140,11 @@ export default function Services({ stopName }: ServicesProps) {
 
 function getService(serviceData: SSEData[]): Service[] {
     const services = serviceData.filter((item) => item.type === "service_data")
-    const tripUpdates = serviceData.filter((item) => item.type === "trip_update")
-    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle")
+    if (services.length === 0) {
+        return []
+    }
+    const tripUpdates = serviceData.filter((item) => item.type === "trip_update").sort((a, b) => b.time - a.time)
+    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle").sort((a, b) => b.time - a.time)
     return services.map((service) => {
         const trip = tripUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
         const vehicle = vehicleUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
