@@ -170,6 +170,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				var ResponseData Response
 				if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
 					ResponseData.Has.Vehicle = true
+					route, err := AucklandTransportGTFSData.GetRouteByID((string)(foundVehicle.Trip.RouteID))
+					if err == nil {
+						foundVehicle.Trip.RouteID = rt.RouteID(route.RouteId)
+						foundVehicle.Vehicle.Type = route.VehicleType
+					}
 					ResponseData.Vehicle = foundVehicle
 				}
 				ResponseData.TripId = service.TripID
