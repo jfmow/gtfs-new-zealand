@@ -17,7 +17,12 @@ import (
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
+	"github.com/labstack/echo/v5/middleware"
 )
+
+var gzipConfig = middleware.GzipConfig{
+	Level: 5,
+}
 
 func SetupAucklandTransportAPI(router *echo.Group) {
 
@@ -47,11 +52,16 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	vehiclesRouter := router.Group("/vehicles")
 	navigationRouter := router.Group("/map")
 
+	stopsRouter.Use(middleware.GzipWithConfig(gzipConfig))
+	routesRouter.Use(middleware.GzipWithConfig(gzipConfig))
+	vehiclesRouter.Use(middleware.GzipWithConfig(gzipConfig))
+	navigationRouter.Use(middleware.GzipWithConfig(gzipConfig))
+
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	servicesRouter.GET("/:stationName", func(c echo.Context) error {
 		stopName := c.PathParam("stationName")
 
-		// Fetch stop data, child stops, etc.
+		// Fetch stop data
 		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
 		if err != nil || len(stops) == 0 {
 			return c.String(http.StatusNotFound, "No stop found with name")
@@ -82,16 +92,23 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return services[i].ArrivalTime < services[j].ArrivalTime
 		})
 
-		// Set up SSE response
-		writer := c.Response().Writer
-		c.Response().Header().Set(echo.HeaderContentType, "text/event-stream")
-		c.Response().Header().Set(echo.HeaderCacheControl, "no-cache")
-		c.Response().Header().Set(echo.HeaderConnection, "keep-alive")
-		c.Response().WriteHeader(http.StatusOK)
+		// Set SSE headers
+		w := c.Response()
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
 
-		flusher, ok := writer.(http.Flusher)
+		// Flush writer to keep the connection open
+		flusher, ok := w.Writer.(http.Flusher)
 		if !ok {
 			return fmt.Errorf("streaming unsupported by ResponseWriter")
+		}
+
+		type Response2Done struct {
+			Vehicle    bool `json:"vehicle"`
+			TripUpdate bool `json:"trip_update"`
+			Service    bool `json:"service_data"`
 		}
 
 		type Response struct {
@@ -102,62 +119,69 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				TripUpdate bool `json:"trip_update"`
 				Vehicle    bool `json:"vehicle"`
 			} `json:"has"`
-			ResponseDone bool `json:"response_done"`
+			Done   Response2Done `json:"done"`
+			TripId string        `json:"trip_id"`
 		}
 
-		// Send services first
-		for _, service := range services {
-			response := Response{
-				ServiceData: service,
-				TripUpdate:  rt.TripUpdate{},
-				Vehicle:     rt.Vehicle{},
-				Has: struct {
-					TripUpdate bool `json:"trip_update"`
-					Vehicle    bool `json:"vehicle"`
-				}{
-					TripUpdate: false,
-					Vehicle:    false,
-				},
-				ResponseDone: false,
-			}
-			jsonData, _ := json.Marshal(response)
-			fmt.Fprintf(writer, "data: %s\n\n", jsonData)
-			flusher.Flush()
+		type Response2 struct {
+			Type string   `json:"type"` // trip_update, vehicle, service_data
+			Data Response `json:"data"`
 		}
 
-		// Fetch trip updates and vehicle data concurrently
-
-		tripUpdatesData, _ := tripUpdates.GetTripUpdates()
-		vehicleLocations, _ := vehicles.GetVehicles()
-
-		// Send trip updates and vehicle data
-		for _, service := range services {
-			var item Response
-			item.ServiceData = service
-			tripUpdate, err := tripUpdatesData.ByTripID(service.TripID)
-			if err == nil {
-				item.Has.TripUpdate = true
-				item.TripUpdate = tripUpdate
-			}
-			vehicleloc, err := vehicleLocations.GetVehicleByTripID(service.TripID)
-			if err == nil {
-				item.Has.Vehicle = true
-				route, err := AucklandTransportGTFSData.GetRouteByID((string)(vehicleloc.Trip.RouteID))
-				if err == nil {
-					vehicleloc.Trip.RouteID = rt.RouteID(route.RouteId)
-					vehicleloc.Vehicle.Type = route.VehicleType
+		// Goroutine to send initial service data
+		go func() {
+			for _, service := range services {
+				response := Response2{
+					Type: "service_data",
+					Data: Response{
+						ServiceData: service,
+						Done: Response2Done{
+							Service: true,
+						},
+						TripId: service.TripID,
+					},
 				}
-				item.Vehicle = vehicleloc
-
+				jsonData, _ := json.Marshal(response)
+				fmt.Fprintf(w, "data: %s\n\n", jsonData)
+				flusher.Flush()
 			}
-			item.ResponseDone = true
-			jsonData, _ := json.Marshal(item)
-			fmt.Fprintf(writer, "data: %s\n\n", jsonData)
-			flusher.Flush()
+		}()
+
+		time.Sleep(100 * time.Millisecond)
+
+		sendTripUpdates := func() {
+			tripUpdatesData, _ := tripUpdates.GetTripUpdates()
+			for _, service := range services {
+				var ResponseData Response
+				if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
+					ResponseData.Has.TripUpdate = true
+					ResponseData.TripUpdate = tripUpdate
+				}
+				ResponseData.TripId = service.TripID
+				ResponseData.Done.TripUpdate = true
+				response := Response2{Type: "trip_update", Data: ResponseData}
+				jsonData, _ := json.Marshal(response)
+				fmt.Fprintf(w, "data: %s\n\n", jsonData)
+				flusher.Flush()
+			}
+
+			vehicleLocations, _ := vehicles.GetVehicles()
+			for _, service := range services {
+				var ResponseData Response
+				if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
+					ResponseData.Has.Vehicle = true
+					ResponseData.Vehicle = foundVehicle
+				}
+				ResponseData.TripId = service.TripID
+				ResponseData.Done.Vehicle = true
+				response := Response2{Type: "vehicle", Data: ResponseData}
+				jsonData, _ := json.Marshal(response)
+				fmt.Fprintf(w, "data: %s\n\n", jsonData)
+				flusher.Flush()
+			}
 		}
-		// Signal end of stream
-		fmt.Fprint(writer, "event: end\ndata: {}\n\n")
-		flusher.Flush()
+
+		sendTripUpdates()
 
 		return nil
 	})

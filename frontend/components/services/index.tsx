@@ -17,9 +17,14 @@ interface ServicesProps {
     stopName: string
 }
 
+interface SSEData {
+    type: "service_data" | "vehicle" | "trip_update"
+    data: Service
+}
+
 export default function Services({ stopName }: ServicesProps) {
-    const [services, setServices] = useState<Service[]>([])
-    const [errorMessage, setErrorMessage] = useState("")
+    const [services, setServices] = useState<SSEData[]>([]);
+    const [errorMessage, setErrorMessage] = useState("");
 
     useEffect(() => {
         if (stopName === "") {
@@ -32,43 +37,13 @@ export default function Services({ stopName }: ServicesProps) {
         // Handle incoming messages
         eventSource.onmessage = (event) => {
             try {
-                const parsedData = JSON.parse(event.data);
+                const parsedData: SSEData = JSON.parse(event.data);
 
-                if (Object.keys(parsedData).length === 0) {
-                    return;
+                if (Object.keys(parsedData).length > 0) {
+                    setServices(prev => [...prev, parsedData])
                 }
 
-                // Identify the trip ID
-                const tripId = parsedData.service_data.trip_id;
 
-                if (tripId) {
-                    setServices((prevServices) => {
-                        // Create a new list of services
-                        const updatedServices = [...prevServices];
-
-                        // Check if the service is already in the list
-                        const existingServiceIndex = updatedServices.findIndex(
-                            (item) => item.service_data.trip_id === tripId
-                        );
-
-                        if (existingServiceIndex !== -1) {
-                            // If service already exists, check if it's already marked as done
-                            const existingService = updatedServices[existingServiceIndex];
-
-                            if (existingService.service_data.trip_id === tripId && existingService.response_done) {
-                                return prevServices; // No update needed
-                            }
-
-                            // Otherwise, update the existing service
-                            updatedServices[existingServiceIndex] = parsedData;
-                        } else {
-                            // Add new service to the list
-                            updatedServices.push(parsedData);
-                        }
-
-                        return updatedServices; // Return the updated list
-                    });
-                }
             } catch (error) {
                 console.error("Error parsing SSE data:", error);
             }
@@ -85,14 +60,15 @@ export default function Services({ stopName }: ServicesProps) {
         return () => {
             eventSource.close();
         };
-    }, [stopName]); // Cleanup and re-initiate on stopName change
+    }, [stopName]);
+
 
 
     return (
         <>
             {services.length >= 1 ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                    {services.sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has, response_done }, index) => (
+                    {getService(services).sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has, done }, index) => (
                         <li key={index}>
                             <Card>
                                 <CardHeader>
@@ -130,11 +106,9 @@ export default function Services({ stopName }: ServicesProps) {
                                 </CardHeader>
                                 <CardContent>
                                     <div className="grid grid-cols-2 items-center justify-items-center">
-
-                                        <ServiceTrackerModal loaded={response_done} currentStop={service_data} targetStopId={services[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                        <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
                                         <span aria-label="Arriving in">
-
-                                            {!response_done ? (
+                                            {!done.trip_update ? (
                                                 <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                             ) : (
                                                 <>
@@ -150,7 +124,7 @@ export default function Services({ stopName }: ServicesProps) {
                 </ul>
             ) : null}
 
-            {errorMessage !== "" ? (
+            {errorMessage !== "" && services.length === 0 ? (
                 <Alert className="mt-4">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Uh oh...</AlertTitle>
@@ -163,7 +137,30 @@ export default function Services({ stopName }: ServicesProps) {
     )
 }
 
-
+function getService(serviceData: SSEData[]): Service[] {
+    const services = serviceData.filter((item) => item.type === "service_data")
+    const tripUpdates = serviceData.filter((item) => item.type === "trip_update")
+    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle")
+    return services.map((service) => {
+        const trip = tripUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
+        const vehicle = vehicleUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
+        if (trip && trip.done.trip_update) {
+            service.data.done.trip_update = true
+            if (trip.has.trip_update) {
+                service.data.trip_update = trip.trip_update
+                service.data.has.trip_update = true
+            }
+        }
+        if (vehicle && vehicle.done.vehicle) {
+            service.data.done.vehicle = true
+            if (vehicle.has.vehicle) {
+                service.data.vehicle = vehicle.vehicle
+                service.data.has.vehicle = true
+            }
+        }
+        return service.data
+    })
+}
 
 
 

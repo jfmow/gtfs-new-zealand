@@ -48,8 +48,6 @@ func main() {
 	//Enables rate limiter middleware for the following routes
 	e.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 
-	//Enables gzip compression middleware for the following routes
-	e.Use(middleware.GzipWithConfig(gzipConfig))
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{"GET", "POST", "OPTIONS"},
