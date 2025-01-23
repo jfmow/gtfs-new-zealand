@@ -69,7 +69,7 @@ export default function Services({ stopName }: ServicesProps) {
         <>
             {services.length >= 1 ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                    {getService(services).sort((a, b) => new Date(a.service_data.arrival_time).getTime() - new Date(b.service_data.arrival_time).getTime()).map(({ service_data, vehicle, trip_update, has, done }, index) => (
+                    {getService(services).filter((item) => (item.service_data.stop_sequence - item.trip_update.stop_time_update.stop_sequence - 1) >= 0).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }, index) => (
                         <li key={index}>
                             <Card>
                                 <CardHeader>
