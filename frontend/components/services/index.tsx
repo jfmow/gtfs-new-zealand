@@ -76,15 +76,24 @@ export default function Services({ stopName }: ServicesProps) {
                                     <CardTitle>
                                         <div className="flex items-center justify-between overflow-hidden">
                                             <div className="shrink flex-1 truncate">
-                                                {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
+                                                {trip_update.trip.schedule_relationship === 3 ? (
                                                     <>
-                                                        <span className="text-orange-500">Departed | </span>
+                                                        <span className="text-red-500">Cancled | </span>
                                                         <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
                                                     </>
                                                 ) : (
-                                                    <span className="truncate">
-                                                        {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))}
-                                                    </span>
+                                                    <>
+                                                        {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
+                                                            <>
+                                                                <span className="text-orange-500">Departed | </span>
+                                                                <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="truncate">
+                                                                {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))}
+                                                            </span>
+                                                        )}
+                                                    </>
                                                 )}
                                             </div>
                                             <span
