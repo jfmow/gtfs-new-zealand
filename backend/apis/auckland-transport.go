@@ -129,32 +129,27 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			Time int64                `json:"time"`
 		}
 
-		var wg sync.WaitGroup
 		var mu sync.Mutex // Mutex for serializing writes
 
-		wg.Add(1)
-
-		// Goroutine to send initial service data
-		go func() {
-			defer wg.Done()
-			for _, service := range services {
-				var response ServicesResponse
-
-				response.Type = "service_data"
-				response.Data.ServiceData = service
-				response.Data.TripId = service.TripID
-				response.Data.Done.Service = true
-
-				jsonData, _ := json.Marshal(response)
-
-				mu.Lock() // Lock before writing
-				fmt.Fprintf(w, "data: %s\n\n", jsonData)
-				flusher.Flush()
-				mu.Unlock() // Unlock after writing
-			}
-		}()
-
 		sendTripUpdates := func(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
+			go func() {
+				for _, service := range services {
+					var response ServicesResponse
+
+					response.Type = "service_data"
+					response.Data.ServiceData = service
+					response.Data.TripId = service.TripID
+					response.Data.Done.Service = true
+
+					jsonData, _ := json.Marshal(response)
+
+					mu.Lock() // Lock before writing
+					fmt.Fprintf(w, "data: %s\n\n", jsonData)
+					flusher.Flush()
+					mu.Unlock() // Unlock after writing
+				}
+			}()
+
 			go func() {
 				tripUpdatesData, _ := tripUpdates.GetTripUpdates()
 
@@ -232,8 +227,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}()
 
 		sendTripUpdates(ctx, w, flusher)
-
-		wg.Wait()
 
 		ticker := time.NewTicker(15 * time.Second) //How often gtfs realtime updates
 		defer ticker.Stop()
