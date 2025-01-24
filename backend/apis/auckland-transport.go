@@ -35,7 +35,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		panic("Env not found")
 	}
 
-	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", time.FixedZone("NZST", 13*60*60))
+	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", time.FixedZone("NZST", 13*60*60), "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
