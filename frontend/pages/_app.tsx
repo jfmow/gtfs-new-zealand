@@ -4,7 +4,9 @@ import { useEffect } from "react";
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    navigator.serviceWorker.register('/sw.js');
+    navigator.serviceWorker.register('/sw.js').then((res) => {
+      res.update()
+    });
   }, [])
   return <Component {...pageProps} />;
 }
