@@ -20,6 +20,7 @@ import (
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/robfig/cron/v3"
 )
 
 var gzipConfig = middleware.GzipConfig{
@@ -34,7 +35,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		panic("Env not found")
 	}
 
-	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs")
+	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", time.FixedZone("NZST", 13*60*60))
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
@@ -53,11 +54,95 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	routesRouter := router.Group("/routes")
 	vehiclesRouter := router.Group("/vehicles")
 	navigationRouter := router.Group("/map")
+	notificationRouter := router.Group("/notifications")
 
 	stopsRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	routesRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	vehiclesRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	navigationRouter.Use(middleware.GzipWithConfig(gzipConfig))
+
+	c := cron.New(cron.WithLocation(time.FixedZone("NZST", 13*60*60)))
+
+	c.AddFunc("@every 00h00m10s", func() {
+		fmt.Println("Checking canceled trips")
+		updates, err := tripUpdates.GetTripUpdates()
+		if err == nil {
+			fmt.Println(AucklandTransportGTFSData.Notify(updates))
+		}
+	})
+
+	c.Start()
+
+	notificationRouter.POST("/add", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+		if err != nil {
+			return c.String(http.StatusBadRequest, "invalid stop")
+		}
+
+		err = AucklandTransportGTFSData.AddNotificationClient(endpoint, p256dh, auth, stops[0].StopId)
+		if err != nil {
+			fmt.Println(err)
+			return c.String(http.StatusBadRequest, "Invalid subscription")
+		}
+
+		return c.String(http.StatusOK, "added")
+	})
+
+	notificationRouter.POST("/find-client", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		var stopId string = ""
+
+		if stopIdOrName != "" {
+			stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			if err != nil {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = stops[0].StopId
+		}
+
+		notification, err := AucklandTransportGTFSData.FindNotificationClient(endpoint, p256dh, auth, stopId)
+		if err != nil {
+			fmt.Println(err)
+			return c.String(http.StatusBadRequest, "Invalid subscription")
+		}
+
+		return c.JSON(http.StatusOK, notification)
+	})
+
+	notificationRouter.POST("/remove", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		var stopId string = ""
+
+		if stopIdOrName != "" {
+			stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			if err != nil {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = stops[0].StopId
+		}
+
+		err = AucklandTransportGTFSData.RemoveNotificationClient(endpoint, p256dh, auth, stopId)
+		if err != nil {
+			//fmt.Println(err)
+			return c.String(http.StatusBadRequest, "Invalid subscription")
+		}
+
+		return c.JSON(http.StatusOK, "removed")
+	})
 
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	servicesRouter.GET("/:stationName", func(c echo.Context) error {
@@ -677,6 +762,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		return c.JSON(http.StatusOK, result)
 	})
+
 }
 
 func containsRoute(routes []gtfs.Route, routeID string) bool {

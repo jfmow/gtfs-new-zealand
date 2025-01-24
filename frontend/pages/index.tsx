@@ -1,8 +1,10 @@
 import NavBar from "@/components/nav";
 import Services from "@/components/services";
+import StopNotifications from "@/components/services/notifications";
 import SearchForStop from "@/components/stops/search";
 import TrainStation from "@/components/stops/train stations";
 import { Button } from "@/components/ui/button";
+import { BellDot } from "lucide-react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -34,9 +36,16 @@ export default function Home() {
             <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight">
               {selectedStop}
             </h4>
-            <Button variant={"secondary"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
-              View alerts for stop
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button disabled={selectedStop === ""} variant={"secondary"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
+                View alerts for stop
+              </Button>
+              <StopNotifications stopName={selectedStop}>
+                <Button variant={"outline"}>
+                  <BellDot />
+                </Button>
+              </StopNotifications>
+            </div>
           </div>
           <Services stopName={selectedStop} />
         </div>
