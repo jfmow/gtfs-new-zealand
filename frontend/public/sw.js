@@ -5,6 +5,6 @@ self.addEventListener('push', event => {
     // Show notification
     self.registration.showNotification(data.title, {
         body: data.body,
-        icon: '/icon.png', // Provide an icon for the notification
+        icon: '/Favicon.png', // Provide an icon for the notification
     });
 });
