@@ -1,10 +1,26 @@
-self.addEventListener('push', event => {
-    const data = event.data.json();
-    console.log('Push received:', data);
+self.addEventListener('push', (event) => {
+    let notification = event.data.json();
 
-    // Show notification
-    self.registration.showNotification(data.title, {
-        body: data.body,
-        icon: '/Favicon.png', // Provide an icon for the notification
-    });
+    const notificationOptions = {
+        title: notification.title,
+        body: notification.body,
+        icon: notification.icon,
+        image: notification.image,
+        badge: notification.badge,
+        vibrate: notification.vibrate,
+        tag: notification.tag,
+        data: notification.data,
+        actions: notification.actions,
+        renotify: notification.renotify,
+        requireInteraction: notification.requireInteraction,
+        silent: notification.silent,
+        timestamp: notification.timestamp,
+        dir: notification.dir,
+        lang: notification.lang
+    };
+
+    self.registration.showNotification(
+        notification.title,
+        notificationOptions
+    );
 });
