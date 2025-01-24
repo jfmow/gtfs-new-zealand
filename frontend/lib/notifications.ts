@@ -26,10 +26,34 @@ export async function removeSubscription(stopIdOrName: string) {
     }
 }
 
+export function unregister() {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.ready.then(function (registration) {
+            registration.unregister();
+        });
+    }
+}
+
+export function register(swPath: string, options: RegistrationOptions) {
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker
+            .register(swPath || '/service-worker.js', options)
+            .then(function (registration) {
+                registration.update().then((reg) => {
+                    console.log('SW registered: ', reg);
+                })
+            })
+            .catch(function (registrationError) {
+                console.log('SW registration failed: ', registrationError);
+            });
+    }
+}
+
 async function getSwRegistration() {
     let registration = await navigator.serviceWorker.getRegistration("/sw.js")
     if (!registration) {
-        registration = await navigator.serviceWorker.register('/sw.js');
+        register("/sw.js", {})
+        registration = await navigator.serviceWorker.getRegistration("/sw.js") as ServiceWorkerRegistration
     }
     return registration
 }
