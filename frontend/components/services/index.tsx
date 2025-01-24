@@ -148,32 +148,47 @@ export default function Services({ stopName }: ServicesProps) {
 }
 
 function getService(serviceData: SSEData[]): Service[] {
-    const services = serviceData.filter((item) => item.type === "service_data")
+    const services = serviceData.filter((item) => item.type === "service_data");
     if (services.length === 0) {
-        return []
+        return [];
     }
-    const tripUpdates = serviceData.filter((item) => item.type === "trip_update").sort((a, b) => b.time - a.time)
-    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle").sort((a, b) => b.time - a.time)
-    return services.map((service) => {
-        const trip = tripUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
-        const vehicle = vehicleUpdates.find((item) => item.data.trip_id === service.data.trip_id)?.data
+
+    const tripUpdates = serviceData.filter((item) => item.type === "trip_update").sort((a, b) => b.time - a.time);
+    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle").sort((a, b) => b.time - a.time);
+
+    const seenTripIds = new Set<string>(); // Keep track of trip IDs already processed
+
+    return services.reduce((result, service) => {
+        const tripId = service.data.trip_id;
+        if (seenTripIds.has(tripId)) {
+            return result; // Skip duplicate trip IDs
+        }
+        seenTripIds.add(tripId); // Mark trip ID as processed
+
+        const trip = tripUpdates.find((item) => item.data.trip_id === tripId)?.data;
+        const vehicle = vehicleUpdates.find((item) => item.data.trip_id === tripId)?.data;
+
         if (trip && trip.done.trip_update) {
-            service.data.done.trip_update = true
+            service.data.done.trip_update = true;
             if (trip.has.trip_update) {
-                service.data.trip_update = trip.trip_update
-                service.data.has.trip_update = true
+                service.data.trip_update = trip.trip_update;
+                service.data.has.trip_update = true;
             }
         }
+
         if (vehicle && vehicle.done.vehicle) {
-            service.data.done.vehicle = true
+            service.data.done.vehicle = true;
             if (vehicle.has.vehicle) {
-                service.data.vehicle = vehicle.vehicle
-                service.data.has.vehicle = true
+                service.data.vehicle = vehicle.vehicle;
+                service.data.has.vehicle = true;
             }
         }
-        return service.data
-    })
+
+        result.push(service.data);
+        return result;
+    }, [] as Service[]);
 }
+
 
 
 
