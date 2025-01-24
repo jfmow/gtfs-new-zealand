@@ -64,10 +64,14 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	c := cron.New(cron.WithLocation(time.FixedZone("NZST", 13*60*60)))
 
 	c.AddFunc("@every 00h00m10s", func() {
-		fmt.Println("Checking canceled trips")
+		//fmt.Println("Checking canceled trips")
 		updates, err := tripUpdates.GetTripUpdates()
 		if err == nil {
-			fmt.Println(AucklandTransportGTFSData.Notify(updates))
+			if err := AucklandTransportGTFSData.Notify(updates); err != nil {
+				fmt.Println(err)
+			}
+		} else {
+			fmt.Println(err)
 		}
 	})
 
@@ -87,7 +91,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		err = AucklandTransportGTFSData.AddNotificationClient(endpoint, p256dh, auth, stops[0].StopId)
 		if err != nil {
-			fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
@@ -112,7 +115,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		notification, err := AucklandTransportGTFSData.FindNotificationClient(endpoint, p256dh, auth, stopId)
 		if err != nil {
-			fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
@@ -137,7 +139,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		err = AucklandTransportGTFSData.RemoveNotificationClient(endpoint, p256dh, auth, stopId)
 		if err != nil {
-			//fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
