@@ -1,3 +1,7 @@
+self.addEventListener('install', () => {
+    self.skipWaiting();
+});
+
 self.addEventListener('push', (event) => {
     let notification = event.data.json();
 
@@ -19,8 +23,24 @@ self.addEventListener('push', (event) => {
         lang: notification.lang
     };
 
-    self.registration.showNotification(
-        notification.title,
-        notificationOptions
+    event.waitUntil(
+        self.registration.showNotification(
+            notification.title,
+            notificationOptions
+        )
     );
+
+
+});
+
+self.addEventListener('notificationclick', function (event) {
+    console.log('Notification clicked.');
+    event.notification.close();
+
+    let clickResponsePromise = Promise.resolve();
+    if (event.notification.data && event.notification.data.url) {
+        clickResponsePromise = clients.openWindow(event.notification.data.url);
+    }
+
+    event.waitUntil(clickResponsePromise);
 });
