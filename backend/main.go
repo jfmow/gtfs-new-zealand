@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jfmow/at-trains-api/apis"
+	"github.com/jfmow/at-trains-api/providers/at"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
@@ -56,7 +56,7 @@ func main() {
 
 	atApi := e.Group("/at")
 
-	apis.SetupAucklandTransportAPI(atApi)
+	at.SetupAucklandTransportAPI(atApi)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")

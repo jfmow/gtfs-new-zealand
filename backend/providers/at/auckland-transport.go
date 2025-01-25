@@ -1,4 +1,4 @@
-package apis
+package at
 
 import (
 	"context"
@@ -61,13 +61,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	vehiclesRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	navigationRouter.Use(middleware.GzipWithConfig(gzipConfig))
 
+	notificationDB, err := newDatabase(time.FixedZone("NZST", 13*60*60), "hi@suddsy.dev")
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	c := cron.New(cron.WithLocation(time.FixedZone("NZST", 13*60*60)))
 
 	c.AddFunc("@every 00h00m10s", func() {
 		//fmt.Println("Checking canceled trips")
 		updates, err := tripUpdates.GetTripUpdates()
 		if err == nil {
-			if err := AucklandTransportGTFSData.Notify(updates); err != nil {
+			if err := notificationDB.NotifyTripUpdates(updates, AucklandTransportGTFSData); err != nil {
 				fmt.Println(err)
 			}
 		} else {
@@ -89,8 +94,9 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return c.String(http.StatusBadRequest, "invalid stop")
 		}
 
-		err = AucklandTransportGTFSData.AddNotificationClient(endpoint, p256dh, auth, stops[0].StopId)
+		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stops[0].StopId, AucklandTransportGTFSData)
 		if err != nil {
+			fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
@@ -113,7 +119,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			stopId = stops[0].StopId
 		}
 
-		notification, err := AucklandTransportGTFSData.FindNotificationClient(endpoint, p256dh, auth, stopId)
+		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
 		if err != nil {
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
@@ -137,7 +143,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			stopId = stops[0].StopId
 		}
 
-		err = AucklandTransportGTFSData.RemoveNotificationClient(endpoint, p256dh, auth, stopId)
+		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)
 		if err != nil {
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
