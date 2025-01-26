@@ -108,32 +108,37 @@ export async function checkStopSubscription(stopIdOrName: string) {
     form.set("stopIdOrName", stopIdOrName);
 
     // Send subscription to the backend
-    const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/find-client`, {
-        method: 'POST',
-        body: form, // Don't manually set Content-Type here
-    });
-    if (response.ok) {
-        const notificationClient: NotificationClient = await response.json()
-        const createdDate = new Date(notificationClient.Created * 1000);
-        const currentDate = new Date();
+    try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/find-client`, {
+            method: 'POST',
+            body: form, // Don't manually set Content-Type here
+        });
+        if (response.ok) {
+            const notificationClient: NotificationClient = await response.json()
+            const createdDate = new Date(notificationClient.Created * 1000);
+            const currentDate = new Date();
 
-        // Calculate the difference in milliseconds
-        const diffInMilliseconds = currentDate.getTime() - createdDate.getTime();
+            // Calculate the difference in milliseconds
+            const diffInMilliseconds = currentDate.getTime() - createdDate.getTime();
 
-        // Convert the difference to days
-        const diffInDays = diffInMilliseconds / (1000 * 60 * 60 * 24);
+            // Convert the difference to days
+            const diffInDays = diffInMilliseconds / (1000 * 60 * 60 * 24);
 
-        if (diffInDays > 29) {
-            const newSubscription = await refreshSubscription()
-            if (newSubscription.refreshed) {
-                return { has: true, subscription: newSubscription.subscription }
+            if (diffInDays > 29) {
+                const newSubscription = await refreshSubscription()
+                if (newSubscription.refreshed) {
+                    return { has: true, subscription: newSubscription.subscription }
+                } else {
+                    return { has: false, subscription: undefined }
+                }
             } else {
-                return { has: false, subscription: undefined }
+                return { has: true, subscription: subscription }
             }
         } else {
-            return { has: true, subscription: subscription }
+            return { has: false, subscription: undefined }
         }
-    } else {
+    } catch (err) {
+        console.error(err)
         return { has: false, subscription: undefined }
     }
 }
@@ -158,15 +163,20 @@ export async function subscribeToStop(stopIdOrName: string) {
     form.set("stopIdOrName", stopIdOrName);
 
     // Send subscription to the backend
-    const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/add`, {
-        method: 'POST',
-        body: form, // Don't manually set Content-Type here
-    });
+    try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/add`, {
+            method: 'POST',
+            body: form, // Don't manually set Content-Type here
+        });
 
-    if (response.ok) {
-        return true
+        if (response.ok) {
+            return true
+        }
+        return false
+    } catch (err) {
+        console.error(err)
+        return false
     }
-    return false
 }
 
 /**
@@ -191,14 +201,19 @@ export async function refreshSubscription(): Promise<{ refreshed: boolean; subsc
     form.set("new_auth", newSubscription.keys.auth)
     form.set("new_p256dh", newSubscription.keys.p256dh)
 
-    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/refresh`, {
-        method: "POST",
-        body: form
-    })
-    if (req.ok) {
-        return { refreshed: true, subscription: newSub }
+    try {
+        const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/refresh`, {
+            method: "POST",
+            body: form
+        })
+        if (req.ok) {
+            return { refreshed: true, subscription: newSub }
+        }
+        return { refreshed: false, subscription: undefined }
+    } catch (err) {
+        console.error(err)
+        return { refreshed: false, subscription: undefined }
     }
-    return { refreshed: false, subscription: undefined }
 }
 
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
