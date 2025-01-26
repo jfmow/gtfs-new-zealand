@@ -13,8 +13,10 @@ import {
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { ThumbsUp } from "lucide-react"
+import { BellDot, ThumbsUp } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
+import { Button } from "@/components/ui/button"
+import StopNotifications from "@/components/services/notifications"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -39,7 +41,12 @@ export default function Alerts() {
             <NavBar />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-                    <div className="grid md:grid-cols-2 gap-4 p-4">
+                    <div className="flex items-center gap-2 p-4">
+                        <StopNotifications stopName={value}>
+                            <Button>
+                                <BellDot />
+                            </Button>
+                        </StopNotifications>
                         <SearchForStop url="/alerts?r=" />
                     </div>
                     {loading ? (

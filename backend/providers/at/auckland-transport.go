@@ -70,6 +70,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	c := cron.New(cron.WithLocation(localTimeZone))
 	var notificationMutex sync.Mutex
+	var notificationMutex2 sync.Mutex
 
 	c.AddFunc("@every 00h00m10s", func() {
 		if notificationMutex.TryLock() {
@@ -87,18 +88,27 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			fmt.Println("notification mutex locked")
 		}
 
-	}) /*
-		c.AddFunc("@every 06h00m00s", func() {
-			//fmt.Println("Checking canceled trips")
-			notificationDB.SendNotificationToAllClients()
-		})*/
+	})
 
-	c.AddFunc("@every 00h00m10s", func() {
-		//fmt.Println("Checking canceled trips")
+	c.AddFunc("@every 00h00m15s", func() {
+		if notificationMutex2.TryLock() {
+			defer notificationMutex2.Unlock()
+			//fmt.Println("Checking canceled trips")
+			alerts, err := alerts.GetAlerts()
+			if err == nil {
+				if err := notificationDB.NotifyAlerts(alerts, AucklandTransportGTFSData); err != nil {
+					fmt.Println(err)
+				}
+			} else {
+				fmt.Println(err)
+			}
+		} else {
+			fmt.Println("notification mutex locked")
+		}
 
 	})
 
-	func() {
+	c.AddFunc("@every 00h00m10s", func() {
 		var limit = 500
 		var offset = 0
 		now := time.Now().In(localTimeZone)
@@ -134,7 +144,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				}
 			}
 		}
-	}()
+	})
 
 	c.Start()
 
@@ -178,7 +188,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			Auth:     new_auth,
 		})
 		if err != nil {
-			fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
@@ -588,11 +597,10 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		for _, a := range foundAlerts {
 			for i := range a.InformedEntity {
 				if a.InformedEntity[i].StopID != "" {
-					stops, err := AucklandTransportGTFSData.GetStopByStopID(a.InformedEntity[i].StopID)
+					stop, err := AucklandTransportGTFSData.GetStopByStopID(a.InformedEntity[i].StopID)
 					if err != nil {
 						continue
 					}
-					stop := stops[0]
 					a.InformedEntity[i].StopID = stop.StopName
 				}
 			}

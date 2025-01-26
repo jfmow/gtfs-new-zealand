@@ -27,7 +27,7 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 	now := time.Now().In(v.timeZone)
 	currentTime := now.Format("15:04:05")
 
-	var canceledTrips []string
+	var canceledTrips = make(map[string]string)
 
 	for _, trip := range tripUpdates {
 		if trip.Trip.ScheduleRelationship == 3 {
@@ -36,11 +36,11 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 				//fmt.Println("Error parsing time:", err)
 				continue
 			}*/
-			canceledTrips = append(canceledTrips, trip.Trip.TripID)
+			canceledTrips[trip.Trip.TripID] = trip.ID
 		}
 	}
 
-	for _, trip := range canceledTrips {
+	for trip, tripUUID := range canceledTrips {
 		foundStops, err := gtfsDB.GetStopsForTripID(trip)
 		if err != nil {
 			return errors.New("unable to find stops for trip")
@@ -91,7 +91,89 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 				body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)", formattedTime, service.StopHeadsign, service.StopData.StopName, service.TripData.RouteID)
 
 				for _, client := range clients {
-					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, trip)
+					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, tripUUID)
+					go v.SendNotification(client, body, title, data)
+				}
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) error {
+	if len(alerts) == 0 {
+		return errors.New("no alerts provided")
+	}
+
+	for _, alert := range alerts {
+		var stopsToInform []string
+		stopsSet := make(map[string]struct{}) // A set to track unique stop IDs
+
+		for _, entity := range alert.InformedEntity {
+			if entity.StopID != "" {
+				if _, exists := stopsSet[entity.StopID]; !exists {
+					stopsToInform = append(stopsToInform, entity.StopID)
+					stopsSet[entity.StopID] = struct{}{}
+				}
+			}
+			if entity.RouteID != "" {
+				foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.RouteID))
+				if err != nil {
+					continue
+				} else {
+					for _, stop := range foundStops {
+						if _, exists := stopsSet[stop.StopId]; !exists {
+							stopsToInform = append(stopsToInform, stop.StopId)
+							stopsSet[stop.StopId] = struct{}{}
+						}
+					}
+				}
+			}
+		}
+
+		for _, stop := range stopsToInform {
+			var limit = 500
+			var offset = 0
+			for {
+				stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
+				if err != nil {
+					//errors.New(err)
+					break
+				}
+
+				clients, err := v.GetNotificationClientsByStop(stop, alert.ID, limit, offset)
+				if err != nil {
+					// errors.New("no clients for stopId")
+					break
+				}
+
+				if len(clients) == 0 {
+					break
+				}
+
+				offset += limit
+
+				data := map[string]string{
+					"url": fmt.Sprintf("/alerts?r=%s", stopData.StopName+" "+stopData.StopCode),
+				}
+
+				var dates = "Active dates:\n"
+
+				for _, date := range alert.ActivePeriod {
+					startTime := time.Unix(date.Start, 0)
+					start := fmt.Sprintf("%d/%d/%d", startTime.Day(), startTime.Month(), startTime.Year())
+					endTime := time.Unix(date.End, 0)
+					end := fmt.Sprintf("%d/%d/%d", endTime.Day(), endTime.Month(), endTime.Year())
+					dates += fmt.Sprintf(" %s to %s\n", start, end)
+				}
+
+				title := stopData.StopName
+				body := fmt.Sprintf("%s\n%s\n\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text, dates)
+
+				for _, client := range clients {
+					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alert.ID)
 					go v.SendNotification(client, body, title, data)
 				}
 			}
@@ -303,11 +385,13 @@ Get notification clients for a given stopId
 
 stopId must be the id of a child stop
 
+hasSeenId is a unique id given to check if that notification has already been served
+
 # DO NOT USE A CHECK OF LESS THAN LIMIT TO SEE IF THERES NONE LEFT. SOME MAY BE REMOVED AFTER BECAUSE THEY ARE EXPIRED
 
 USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
 */
-func (v Database) GetNotificationClientsByStop(stopId string, hasSeenTripId string, limit int, offset int) ([]NotificationClient, error) {
+func (v Database) GetNotificationClientsByStop(stopId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
 	// Query to find notification clients by stop
 	query := `
 		SELECT 
@@ -372,7 +456,7 @@ func (v Database) GetNotificationClientsByStop(stopId string, hasSeenTripId stri
 		// Check if recent_notifications contains any tripAlertIds
 		excludeClient := false
 		for _, notification := range notification.RecentNotifications {
-			if notification == hasSeenTripId {
+			if notification == hasSeenId {
 				excludeClient = true
 				break
 			}

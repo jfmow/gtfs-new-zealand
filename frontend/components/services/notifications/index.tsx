@@ -36,10 +36,9 @@ export default function StopNotifications({ stopName, children }: { stopName: st
                 </DialogTrigger>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>{alreadySubbed ? ("Disable") : ("Enable")} alerts for {stopName}</DialogTitle>
+                        <DialogTitle>{alreadySubbed ? ("Disable") : ("Enable")} <span className="text-blue-500">Alerts</span> for {stopName}</DialogTitle>
                         <DialogDescription>
-                            {alreadySubbed ? ("Stop receiving") : ("Receive")} push notifications for any cancellations or alerts for {stopName}.
-                            (lasts 30 days)
+                            {alreadySubbed ? ("Stop receiving") : ("Receive")} push notifications for any delays, cancellations and alerts for {stopName}.
                         </DialogDescription>
                     </DialogHeader>
                     {checking ? (
@@ -48,15 +47,17 @@ export default function StopNotifications({ stopName, children }: { stopName: st
                         <>
                             <div className="flex items-center justify-between gap-2">
                                 <Button variant={"outline"} onClick={async (e) => {
-                                    e.currentTarget.disabled = true
-                                    const removed = await removeSubscription("")
-                                    if (removed) {
-                                        toast.success(`All notifications disabled`)
-                                    } else {
-                                        toast.error(`Failed to disable notifications`)
+                                    if (confirm("This will disable alerts for ALL stops.")) {
+                                        e.currentTarget.disabled = true
+                                        const removed = await removeSubscription("")
+                                        if (removed) {
+                                            toast.success(`All notifications disabled`)
+                                        } else {
+                                            toast.error(`Failed to disable notifications`)
+                                        }
                                     }
                                 }}>
-                                    Disable all
+                                    Disable all alerts
                                 </Button>
                                 <div className="flex items-center gap-2">
                                     <DialogClose asChild>
@@ -67,26 +68,26 @@ export default function StopNotifications({ stopName, children }: { stopName: st
                                             e.preventDefault()
                                             const removed = await removeSubscription(stopName)
                                             if (removed) {
-                                                toast.success(`Notifications disabled for ${stopName}`)
+                                                toast.info(`Notifications disabled for ${stopName}`)
                                             } else {
                                                 toast.error(`Failed to disable notifications for ${stopName}`)
                                             }
                                             setAlreadySubbed(false)
                                         }}>
-                                            Disable Notifications
+                                            Disable Alerts
                                         </Button>
                                     ) : (
                                         <Button onClick={async (e) => {
                                             e.preventDefault()
                                             const subbed = await subscribeToStop(stopName)
                                             if (subbed) {
-                                                toast.success("Notification added")
+                                                toast.success(`Notifications enabled for ${stopName} for 30 days`)
                                             } else {
-                                                toast.error("Failed to add notification")
+                                                toast.error(`Failed to enable notifications for ${stopName}`)
                                             }
                                             setAlreadySubbed(true)
                                         }}>
-                                            Enable Notifications
+                                            Enable Alerts
                                         </Button>
                                     )}
                                 </div>
