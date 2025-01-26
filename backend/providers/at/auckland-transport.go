@@ -436,7 +436,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		if err != nil {
 			return c.String(400, "Invalid date format")
 		}
-		now := time.Unix(dateInt, 0)
+		now := time.Unix(dateInt, 0).In(localTimeZone)
 		//currentTime := now.Format("15:04:05")
 		dateString := now.Format("20060102")
 
