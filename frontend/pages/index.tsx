@@ -2,7 +2,6 @@ import NavBar from "@/components/nav";
 import Services from "@/components/services";
 import StopNotifications from "@/components/services/notifications";
 import SearchForStop from "@/components/stops/search";
-import TrainStation from "@/components/stops/train stations";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { BellDot, MessageCircleWarningIcon } from "lucide-react";
@@ -27,27 +26,27 @@ export default function Home() {
       <NavBar />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-          <div className="grid sm:grid-cols-2 gap-2">
-            <TrainStation onChange={(v) => {
-              setSelectedStop(v)
-              window.history.pushState({}, '', `/?s=${v}`)
-            }} />
-            <SearchForStop url="/?s=" />
-          </div>
-          <div className="mt-4 flex items-center justify-between flex-wrap gap-5">
-            <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight">
-              {selectedStop}
-            </h4>
-            <div className="flex items-center gap-2">
-              <DatePicker onChange={(date) => setSelectedDate(date)} />
-              <Button disabled={selectedStop === ""} variant={"secondary"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
-                <MessageCircleWarningIcon />
-              </Button>
-              <StopNotifications stopName={selectedStop}>
-                <Button variant={"outline"}>
-                  <BellDot />
+          <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight mb-4">
+            {selectedStop}
+          </h4>
+          <div className="grid md:grid-cols-2 gap-2">
+            <div className="flex gap-2 items-center">
+              <SearchForStop url="/?s=" />
+              {value !== "" ? (
+                <DatePicker onChange={(date) => setSelectedDate(date)} />
+              ) : null}
+            </div>
+            <div className="flex items-center justify-center sm:justify-end flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
+                  <MessageCircleWarningIcon />
                 </Button>
-              </StopNotifications>
+                <StopNotifications stopName={selectedStop}>
+                  <Button variant={"outline"}>
+                    <BellDot />
+                  </Button>
+                </StopNotifications>
+              </div>
             </div>
           </div>
           <Services filterDate={selectedDate} stopName={selectedStop} />
