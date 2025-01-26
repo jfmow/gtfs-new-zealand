@@ -46,7 +46,6 @@ export default function Vehicles() {
                         <ServiceTrackerModal loaded onlyVehicle defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} vehicle={selectedVehicle.vehicle} tripUpdate={selectedVehicle.trip_update} routeColor="" />
                     ) : null}
 
-
                     {error !== "" ? (
                         "Err: " + error
                     ) : (

@@ -27,6 +27,8 @@ var gzipConfig = middleware.GzipConfig{
 	Level: 5,
 }
 
+var localTimeZone = time.FixedZone("NZST", 13*60*60)
+
 func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Looks for the at api key from the loaded env vars or sys env if docker
@@ -35,7 +37,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		panic("Env not found")
 	}
 
-	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", time.FixedZone("NZST", 13*60*60), "hi@suddsy.dev")
+	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
@@ -61,24 +63,78 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	vehiclesRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	navigationRouter.Use(middleware.GzipWithConfig(gzipConfig))
 
-	notificationDB, err := newDatabase(time.FixedZone("NZST", 13*60*60), "hi@suddsy.dev")
+	notificationDB, err := newDatabase(localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	c := cron.New(cron.WithLocation(time.FixedZone("NZST", 13*60*60)))
+	c := cron.New(cron.WithLocation(localTimeZone))
+	var notificationMutex sync.Mutex
 
 	c.AddFunc("@every 00h00m10s", func() {
-		//fmt.Println("Checking canceled trips")
-		updates, err := tripUpdates.GetTripUpdates()
-		if err == nil {
-			if err := notificationDB.NotifyTripUpdates(updates, AucklandTransportGTFSData); err != nil {
+		if notificationMutex.TryLock() {
+			defer notificationMutex.Unlock()
+			//fmt.Println("Checking canceled trips")
+			updates, err := tripUpdates.GetTripUpdates()
+			if err == nil {
+				if err := notificationDB.NotifyTripUpdates(updates, AucklandTransportGTFSData); err != nil {
+					fmt.Println(err)
+				}
+			} else {
 				fmt.Println(err)
 			}
 		} else {
-			fmt.Println(err)
+			fmt.Println("notification mutex locked")
 		}
+
+	}) /*
+		c.AddFunc("@every 06h00m00s", func() {
+			//fmt.Println("Checking canceled trips")
+			notificationDB.SendNotificationToAllClients()
+		})*/
+
+	c.AddFunc("@every 00h00m10s", func() {
+		//fmt.Println("Checking canceled trips")
+
 	})
+
+	func() {
+		var limit = 500
+		var offset = 0
+		now := time.Now().In(localTimeZone)
+		for {
+			clients, err := notificationDB.GetNotificationClients(limit, offset)
+			if err != nil {
+				fmt.Println(err)
+				break
+			}
+			if len(clients) == 0 {
+				break
+			}
+
+			offset += limit
+
+			for _, client := range clients {
+				if client.ExpiryWarningSent == 1 {
+					continue //already warned
+				}
+				created := time.Unix(int64(client.Created), 0)
+				durationSinceCreation := now.Sub(created)
+
+				// Define the 29-day and 30-day thresholds
+				twentyNineDays := 29 * 24 * time.Hour
+				thirtyDays := 30 * 24 * time.Hour
+
+				// Check if it has been more than 29 days but less than 30 days
+				if durationSinceCreation > twentyNineDays && durationSinceCreation < thirtyDays {
+					//fmt.Println("It has been more than 29 days but less than 30 days since creation.")
+					if err := notificationDB.SetClientExpiryWarningSent(client); err == nil {
+						notificationDB.SendNotification(client, "It's about to be 30 days since you enabled notifications, please open the app to refresh your notifications to continue to receive alerts.", "Your notifications are going to expire!", map[string]string{"url": "/notifications"})
+					}
+				}
+			}
+		}
+	}()
 
 	c.Start()
 
@@ -101,6 +157,32 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 		return c.String(http.StatusOK, "added")
+	})
+
+	notificationRouter.POST("/refresh", func(c echo.Context) error {
+		old_endpoint := c.FormValue("old_endpoint")
+		old_p256dh := c.FormValue("old_p256dh")
+		old_auth := c.FormValue("old_auth")
+
+		new_endpoint := c.FormValue("new_endpoint")
+		new_p256dh := c.FormValue("new_p256dh")
+		new_auth := c.FormValue("new_auth")
+
+		_, err := notificationDB.RefreshSubscription(Notification{
+			Endpoint: old_endpoint,
+			P256dh:   old_p256dh,
+			Auth:     old_auth,
+		}, Notification{
+			Endpoint: new_endpoint,
+			P256dh:   new_p256dh,
+			Auth:     new_auth,
+		})
+		if err != nil {
+			fmt.Println(err)
+			return c.String(http.StatusBadRequest, "Invalid subscription")
+		}
+
+		return c.String(http.StatusOK, "refreshed")
 	})
 
 	notificationRouter.POST("/find-client", func(c echo.Context) error {
@@ -162,7 +244,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 		stop := stops[0]
 
-		now := time.Now().In(time.FixedZone("NZST", 13*60*60))
+		now := time.Now().In(localTimeZone)
 		currentWeekDay := now.Weekday().String()
 		currentTime := now.Format("15:04:05")
 		dateString := now.Format("20060102")
@@ -253,7 +335,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					}
 					ResponseData.TripId = service.TripID
 					ResponseData.Done.TripUpdate = true
-					response := ServicesResponse{Type: "trip_update", Data: ResponseData, Time: time.Now().In(time.FixedZone("NZST", 13*60*60)).Unix()}
+					response := ServicesResponse{Type: "trip_update", Data: ResponseData, Time: time.Now().In(localTimeZone).Unix()}
 					jsonData, _ := json.Marshal(response)
 
 					select {
@@ -289,7 +371,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					}
 					ResponseData.TripId = service.TripID
 					ResponseData.Done.Vehicle = true
-					response := ServicesResponse{Type: "vehicle", Data: ResponseData, Time: time.Now().In(time.FixedZone("NZST", 13*60*60)).Unix()}
+					response := ServicesResponse{Type: "vehicle", Data: ResponseData, Time: time.Now().In(localTimeZone).Unix()}
 					jsonData, _ := json.Marshal(response)
 
 					select {

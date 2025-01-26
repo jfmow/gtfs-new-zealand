@@ -34,18 +34,15 @@ export function unregister() {
     }
 }
 
-export function register(swPath: string, options: RegistrationOptions) {
+export async function register(swPath: string, options: RegistrationOptions) {
     if ('serviceWorker' in navigator) {
-        navigator.serviceWorker
-            .register(swPath || '/service-worker.js', options)
-            .then(function (registration) {
-                registration.update().then((reg) => {
-                    console.log('SW registered: ', reg);
-                })
-            })
-            .catch(function (registrationError) {
-                console.log('SW registration failed: ', registrationError);
-            });
+        try {
+            const registration = await navigator.serviceWorker.register(swPath || '/service-worker.js', options)
+            const registered = await registration.update()
+            console.log('SW registered: ', registered);
+        } catch (error) {
+            console.log('SW registration failed: ', error);
+        }
     }
 }
 
@@ -116,7 +113,26 @@ export async function checkStopSubscription(stopIdOrName: string) {
         body: form, // Don't manually set Content-Type here
     });
     if (response.ok) {
-        return { has: true, subscription: subscription }
+        const notificationClient: NotificationClient = await response.json()
+        const createdDate = new Date(notificationClient.Created * 1000);
+        const currentDate = new Date();
+
+        // Calculate the difference in milliseconds
+        const diffInMilliseconds = currentDate.getTime() - createdDate.getTime();
+
+        // Convert the difference to days
+        const diffInDays = diffInMilliseconds / (1000 * 60 * 60 * 24);
+
+        if (diffInDays > 29) {
+            const newSubscription = await refreshSubscription()
+            if (newSubscription.refreshed) {
+                return { has: true, subscription: newSubscription.subscription }
+            } else {
+                return { has: false, subscription: undefined }
+            }
+        } else {
+            return { has: true, subscription: subscription }
+        }
     } else {
         return { has: false, subscription: undefined }
     }
@@ -153,9 +169,59 @@ export async function subscribeToStop(stopIdOrName: string) {
     return false
 }
 
+/**
+ * Returns a boolean indicating if the refresh was successful or not
+ */
+export async function refreshSubscription(): Promise<{ refreshed: boolean; subscription: undefined | PushSubscription; }> {
+    const { has, subscription } = await checkStopSubscription("")
+    if (!has) {
+        return { refreshed: false, subscription: undefined }
+    }
+
+    const oldSubscription = JSON.parse(JSON.stringify(subscription))
+
+    const form = new FormData()
+    form.set("old_endpoint", oldSubscription.endpoint)
+    form.set("old_auth", oldSubscription.keys.auth)
+    form.set("old_p256dh", oldSubscription.keys.p256dh)
+
+    const newSub = await createNewSubscription()
+    const newSubscription = JSON.parse(JSON.stringify(newSub))
+    form.set("new_endpoint", newSubscription.endpoint)
+    form.set("new_auth", newSubscription.keys.auth)
+    form.set("new_p256dh", newSubscription.keys.p256dh)
+
+    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/refresh`, {
+        method: "POST",
+        body: form
+    })
+    if (req.ok) {
+        return { refreshed: true, subscription: newSub }
+    }
+    return { refreshed: false, subscription: undefined }
+}
+
 const urlBase64ToUint8Array = (base64String: string): Uint8Array => {
     const padding = '='.repeat((4 - base64String.length % 4) % 4);
     const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
     const rawData = atob(base64);
     return new Uint8Array([...rawData].map((char) => char.charCodeAt(0)));
 };
+
+
+export interface NotificationClient {
+    Id: number;
+    Notification: Notification;
+    RecentNotifications: string[];
+    Created: number;
+}
+
+export interface Notification {
+    endpoint: string;
+    keys: Keys;
+}
+
+export interface Keys {
+    auth: string;
+    p256dh: string;
+}

@@ -31,14 +31,12 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 
 	for _, trip := range tripUpdates {
 		if trip.Trip.ScheduleRelationship == 3 {
-			parsedTime, err := time.Parse("15:04:05", trip.Trip.StartTime)
+			/*parsedTime, err := time.Parse("15:04:05", trip.Trip.StartTime)
 			if err != nil {
 				//fmt.Println("Error parsing time:", err)
 				continue
-			}
-			if parsedTime.After(now) {
-				canceledTrips = append(canceledTrips, trip.Trip.TripID)
-			}
+			}*/
+			canceledTrips = append(canceledTrips, trip.Trip.TripID)
 		}
 	}
 
@@ -48,37 +46,54 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 			return errors.New("unable to find stops for trip")
 		}
 		for _, stop := range foundStops {
-			clients, err := v.GetNotificationClientsByStop(stop.StopId, canceledTrips)
-			if err != nil {
-				// errors.New("no clients for stopId")
-				continue
-			}
+			var limit = 500
+			var offset = 0
+			for {
+				clients, err := v.GetNotificationClientsByStop(stop.StopId, trip, limit, offset)
+				if err != nil {
+					// errors.New("no clients for stopId")
+					break
+				}
 
-			if len(clients) == 0 {
-				continue
-			}
+				if len(clients) == 0 {
+					break
+				}
 
-			service, err := gtfsDB.GetServiceByTripAndStop(trip, stop.StopId, currentTime)
-			if err != nil {
-				//log.Println("no service found with trip id")
-				continue
-			}
-			parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
-			if err != nil {
-				//fmt.Println("Error parsing time:", err)
-				continue
-			}
+				offset += limit
 
-			// Format the time in 12-hour format with AM/PM
-			formattedTime := parsedTime.Format("3:04pm")
+				service, err := gtfsDB.GetServiceByTripAndStop(trip, stop.StopId, currentTime)
+				if err != nil {
+					//log.Println("no service found with trip id")
+					break
+				}
+				parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
+				if err != nil {
+					//fmt.Println("Error parsing time:", err)
+					break
+				}
 
-			payload := map[string]string{
-				"title": fmt.Sprintf("%s to %s canceled!", service.StopData.StopName, service.StopHeadsign),
-				"body":  fmt.Sprintf("The %s to %s from %s has been canceled.\n\nClick for alternate services departing %s", formattedTime, service.StopHeadsign, service.StopData.StopName, service.StopData.StopName),
-			}
-			for _, client := range clients {
-				v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, trip)
-				go v.SendNotification(client, payload["title"], payload["body"], stop.StopId)
+				serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
+					parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
+
+				if serviceTime.Before(now) {
+					//errors.New("service already arrived/left")
+					break
+				}
+
+				// Format the time in 12-hour format with AM/PM
+				formattedTime := parsedTime.Format("3:04pm")
+
+				data := map[string]string{
+					"url": fmt.Sprintf("/?s=%s", service.StopData.StopName),
+				}
+
+				title := service.StopData.StopName
+				body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)", formattedTime, service.StopHeadsign, service.StopData.StopName, service.TripData.RouteID)
+
+				for _, client := range clients {
+					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, trip)
+					go v.SendNotification(client, body, title, data)
+				}
 			}
 		}
 
@@ -87,7 +102,7 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 }
 
 /*
-create a new notification database
+Create a new notification database
 */
 func newDatabase(tz *time.Location, mailToEmail string) (Database, error) {
 
@@ -125,6 +140,7 @@ func (v Database) createNotificationsTable() {
 			auth TEXT NOT NULL DEFAULT '',
 			recent_notifications TEXT DEFAULT '[]',
 			created INTEGER NOT NULL DEFAULT '[]',
+			expiry_warning_sent BOOLEAN NOT NULL DEFAULT 0,
 			CONSTRAINT unique_notification UNIQUE (endpoint, p256dh, auth)  -- Composite unique constraint
 		);
 
@@ -171,7 +187,12 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 	var childStopsIds []string
 
 	for _, stop := range foundStops {
-		if stop.ParentStation == "" && stop.LocationType == 1 || (stop.ParentStation != "") {
+		//Is a lone stop with no parent (so is the parent)
+		if stop.ParentStation == "" && stop.LocationType == 0 {
+			childStopsIds = append(childStopsIds, stop.StopId)
+		}
+		//Is a child of a parent station
+		if stop.ParentStation != "" && stop.LocationType == 0 {
 			childStopsIds = append(childStopsIds, stop.StopId)
 		}
 	}
@@ -233,7 +254,7 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 /*
 Delete a notification client
 
-stop can be parent or child
+stop can be parent or child or "" (to delete all)
 */
 func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, stopId string) error {
 	// Validate input parameters
@@ -278,9 +299,15 @@ func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, stopId string
 }
 
 /*
-Get the notification clients for a given stopId (!!child!! stopId)
+Get notification clients for a given stopId
+
+stopId must be the id of a child stop
+
+# DO NOT USE A CHECK OF LESS THAN LIMIT TO SEE IF THERES NONE LEFT. SOME MAY BE REMOVED AFTER BECAUSE THEY ARE EXPIRED
+
+USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
 */
-func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []string) ([]NotificationClient, error) {
+func (v Database) GetNotificationClientsByStop(stopId string, hasSeenTripId string, limit int, offset int) ([]NotificationClient, error) {
 	// Query to find notification clients by stop
 	query := `
 		SELECT 
@@ -289,7 +316,8 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 			n.p256dh,
 			n.auth,
 			n.recent_notifications,
-			n.created
+			n.created,
+			n.expiry_warning_sent
 		FROM 
 			notifications n
 		JOIN 
@@ -298,11 +326,13 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 			n.id = s.clientId  -- Adjust this to the actual column for the join
 		WHERE 
 			s.stop = ?
+		LIMIT ?
+		OFFSET ?
 
 	`
 
 	// Prepare the query
-	rows, err := v.db.Query(query, stopId)
+	rows, err := v.db.Query(query, stopId, limit, offset)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// If no client found, return an error
@@ -326,6 +356,7 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 			&notification.Auth,
 			&recent,
 			&notification.Created,
+			&notification.ExpiryWarningSent,
 		)
 		if err != nil {
 			return nil, errors.New("failed to scan notification client")
@@ -341,13 +372,8 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 		// Check if recent_notifications contains any tripAlertIds
 		excludeClient := false
 		for _, notification := range notification.RecentNotifications {
-			for _, tripAlertId := range tripAlertIds {
-				if notification == tripAlertId {
-					excludeClient = true
-					break
-				}
-			}
-			if excludeClient {
+			if notification == hasSeenTripId {
+				excludeClient = true
 				break
 			}
 		}
@@ -362,6 +388,15 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 				},
 			},
 			RecentNotifications: notification.RecentNotifications,
+			Created:             notification.Created,
+			ExpiryWarningSent:   notification.ExpiryWarningSent,
+		}
+
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
+			//The notification is > 30 days old
+			//remove it
+			v.DeleteNotificationClient(notification.Endpoint, notification.P256dh, notification.Auth, "")
+			continue //skip
 		}
 
 		// If the client contains any of the tripAlertIds, skip adding it to the result
@@ -379,9 +414,108 @@ func (v Database) GetNotificationClientsByStop(stopId string, tripAlertIds []str
 }
 
 /*
+Get notification clients
+
+# DO NOT USE A CHECK OF LESS THAN LIMIT TO SEE IF THERES NONE LEFT. SOME MAY BE REMOVED AFTER BECAUSE THEY ARE EXPIRED
+
+USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
+*/
+func (v Database) GetNotificationClients(limit int, offset int) ([]NotificationClient, error) {
+	if limit > 1000 {
+		fmt.Println("Don't you think that this limit is a bit high? (Func: GetNotificationClients)")
+	}
+
+	// Query to find notification clients by stop
+	query := `
+		SELECT 
+			id,
+			endpoint,
+			p256dh,
+			auth,
+			recent_notifications,
+			created,
+			expiry_warning_sent
+		FROM 
+			notifications
+		LIMIT ?
+		OFFSET ?
+	`
+
+	// Prepare the query
+	rows, err := v.db.Query(query, limit, offset)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// If no client found, return an error
+			return nil, errors.New("no clients found")
+		}
+		return nil, errors.New("failed to query notification clients")
+	}
+	defer rows.Close()
+
+	// Slice to store results
+	var clients []NotificationClient
+
+	// Iterate over the rows
+	for rows.Next() {
+		var notification Notification
+		var recent string
+		err := rows.Scan(
+			&notification.Id,
+			&notification.Endpoint,
+			&notification.P256dh,
+			&notification.Auth,
+			&recent,
+			&notification.Created,
+			&notification.ExpiryWarningSent,
+		)
+		if err != nil {
+			return nil, errors.New("failed to scan notification client")
+		}
+
+		if recent != "[]" {
+			err = json.Unmarshal([]byte(recent), &notification.RecentNotifications)
+			if err != nil {
+				return nil, errors.New("failed to parse recent notifications")
+			}
+		}
+
+		client := NotificationClient{
+			Id: notification.Id,
+			Notification: webpush.Subscription{
+				Endpoint: notification.Endpoint,
+				Keys: webpush.Keys{
+					Auth:   notification.Auth,
+					P256dh: notification.P256dh,
+				},
+			},
+			RecentNotifications: notification.RecentNotifications,
+			Created:             notification.Created,
+			ExpiryWarningSent:   notification.ExpiryWarningSent,
+		}
+
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
+			//The notification is > 30 days old
+			//remove it
+			v.DeleteNotificationClient(notification.Endpoint, notification.P256dh, notification.Auth, "")
+			continue //skip
+		}
+
+		// If the client contains any of the tripAlertIds, skip adding it to the result
+		clients = append(clients, client)
+	}
+
+	// Check for errors after iteration
+	if err = rows.Err(); err != nil {
+		return nil, errors.New("error iterating over notification clients")
+	}
+
+	return clients, nil
+}
+
+/*
 Send a notification
 */
-func (v Database) SendNotification(client NotificationClient, body, title string, stopId string) error {
+func (v Database) SendNotification(client NotificationClient, body, title string, data map[string]string) error {
 	publicKey, found := os.LookupEnv("WP_PUB")
 	if !found {
 		panic("missing public VAPID key (env:WP_PUB)")
@@ -390,13 +524,11 @@ func (v Database) SendNotification(client NotificationClient, body, title string
 	if !found {
 		panic("missing private VAPID key (env:WP_PRIV)")
 	}
-	if stopId == "" {
-		return errors.New("missing stopId")
-	}
 
-	payload := map[string]string{
+	payload := map[string]any{
 		"title": title,
 		"body":  body,
+		"data":  data,
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
@@ -408,7 +540,7 @@ func (v Database) SendNotification(client NotificationClient, body, title string
 		TTL:             30,
 	})
 	if err != nil || (resp != nil && resp.StatusCode == 410) {
-		v.DeleteNotificationClient(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, stopId)
+		v.DeleteNotificationClient(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, "")
 	}
 	if resp != nil {
 		defer resp.Body.Close()
@@ -479,6 +611,36 @@ func (v Database) AppendToRecentNotifications(endpoint, p256dh, auth string, new
 		return errors.New("failed to update recent notifications")
 	}
 
+	return nil
+}
+
+/*
+Send a notification to all the clients in the database
+*/
+func (v Database) SendNotificationToAllClients(body string, title string, url string) error {
+	var limit = 500
+	var offset = 0
+
+	for {
+		clients, err := v.GetNotificationClients(limit, offset)
+		if err != nil {
+			return err
+		}
+
+		if len(clients) == 0 {
+			break
+		}
+
+		offset += limit
+
+		data := map[string]string{
+			"url": url,
+		}
+
+		for _, client := range clients {
+			go v.SendNotification(client, body, title, data)
+		}
+	}
 	return nil
 }
 
@@ -566,11 +728,67 @@ func (v Database) FindNotificationClientByParentStop(endpoint, p256dh, auth stri
 			},
 		},
 		RecentNotifications: notification.RecentNotifications,
+		Created:             notification.Created,
 	}
 
 	return &client, nil
 }
 
+/*
+Update a already existing subscription to a new one
+
+Basically just retains the client (is the point of this)
+*/
+func (v Database) RefreshSubscription(oldClient Notification, newClient Notification) (*NotificationClient, error) {
+	if oldClient.Endpoint == newClient.Endpoint && oldClient.Auth == newClient.Auth && oldClient.P256dh == newClient.P256dh {
+		return nil, errors.New("can't update subscription to same thing")
+	}
+
+	query := `
+		UPDATE notifications
+		SET
+			endpoint = ?,
+			p256dh = ?,
+			auth = ?,
+			expiry_warning_sent = 0
+		WHERE
+			endpoint = ?
+			AND p256dh = ?
+			AND auth = ?;
+	`
+
+	_, err := v.db.Exec(query, oldClient.Endpoint, oldClient.P256dh, oldClient.Auth, newClient.Endpoint, newClient.P256dh, newClient.Auth)
+	if err != nil {
+		return nil, errors.New("problem updating client")
+	}
+
+	newRecord, err := v.FindNotificationClientByParentStop(newClient.Endpoint, newClient.P256dh, newClient.Auth, "")
+	if err != nil {
+		return nil, errors.New("problem retrieving new client")
+	}
+
+	return newRecord, nil
+}
+
+func (v Database) SetClientExpiryWarningSent(client NotificationClient) error {
+	query := `
+		UPDATE notifications
+		SET
+			expiry_warning_sent = 1
+		WHERE
+			endpoint = ?
+			AND p256dh = ?
+			AND auth = ?;
+	`
+
+	_, err := v.db.Exec(query, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth)
+	if err != nil {
+		return errors.New("problem updating client")
+	}
+	return nil
+}
+
+// Notification database
 type Database struct {
 	db          *sqlx.DB
 	timeZone    *time.Location
@@ -584,12 +802,15 @@ type Notification struct {
 	Auth                string   `json:"auth"`
 	RecentNotifications []string `json:"recent"`
 	Created             int      `json:"created"`
+	ExpiryWarningSent   int      `json:"expiry_warning_sent"`
 }
 
 type NotificationClient struct {
 	Id                  int
 	Notification        webpush.Subscription
 	RecentNotifications []string
+	Created             int
+	ExpiryWarningSent   int
 }
 
 func GetWorkDir() string {
@@ -604,15 +825,6 @@ func GetWorkDir() string {
 		return "."
 	}
 	return filepath.Dir(ex)
-}
-
-func contains(slice []string, item string) bool {
-	for _, v := range slice {
-		if v == item {
-			return true
-		}
-	}
-	return false
 }
 
 func isValidURL(url string) bool {
