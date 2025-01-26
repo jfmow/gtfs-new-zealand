@@ -29,6 +29,28 @@ var gzipConfig = middleware.GzipConfig{
 
 var localTimeZone = time.FixedZone("NZST", 13*60*60)
 
+type ServicesResponseData struct {
+	ServiceData gtfs.StopTimes `json:"service_data"`
+	TripUpdate  rt.TripUpdate  `json:"trip_update"`
+	Vehicle     rt.Vehicle     `json:"vehicle"`
+	Has         struct {
+		TripUpdate bool `json:"trip_update"`
+		Vehicle    bool `json:"vehicle"`
+	} `json:"has"`
+	Done struct {
+		Vehicle    bool `json:"vehicle"`
+		TripUpdate bool `json:"trip_update"`
+		Service    bool `json:"service_data"`
+	} `json:"done"`
+	TripId string `json:"trip_id"`
+}
+
+type ServicesResponse struct {
+	Type string               `json:"type"` // trip_update, vehicle, service_data
+	Data ServicesResponseData `json:"data"`
+	Time int64                `json:"time"`
+}
+
 func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Looks for the at api key from the loaded env vars or sys env if docker
@@ -155,12 +177,12 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		p256dh := c.FormValue("p256dh")
 		auth := c.FormValue("auth")
 
-		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
 		if err != nil {
 			return c.String(http.StatusBadRequest, "invalid stop")
 		}
 
-		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stops[0].StopId, AucklandTransportGTFSData)
+		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, AucklandTransportGTFSData)
 		if err != nil {
 			fmt.Println(err)
 			return c.String(http.StatusBadRequest, "Invalid subscription")
@@ -203,11 +225,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		var stopId string = ""
 
 		if stopIdOrName != "" {
-			stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
 			if err != nil {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
-			stopId = stops[0].StopId
+			stopId = stop.StopId
 		}
 
 		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
@@ -227,11 +249,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		var stopId string = ""
 
 		if stopIdOrName != "" {
-			stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
 			if err != nil {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
-			stopId = stops[0].StopId
+			stopId = stop.StopId
 		}
 
 		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)
@@ -247,22 +269,19 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		stopName := c.PathParam("stationName")
 
 		// Fetch stop data
-		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
-		if err != nil || len(stops) == 0 {
+		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
+		if err != nil {
 			return c.String(http.StatusNotFound, "No stop found with name")
 		}
-		stop := stops[0]
 
 		now := time.Now().In(localTimeZone)
-		currentWeekDay := now.Weekday().String()
 		currentTime := now.Format("15:04:05")
-		dateString := now.Format("20060102")
 
 		// Collect services
 		var services []gtfs.StopTimes
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(dateString, currentWeekDay, a.StopId, currentTime, 12)
+			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(a.StopId, currentTime, "", 12)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
@@ -288,28 +307,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		flusher, ok := w.Writer.(http.Flusher)
 		if !ok {
 			return fmt.Errorf("streaming unsupported by ResponseWriter")
-		}
-
-		type ServicesResponseData struct {
-			ServiceData gtfs.StopTimes `json:"service_data"`
-			TripUpdate  rt.TripUpdate  `json:"trip_update"`
-			Vehicle     rt.Vehicle     `json:"vehicle"`
-			Has         struct {
-				TripUpdate bool `json:"trip_update"`
-				Vehicle    bool `json:"vehicle"`
-			} `json:"has"`
-			Done struct {
-				Vehicle    bool `json:"vehicle"`
-				TripUpdate bool `json:"trip_update"`
-				Service    bool `json:"service_data"`
-			} `json:"done"`
-			TripId string `json:"trip_id"`
-		}
-
-		type ServicesResponse struct {
-			Type string               `json:"type"` // trip_update, vehicle, service_data
-			Data ServicesResponseData `json:"data"`
-			Time int64                `json:"time"`
 		}
 
 		var mu sync.Mutex // Mutex for serializing writes
@@ -422,6 +419,63 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				sendTripUpdates(ctx, w, flusher)
 			}
 		}
+	})
+
+	servicesRouter.GET("/:stationName/schedule", func(c echo.Context) error {
+		stopName := c.PathParam("stationName")
+
+		// Fetch stop data
+		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
+		if err != nil {
+			return c.String(http.StatusNotFound, "No stop found with name")
+		}
+
+		date := c.QueryParam("date")
+
+		dateInt, err := strconv.ParseInt(date, 10, 64)
+		if err != nil {
+			return c.String(400, "Invalid date format")
+		}
+		now := time.Unix(dateInt, 0)
+		//currentTime := now.Format("15:04:05")
+		dateString := now.Format("20060102")
+
+		// Collect services
+		var services []gtfs.StopTimes
+		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
+		for _, a := range childStops {
+			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(a.StopId, "", dateString, 300)
+			if err == nil {
+				services = append(services, servicesAtStop...)
+			}
+		}
+
+		if len(services) == 0 {
+			return c.String(http.StatusInternalServerError, "No services found for stop")
+		}
+
+		// Sort services by arrival time
+		sort.Slice(services, func(i, j int) bool {
+			return services[i].ArrivalTime < services[j].ArrivalTime
+		})
+
+		var result []ServicesResponse
+
+		for _, service := range services {
+			var response ServicesResponse
+
+			response.Type = "service_data"
+			response.Data.ServiceData = service
+			response.Data.TripId = service.TripID
+			response.Data.Done.Service = true
+			response.Data.Done.TripUpdate = true
+			response.Data.Done.Vehicle = true
+			response.Time = now.Unix()
+
+			result = append(result, response)
+		}
+
+		return c.JSON(http.StatusOK, result)
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
@@ -552,11 +606,10 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	stopsRouter.GET("/alerts/:stopName", func(c echo.Context) error {
 		stopName := c.PathParam("stopName")
 
-		stops, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
-		if err != nil || len(stops) == 0 {
+		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
+		if err != nil {
 			return c.String(http.StatusNotFound, "No stop found with name")
 		}
-		stop := stops[0]
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 
 		alerts, err := alerts.GetAlerts()

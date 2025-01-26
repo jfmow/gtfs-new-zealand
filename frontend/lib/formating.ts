@@ -50,6 +50,36 @@ export function timeTillArrival(arrivalTime: string): number {
     return diffInMinutes;
 }
 
+export function timeTillArrivalString(arrivalTime: string): string {
+    // Get current time in NZ time
+    const nowInNZ = moment().tz('Pacific/Auckland');
+
+    // Parse the arrival time string into a moment object in NZ time
+    const [hours, minutes, seconds] = arrivalTime.split(':').map(Number);
+    const target = moment.tz(nowInNZ.format('YYYY-MM-DD'), 'Pacific/Auckland')
+        .set({ hour: hours, minute: minutes, second: seconds });
+
+    // Calculate the difference
+    const diffInMinutes = target.diff(nowInNZ, 'minutes');
+    const diffInHours = target.diff(nowInNZ, 'hours');
+    const diffInDays = target.diff(nowInNZ, 'days');
+
+    if (diffInMinutes < 0) {
+        return "Already arrived"; // Handles past times
+    }
+
+    if (diffInMinutes < 60) {
+        return `${diffInMinutes} min`;
+    } else if (diffInHours < 24) {
+        const hours = Math.floor(diffInMinutes / 60);
+        const minutes = diffInMinutes % 60;
+        return `${hours} hr${hours > 1 ? 's' : ''}${minutes > 0 ? ` ${minutes} min` : ''}`;
+    } else {
+        return `${diffInDays} day${diffInDays > 1 ? 's' : ''}`;
+    }
+}
+
+
 
 export function formatTextToNiceLookingWords(words: string, retainDigits: boolean = false): string {
     if (!retainDigits) {

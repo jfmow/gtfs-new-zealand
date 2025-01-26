@@ -1,3 +1,5 @@
+import { StopTimeUpdate } from "./types";
+
 export interface StopForTripsData {
     next_stop: {
         lat: number;
@@ -18,17 +20,20 @@ export interface StopForTripsData {
     stops: Stop[];
 }
 
-export async function getStopsForTrip(tripId: string, currentStopSequence: number, filterPassedStops: boolean): Promise<StopForTripsData | null> {
+export async function getStopsForTrip(tripId: string, stopTimeUpdate: StopTimeUpdate, filterPassedStops: boolean): Promise<StopForTripsData | null> {
     const response = await getStopsDataForTrip(tripId);
     if (response.error !== undefined) {
         return null
     }
 
+    const currentStopNumber = stopTimeUpdate.stop_sequence
+    //const currentStopId = stopTimeUpdate.stop_id
+
     const stopsData = response.stops
     const stops = stopsData.sort((a, b) => a.stop_sequence - b.stop_sequence);
     const totalNumberOfStops = stops.length;
 
-    const nextStopIndex = Math.min(currentStopSequence, totalNumberOfStops - 1);
+    const nextStopIndex = Math.min(currentStopNumber, totalNumberOfStops - 1);
     const nextStop = stops[nextStopIndex];
     const finalStop = stops[totalNumberOfStops - 1];
 
@@ -52,7 +57,7 @@ export async function getStopsForTrip(tripId: string, currentStopSequence: numbe
         index: finalStop.stop_sequence - 1,
     };
 
-    return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? item.stop_sequence > currentStopSequence + 1 : true) };
+    return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? item.stop_sequence > currentStopNumber + 1 : true) };
 }
 
 interface Stop {

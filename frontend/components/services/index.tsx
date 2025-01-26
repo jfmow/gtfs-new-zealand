@@ -9,12 +9,13 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, Loader2 } from "lucide-react"
 import { Service } from "./types"
-import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
+import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 
 interface ServicesProps {
     stopName: string
+    filterDate: Date | undefined
 }
 
 interface SSEData {
@@ -23,7 +24,7 @@ interface SSEData {
     time: number
 }
 
-export default function Services({ stopName }: ServicesProps) {
+export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<SSEData[]>([]);
     const [errorMessage, setErrorMessage] = useState("");
 
@@ -32,42 +33,60 @@ export default function Services({ stopName }: ServicesProps) {
             return;
         }
 
-        // Create EventSource instance
-        const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
+        // Check if filterDate is null
+        if (!filterDate) {
+            // Use EventSource instance
+            const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
 
-        // Handle incoming messages
-        eventSource.onmessage = (event) => {
-            try {
-                const parsedData: SSEData = JSON.parse(event.data);
+            // Handle incoming messages
+            eventSource.onmessage = (event) => {
+                try {
+                    const parsedData: SSEData = JSON.parse(event.data);
 
-                if (Object.keys(parsedData).length > 0) {
-                    setServices(prev => [...prev, parsedData])
+                    if (Object.keys(parsedData).length > 0) {
+                        setServices((prev) => [...prev, parsedData]);
+                        setErrorMessage("")
+                    }
+                } catch (error) {
+                    console.error("Error parsing SSE data:", error);
                 }
+            };
 
+            // Handle errors
+            eventSource.onerror = () => {
+                console.error("SSE connection error.");
+                setErrorMessage("Failed to fetch data from the server.");
+                eventSource.close();
+            };
 
-            } catch (error) {
-                console.error("Error parsing SSE data:", error);
-            }
-        };
-
-        // Handle errors
-        eventSource.onerror = () => {
-            console.error("SSE connection error.");
-            setErrorMessage("Failed to fetch data from the server.");
-            eventSource.close();
-        };
-
-        // Cleanup function on unmount or stopName change
+            // Cleanup function on unmount or stopName change
+            return () => {
+                eventSource.close();
+            };
+        } else {
+            // Log the filterDate instead of using EventSource
+            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`).then(async (res) => {
+                if (res.ok) {
+                    const data = await res.json()
+                    setServices(data)
+                    setErrorMessage("")
+                } else {
+                    setErrorMessage("Failed to fetch data from the server.");
+                }
+            })
+        }
         return () => {
-            eventSource.close();
-        };
-    }, [stopName]);
+            setServices([]);
+            setErrorMessage("")
+        }
+    }, [stopName, filterDate]);
+
 
 
 
     return (
         <>
-            {services.length >= 1 ? (
+            {services.length >= 1 && errorMessage === "" ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
                     {getService(services).filter((item) => (item.service_data.stop_sequence - item.trip_update.stop_time_update.stop_sequence - 1) >= 0).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }, index) => (
                         <li key={index}>
@@ -115,18 +134,20 @@ export default function Services({ stopName }: ServicesProps) {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <div className="grid grid-cols-2 items-center justify-items-center">
-                                        <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
-                                        <span aria-label="Arriving in">
-                                            {!done.trip_update ? (
-                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                            ) : (
-                                                <>
-                                                    {timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay))}min
-                                                </>
-                                            )}
-                                        </span>
-                                    </div>
+                                    {!filterDate ? (
+                                        <div className="grid grid-cols-2 items-center justify-items-center">
+                                            <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                            <span aria-label="Arriving in">
+                                                {!done.trip_update ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                ) : (
+                                                    <>
+                                                        {timeTillArrivalString(addSecondsToTime(service_data.arrival_time, trip_update.delay))}
+                                                    </>
+                                                )}
+                                            </span>
+                                        </div>
+                                    ) : null}
                                 </CardContent>
                             </Card>
                         </li>
@@ -134,7 +155,7 @@ export default function Services({ stopName }: ServicesProps) {
                 </ul>
             ) : null}
 
-            {errorMessage !== "" && services.length === 0 ? (
+            {errorMessage !== "" ? (
                 <Alert className="mt-4">
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Uh oh...</AlertTitle>

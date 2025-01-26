@@ -53,7 +53,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
     useEffect(() => {
         async function getData() {
             if (!has) return
-            const data = await getStopsForTrip(vehicle.trip.trip_id, tripUpdate.stop_time_update.stop_sequence, false)
+            const data = await getStopsForTrip(vehicle.trip.trip_id, tripUpdate.stop_time_update, false)
             setStops(data)
         }
         if (open) {

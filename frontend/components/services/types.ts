@@ -73,6 +73,7 @@ export interface StopTimeUpdate {
 export interface Arrival {
     delay: number;
     time: number;
+    uncertainty: number;
 }
 
 export interface Trip {

@@ -270,13 +270,7 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 
 	for _, stop := range foundStops {
 		//Is a lone stop with no parent (so is the parent)
-		if stop.ParentStation == "" && stop.LocationType == 0 {
-			childStopsIds = append(childStopsIds, stop.StopId)
-		}
-		//Is a child of a parent station
-		if stop.ParentStation != "" && stop.LocationType == 0 {
-			childStopsIds = append(childStopsIds, stop.StopId)
-		}
+		childStopsIds = append(childStopsIds, stop.StopId)
 	}
 
 	if len(childStopsIds) == 0 {

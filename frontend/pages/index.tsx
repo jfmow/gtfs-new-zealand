@@ -4,6 +4,7 @@ import StopNotifications from "@/components/services/notifications";
 import SearchForStop from "@/components/stops/search";
 import TrainStation from "@/components/stops/train stations";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
 import { BellDot, MessageCircleWarningIcon } from "lucide-react";
 import Head from "next/head";
 import { useRouter } from "next/router";
@@ -12,6 +13,7 @@ import { useEffect, useState } from "react";
 export default function Home() {
   const { found, value } = useAQueryParam("s"); // Get the 's' parameter and if it's found
   const [selectedStop, setSelectedStop] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>()
 
   useEffect(() => {
     if (found) {
@@ -37,6 +39,7 @@ export default function Home() {
               {selectedStop}
             </h4>
             <div className="flex items-center gap-2">
+              <DatePicker onChange={(date) => setSelectedDate(date)} />
               <Button disabled={selectedStop === ""} variant={"secondary"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
                 <MessageCircleWarningIcon />
               </Button>
@@ -47,7 +50,7 @@ export default function Home() {
               </StopNotifications>
             </div>
           </div>
-          <Services stopName={selectedStop} />
+          <Services filterDate={selectedDate} stopName={selectedStop} />
         </div>
       </div>
     </>
