@@ -98,8 +98,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             ) : null}
             {services.length >= 1 ? (
                 <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4">
-                    {getService(services).filter((item) => (item.service_data.stop_sequence - item.trip_update.stop_time_update.stop_sequence - 1) >= 0).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
-                        <li key={service_data.trip_id}>
+                    {getService(services).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
+                        <li key={service_data.trip_id} className={`${service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1 >= 0 ? "" : "hidden"}`}>
                             <Card>
                                 <CardHeader>
                                     <CardTitle>
@@ -137,14 +137,17 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     </CardTitle>
 
                                     <CardDescription>
-                                        <div className="flex flex-col sm:flex-row  justify-between">
+                                        <div className="flex sm:flex-col  justify-between">
                                             <div>
-                                                <p className="text-blue-400">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
+                                                <p className="">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
                                                 {service_data.platform !== "" && service_data.platform !== "no platform" ? (
-                                                    <p className="text-blue-400">Platform: {service_data.platform}</p>
+                                                    <p className="text-blue-400">Platform: <span className="font-medium">{service_data.platform}</span></p>
                                                 ) : null}
                                             </div>
-                                            <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                            <div>
+                                                <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
+                                                <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                            </div>
                                         </div>
                                     </CardDescription>
                                 </CardHeader>

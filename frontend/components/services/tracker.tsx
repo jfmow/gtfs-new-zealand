@@ -24,12 +24,13 @@ import {
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
-import { formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating";
+import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
 import LoadingSpinner from "../loading-spinner";
 import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
+import OccupancyStatusIndicator from "./occupancy";
 
 
 interface ServiceTrackerModalProps {
@@ -84,12 +85,20 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
                         <DialogTitle>Service tracker</DialogTitle>
                         <DialogDescription>
                             {currentStop ? (
-                                <p>Stops away: {timeTillArrival(tripUpdate.trip.start_time) > 0 ? ("Not in service yet") : (currentStop.stop_sequence - tripUpdate.stop_time_update.stop_sequence - 1)}</p>
+                                <>
+                                    <p>Stops away: {timeTillArrival(tripUpdate.trip.start_time) > 0 ? ("Not in service yet") : (currentStop.stop_sequence - tripUpdate.stop_time_update.stop_sequence - 1)}</p>
+                                    <div>
+                                        <p className="text-blue-400">Arriving: {convert24hTo12h(addSecondsToTime(currentStop.arrival_time, tripUpdate.delay))}</p>
+                                        {currentStop.platform !== "" && currentStop.platform !== "no platform" ? (
+                                            <p className="text-blue-400">Platform: {currentStop.platform}</p>
+                                        ) : null}
+                                    </div>
+                                    <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                </>
                             ) : null}
+                            <Separator className="my-1" />
                             <p className="text-green-400">Next stop: {stops?.next_stop.name} (Platform {stops?.next_stop.platformNumber})</p>
                             <p className="text-red-400">Final stop: {stops?.final_stop.name} (Platform {stops?.final_stop.platformNumber})</p>
-                            <Separator className="my-1" />
-                            <p>Speed: {Math.round(vehicle.position.speed)}km/h</p>
                         </DialogDescription>
                     </DialogHeader>
                     <Tabs defaultValue="track" className="w-full">
