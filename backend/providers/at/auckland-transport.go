@@ -453,7 +453,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		var services []gtfs.StopTimes
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(a.StopId, "", dateString, 300)
+			servicesAtStop, err := AucklandTransportGTFSData.GetActiveTrips(a.StopId, "", dateString, 400)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
