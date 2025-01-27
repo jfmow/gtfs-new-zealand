@@ -65,7 +65,10 @@ export function timeTillArrivalString(arrivalTime: string): string {
     const diffInDays = target.diff(nowInNZ, 'days');
 
     if (diffInMinutes < 0) {
-        return "Already arrived"; // Handles past times
+        return "Arrived"; // Handles past times
+    }
+    if (diffInMinutes === 0) {
+        return "Now"; // Handles past times
     }
 
     if (diffInMinutes < 60) {

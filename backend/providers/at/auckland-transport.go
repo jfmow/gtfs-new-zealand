@@ -322,11 +322,20 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					response.Data.Done.Service = true
 
 					jsonData, _ := json.Marshal(response)
-
-					mu.Lock() // Lock before writing
-					fmt.Fprintf(w, "data: %s\n\n", jsonData)
-					flusher.Flush()
-					mu.Unlock() // Unlock after writing
+					select {
+					case <-ctx.Done(): // Stop processing if the context is canceled
+						log.Printf("Stopping trip updates due to client disconnect")
+						return
+					default:
+						mu.Lock() // Lock before writing
+						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
+							log.Printf("Error writing trip updates: %v", err)
+							mu.Unlock()
+							return
+						}
+						flusher.Flush()
+						mu.Unlock() // Unlock after writing
+					}
 				}
 			}()
 

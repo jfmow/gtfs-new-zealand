@@ -86,10 +86,34 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <>
-            {services.length >= 1 && errorMessage === "" ? (
-                <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4">
-                    {getService(services).filter((item) => (item.service_data.stop_sequence - item.trip_update.stop_time_update.stop_sequence - 1) >= 0).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }, index) => (
-                        <li key={index}>
+            <div className="p-4 flex justify-between sm:justify-start  items-center gap-4">
+                <div className="flex items-center gap-1 text-orange-500">
+                    <div className="w-6 h-6 bg-orange-100 border border-orange-200 rounded-md" />
+                    Early
+                </div>
+                <div className="flex items-center gap-1 text-green-500">
+                    <div className="w-6 h-6 bg-green-100 border border-green-200 rounded-md" />
+                    On time
+                </div>
+                <div className="flex items-center gap-1 text-red-500">
+                    <div className="w-6 h-6 bg-red-100 border border-red-200 rounded-md" />
+                    Delayed
+                </div>
+            </div>
+
+            {errorMessage !== "" ? (
+                <Alert className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Uh oh...</AlertTitle>
+                    <AlertDescription>
+                        {errorMessage}
+                    </AlertDescription>
+                </Alert>
+            ) : null}
+            {services.length >= 1 ? (
+                <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4">
+                    {getService(services).filter((item) => (item.service_data.stop_sequence - item.trip_update.stop_time_update.stop_sequence - 1) >= 0).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
+                        <li key={service_data.trip_id}>
                             <Card>
                                 <CardHeader>
                                     <CardTitle>
@@ -125,19 +149,22 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     </CardTitle>
 
                                     <CardDescription>
-                                        <p>Scheduled: {convert24hTo12h(service_data.arrival_time)}</p>
-                                        <p className="underline text-blue-400">Predicted: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
-                                        <p className="text-pink-400 underline">Platform: {service_data.platform}</p>
-                                        <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
-                                        <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
-
+                                        <div className="flex flex-col sm:flex-row  justify-between">
+                                            <div>
+                                                <p className="text-blue-400">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
+                                                {service_data.platform !== "" && service_data.platform !== "no platform" ? (
+                                                    <p className="text-orange-400">Platform: {service_data.platform}</p>
+                                                ) : null}
+                                            </div>
+                                            <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                        </div>
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent>
-                                    {!filterDate ? (
-                                        <div className="grid grid-cols-2 items-center justify-items-center">
+                                {!filterDate ? (
+                                    <CardContent>
+                                        <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                             <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
-                                            <span aria-label="Arriving in">
+                                            <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full ${timeTillArrival(service_data.arrival_time) > timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? "text-orange-400" : timeTillArrival(service_data.arrival_time) === timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? " text-green-400" : " text-red-400"}`}>
                                                 {!done.trip_update ? (
                                                     <Loader2 className="h-4 w-4 animate-spin text-primary" />
                                                 ) : (
@@ -147,22 +174,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 )}
                                             </span>
                                         </div>
-                                    ) : null}
-                                </CardContent>
+                                    </CardContent>
+                                ) : null}
                             </Card>
                         </li>
                     ))}
                 </ul>
-            ) : null}
-
-            {errorMessage !== "" ? (
-                <Alert className="mt-4">
-                    <AlertCircle className="h-4 w-4" />
-                    <AlertTitle>Uh oh...</AlertTitle>
-                    <AlertDescription>
-                        {errorMessage}
-                    </AlertDescription>
-                </Alert>
             ) : null}
         </>
     )

@@ -261,23 +261,27 @@ function showRouteLine(map: Map, routeLine: RouteLineData, routeLineRef: React.M
                     return; // Exit if vehicleType doesn't match any case
             }
 
-            const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/${reqUrl}${tripId !== "" ? `?tripId=${tripId}` : ""}`);
-            const data: GeoJSONResponse = await response.json();
+            try {
+                const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/${reqUrl}${tripId !== "" ? `?tripId=${tripId}` : ""}`);
+                const data: GeoJSONResponse = await response.json();
 
-            const filteredData = data;
-            // Add GeoJSON data to the map with a smooth line
-            const routeLine = L.geoJSON(filteredData, {
-                //@ts-expect-error: is real config value
-                smoothFactor: 1.5, // Adjust the smoothness level
-                style: function () {
-                    return { color: routeColor !== "" && routeColor !== undefined ? `#${routeColor}` : '#db6ecb', weight: 4 }; // Customize the line color and thickness
+                const filteredData = data;
+                // Add GeoJSON data to the map with a smooth line
+                const routeLine = L.geoJSON(filteredData, {
+                    //@ts-expect-error: is real config value
+                    smoothFactor: 1.5, // Adjust the smoothness level
+                    style: function () {
+                        return { color: routeColor !== "" && routeColor !== undefined ? `#${routeColor}` : '#db6ecb', weight: 4 }; // Customize the line color and thickness
+                    }
+                })
+                map.addLayer(routeLine)
+                if (routeLineRef.current) {
+                    map.removeLayer(routeLineRef.current)
                 }
-            })
-            map.addLayer(routeLine)
-            if (routeLineRef.current) {
-                map.removeLayer(routeLineRef.current)
+                routeLineRef.current = routeLine
+            } catch (error) {
+                console.error(error)
             }
-            routeLineRef.current = routeLine
 
         };
 
