@@ -266,6 +266,12 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	servicesRouter.GET("/:stationName", func(c echo.Context) error {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("Recovered from panic: %v", r)
+			}
+		}()
+
 		stopName := c.PathParam("stationName")
 
 		// Fetch stop data
@@ -315,26 +321,31 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			go func() {
 				for _, service := range services {
 					var response ServicesResponse
-
 					response.Type = "service_data"
 					response.Data.ServiceData = service
 					response.Data.TripId = service.TripID
 					response.Data.Done.Service = true
 
 					jsonData, _ := json.Marshal(response)
+
 					select {
-					case <-ctx.Done(): // Stop processing if the context is canceled
-						log.Printf("Stopping trip updates due to client disconnect")
+					case <-ctx.Done():
 						return
 					default:
-						mu.Lock() // Lock before writing
+						mu.Lock()
+						if ctx.Err() != nil { // Check if the context is canceled
+							log.Printf("Client disconnected")
+							mu.Unlock()
+							return
+						}
+
 						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
-							log.Printf("Error writing trip updates: %v", err)
+							log.Printf("Error writing service updates: %v", err)
 							mu.Unlock()
 							return
 						}
 						flusher.Flush()
-						mu.Unlock() // Unlock after writing
+						mu.Unlock()
 					}
 				}
 			}()
@@ -354,18 +365,23 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					jsonData, _ := json.Marshal(response)
 
 					select {
-					case <-ctx.Done(): // Stop processing if the context is canceled
-						log.Printf("Stopping trip updates due to client disconnect")
+					case <-ctx.Done():
 						return
 					default:
-						mu.Lock() // Lock before writing
+						mu.Lock()
+						if ctx.Err() != nil { // Check if the context is canceled
+							log.Printf("Client disconnected")
+							mu.Unlock()
+							return
+						}
+
 						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
 							log.Printf("Error writing trip updates: %v", err)
 							mu.Unlock()
 							return
 						}
 						flusher.Flush()
-						mu.Unlock() // Unlock after writing
+						mu.Unlock()
 					}
 				}
 			}()
@@ -390,18 +406,23 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					jsonData, _ := json.Marshal(response)
 
 					select {
-					case <-ctx.Done(): // Stop processing if the context is canceled
-						log.Printf("Stopping vehicle updates due to client disconnect")
+					case <-ctx.Done():
 						return
 					default:
-						mu.Lock() // Lock before writing
+						mu.Lock()
+						if ctx.Err() != nil { // Check if the context is canceled
+							log.Printf("Client disconnected")
+							mu.Unlock()
+							return
+						}
+
 						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
-							log.Printf("Error writing vehicle updates: %v", err)
+							log.Printf("Error writing vehicles updates: %v", err)
 							mu.Unlock()
 							return
 						}
 						flusher.Flush()
-						mu.Unlock() // Unlock after writing
+						mu.Unlock()
 					}
 				}
 			}()
