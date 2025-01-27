@@ -30,7 +30,7 @@ export default function Stops() {
     return (
         <>
             <Header />
-            <NavBar />
+            <NavBar title="" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
 
