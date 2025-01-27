@@ -38,7 +38,7 @@ export default function Alerts() {
     return (
         <>
             <Header />
-            <NavBar title={value} />
+            <NavBar title={""} />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <div className="flex items-center gap-2 p-4">

@@ -23,17 +23,20 @@ export default function Home() {
   return (
     <>
       <Header />
-      <NavBar title={selectedStop} />
+      <NavBar title="" />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-          <div className="flex items-center gap-2">
+          <div className="grid items-center gap-2">
             <div className="flex gap-2 items-center w-full">
               <SearchForStop defaultValue={value} url="/?s=" />
               {value !== "" ? (
                 <DatePicker onChange={(date) => setSelectedDate(date)} />
               ) : null}
+              <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
+                <MessageCircleWarningIcon />
+              </Button>
             </div>
-            <div className="flex items-center flex-wrap gap-2">
+            <div className="flex items-center flex-wrap gap-2 hidden">
               <div className="flex items-center gap-2">
                 <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
                   <MessageCircleWarningIcon />

@@ -12,6 +12,7 @@ import { Service } from "./types"
 import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
+import { Toggle } from "../ui/toggle"
 
 interface ServicesProps {
     stopName: string
@@ -27,6 +28,17 @@ interface SSEData {
 export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<SSEData[]>([]);
     const [errorMessage, setErrorMessage] = useState("");
+    const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
+
+    const getUniquePlatforms = (services: SSEData[]) => {
+        const platforms = services.map(service => service.data.service_data.platform);
+        return [...new Set(platforms)].filter((i) => i !== "").sort((a, b) => {
+            if (!isNaN(Number(a)) && !isNaN(Number(b))) {
+                return Number(a) - Number(b);
+            }
+            return a.localeCompare(b);
+        });
+    };
 
     useEffect(() => {
         if (stopName === "") {
@@ -81,9 +93,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
     }, [stopName, filterDate]);
 
-
-
-
     return (
         <>
 
@@ -97,80 +106,93 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 </Alert>
             ) : null}
             {services.length >= 1 ? (
-                <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 px-4">
-                    {getService(services).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
-                        <li key={service_data.trip_id} className={`${service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1 >= 0 ? "" : "hidden"}`}>
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>
-                                        <div className="flex items-center justify-between overflow-hidden">
-                                            <div className="shrink flex-1 truncate">
-                                                {trip_update.trip.schedule_relationship === 3 ? (
-                                                    <>
-                                                        <span className="text-red-500">Cancled | </span>
-                                                        <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
-                                                            <>
-                                                                <span className="text-orange-500">Departed | </span>
-                                                                <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="truncate">
-                                                                {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))}
-                                                            </span>
-                                                        )}
-                                                    </>
-                                                )}
+                <>
+                    {getUniquePlatforms(services).length > 0 ? (
+                        <div className="mb-2 grid">
+                            <div className="flex  gap-2 items-center">
+                                {getUniquePlatforms(services).map((platform) => (
+                                    <Toggle key={platform} className="w-full" size={"sm"} variant={"outline"} pressed={platformFilter === platform} onPressedChange={(t) => setPlatformFilter(t ? platform : undefined)}>
+                                        {platform}
+                                    </Toggle>
+                                ))}
+                            </div>
+                        </div>
+                    ) : null}
+                    <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
+                        {getService(services).filter((item) => item.service_data.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
+                            <li key={service_data.trip_id} className={`${service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1 >= 0 ? "" : "hidden"} overflow-hidden`}>
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle>
+                                            <div className="flex items-center justify-between overflow-hidden">
+                                                <div className="shrink flex-1 truncate overflow-hidden">
+                                                    {trip_update.trip.schedule_relationship === 3 ? (
+                                                        <>
+                                                            <span className="text-red-500">Cancled | </span>
+                                                            <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
+                                                                <>
+                                                                    <span className="text-orange-500">Departed | </span>
+                                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
+                                                                </>
+                                                            ) : (
+                                                                <span className="">
+                                                                    {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))}
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <span
+                                                    className="shrink-0 px-2 py-1 rounded text-zinc-100 text-sm"
+                                                    style={
+                                                        service_data.route_color !== "" ? { background: "#" + service_data.route_color } : { background: "#71717a" }
+                                                    }
+                                                >
+                                                    {service_data.trip_data.route_id}
+                                                </span>
                                             </div>
-                                            <span
-                                                className="shrink-0 px-2 py-1 rounded text-zinc-100 text-sm"
-                                                style={
-                                                    service_data.route_color !== "" ? { background: "#" + service_data.route_color } : { background: "#71717a" }
-                                                }
-                                            >
-                                                {service_data.trip_data.route_id}
-                                            </span>
-                                        </div>
-                                    </CardTitle>
+                                        </CardTitle>
 
-                                    <CardDescription>
-                                        <div className="flex sm:flex-col  justify-between">
-                                            <div>
-                                                <p className="">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
-                                                {service_data.platform !== "" && service_data.platform !== "no platform" ? (
-                                                    <p className="text-blue-400">Platform: <span className="font-medium">{service_data.platform}</span></p>
-                                                ) : null}
+                                        <CardDescription>
+                                            <div className="flex sm:flex-col  justify-between">
+                                                <div>
+                                                    <p className="">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
+                                                    {service_data.platform !== "" && service_data.platform !== "no platform" ? (
+                                                        <p className="text-blue-400">Platform: <span className="font-medium">{service_data.platform}</span></p>
+                                                    ) : null}
+                                                </div>
+                                                <div>
+                                                    <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
+                                                    <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
-                                                <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
+                                        </CardDescription>
+                                    </CardHeader>
+                                    {!filterDate ? (
+                                        <CardContent>
+                                            <div className="grid grid-cols-2 items-center justify-items-center gap-2">
+                                                <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                                <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full ${timeTillArrival(service_data.arrival_time) > timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? "text-orange-400" : timeTillArrival(service_data.arrival_time) === timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? " text-green-400" : " text-red-400"}`}>
+                                                    {!done.trip_update ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                    ) : (
+                                                        <>
+                                                            {timeTillArrivalString(addSecondsToTime(service_data.arrival_time, trip_update.delay))}
+                                                        </>
+                                                    )}
+                                                </span>
                                             </div>
-                                        </div>
-                                    </CardDescription>
-                                </CardHeader>
-                                {!filterDate ? (
-                                    <CardContent>
-                                        <div className="grid grid-cols-2 items-center justify-items-center gap-2">
-                                            <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
-                                            <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full ${timeTillArrival(service_data.arrival_time) > timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? "text-orange-400" : timeTillArrival(service_data.arrival_time) === timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? " text-green-400" : " text-red-400"}`}>
-                                                {!done.trip_update ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                ) : (
-                                                    <>
-                                                        {timeTillArrivalString(addSecondsToTime(service_data.arrival_time, trip_update.delay))}
-                                                    </>
-                                                )}
-                                            </span>
-                                        </div>
-                                    </CardContent>
-                                ) : null}
-                            </Card>
-                        </li>
-                    ))}
-                </ul>
+                                        </CardContent>
+                                    ) : null}
+                                </Card>
+                            </li>
+                        ))}
+                    </ul>
+                </>
             ) : null}
         </>
     )
