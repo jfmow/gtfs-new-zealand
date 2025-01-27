@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -107,22 +108,28 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 		return errors.New("no alerts provided")
 	}
 
+	var wg sync.WaitGroup
 	for _, alert := range alerts {
-		var stopsToInform []string
-		stopsSet := make(map[string]struct{}) // A set to track unique stop IDs
+		wg.Add(1)
+		go func(alert realtime.Alert) {
+			defer wg.Done()
 
-		for _, entity := range alert.InformedEntity {
-			if entity.StopID != "" {
-				if _, exists := stopsSet[entity.StopID]; !exists {
-					stopsToInform = append(stopsToInform, entity.StopID)
-					stopsSet[entity.StopID] = struct{}{}
+			stopsSet := make(map[string]struct{}) // A set to track unique stop IDs
+			var stopsToInform []string
+
+			// Collect stops to inform
+			for _, entity := range alert.InformedEntity {
+				if entity.StopID != "" {
+					if _, exists := stopsSet[entity.StopID]; !exists {
+						stopsToInform = append(stopsToInform, entity.StopID)
+						stopsSet[entity.StopID] = struct{}{}
+					}
 				}
-			}
-			if entity.RouteID != "" {
-				foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.RouteID))
-				if err != nil {
-					continue
-				} else {
+				if entity.RouteID != "" {
+					foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.RouteID))
+					if err != nil {
+						continue
+					}
 					for _, stop := range foundStops {
 						if _, exists := stopsSet[stop.StopId]; !exists {
 							stopsToInform = append(stopsToInform, stop.StopId)
@@ -131,55 +138,58 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 					}
 				}
 			}
-		}
 
-		for _, stop := range stopsToInform {
-			var limit = 500
-			var offset = 0
-			for {
-				stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
-				if err != nil {
-					//errors.New(err)
-					break
-				}
+			// Notify clients for each stop
+			for _, stop := range stopsToInform {
+				var limit = 500
+				var offset = 0
 
-				clients, err := v.GetNotificationClientsByStop(stop, alert.ID, limit, offset)
-				if err != nil {
-					// errors.New("no clients for stopId")
-					break
-				}
+				for {
+					// Fetch parent stop data
+					stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
+					if err != nil {
+						break
+					}
 
-				if len(clients) == 0 {
-					break
-				}
+					// Fetch clients in batches
+					clients, err := v.GetNotificationClientsByStop(stop, alert.ID, limit, offset)
+					if err != nil || len(clients) == 0 {
+						break
+					}
+					offset += limit
 
-				offset += limit
+					// Prepare notification data
+					data := map[string]string{
+						"url": fmt.Sprintf("/alerts?r=%s", stopData.StopName+" "+stopData.StopCode),
+					}
+					var dates = "Active dates:\n"
+					for _, date := range alert.ActivePeriod {
+						startTime := time.Unix(date.Start, 0)
+						start := fmt.Sprintf("%d/%d/%d", startTime.Day(), startTime.Month(), startTime.Year())
+						endTime := time.Unix(date.End, 0)
+						end := fmt.Sprintf("%d/%d/%d", endTime.Day(), endTime.Month(), endTime.Year())
+						dates += fmt.Sprintf(" %s to %s\n", start, end)
+					}
 
-				data := map[string]string{
-					"url": fmt.Sprintf("/alerts?r=%s", stopData.StopName+" "+stopData.StopCode),
-				}
+					title := stopData.StopName
+					body := fmt.Sprintf("%s\n%s\n\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text, dates)
 
-				var dates = "Active dates:\n"
-
-				for _, date := range alert.ActivePeriod {
-					startTime := time.Unix(date.Start, 0)
-					start := fmt.Sprintf("%d/%d/%d", startTime.Day(), startTime.Month(), startTime.Year())
-					endTime := time.Unix(date.End, 0)
-					end := fmt.Sprintf("%d/%d/%d", endTime.Day(), endTime.Month(), endTime.Year())
-					dates += fmt.Sprintf(" %s to %s\n", start, end)
-				}
-
-				title := stopData.StopName
-				body := fmt.Sprintf("%s\n%s\n\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text, dates)
-
-				for _, client := range clients {
-					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alert.ID)
-					go v.SendNotification(client, body, title, data)
+					// Send notifications concurrently
+					var notifWG sync.WaitGroup
+					for _, client := range clients {
+						notifWG.Add(1)
+						go func(client NotificationClient) {
+							defer notifWG.Done()
+							v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alert.ID)
+							v.SendNotification(client, body, title, data)
+						}(client)
+					}
+					notifWG.Wait()
 				}
 			}
-		}
-
+		}(alert)
 	}
+	wg.Wait()
 	return nil
 }
 

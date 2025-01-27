@@ -4,7 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-export default function SearchForStop({ url }: { url: string }) {
+export default function SearchForStop({ url, defaultValue }: { url: string, defaultValue: string }) {
     const [searchTerm, setSearchTerm] = useState("")
     const [result, setResult] = useState<StopSearch[]>([])
     const [isLoading, setIsLoading] = useState(false)
@@ -51,6 +51,7 @@ export default function SearchForStop({ url }: { url: string }) {
     return (
         <div className="relative w-full" ref={searchRef}>
             <SearchInput
+                defaultValue={defaultValue}
                 className="w-full"
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search for stop..."

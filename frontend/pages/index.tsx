@@ -1,10 +1,10 @@
 import NavBar from "@/components/nav";
 import Services from "@/components/services";
-import StopNotifications from "@/components/services/notifications";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import { BellDot, MessageCircleWarningIcon } from "lucide-react";
+import HelpMenu from "@/components/ui/help-menu";
+import { MessageCircleWarningIcon } from "lucide-react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
@@ -23,32 +23,43 @@ export default function Home() {
   return (
     <>
       <Header />
-      <NavBar />
+      <NavBar title={selectedStop} />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-          <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight mb-4">
-            {selectedStop}
-          </h4>
-          <div className="grid md:grid-cols-2 gap-2">
-            <div className="flex gap-2 items-center">
-              <SearchForStop url="/?s=" />
+          <div className="flex items-center gap-2">
+            <div className="flex gap-2 items-center w-full">
+              <SearchForStop defaultValue={value} url="/?s=" />
               {value !== "" ? (
                 <DatePicker onChange={(date) => setSelectedDate(date)} />
               ) : null}
             </div>
-            <div className="flex items-center justify-center sm:justify-end flex-wrap gap-2">
+            <div className="flex items-center flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
                   <MessageCircleWarningIcon />
                 </Button>
-                <StopNotifications stopName={selectedStop}>
-                  <Button variant={"outline"}>
-                    <BellDot />
-                  </Button>
-                </StopNotifications>
+                <HelpMenu title="Services">
+                  The following color indicators represent the status of arrival times:
+                  <div className="p-2 flex flex-col items-center justify-start gap-4">
+                    <div className="flex items-center gap-1 text-orange-500">
+                      <div className="w-6 h-6 bg-orange-100 border border-orange-200 rounded-md" />
+                      Early
+                    </div>
+                    <div className="flex items-center gap-1 text-green-500">
+                      <div className="w-6 h-6 bg-green-100 border border-green-200 rounded-md" />
+                      On Time
+                    </div>
+                    <div className="flex items-center gap-1 text-red-500">
+                      <div className="w-6 h-6 bg-red-100 border border-red-200 rounded-md" />
+                      Delayed
+                    </div>
+                  </div>
+                </HelpMenu>
+
               </div>
             </div>
           </div>
+          <div className="my-2" />
           <Services filterDate={selectedDate} stopName={selectedStop} />
         </div>
       </div>

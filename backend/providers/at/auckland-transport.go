@@ -51,6 +51,9 @@ type ServicesResponse struct {
 	Time int64                `json:"time"`
 }
 
+var notificationMutex sync.Mutex
+var notificationMutex2 sync.Mutex
+
 func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Looks for the at api key from the loaded env vars or sys env if docker
@@ -91,8 +94,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	}
 
 	c := cron.New(cron.WithLocation(localTimeZone))
-	var notificationMutex sync.Mutex
-	var notificationMutex2 sync.Mutex
 
 	c.AddFunc("@every 00h00m10s", func() {
 		if notificationMutex.TryLock() {
@@ -107,15 +108,15 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				fmt.Println(err)
 			}
 		} else {
-			fmt.Println("notification mutex locked")
+			fmt.Println("cancellation notification mutex locked")
 		}
 
 	})
 
-	c.AddFunc("@every 00h00m15s", func() {
+	c.AddFunc("@every 00h00m30s", func() {
 		if notificationMutex2.TryLock() {
 			defer notificationMutex2.Unlock()
-			//fmt.Println("Checking canceled trips")
+			fmt.Println("Checking alerts")
 			alerts, err := alerts.GetAlerts()
 			if err == nil {
 				if err := notificationDB.NotifyAlerts(alerts, AucklandTransportGTFSData); err != nil {
@@ -125,7 +126,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				fmt.Println(err)
 			}
 		} else {
-			fmt.Println("notification mutex locked")
+			fmt.Println("alert notification mutex locked")
 		}
 
 	})
@@ -514,7 +515,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		stopName := c.PathParam("stopName")
 		children := c.QueryParam("children")
 
-		stops, err := AucklandTransportGTFSData.SearchForStopsByName(stopName, children == "true")
+		stops, err := AucklandTransportGTFSData.SearchForStopsByNameOrCode(stopName, children == "true")
 		if err != nil {
 			return c.String(404, "Unable to find stops for search")
 		}

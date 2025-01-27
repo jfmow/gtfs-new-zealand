@@ -86,20 +86,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <>
-            <div className="p-4 flex justify-between sm:justify-start  items-center gap-4">
-                <div className="flex items-center gap-1 text-orange-500">
-                    <div className="w-6 h-6 bg-orange-100 border border-orange-200 rounded-md" />
-                    Early
-                </div>
-                <div className="flex items-center gap-1 text-green-500">
-                    <div className="w-6 h-6 bg-green-100 border border-green-200 rounded-md" />
-                    On time
-                </div>
-                <div className="flex items-center gap-1 text-red-500">
-                    <div className="w-6 h-6 bg-red-100 border border-red-200 rounded-md" />
-                    Delayed
-                </div>
-            </div>
 
             {errorMessage !== "" ? (
                 <Alert className="mt-4">
@@ -140,8 +126,10 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 )}
                                             </div>
                                             <span
-                                                className="shrink-0 bg-zinc-400 p-2 rounded text-zinc-100"
-                                                style={service_data.route_color !== "" ? { background: "#" + service_data.route_color } : {}}
+                                                className="shrink-0 px-2 py-1 rounded text-zinc-100 text-sm"
+                                                style={
+                                                    service_data.route_color !== "" ? { background: "#" + service_data.route_color } : { background: "#71717a" }
+                                                }
                                             >
                                                 {service_data.trip_data.route_id}
                                             </span>
@@ -153,7 +141,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             <div>
                                                 <p className="text-blue-400">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
                                                 {service_data.platform !== "" && service_data.platform !== "no platform" ? (
-                                                    <p className="text-orange-400">Platform: {service_data.platform}</p>
+                                                    <p className="text-blue-400">Platform: {service_data.platform}</p>
                                                 ) : null}
                                             </div>
                                             <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>

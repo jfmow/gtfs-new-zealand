@@ -38,7 +38,7 @@ export default function Alerts() {
     return (
         <>
             <Header />
-            <NavBar />
+            <NavBar title={value} />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <div className="flex items-center gap-2 p-4">
@@ -47,7 +47,7 @@ export default function Alerts() {
                                 <BellDot />
                             </Button>
                         </StopNotifications>
-                        <SearchForStop url="/alerts?r=" />
+                        <SearchForStop defaultValue={value} url="/alerts?r=" />
                     </div>
                     {loading ? (
                         <LoadingSpinner description="Loading alerts..." />
@@ -109,6 +109,9 @@ export default function Alerts() {
                                             <AlertTitle>No alerts found</AlertTitle>
                                             <AlertDescription>
                                                 This stop/route has no alerts at the moment.
+                                                <br />
+                                                <br />
+                                                Use the bell above to enable notifications for any future alerts/cancellations at this stop
                                             </AlertDescription>
                                         </Alert>
 

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
 
-export default function NavBar() {
+export default function NavBar({ title }: { title: string }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
 
     useEffect(() => {
@@ -22,15 +22,21 @@ export default function NavBar() {
     const toggleMenu = () => setIsMenuOpen(!isMenuOpen)
 
     return (
-        <nav className="w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
+        <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
             <div className="flex items-center">
                 <img src="/nav-logo.png" alt="Logo" className="w-8 h-8 mr-2" />
             </div>
+
+
+            <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight">
+                {title}
+            </h4>
 
             {/* Desktop menu */}
             <ul className="hidden md:flex font-medium text-sm items-center gap-4">
                 <NavItems />
             </ul>
+
 
             {/* Hamburger menu button (mobile only) */}
             <button
