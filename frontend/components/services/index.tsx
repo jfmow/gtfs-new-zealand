@@ -101,7 +101,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 eventSource.close();
             }
             eventSource = null;
-            setServices([]);
             setErrorMessage("");
         };
 
