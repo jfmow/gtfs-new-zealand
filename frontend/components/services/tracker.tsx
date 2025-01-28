@@ -149,7 +149,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
 
                                 <Drawer>
                                     <DrawerTrigger asChild>
-                                        <Button className="w-full">
+                                        <Button className="w-full mt-2">
                                             List of stops
                                         </Button>
                                     </DrawerTrigger>
