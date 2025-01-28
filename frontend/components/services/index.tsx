@@ -46,6 +46,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             return;
         }
 
+        setServices([])
+
         let eventSource: EventSource | null = null;
 
         const startEventSource = () => {
