@@ -40,58 +40,91 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         });
     };
 
+
     useEffect(() => {
         if (stopName === "") {
             return;
         }
 
-        // Check if filterDate is null
-        if (!filterDate) {
-            // Use EventSource instance
-            const eventSource = new EventSource(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`);
+        let eventSource: EventSource | null = null;
 
-            // Handle incoming messages
-            eventSource.onmessage = (event) => {
-                try {
-                    const parsedData: SSEData = JSON.parse(event.data);
+        const startEventSource = () => {
+            if (!filterDate) {
+                eventSource = new EventSource(
+                    `${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`
+                );
 
-                    if (Object.keys(parsedData).length > 0) {
-                        setServices((prev) => [...prev, parsedData]);
-                        setErrorMessage("")
+                eventSource.onmessage = (event) => {
+                    try {
+                        const parsedData: SSEData = JSON.parse(event.data);
+
+                        if (Object.keys(parsedData).length > 0) {
+                            setServices((prev) => [...prev, parsedData]);
+                            setErrorMessage("");
+                        }
+                    } catch (error) {
+                        console.error("Error parsing SSE data:", error);
                     }
-                } catch (error) {
-                    console.error("Error parsing SSE data:", error);
-                }
-            };
+                };
 
-            // Handle errors
-            eventSource.onerror = () => {
-                console.error("SSE connection error.");
-                setErrorMessage("Failed to fetch data from the server.");
-                eventSource.close();
-            };
-
-            // Cleanup function on unmount or stopName change
-            return () => {
-                eventSource.close();
-            };
-        } else {
-            // Log the filterDate instead of using EventSource
-            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`).then(async (res) => {
-                if (res.ok) {
-                    const data = await res.json()
-                    setServices(data)
-                    setErrorMessage("")
-                } else {
+                eventSource.onerror = () => {
+                    console.error("SSE connection error.");
                     setErrorMessage("Failed to fetch data from the server.");
-                }
-            })
-        }
-        return () => {
+                    if (eventSource) {
+                        eventSource.close();
+                    }
+                };
+            } else {
+                fetch(
+                    `${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}/schedule?date=${Math.floor(
+                        filterDate.getTime() / 1000
+                    )}`
+                )
+                    .then(async (res) => {
+                        if (res.ok) {
+                            const data = await res.json();
+                            setServices(data);
+                            setErrorMessage("");
+                        } else {
+                            setErrorMessage("Failed to fetch data from the server.");
+                        }
+                    })
+                    .catch((error) => {
+                        console.error("Fetch error:", error);
+                        setErrorMessage("Failed to fetch data from the server.");
+                    });
+            }
+        };
+
+        const stopEventSource = () => {
+            if (eventSource) {
+                eventSource.close();
+            }
+            eventSource = null;
             setServices([]);
-            setErrorMessage("")
-        }
+            setErrorMessage("");
+        };
+
+        startEventSource();
+
+        // Visibility change handling
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                startEventSource();
+            } else if (document.visibilityState === "hidden") {
+                stopEventSource();
+            }
+        };
+
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        // Cleanup on unmount, visibility change, or dependencies update
+        return () => {
+            stopEventSource();
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
     }, [stopName, filterDate]);
+
 
     return (
         <>
