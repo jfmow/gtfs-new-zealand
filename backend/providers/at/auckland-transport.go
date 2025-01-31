@@ -262,7 +262,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return c.String(http.StatusBadRequest, "Invalid subscription")
 		}
 
-		return c.JSON(http.StatusOK, "removed")
+		return c.String(http.StatusOK, "removed")
 	})
 
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
