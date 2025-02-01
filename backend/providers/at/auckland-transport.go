@@ -875,68 +875,80 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	//Finds a walking route from lat,lon to lat,lon using osrm
 	navigationRouter.POST("/nav", func(c echo.Context) error {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+		defer cancel()
+
 		slatStr := c.FormValue("startLat")
 		slonStr := c.FormValue("startLon")
 		elatStr := c.FormValue("endLat")
 		elonStr := c.FormValue("endLon")
-
 		method := c.FormValue("method")
 
 		if method == "" {
-			return c.String(400, "Missing method")
+			return c.String(http.StatusBadRequest, "Missing method")
 		}
 
 		// Convert lat and lon to float64
 		slat, err := strconv.ParseFloat(slatStr, 64)
 		if err != nil {
 			log.Printf("Error parsing latitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.String(http.StatusBadRequest, "Invalid location data")
 		}
 
 		slon, err := strconv.ParseFloat(slonStr, 64)
 		if err != nil {
 			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.String(http.StatusBadRequest, "Invalid location data")
 		}
 
 		elat, err := strconv.ParseFloat(elatStr, 64)
 		if err != nil {
 			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.String(http.StatusBadRequest, "Invalid location data")
 		}
 
 		elon, err := strconv.ParseFloat(elonStr, 64)
 		if err != nil {
 			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.String(http.StatusBadRequest, "Invalid location data")
 		}
 
 		if slat == 0 || slon == 0 {
-			return c.String(400, "Invalid start location data")
+			return c.String(http.StatusBadRequest, "Invalid start location data")
 		}
 		if elat == 0 || elon == 0 {
-			return c.String(400, "Invalid end location data")
+			return c.String(http.StatusBadRequest, "Invalid end location data")
 		}
 
 		start := routing.Coordinates{Lat: slat, Lon: slon} // Start point
 		end := routing.Coordinates{Lat: elat, Lon: elon}   // End point
 
 		var result routing.GeoJSONResponse
+		done := make(chan struct{})
 
-		switch method {
-		case "walking":
-			result = routing.GetWalkingDirections(start, end)
-		case "driving":
-			result = routing.GetDrivingDirections(start, end)
-		default:
-			return c.String(400, "Invalid method")
+		go func() {
+			defer close(done)
+			switch method {
+			case "walking":
+				result = routing.GetWalkingDirections(start, end)
+			case "driving":
+				result = routing.GetDrivingDirections(start, end)
+			default:
+				c.String(http.StatusBadRequest, "Invalid method")
+				return
+			}
+		}()
+
+		select {
+		case <-ctx.Done():
+			log.Println("Request timed out")
+			return c.String(http.StatusGatewayTimeout, "Request timed out")
+		case <-done:
+			if len(result.Features) == 0 {
+				return c.JSON(http.StatusBadRequest, "No route found")
+			}
+			return c.JSON(http.StatusOK, result)
 		}
-
-		if len(result.Features) == 0 {
-			return c.JSON(http.StatusBadRequest, "No route found")
-		}
-
-		return c.JSON(http.StatusOK, result)
 	})
 
 }
