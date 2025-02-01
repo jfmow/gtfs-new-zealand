@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jfmow/at-trains-api/api/geojson"
 	"github.com/jfmow/at-trains-api/api/routing"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
@@ -72,9 +71,9 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		panic(err)
 	}
 
-	vehicles, _ := realtimeData.Vehicles("https://api.at.govt.nz/realtime/legacy/vehiclelocations")
-	tripUpdates, _ := realtimeData.TripUpdates("https://api.at.govt.nz/realtime/legacy/tripupdates")
-	alerts, _ := realtimeData.Alerts("https://api.at.govt.nz/realtime/legacy/servicealerts")
+	vehicles, _ := realtimeData.Vehicles("https://api.at.govt.nz/realtime/legacy/vehiclelocations", 20*time.Second)
+	tripUpdates, _ := realtimeData.TripUpdates("https://api.at.govt.nz/realtime/legacy/tripupdates", 20*time.Second)
+	alerts, _ := realtimeData.Alerts("https://api.at.govt.nz/realtime/legacy/servicealerts", 30*time.Second)
 
 	servicesRouter := router.Group("/services")
 	stopsRouter := router.Group("/stops")
@@ -95,43 +94,47 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	c := cron.New(cron.WithLocation(localTimeZone))
 
-	c.AddFunc("@every 00h00m10s", func() {
-		if notificationMutex.TryLock() {
-			defer notificationMutex.Unlock()
-			//fmt.Println("Checking canceled trips")
-			updates, err := tripUpdates.GetTripUpdates()
-			if err == nil {
-				if err := notificationDB.NotifyTripUpdates(updates, AucklandTransportGTFSData); err != nil {
+	c.AddFunc("@every 00h00m20s", func() {
+		now := time.Now().In(localTimeZone)
+		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
+			if notificationMutex.TryLock() {
+				defer notificationMutex.Unlock()
+				// fmt.Println("Checking canceled trips")
+				updates, err := tripUpdates.GetTripUpdates()
+				if err == nil {
+					if err := notificationDB.NotifyTripUpdates(updates, AucklandTransportGTFSData); err != nil {
+						fmt.Println(err)
+					}
+				} else {
 					fmt.Println(err)
 				}
 			} else {
-				fmt.Println(err)
+				fmt.Println("cancellation notification mutex locked")
 			}
-		} else {
-			fmt.Println("cancellation notification mutex locked")
 		}
-
 	})
 
 	c.AddFunc("@every 00h00m30s", func() {
-		if notificationMutex2.TryLock() {
-			defer notificationMutex2.Unlock()
-			fmt.Println("Checking alerts")
-			alerts, err := alerts.GetAlerts()
-			if err == nil {
-				if err := notificationDB.NotifyAlerts(alerts, AucklandTransportGTFSData); err != nil {
+		now := time.Now().In(localTimeZone)
+		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
+			if notificationMutex2.TryLock() {
+				defer notificationMutex2.Unlock()
+				fmt.Println("Checking alerts")
+				alerts, err := alerts.GetAlerts()
+				if err == nil {
+					if err := notificationDB.NotifyAlerts(alerts, AucklandTransportGTFSData); err != nil {
+						fmt.Println(err)
+					}
+				} else {
 					fmt.Println(err)
 				}
 			} else {
-				fmt.Println(err)
+				fmt.Println("alert notification mutex locked")
 			}
-		} else {
-			fmt.Println("alert notification mutex locked")
 		}
-
 	})
 
-	c.AddFunc("@every 00h00m10s", func() {
+	c.AddFunc("@every 00h03m00s", func() {
 		var limit = 500
 		var offset = 0
 		now := time.Now().In(localTimeZone)
@@ -744,29 +747,21 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	})
 
 	//Returns the route of a route as geo json
-	navigationRouter.GET("/geojson/:routeId/:typeOfVehicle", func(c echo.Context) error {
-		typeOfVehicle := c.PathParam("typeOfVehicle")
-		routeId := c.PathParam("routeId")
-		tripId := c.QueryParam("tripId")
+	navigationRouter.POST("/geojson/shapes", func(c echo.Context) error {
+		tripId := c.FormValue("tripId")
 
-		stops, err := geojson.GetGeoJsonDataForRoute(routeId, typeOfVehicle)
+		shapes, err := AucklandTransportGTFSData.GetShapeByTripID(tripId)
+		if err != nil {
+			fmt.Println(err)
+		}
+		geoJson, err := shapes.ToGeoJSON()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{
 				"error": "An error occurred getting geojson",
 			})
 		}
 
-		if tripId != "" {
-			tripName, err := AucklandTransportGTFSData.GetTripByID(tripId)
-			if err != nil {
-				return c.String(404, "No trip found for trip id")
-			}
-			if tripName.TripHeadsign != "" {
-				stops = stops.FilterByTripName(tripName.TripHeadsign)
-			}
-		}
-
-		return c.JSON(http.StatusOK, stops)
+		return c.JSON(http.StatusOK, geoJson)
 	})
 
 	//Returns all the locations of vehicles from the AT api

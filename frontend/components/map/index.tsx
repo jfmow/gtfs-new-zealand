@@ -244,25 +244,14 @@ function showRouteLine(map: Map, routeLine: RouteLineData, routeLineRef: React.M
 
     if (routeId && vehicleType) {
         const showRouteLineOnMap = async (map: Map) => {
-            let reqUrl;
-
-            switch (vehicleType) {
-                case "bus":
-                case "rail bus":
-                    reqUrl = `${routeId.split("-")[0]}/bus`;
-                    break;
-                case "train":
-                    reqUrl = `${routeId.split("-")[0]}/train`;
-                    break;
-                case "ferry":
-                    reqUrl = `${routeId.split("-")[0]}/ferry`;
-                    break;
-                default:
-                    return; // Exit if vehicleType doesn't match any case
-            }
 
             try {
-                const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/${reqUrl}${tripId !== "" ? `?tripId=${tripId}` : ""}`);
+                const form = new FormData()
+                form.set("tripId", tripId)
+                const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/shapes`, {
+                    method: "POST",
+                    body: form
+                });
                 const data: GeoJSONResponse = await response.json();
 
                 const filteredData = data;

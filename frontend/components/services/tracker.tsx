@@ -162,7 +162,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
                                             <ol className="flex items-center justify-center flex-col gap-1">
                                                 {stops?.stops.map((item, index) => (
                                                     <li key={item.stop_code} className="flex items-center justify-center flex-col gap-1">
-                                                        <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.stop_name)}</p>
+                                                        <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.stop_name, true)}</p>
                                                         {index < stops.stops.length - 1 ? (
                                                             <ChevronDown className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
                                                         ) : null}
