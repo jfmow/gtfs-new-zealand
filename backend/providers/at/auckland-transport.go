@@ -183,16 +183,28 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
 		if err != nil {
-			return c.String(http.StatusBadRequest, "invalid stop")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop id",
+				Data:    nil,
+			})
 		}
 
 		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, AucklandTransportGTFSData)
 		if err != nil {
 			fmt.Println(err)
-			return c.String(http.StatusBadRequest, "Invalid subscription")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
 		}
 
-		return c.String(http.StatusOK, "added")
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "added",
+			Data:    nil,
+		})
 	})
 
 	notificationRouter.POST("/refresh", func(c echo.Context) error {
@@ -214,10 +226,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			Auth:     new_auth,
 		})
 		if err != nil {
-			return c.String(http.StatusBadRequest, "Invalid subscription")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
 		}
 
-		return c.String(http.StatusOK, "refreshed")
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "refreshed subscription",
+			Data:    nil,
+		})
 	})
 
 	notificationRouter.POST("/find-client", func(c echo.Context) error {
@@ -238,10 +258,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
 		if err != nil {
-			return c.String(http.StatusBadRequest, "Invalid subscription")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, notification)
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription found",
+			Data:    notification,
+		})
 	})
 
 	notificationRouter.POST("/remove", func(c echo.Context) error {
@@ -262,10 +290,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)
 		if err != nil {
-			return c.String(http.StatusBadRequest, "Invalid subscription")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
 		}
 
-		return c.String(http.StatusOK, "removed")
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription removed",
+			Data:    nil,
+		})
 	})
 
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
@@ -281,7 +317,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		// Fetch stop data
 		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
 		if err != nil {
-			return c.String(http.StatusNotFound, "No stop found with name")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop id",
+				Data:    nil,
+			})
 		}
 
 		now := time.Now().In(localTimeZone)
@@ -298,7 +338,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 		if len(services) == 0 {
-			return c.String(http.StatusInternalServerError, "No services found for stop")
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no services found for stop",
+				Data:    nil,
+			})
 		}
 
 		// Sort services by arrival time
@@ -468,7 +512,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		dateInt, err := strconv.ParseInt(date, 10, 64)
 		if err != nil {
-			return c.String(400, "Invalid date format")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid date",
+				Data:    nil,
+			})
 		}
 		now := time.Unix(dateInt, 0).In(localTimeZone)
 		//currentTime := now.Format("15:04:05")
@@ -485,7 +533,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 		if len(services) == 0 {
-			return c.String(http.StatusInternalServerError, "No services found for stop")
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no services found",
+				Data:    nil,
+			})
 		}
 
 		// Sort services by arrival time
@@ -509,7 +561,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			result = append(result, response)
 		}
 
-		return c.JSON(http.StatusOK, result)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    result,
+		})
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
@@ -520,10 +576,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stops, err := AucklandTransportGTFSData.SearchForStopsByNameOrCode(stopName, children == "true")
 		if err != nil {
-			return c.String(404, "Unable to find stops for search")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no stops matching found",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, stops)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    stops,
+		})
 	})
 
 	//Returns a route by routeId
@@ -531,19 +595,31 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stopName := c.PathParam("routeId")
 
-		stops, err := AucklandTransportGTFSData.SearchForRouteByID(stopName)
+		routes, err := AucklandTransportGTFSData.SearchForRouteByID(stopName)
 		if err != nil {
-			return c.String(404, "Unable to find routes for search")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no matching routes found",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, stops)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    routes,
+		})
 	})
 
 	//Returns a list of all stops from the AT api
 	router.GET("/stops", func(c echo.Context) error {
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
-			return c.String(404, "No stops found")
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no stops found",
+				Data:    nil,
+			})
 		}
 
 		noChildren := c.QueryParam("noChildren")
@@ -561,9 +637,17 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 		if len(filteredStops) == 0 {
-			return c.JSON(http.StatusOK, stops)
+			return c.JSON(http.StatusOK, Response{
+				Code:    http.StatusOK,
+				Message: "",
+				Data:    stops,
+			})
 		} else {
-			return c.JSON(http.StatusOK, filteredStops)
+			return c.JSON(http.StatusOK, Response{
+				Code:    http.StatusOK,
+				Message: "",
+				Data:    filteredStops,
+			})
 		}
 
 	})
@@ -574,7 +658,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if len(stops) == 0 || err != nil {
 			fmt.Println(err)
-			return c.String(404, "No stops found")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no stops are stored in the database",
+				Data:    nil,
+			})
 		}
 		var filteredStops gtfs.Stops
 
@@ -598,30 +686,50 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			}
 		}
 
-		return c.JSON(http.StatusOK, filteredStops)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    filteredStops,
+		})
 	})
 
 	//Returns a list of routes from the AT api
 	router.GET("/routes", func(c echo.Context) error {
-		routes2, err := AucklandTransportGTFSData.GetRoutes()
+		routes, err := AucklandTransportGTFSData.GetRoutes()
 
-		if len(routes2) == 0 || err != nil {
-			return c.String(404, "No routes found")
+		if len(routes) == 0 || err != nil {
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no routes found",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, routes2)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    routes,
+		})
 	})
 
 	//Return a route by routeId
 	routesRouter.GET("/:routeID", func(c echo.Context) error {
 		routeID := c.PathParam("routeID")
-		routes2, err := AucklandTransportGTFSData.SearchForRouteByID(routeID)
+		routes, err := AucklandTransportGTFSData.SearchForRouteByID(routeID)
 
-		if len(routes2) == 0 || err != nil {
-			return c.String(404, "No routes found")
+		if len(routes) == 0 || err != nil {
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no route found",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, routes2)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    routes,
+		})
 	})
 
 	//Returns stops for a trip by tripId
@@ -630,10 +738,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stops, err := AucklandTransportGTFSData.GetStopsForTripID(tripId)
 		if len(stops) == 0 || err != nil {
-			return c.String(400, "No stops found for trip")
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no stops found for trip",
+				Data:    nil,
+			})
 		}
 
-		return c.JSON(http.StatusOK, stops)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    stops,
+		})
 	})
 
 	//Returns alerts from AT for a stop
@@ -642,13 +758,21 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopName)
 		if err != nil {
-			return c.String(http.StatusNotFound, "No stop found with name")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop name/code",
+				Data:    nil,
+			})
 		}
 		childStops, _ := AucklandTransportGTFSData.GetChildStopsByParentStopID(stop.StopId)
 
 		alerts, err := alerts.GetAlerts()
 		if err != nil {
-			return c.String(500, "No alerts found")
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no alerts found",
+				Data:    nil,
+			})
 		}
 
 		var foundRoutes []gtfs.Route
@@ -668,7 +792,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 
 		if len(foundRoutes) == 0 {
-			return c.String(404, "No routes found for stop")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no routes found for stop",
+				Data:    nil,
+			})
 		}
 
 		var foundAlerts rt.AlertMap
@@ -701,13 +829,21 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		if date != "" {
 			// If the date format is invalid, return an error
 			if !dateRegex.MatchString(date) {
-				return c.String(400, "Invalid date format")
+				return c.JSON(http.StatusBadRequest, Response{
+					Code:    http.StatusBadRequest,
+					Message: "invalid date format",
+					Data:    nil,
+				})
 			}
 
 			// Try to parse the date as an integer
 			dateNumber, err := strconv.ParseInt(date, 10, 64)
 			if err != nil {
-				return c.String(500, "Failed to parse date")
+				return c.JSON(http.StatusBadRequest, Response{
+					Code:    http.StatusBadRequest,
+					Message: "invalid date",
+					Data:    nil,
+				})
 			}
 
 			// Convert the timestamp to a date, truncating to the day
@@ -736,12 +872,24 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			}
 
 			if len(filteredAlerts) >= 1 {
-				return c.JSON(http.StatusOK, filteredAlerts)
+				return c.JSON(http.StatusOK, Response{
+					Code:    http.StatusOK,
+					Message: "",
+					Data:    filteredAlerts,
+				})
 			} else {
-				return c.String(404, "No alerts found for route")
+				return c.JSON(http.StatusNotFound, Response{
+					Code:    http.StatusNotFound,
+					Message: "no alerts found for stop",
+					Data:    nil,
+				})
 			}
 		} else {
-			return c.JSON(http.StatusOK, foundAlerts)
+			return c.JSON(http.StatusOK, Response{
+				Code:    http.StatusOK,
+				Message: "",
+				Data:    foundAlerts,
+			})
 		}
 
 	})
@@ -754,18 +902,27 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		shapes, err := AucklandTransportGTFSData.GetShapeByTripID(tripId)
 		if err != nil {
 			fmt.Println(err)
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no route line found",
+				Data:    nil,
+			})
 		}
 		geoJson, err := shapes.ToGeoJSON()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "An error occurred getting geojson",
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "problem generating route line",
+				Data:    nil,
 			})
 		}
 
 		route, err := AucklandTransportGTFSData.GetRouteByID(routeId)
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{
-				"error": "invalid route id",
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
 			})
 		}
 
@@ -786,11 +943,19 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		vehicles, err := vehicles.GetVehicles()
 		if err != nil {
-			return c.String(500, "An error occurred getting vehicles")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no vehicles found",
+				Data:    nil,
+			})
 		}
 		tripupdates, err := tripUpdates.GetTripUpdates()
 		if err != nil {
-			return c.String(500, "An error occurred getting trip updates")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no trip updates found",
+				Data:    nil,
+			})
 		}
 
 		type res struct {
@@ -811,7 +976,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			}
 		}
 
-		return c.JSON(http.StatusOK, result)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    result,
+		})
 	})
 
 	//Returns the location of a vehicle by tripId
@@ -820,11 +989,19 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		vehicles, err := vehicles.GetVehicles()
 		if err != nil {
-			return c.String(500, "An error occurred getting vehicles")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no vehicles found",
+				Data:    nil,
+			})
 		}
 		tripupdates, err := tripUpdates.GetTripUpdates()
 		if err != nil {
-			return c.String(500, "An error occurred getting trip updates")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no trip updates found",
+				Data:    nil,
+			})
 		}
 
 		type res struct {
@@ -860,19 +1037,29 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		// Convert lat and lon to float64
 		lat, err := strconv.ParseFloat(latStr, 64)
 		if err != nil {
-			log.Printf("Error parsing latitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid lat",
+				Data:    nil,
+			})
 		}
 
 		lon, err := strconv.ParseFloat(lonStr, 64)
 		if err != nil {
-			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(400, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid lon",
+				Data:    nil,
+			})
 		}
 
 		stops, err := AucklandTransportGTFSData.GetStops(true)
 		if err != nil {
-			return c.JSON(500, "An error occurred retrieving stops")
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no stops found",
+				Data:    nil,
+			})
 		}
 
 		var sortedArray gtfs.Stops
@@ -886,7 +1073,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 		closetStop := sortedArray.FindClosestStops(lat, lon)
 
-		return c.JSON(http.StatusOK, closetStop)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    closetStop,
+		})
 	})
 
 	//Finds a walking route from lat,lon to lat,lon using osrm
@@ -901,39 +1092,63 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		method := c.FormValue("method")
 
 		if method == "" {
-			return c.String(http.StatusBadRequest, "Missing method")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "missing method (walking/driving)",
+				Data:    nil,
+			})
 		}
 
 		// Convert lat and lon to float64
 		slat, err := strconv.ParseFloat(slatStr, 64)
 		if err != nil {
-			log.Printf("Error parsing latitude: %v\n", err)
-			return c.String(http.StatusBadRequest, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid start lat",
+				Data:    nil,
+			})
 		}
 
 		slon, err := strconv.ParseFloat(slonStr, 64)
 		if err != nil {
-			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(http.StatusBadRequest, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid start lon",
+				Data:    nil,
+			})
 		}
 
 		elat, err := strconv.ParseFloat(elatStr, 64)
 		if err != nil {
-			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(http.StatusBadRequest, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid end lat",
+				Data:    nil,
+			})
 		}
 
 		elon, err := strconv.ParseFloat(elonStr, 64)
 		if err != nil {
-			log.Printf("Error parsing longitude: %v\n", err)
-			return c.String(http.StatusBadRequest, "Invalid location data")
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid end lon",
+				Data:    nil,
+			})
 		}
 
 		if slat == 0 || slon == 0 {
-			return c.String(http.StatusBadRequest, "Invalid start location data")
+			return c.JSON(http.StatusTeapot, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid start lat & lon",
+				Data:    nil,
+			})
 		}
 		if elat == 0 || elon == 0 {
-			return c.String(http.StatusBadRequest, "Invalid end location data")
+			return c.JSON(http.StatusTeapot, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid end lat & lon",
+				Data:    nil,
+			})
 		}
 
 		start := routing.Coordinates{Lat: slat, Lon: slon} // Start point
@@ -950,7 +1165,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			case "driving":
 				result = routing.GetDrivingDirections(start, end)
 			default:
-				c.String(http.StatusBadRequest, "Invalid method")
+				c.JSON(http.StatusBadRequest, Response{
+					Code:    http.StatusBadRequest,
+					Message: "invalid method",
+					Data:    nil,
+				})
 				return
 			}
 		}()
@@ -958,12 +1177,24 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		select {
 		case <-ctx.Done():
 			log.Println("Request timed out")
-			return c.String(http.StatusGatewayTimeout, "Request timed out")
+			return c.JSON(http.StatusRequestTimeout, Response{
+				Code:    http.StatusRequestTimeout,
+				Message: "request took too long",
+				Data:    nil,
+			})
 		case <-done:
 			if len(result.Features) == 0 {
-				return c.JSON(http.StatusBadRequest, "No route found")
+				return c.JSON(http.StatusNotFound, Response{
+					Code:    http.StatusNotFound,
+					Message: "no route found",
+					Data:    nil,
+				})
 			}
-			return c.JSON(http.StatusOK, result)
+			return c.JSON(http.StatusOK, Response{
+				Code:    http.StatusOK,
+				Message: "",
+				Data:    result,
+			})
 		}
 	})
 
