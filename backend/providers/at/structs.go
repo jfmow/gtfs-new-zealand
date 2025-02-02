@@ -1,7 +1,5 @@
 package at
 
-import "github.com/jfmow/gtfs"
-
 type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -11,29 +9,35 @@ type Response struct {
 
 // Services
 type ServicesResponse2 struct {
-	TripId string `json:"trip_id"`
-	Route  struct {
-		RouteId        string `json:"route_id"`
-		RouteShortName string `json:"route_short_name"`
-		RouteColor     string `json:"route_color"`
-	} `json:"route"`
-	Service struct {
-		ArrivalTime      string    `json:"arrival_time"`
-		TripId           string    `json:"trip_id"`
-		Destination      string    `json:"destination"`
-		Platform         string    `json:"platform"`
-		Bikes            bool      `json:"bikes"`
-		WheelChairs      bool      `json:"wheelchairs"`
-		NextStop         gtfs.Stop `json:"next_stop"`
-		FinalStop        gtfs.Stop `json:"final_stop"`
-		StopsTillArrival int       `json:"stops_away"`
-	} `json:"service"`
-	Realtime struct {
-		Has struct {
-			Vehicle    bool `json:"vehicle"`
-			TripUpdate bool `json:"trip_update"`
-		} `json:"has"`
-	} `json:"realtime"`
+	Time int64  `json:"time,omitempty"`
+	Type string `json:"type"` //service, trip update, vehicle
+
+	TripId      string `json:"trip_id,omitempty"`
+	Headsign    string `json:"headsign,omitempty"`
+	ArrivalTime string `json:"arrival_time,omitempty"`
+	Platform    string `json:"platform,omitempty"`
+	StopsAway   int16  `json:"stops_away,omitempty"`
+	Occupancy   int8   `json:"occupancy,omitempty"`
+	Canceled    bool   `json:"canceled"`
+
+	Route *ServicesRoute `json:"route,omitempty"`
+
+	Stop *ServicesStop `json:"stop,omitempty"`
+
+	Tracking int8 `json:"tracking"` //0: no, 1: yes, 2: loading
+}
+
+type ServicesRoute struct {
+	RouteId        string `json:"id,omitempty"`
+	RouteShortName string `json:"name,omitempty"`
+	RouteColor     string `json:"color,omitempty"`
+}
+
+type ServicesStop struct {
+	Lat  float64 `json:"lat"`
+	Lon  float64 `json:"lon"`
+	Id   string  `json:"id"`
+	Name string  `json:"name"`
 }
 
 // Routes

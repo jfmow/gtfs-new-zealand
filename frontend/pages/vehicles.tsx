@@ -44,7 +44,7 @@ export default function Vehicles() {
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     {selectedVehicle !== null ? (
-                        <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} vehicle={selectedVehicle.vehicle} tripUpdate={selectedVehicle.trip_update} />
+                        <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.vehicle.trip.trip_id} />
                     ) : null}
 
                     {error !== "" ? (

@@ -176,136 +176,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		c.Start()
 	}
 
-	notificationRouter.POST("/add", func(c echo.Context) error {
-		stopIdOrName := c.FormValue("stopIdOrName")
-
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop id",
-				Data:    nil,
-			})
-		}
-
-		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, AucklandTransportGTFSData)
-		if err != nil {
-			fmt.Println(err)
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid subscription data",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(200, Response{
-			Code:    200,
-			Message: "added",
-			Data:    nil,
-		})
-	})
-
-	notificationRouter.POST("/refresh", func(c echo.Context) error {
-		old_endpoint := c.FormValue("old_endpoint")
-		old_p256dh := c.FormValue("old_p256dh")
-		old_auth := c.FormValue("old_auth")
-
-		new_endpoint := c.FormValue("new_endpoint")
-		new_p256dh := c.FormValue("new_p256dh")
-		new_auth := c.FormValue("new_auth")
-
-		_, err := notificationDB.RefreshSubscription(Notification{
-			Endpoint: old_endpoint,
-			P256dh:   old_p256dh,
-			Auth:     old_auth,
-		}, Notification{
-			Endpoint: new_endpoint,
-			P256dh:   new_p256dh,
-			Auth:     new_auth,
-		})
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid subscription data",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(200, Response{
-			Code:    200,
-			Message: "refreshed subscription",
-			Data:    nil,
-		})
-	})
-
-	notificationRouter.POST("/find-client", func(c echo.Context) error {
-		stopIdOrName := c.FormValue("stopIdOrName")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		var stopId string = ""
-
-		if stopIdOrName != "" {
-			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
-			if err != nil {
-				return c.String(http.StatusBadRequest, "invalid stop")
-			}
-			stopId = stop.StopId
-		}
-
-		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid subscription data",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(200, Response{
-			Code:    200,
-			Message: "subscription found",
-			Data:    notification,
-		})
-	})
-
-	notificationRouter.POST("/remove", func(c echo.Context) error {
-		stopIdOrName := c.FormValue("stopIdOrName")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		var stopId string = ""
-
-		if stopIdOrName != "" {
-			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
-			if err != nil {
-				return c.String(http.StatusBadRequest, "invalid stop")
-			}
-			stopId = stop.StopId
-		}
-
-		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid subscription data",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(200, Response{
-			Code:    200,
-			Message: "subscription removed",
-			Data:    nil,
-		})
-	})
-
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	servicesRouter.GET("/:stationName", func(c echo.Context) error {
 		defer func() {
@@ -347,11 +217,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			})
 		}
 
-		// Sort services by arrival time
-		sort.Slice(services, func(i, j int) bool {
-			return services[i].ArrivalTime < services[j].ArrivalTime
-		})
-
 		// Set SSE headers
 		w := c.Response()
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -370,11 +235,29 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		sendTripUpdates := func(ctx context.Context, w http.ResponseWriter, flusher http.Flusher) {
 			go func() {
 				for _, service := range services {
-					var response ServicesResponse
-					response.Type = "service_data"
-					response.Data.ServiceData = service
-					response.Data.TripId = service.TripID
-					response.Data.Done.Service = true
+					var response ServicesResponse2
+					response.Type = "service"
+					response.ArrivalTime = service.ArrivalTime
+					if service.StopHeadsign != "" {
+						response.Headsign = service.StopHeadsign
+					} else {
+						response.Headsign = service.TripData.TripHeadsign
+					}
+					response.Platform = service.Platform
+					response.Route = &ServicesRoute{
+						RouteId:        service.TripData.RouteID,
+						RouteShortName: service.RouteShortName,
+						RouteColor:     service.RouteColor,
+					}
+					response.Stop = &ServicesStop{
+						Id:   service.StopId,
+						Lat:  service.StopData.StopLat,
+						Lon:  service.StopData.StopLon,
+						Name: stop.StopName,
+					}
+					response.Tracking = 2
+					response.TripId = service.TripID
+					response.Time = time.Now().In(localTimeZone).Unix()
 
 					jsonData, _ := json.Marshal(response)
 
@@ -404,35 +287,53 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				tripUpdatesData, _ := tripUpdates.GetTripUpdates()
 
 				for _, service := range services {
-					var ResponseData ServicesResponseData
+					var ResponseData ServicesResponse2
+					ResponseData.Type = "trip update"
 					if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-						ResponseData.Has.TripUpdate = true
-						ResponseData.TripUpdate = tripUpdate
-					}
-					ResponseData.TripId = service.TripID
-					ResponseData.Done.TripUpdate = true
-					response := ServicesResponse{Type: "trip_update", Data: ResponseData, Time: time.Now().In(localTimeZone).Unix()}
-					jsonData, _ := json.Marshal(response)
 
-					select {
-					case <-ctx.Done():
-						return
-					default:
-						mu.Lock()
-						if ctx.Err() != nil { // Check if the context is canceled
-							log.Printf("Client disconnected")
-							mu.Unlock()
-							return
+						defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
+						if err != nil {
+							continue
 						}
 
-						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
-							log.Printf("Error writing trip updates: %v", err)
-							mu.Unlock()
-							return
+						// Add delay
+						newTime := defaultArrivalTime.Add(time.Duration(tripUpdate.Delay) * time.Second)
+
+						// Correct time formatting
+						formattedTime := newTime.Format("15:04:05")
+
+						ResponseData.ArrivalTime = formattedTime
+
+						ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
+						if tripUpdate.StopTimeUpdate.ScheduleRelationship == 3 {
+							ResponseData.Canceled = true
 						}
-						flusher.Flush()
-						mu.Unlock()
+
+						ResponseData.TripId = service.TripID
+						ResponseData.Time = time.Now().In(localTimeZone).Unix()
+						jsonData, _ := json.Marshal(ResponseData)
+
+						select {
+						case <-ctx.Done():
+							return
+						default:
+							mu.Lock()
+							if ctx.Err() != nil { // Check if the context is canceled
+								log.Printf("Client disconnected")
+								mu.Unlock()
+								return
+							}
+
+							if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
+								log.Printf("Error writing trip updates: %v", err)
+								mu.Unlock()
+								return
+							}
+							flusher.Flush()
+							mu.Unlock()
+						}
 					}
+
 				}
 			}()
 
@@ -440,20 +341,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				vehicleLocations, _ := vehicles.GetVehicles()
 
 				for _, service := range services {
-					var ResponseData ServicesResponseData
+					var ResponseData ServicesResponse2
+					ResponseData.Type = "vehicle"
 					if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
-						ResponseData.Has.Vehicle = true
-						route, err := AucklandTransportGTFSData.GetRouteByID((string)(foundVehicle.Trip.RouteID))
-						if err == nil {
-							foundVehicle.Trip.RouteID = rt.RouteID(route.RouteId)
-							foundVehicle.Vehicle.Type = route.VehicleType
-						}
-						ResponseData.Vehicle = foundVehicle
+						ResponseData.Occupancy = int8(foundVehicle.OccupancyStatus)
+						ResponseData.Tracking = 1
+					} else {
+						ResponseData.Tracking = 0
 					}
+
 					ResponseData.TripId = service.TripID
-					ResponseData.Done.Vehicle = true
-					response := ServicesResponse{Type: "vehicle", Data: ResponseData, Time: time.Now().In(localTimeZone).Unix()}
-					jsonData, _ := json.Marshal(response)
+					ResponseData.Time = time.Now().In(localTimeZone).Unix()
+					jsonData, _ := json.Marshal(ResponseData)
 
 					select {
 					case <-ctx.Done():
@@ -474,6 +373,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 						flusher.Flush()
 						mu.Unlock()
 					}
+
 				}
 			}()
 		}
@@ -1032,7 +932,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			}
 		}
 
-		return c.JSON(http.StatusOK, result)
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    result,
+		})
 	})
 
 	//Returns the closest stop to a given lat,lon
@@ -1202,6 +1106,136 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 				Data:    result,
 			})
 		}
+	})
+
+	notificationRouter.POST("/add", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop id",
+				Data:    nil,
+			})
+		}
+
+		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, AucklandTransportGTFSData)
+		if err != nil {
+			fmt.Println(err)
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "added",
+			Data:    nil,
+		})
+	})
+
+	notificationRouter.POST("/refresh", func(c echo.Context) error {
+		old_endpoint := c.FormValue("old_endpoint")
+		old_p256dh := c.FormValue("old_p256dh")
+		old_auth := c.FormValue("old_auth")
+
+		new_endpoint := c.FormValue("new_endpoint")
+		new_p256dh := c.FormValue("new_p256dh")
+		new_auth := c.FormValue("new_auth")
+
+		_, err := notificationDB.RefreshSubscription(Notification{
+			Endpoint: old_endpoint,
+			P256dh:   old_p256dh,
+			Auth:     old_auth,
+		}, Notification{
+			Endpoint: new_endpoint,
+			P256dh:   new_p256dh,
+			Auth:     new_auth,
+		})
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "refreshed subscription",
+			Data:    nil,
+		})
+	})
+
+	notificationRouter.POST("/find-client", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		var stopId string = ""
+
+		if stopIdOrName != "" {
+			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			if err != nil {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = stop.StopId
+		}
+
+		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription found",
+			Data:    notification,
+		})
+	})
+
+	notificationRouter.POST("/remove", func(c echo.Context) error {
+		stopIdOrName := c.FormValue("stopIdOrName")
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		var stopId string = ""
+
+		if stopIdOrName != "" {
+			stop, err := AucklandTransportGTFSData.GetStopByNameOrCode(stopIdOrName)
+			if err != nil {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = stop.StopId
+		}
+
+		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription removed",
+			Data:    nil,
+		})
 	})
 
 }

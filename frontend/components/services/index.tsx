@@ -7,9 +7,9 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle, Loader2 } from "lucide-react"
-import { Service, TrainsApiResponse } from "./types"
-import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
+import { AlertCircle } from "lucide-react"
+import { TrainsApiResponse } from "./types"
+import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import { Toggle } from "../ui/toggle"
@@ -19,19 +19,46 @@ interface ServicesProps {
     filterDate: Date | undefined
 }
 
-interface SSEData {
-    type: "service_data" | "vehicle" | "trip_update"
-    data: Service
-    time: number
+interface Service {
+    time: number;
+    type: "service" | "trip update" | "vehicle"; // "initial" or "update"
+
+    trip_id: string;
+    headsign: string;
+    arrival_time: string;
+    platform: string;
+    stops_away: number;
+    occupancy: number;
+    canceled: boolean;
+
+    route: ServicesRoute;
+
+    tracking: 0 | 1 | 2;
+
+    stop: ServicesStop;
 }
 
+interface ServicesRoute {
+    id: string;
+    name: string;
+    color: string;
+}
+
+interface ServicesStop {
+    id: string;
+    lat: number;
+    lon: number;
+    name: string;
+}
+
+
 export default function Services({ stopName, filterDate }: ServicesProps) {
-    const [services, setServices] = useState<SSEData[]>([]);
+    const [services, setServices] = useState<Service[]>([]);
     const [errorMessage, setErrorMessage] = useState("");
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
 
-    const getUniquePlatforms = (services: SSEData[]) => {
-        const platforms = services.map(service => service.data.service_data.platform);
+    const getUniquePlatforms = (services: Service[]) => {
+        const platforms = services.map(service => service.platform);
         return [...new Set(platforms)].filter((i) => i !== "").sort((a, b) => {
             if (!isNaN(Number(a)) && !isNaN(Number(b))) {
                 return Number(a) - Number(b);
@@ -58,7 +85,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
                 eventSource.onmessage = (event) => {
                     try {
-                        const parsedData: SSEData = JSON.parse(event.data);
+                        const parsedData: Service = JSON.parse(event.data);
 
                         if (Object.keys(parsedData).length > 0) {
                             setServices((prev) => [...prev, parsedData]);
@@ -83,7 +110,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     )}`
                 )
                     .then(async (res) => {
-                        const data: TrainsApiResponse<SSEData[]> = await res.json();
+                        const data: TrainsApiResponse<Service[]> = await res.json();
                         if (res.ok) {
                             setServices(data.data);
                             setErrorMessage("");
@@ -154,71 +181,61 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                         </div>
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
-                        {getService(services).filter((item) => item.service_data.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(addSecondsToTime(a.service_data.arrival_time, a.trip_update.delay)) - timeTillArrival(addSecondsToTime(b.service_data.arrival_time, b.trip_update.delay))).map(({ service_data, vehicle, trip_update, has, done }) => (
-                            <li key={service_data.trip_id} className={`${service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1 >= 0 ? "" : "hidden"} overflow-hidden`}>
+                        {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
+                            <li key={service.trip_id} className={`overflow-hidden`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
                                             <div className="flex items-center justify-between overflow-hidden">
                                                 <div className="shrink flex-1 truncate overflow-hidden">
-                                                    {trip_update.trip.schedule_relationship === 3 ? (
+                                                    {service.canceled ? (
                                                         <>
                                                             <span className="text-red-500">Cancled | </span>
-                                                            <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
+                                                            <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service.headsign))} </span>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {service_data.stop_sequence - trip_update.stop_time_update.stop_sequence <= 0 && timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) <= 2 ? (
+                                                            {service.stops_away <= 0 && timeTillArrival(service.arrival_time) <= 2 ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
-                                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))} </span>
+                                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service.headsign))} </span>
                                                                 </>
                                                             ) : (
                                                                 <span className="">
-                                                                    {formatTextToNiceLookingWords(removeShortHands(service_data.stop_headsign || service_data.trip_data.trip_headsign))}
+                                                                    {formatTextToNiceLookingWords(removeShortHands(service.headsign))}
                                                                 </span>
                                                             )}
                                                         </>
                                                     )}
                                                 </div>
                                                 <span
-                                                    className="shrink-0 px-2 py-1 rounded text-zinc-100 text-sm"
+                                                    className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
                                                     style={
-                                                        service_data.route_color !== "" ? { background: "#" + service_data.route_color } : { background: "#71717a" }
+                                                        service.route.color !== "" ? { background: "#" + service.route.color } : { background: "#71717a" }
                                                     }
                                                 >
-                                                    {service_data.trip_data.route_id}
+                                                    {service.route.name}
                                                 </span>
                                             </div>
                                         </CardTitle>
 
                                         <CardDescription>
-                                            <div className="flex sm:flex-col  justify-between">
-                                                <div>
-                                                    <p className="">Arriving: {convert24hTo12h(addSecondsToTime(service_data.arrival_time, trip_update.delay))}</p>
-                                                    {service_data.platform !== "" && service_data.platform !== "no platform" ? (
-                                                        <p className="text-blue-400">Platform: <span className="font-medium">{service_data.platform}</span></p>
-                                                    ) : null}
-                                                </div>
-                                                <div>
-                                                    <p>Stops away: {timeTillArrival(trip_update.trip.start_time) > 0 ? ("Not in service yet") : (service_data.stop_sequence - trip_update.stop_time_update.stop_sequence - 1)}</p>
-                                                    <p>Occupancy: <OccupancyStatusIndicator type="message" value={vehicle.occupancy_status} /></p>
-                                                </div>
+                                            <div className="">
+                                                <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
+                                                {service.platform !== "" && service.platform !== "no platform" ? (
+                                                    <p className="text-blue-400">Platform: <span className="font-medium">{service.platform}</span></p>
+                                                ) : null}
+                                                <p>Stops away: {service.stops_away}</p>
+                                                <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
                                             </div>
                                         </CardDescription>
                                     </CardHeader>
                                     {!filterDate ? (
                                         <CardContent>
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
-                                                <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} />
-                                                <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full ${timeTillArrival(service_data.arrival_time) > timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? "text-orange-400" : timeTillArrival(service_data.arrival_time) === timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? " text-green-400" : " text-red-400"}`}>
-                                                    {!done.trip_update ? (
-                                                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                                    ) : (
-                                                        <>
-                                                            {timeTillArrivalString(addSecondsToTime(service_data.arrival_time, trip_update.delay))}
-                                                        </>
-                                                    )}
+                                                <ServiceTrackerModal currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
+                                                <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
+                                                    {timeTillArrivalString(service.arrival_time)}
                                                 </span>
                                             </div>
                                         </CardContent>
@@ -233,46 +250,31 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     )
 }
 
-function getService(serviceData: SSEData[]): Service[] {
-    const services = serviceData.filter((item) => item.type === "service_data");
+function getService(serviceData: Service[]): Service[] {
+    const services = serviceData.filter((item) => item.type === "service").sort((a, b) => b.time - a.time);
     if (services.length === 0) {
         return [];
     }
 
-    const tripUpdates = serviceData.filter((item) => item.type === "trip_update").sort((a, b) => b.time - a.time);
+    const tripUpdates = serviceData.filter((item) => item.type === "trip update").sort((a, b) => b.time - a.time);
     const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle").sort((a, b) => b.time - a.time);
 
     const seenTripIds = new Set<string>(); // Keep track of trip IDs already processed
 
-    return services.reduce((result, service) => {
-        const tripId = service.data.trip_id;
-        if (seenTripIds.has(tripId)) {
-            return result; // Skip duplicate trip IDs
+    const result: Service[] = []
+
+    services.map((service) => {
+        if (!seenTripIds.has(service.trip_id)) {
+            seenTripIds.add(service.trip_id)
+            const latest_trip_update = tripUpdates.find((item) => item.trip_id === service.trip_id)
+            const latest_vehicle_update = vehicleUpdates.find((item) => item.trip_id === service.trip_id)
+
+            result.push({ ...service, ...latest_trip_update, ...latest_vehicle_update, type: "service" })
         }
-        seenTripIds.add(tripId); // Mark trip ID as processed
+    })
 
-        const trip = tripUpdates.find((item) => item.data.trip_id === tripId)?.data;
-        const vehicle = vehicleUpdates.find((item) => item.data.trip_id === tripId)?.data;
 
-        if (trip && trip.done.trip_update) {
-            service.data.done.trip_update = true;
-            if (trip.has.trip_update) {
-                service.data.trip_update = trip.trip_update;
-                service.data.has.trip_update = true;
-            }
-        }
-
-        if (vehicle && vehicle.done.vehicle) {
-            service.data.done.vehicle = true;
-            if (vehicle.has.vehicle) {
-                service.data.vehicle = vehicle.vehicle;
-                service.data.has.vehicle = true;
-            }
-        }
-
-        result.push(service.data);
-        return result;
-    }, [] as Service[]);
+    return result
 }
 
 function removeShortHands(name: string) {
