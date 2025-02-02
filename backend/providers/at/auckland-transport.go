@@ -749,6 +749,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	//Returns the route of a route as geo json
 	navigationRouter.POST("/geojson/shapes", func(c echo.Context) error {
 		tripId := c.FormValue("tripId")
+		routeId := c.FormValue("routeId")
 
 		shapes, err := AucklandTransportGTFSData.GetShapeByTripID(tripId)
 		if err != nil {
@@ -761,7 +762,22 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			})
 		}
 
-		return c.JSON(http.StatusOK, geoJson)
+		route, err := AucklandTransportGTFSData.GetRouteByID(routeId)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{
+				"error": "invalid route id",
+			})
+		}
+
+		type Response struct {
+			Color   string `json:"color"`
+			GeoJson any    `json:"geojson"`
+		}
+
+		return c.JSON(http.StatusOK, Response{
+			GeoJson: geoJson,
+			Color:   route.RouteColor,
+		})
 	})
 
 	//Returns all the locations of vehicles from the AT api

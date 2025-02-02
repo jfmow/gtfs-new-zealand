@@ -209,7 +209,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     {!filterDate ? (
                                         <CardContent>
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
-                                                <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} targetStopId={getService(services)[0].service_data.stop_id} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} routeColor={service_data.route_color} />
+                                                <ServiceTrackerModal loaded={done.vehicle} currentStop={service_data} tripUpdate={trip_update} vehicle={vehicle} has={has.vehicle} />
                                                 <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full ${timeTillArrival(service_data.arrival_time) > timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? "text-orange-400" : timeTillArrival(service_data.arrival_time) === timeTillArrival(addSecondsToTime(service_data.arrival_time, trip_update.delay)) ? " text-green-400" : " text-red-400"}`}>
                                                     {!done.trip_update ? (
                                                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
@@ -273,10 +273,6 @@ function getService(serviceData: SSEData[]): Service[] {
         return result;
     }, [] as Service[]);
 }
-
-
-
-
 
 function removeShortHands(name: string) {
     let newName = name;

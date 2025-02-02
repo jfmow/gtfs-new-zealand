@@ -37,16 +37,13 @@ interface ServiceTrackerModalProps {
     vehicle: TripUpdateVehicle
     tripUpdate: TripUpdate
     has: boolean
-    routeColor: string
-    targetStopId?: string
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
-    onlyVehicle?: boolean
     currentStop?: ServiceData
     loaded: boolean
 }
 
-export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, routeColor, defaultOpen, onOpenChange, onlyVehicle, targetStopId, currentStop }: ServiceTrackerModalProps) {
+export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, defaultOpen, onOpenChange, currentStop }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -112,9 +109,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
                                     <LeafletMap
                                         routeLine={{
                                             routeId: vehicle.trip.route_id,
-                                            routeColor: routeColor,
                                             tripId: vehicle.trip.trip_id,
-                                            vehicleType: vehicle.vehicle.type.toLowerCase()
                                         }}
                                         userLocation={location}
                                         mapItems={[
@@ -130,7 +125,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
                                             ...(stops ? stops.stops.map((item) => ({
                                                 lat: item.stop_lat,
                                                 lon: item.stop_lon,
-                                                icon: targetStopId === item.stop_id
+                                                icon: currentStop?.stop_id === item.stop_id
                                                     ? "marked stop marker"
                                                     : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
                                                 id: item.stop_name + " " + item.stop_code,
@@ -143,7 +138,7 @@ export default function ServiceTrackerModal({ loaded, vehicle, tripUpdate, has, 
                                         navPoints={undefined}
                                         mapID={"tracker" + Math.random()}
                                         height={"300px"}
-                                        variant={onlyVehicle || location[0] === 0 ? "firstItem" : "userAndFirstPoint"}
+                                        variant={"userAndFirstPoint"}
                                     />
                                 </Suspense>
 

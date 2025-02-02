@@ -1,4 +1,10 @@
-export interface GeoJSONResponse {
+export interface ShapesResponse {
+    color: string
+    geojson: GeoJSON
+}
+
+
+export interface GeoJSON {
     type: "FeatureCollection"; // Specify this as a fixed value
     features: Feature[];
 }

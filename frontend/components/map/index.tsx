@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import L, { Map, Marker, MarkerClusterGroup } from 'leaflet';
 import "leaflet.markercluster";
 import { buttonVariants } from "../ui/button";
-import { GeoJSONResponse } from "./geojson-types";
+import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
 
 interface MapItem {
@@ -18,21 +18,17 @@ interface MapItem {
     description: string
 }
 
-interface RouteLineData {
-    routeId: string;
-    vehicleType: string;
-    tripId: string;
-    routeColor: string;
-}
-
 interface MapWithVariantProps {
     userLocation?: [number, number];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    navPoints?: GeoJSONResponse; // Define a more specific type if available
+    navPoints?: GeoJSON; // Define a more specific type if available
     mapItems?: MapItem[];
     mapID: string;
     onMapItemClick?: (id: string) => void;
-    routeLine?: RouteLineData;
+    routeLine?: {
+        routeId: string;
+        tripId: string;
+    };
     height: string;
     zoom?: number;
     variant: "userLocation" | "userAndFirstPoint" | "firstAndSecondItem" | "firstItem";
@@ -68,10 +64,18 @@ export default function LeafletMap({
 
             switch (variant) {
                 case "userLocation":
-                    setMapView(map, zoom, userLocation);
+                    if (!hasUserLocation) {
+                        if (mapItems && mapItems.length > 0) setMapView(map, zoom, [mapItems[0].lat, mapItems[0].lon]);
+                    } else {
+                        setMapView(map, zoom, userLocation);
+                    }
                     break;
                 case "userAndFirstPoint":
-                    if (mapItems && mapItems.length > 0) setMapView(map, zoom, userLocation, [mapItems[0].lat, mapItems[0].lon]);
+                    if (!hasUserLocation) {
+                        if (mapItems && mapItems.length > 0) setMapView(map, zoom, [mapItems[0].lat, mapItems[0].lon]);
+                    } else {
+                        if (mapItems && mapItems.length > 0) setMapView(map, zoom, userLocation, [mapItems[0].lat, mapItems[0].lon]);
+                    }
                     break;
                 case "firstAndSecondItem":
                     if (mapItems && mapItems.length > 1) setMapView(map, zoom, [mapItems[0].lat, mapItems[0].lon], [mapItems[1].lat, mapItems[1].lon]);
@@ -86,7 +90,7 @@ export default function LeafletMap({
         }
 
         if (routeLine && routeLine.routeId) {
-            showRouteLine(map, routeLine, routeLineLayerRef);
+            showRouteLine(map, routeLine.routeId, routeLine.tripId, routeLineLayerRef);
         }
 
         if (navPoints) {
@@ -239,28 +243,26 @@ function setMapTileTheme(map: Map, theme: string) {
     }).addTo(map);
 }
 
-function showRouteLine(map: Map, routeLine: RouteLineData, routeLineRef: React.MutableRefObject<L.GeoJSON | null>) {
-    const { routeId, vehicleType, tripId, routeColor } = routeLine || {};
-
-    if (routeId && vehicleType) {
+function showRouteLine(map: Map, routeId: string, tripId: string, routeLineRef: React.MutableRefObject<L.GeoJSON | null>) {
+    if (routeId) {
         const showRouteLineOnMap = async (map: Map) => {
-
             try {
                 const form = new FormData()
                 form.set("tripId", tripId)
+                form.set("routeId", routeId)
                 const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/shapes`, {
                     method: "POST",
                     body: form
                 });
-                const data: GeoJSONResponse = await response.json();
+                const data: ShapesResponse = await response.json();
 
-                const filteredData = data;
+                const filteredData = data.geojson;
                 // Add GeoJSON data to the map with a smooth line
                 const routeLine = L.geoJSON(filteredData, {
                     //@ts-expect-error: is real config value
                     smoothFactor: 1.5, // Adjust the smoothness level
                     style: function () {
-                        return { color: routeColor !== "" && routeColor !== undefined ? `#${routeColor}` : '#db6ecb', weight: 4 }; // Customize the line color and thickness
+                        return { color: data.color !== "" ? `#${data.color}` : '#393939', weight: 4 }; // Customize the line color and thickness
                     }
                 })
                 map.addLayer(routeLine)
@@ -278,7 +280,7 @@ function showRouteLine(map: Map, routeLine: RouteLineData, routeLineRef: React.M
     }
 }
 
-function showNavigationRouteLineWalking(map: Map, navPoints: GeoJSONResponse) {
+function showNavigationRouteLineWalking(map: Map, navPoints: GeoJSON) {
     if (!navPoints || navPoints.features.length < 1) return
     const showNavLineOnMap = async (map: L.Map) => {
         // Add GeoJSON data to the map with a smooth line
