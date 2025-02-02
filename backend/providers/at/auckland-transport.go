@@ -447,18 +447,32 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			return services[i].ArrivalTime < services[j].ArrivalTime
 		})
 
-		var result []ServicesResponse
+		var result []ServicesResponse2
 
 		for _, service := range services {
-			var response ServicesResponse
-
-			response.Type = "service_data"
-			response.Data.ServiceData = service
-			response.Data.TripId = service.TripID
-			response.Data.Done.Service = true
-			response.Data.Done.TripUpdate = true
-			response.Data.Done.Vehicle = true
-			response.Time = now.Unix()
+			var response ServicesResponse2
+			response.Type = "service"
+			response.ArrivalTime = service.ArrivalTime
+			if service.StopHeadsign != "" {
+				response.Headsign = service.StopHeadsign
+			} else {
+				response.Headsign = service.TripData.TripHeadsign
+			}
+			response.Platform = service.Platform
+			response.Route = &ServicesRoute{
+				RouteId:        service.TripData.RouteID,
+				RouteShortName: service.RouteShortName,
+				RouteColor:     service.RouteColor,
+			}
+			response.Stop = &ServicesStop{
+				Id:   service.StopId,
+				Lat:  service.StopData.StopLat,
+				Lon:  service.StopData.StopLon,
+				Name: stop.StopName,
+			}
+			response.Tracking = 2
+			response.TripId = service.TripID
+			response.Time = time.Now().In(localTimeZone).Unix()
 
 			result = append(result, response)
 		}
