@@ -211,7 +211,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 <span
                                                     className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
                                                     style={
-                                                        service.route.color !== "" ? { background: "#" + service.route.color } : { background: "#71717a" }
+                                                        service.route?.color !== "" ? { background: "#" + service.route.color } : { background: "#71717a" }
                                                     }
                                                 >
                                                     {service.route.name}
