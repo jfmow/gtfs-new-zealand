@@ -6,7 +6,13 @@ const LeafletMap = lazy(() => import("@/components/map"));
 import ServiceTrackerModal from "@/components/services/tracker";
 import Head from "next/head";
 import { TrainsApiResponse } from "@/components/services/types";
-
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
 
 export default function Vehicles() {
     const { loading, location } = useUserLocation()
@@ -14,10 +20,11 @@ export default function Vehicles() {
     const [error, setError] = useState("")
 
     const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
+    const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
 
     useEffect(() => {
         async function getData() {
-            const data = await getVehicles()
+            const data = await getVehicles(vehicleType)
             if (data.error !== undefined) {
                 setError(data.error)
             }
@@ -31,7 +38,7 @@ export default function Vehicles() {
 
         // Clean up the interval when the component unmounts or stopName changes
         return () => clearInterval(intervalId);
-    }, [])
+    }, [vehicleType])
 
     if (loading) {
         return <LoadingSpinner height="100svh" />
@@ -43,6 +50,19 @@ export default function Vehicles() {
             <NavBar title="" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
+                    <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
+                        <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Vehicle type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">All Vehicles</SelectItem>
+                            <SelectItem value="Bus">Bus</SelectItem>
+                            <SelectItem value="Train">Train</SelectItem>
+                            <SelectItem value="Ferry">Ferry</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <div className="mb-4" />
+
                     {selectedVehicle !== null ? (
                         <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.vehicle.trip.trip_id} />
                     ) : null}
@@ -70,7 +90,7 @@ export default function Vehicles() {
 
 
                 </div>
-            </div>
+            </div >
         </>
     )
 }
@@ -79,8 +99,13 @@ type GetVehiclesResult =
     | { error: string; vehicles: null }
     | { error: undefined; vehicles: Vehicle[] };
 
-async function getVehicles(): Promise<GetVehiclesResult> {
-    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/vehicles/locations`)
+async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
+    const form = new FormData()
+    form.set("vehicle_type", vehicleType)
+    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/realtime/live`, {
+        method: "POST",
+        body: form
+    })
     const data: TrainsApiResponse<Vehicle[]> = await req.json()
     if (!req.ok) {
         console.log(data.message)

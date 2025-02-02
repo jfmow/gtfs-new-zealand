@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,26 +27,11 @@ var gzipConfig = middleware.GzipConfig{
 
 var localTimeZone = time.FixedZone("NZST", 13*60*60)
 
-type ServicesResponseData struct {
-	ServiceData gtfs.StopTimes `json:"service_data"`
-	TripUpdate  rt.TripUpdate  `json:"trip_update"`
-	Vehicle     rt.Vehicle     `json:"vehicle"`
-	Has         struct {
-		TripUpdate bool `json:"trip_update"`
-		Vehicle    bool `json:"vehicle"`
-	} `json:"has"`
-	Done struct {
-		Vehicle    bool `json:"vehicle"`
-		TripUpdate bool `json:"trip_update"`
-		Service    bool `json:"service_data"`
-	} `json:"done"`
-	TripId string `json:"trip_id"`
-}
-
-type ServicesResponse struct {
-	Type string               `json:"type"` // trip_update, vehicle, service_data
-	Data ServicesResponseData `json:"data"`
-	Time int64                `json:"time"`
+type Response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data"`
+	Time    int64  `json:"time"`
 }
 
 var notificationMutex sync.Mutex
@@ -78,13 +62,13 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 	servicesRouter := router.Group("/services")
 	stopsRouter := router.Group("/stops")
 	routesRouter := router.Group("/routes")
-	vehiclesRouter := router.Group("/vehicles")
+	realtimeRouter := router.Group("/realtime")
 	navigationRouter := router.Group("/map")
 	notificationRouter := router.Group("/notifications")
 
 	stopsRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	routesRouter.Use(middleware.GzipWithConfig(gzipConfig))
-	vehiclesRouter.Use(middleware.GzipWithConfig(gzipConfig))
+	realtimeRouter.Use(middleware.GzipWithConfig(gzipConfig))
 	navigationRouter.Use(middleware.GzipWithConfig(gzipConfig))
 
 	notificationDB, err := newDatabase(localTimeZone, "hi@suddsy.dev")
@@ -134,7 +118,7 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 	})
 
-	c.AddFunc("@every 00h03m00s", func() {
+	c.AddFunc("@every 00h05m00s", func() {
 		var limit = 500
 		var offset = 0
 		now := time.Now().In(localTimeZone)
@@ -484,28 +468,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		})
 	})
 
-	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
-	stopsRouter.GET("/find-stop/:stopName", func(c echo.Context) error {
-
-		stopName := c.PathParam("stopName")
-		children := c.QueryParam("children")
-
-		stops, err := AucklandTransportGTFSData.SearchForStopsByNameOrCode(stopName, children == "true")
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "no stops matching found",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    stops,
-		})
-	})
-
 	//Returns a route by routeId
 	routesRouter.GET("/find-route/:routeId", func(c echo.Context) error {
 
@@ -566,47 +528,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			})
 		}
 
-	})
-
-	//Returns a list of stops by type, bus, train, ferry, etc...
-	stopsRouter.GET("/typeof/:type", func(c echo.Context) error {
-		stopType := c.PathParam("type")
-		stops, err := AucklandTransportGTFSData.GetStops(true)
-		if len(stops) == 0 || err != nil {
-			fmt.Println(err)
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "no stops are stored in the database",
-				Data:    nil,
-			})
-		}
-		var filteredStops gtfs.Stops
-
-		for _, i := range stops {
-			if (i.LocationType == 0 && i.ParentStation == "") || i.LocationType == 1 {
-				switch stopType {
-				case "train":
-					if strings.Contains(i.StopName, "Train Station") {
-						filteredStops = append(filteredStops, i)
-					}
-				case "ferry":
-					if strings.Contains(i.StopName, "Terminal") {
-						filteredStops = append(filteredStops, i)
-					}
-				case "bus":
-					if !strings.Contains(i.StopName, "Terminal") && !strings.Contains(i.StopName, "Train Station") {
-						filteredStops = append(filteredStops, i)
-					}
-
-				}
-			}
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    filteredStops,
-		})
 	})
 
 	//Returns a list of routes from the AT api
@@ -810,149 +731,6 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 
 	})
 
-	//Returns the route of a route as geo json
-	navigationRouter.POST("/geojson/shapes", func(c echo.Context) error {
-		tripId := c.FormValue("tripId")
-		routeId := c.FormValue("routeId")
-
-		shapes, err := AucklandTransportGTFSData.GetShapeByTripID(tripId)
-		if err != nil {
-			fmt.Println(err)
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no route line found",
-				Data:    nil,
-			})
-		}
-		geoJson, err := shapes.ToGeoJSON()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "problem generating route line",
-				Data:    nil,
-			})
-		}
-
-		route, err := AucklandTransportGTFSData.GetRouteByID(routeId)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid route id",
-				Data:    nil,
-			})
-		}
-
-		type MapResponse struct {
-			Color   string `json:"color"`
-			GeoJson any    `json:"geojson"`
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data: MapResponse{
-				GeoJson: geoJson,
-				Color:   route.RouteColor,
-			},
-		})
-	})
-
-	//Returns all the locations of vehicles from the AT api
-	vehiclesRouter.GET("/locations", func(c echo.Context) error {
-		vehicleType := c.QueryParam("type")
-
-		vehicles, err := vehicles.GetVehicles()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no vehicles found",
-				Data:    nil,
-			})
-		}
-		tripupdates, err := tripUpdates.GetTripUpdates()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no trip updates found",
-				Data:    nil,
-			})
-		}
-
-		type res struct {
-			Vehicle    rt.Vehicle    `json:"vehicle"`
-			TripUpdate rt.TripUpdate `json:"trip_update"`
-		}
-
-		var result []res
-		for _, i := range vehicles {
-			var item res
-			route, err := AucklandTransportGTFSData.GetRouteByID((string)(i.Trip.RouteID))
-			if err == nil && (route.VehicleType == vehicleType || vehicleType == "") {
-				i.Trip.RouteID = rt.RouteID(route.RouteId)
-				i.Vehicle.Type = route.VehicleType
-				item.Vehicle = i
-				item.TripUpdate, _ = tripupdates.ByTripID(i.Trip.TripID)
-				result = append(result, item)
-			}
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    result,
-		})
-	})
-
-	//Returns the location of a vehicle by tripId
-	vehiclesRouter.GET("/locations/:tripid", func(c echo.Context) error {
-		tripID := c.PathParam("tripid")
-
-		vehicles, err := vehicles.GetVehicles()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no vehicles found",
-				Data:    nil,
-			})
-		}
-		tripupdates, err := tripUpdates.GetTripUpdates()
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no trip updates found",
-				Data:    nil,
-			})
-		}
-
-		type res struct {
-			Vehicle    rt.Vehicle    `json:"vehicle"`
-			TripUpdate rt.TripUpdate `json:"trip_update"`
-		}
-
-		var result res
-		for _, i := range vehicles {
-			var item res
-			if i.Trip.TripID == tripID {
-				route, err := AucklandTransportGTFSData.GetRouteByID((string)(i.Trip.RouteID))
-				if err == nil {
-					i.Trip.RouteID = rt.RouteID(route.RouteId)
-					i.Vehicle.Type = route.VehicleType
-
-				}
-				item.Vehicle = i
-				item.TripUpdate, _ = tripupdates.ByTripID(i.Trip.TripID)
-				result = item
-				break
-			}
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    result,
-		})
-	})
-
 	//Returns the closest stop to a given lat,lon
 	stopsRouter.POST("/closest-stop", func(c echo.Context) error {
 		latStr := c.FormValue("lat")
@@ -1001,6 +779,126 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			Code:    http.StatusOK,
 			Message: "",
 			Data:    closetStop,
+		})
+	})
+
+	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
+	stopsRouter.GET("/find-stop/:stopName", func(c echo.Context) error {
+
+		stopName := c.PathParam("stopName")
+		children := c.QueryParam("children")
+
+		stops, err := AucklandTransportGTFSData.SearchForStopsByNameOrCode(stopName, children == "true")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no stops matching found",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    stops,
+		})
+	})
+
+	//Returns the route of a route as geo json
+	navigationRouter.POST("/geojson/shapes", func(c echo.Context) error {
+		tripId := c.FormValue("tripId")
+		routeId := c.FormValue("routeId")
+
+		shapes, err := AucklandTransportGTFSData.GetShapeByTripID(tripId)
+		if err != nil {
+			fmt.Println(err)
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no route line found",
+				Data:    nil,
+			})
+		}
+		geoJson, err := shapes.ToGeoJSON()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "problem generating route line",
+				Data:    nil,
+			})
+		}
+
+		route, err := AucklandTransportGTFSData.GetRouteByID(routeId)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
+			})
+		}
+
+		type MapResponse struct {
+			Color   string `json:"color"`
+			GeoJson any    `json:"geojson"`
+		}
+
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data: MapResponse{
+				GeoJson: geoJson,
+				Color:   route.RouteColor,
+			},
+		})
+	})
+
+	//Returns all the locations of vehicles from the AT api
+	realtimeRouter.POST("/live", func(c echo.Context) error {
+		vehicleType := c.FormValue("vehicle_type")
+		tripId := c.FormValue("tripId")
+
+		vehicles, err := vehicles.GetVehicles()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no vehicles found",
+				Data:    nil,
+			})
+		}
+		tripupdates, err := tripUpdates.GetTripUpdates()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "no trip updates found",
+				Data:    nil,
+			})
+		}
+
+		type res struct {
+			Vehicle    rt.Vehicle    `json:"vehicle"`
+			TripUpdate rt.TripUpdate `json:"trip_update"`
+		}
+
+		var result []res
+		for _, i := range vehicles {
+			var item res
+			if tripId != "" && i.Trip.TripID != tripId {
+				//skip
+				continue
+			}
+			route, err := AucklandTransportGTFSData.GetRouteByID((string)(i.Trip.RouteID))
+			if err == nil && (route.VehicleType == vehicleType || vehicleType == "" || vehicleType == "all") {
+				i.Trip.RouteID = rt.RouteID(route.RouteId)
+				i.Vehicle.Type = route.VehicleType
+				item.Vehicle = i
+				item.TripUpdate, _ = tripupdates.ByTripID(i.Trip.TripID)
+				result = append(result, item)
+			}
+		}
+
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    result,
 		})
 	})
 

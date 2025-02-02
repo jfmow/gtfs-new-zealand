@@ -1,12 +1,5 @@
 package at
 
-type Response struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data"`
-	Time    int64  `json:"time"`
-}
-
 // Services
 type ServicesResponse2 struct {
 	Time int64  `json:"time,omitempty"`

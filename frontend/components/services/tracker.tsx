@@ -56,15 +56,19 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
     useEffect(() => {
         async function getData() {
             if (!has) return
-            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/vehicles/locations/${tripId}`).then(async res => {
-                const data: TrainsApiResponse<VehiclesResponse> = await res.json()
+            const form = new FormData()
+            form.set("tripId", tripId)
+            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/realtime/live`, {
+                method: "POST",
+                body: form
+            }).then(async res => {
+                const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
                 if (!res.ok) {
                     console.error(data.message)
                     return
                 } else {
-                    setVehicle(data.data.vehicle)
-
-                    const stopsData = await getStopsForTrip(tripId, data.data.trip_update.stop_time_update, false)
+                    setVehicle(data.data[0].vehicle)
+                    const stopsData = await getStopsForTrip(tripId, data.data[0].trip_update.stop_time_update, false)
                     setStops(stopsData)
                 }
             })
