@@ -1,3 +1,9 @@
+export interface TrainsApiResponse<DataType> {
+    code: number;
+    data: DataType;
+    message: string;
+}
+
 export interface Service {
     service_data: ServiceData;
     trip_update: TripUpdate;

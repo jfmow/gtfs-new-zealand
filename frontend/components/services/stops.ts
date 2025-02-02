@@ -1,4 +1,4 @@
-import { StopTimeUpdate } from "./types";
+import { StopTimeUpdate, TrainsApiResponse } from "./types";
 
 export interface StopForTripsData {
     next_stop: {
@@ -81,16 +81,16 @@ async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResul
 
     try {
         const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops/${tripId}`);
+        const data: TrainsApiResponse<Stop[]> = await response.json()
 
         // Check if the response is OK
         if (!response.ok) {
-            const errorMessage = await response.text();
-            return { error: errorMessage, stops: undefined };
+            console.error(data.message)
+            return { error: data.message, stops: undefined };
         }
 
         // Parse the response JSON and return services
-        const stops: Stop[] = await response.json();
-        return { error: undefined, stops: stops.map((item, index) => ({ ...item, index })) };
+        return { error: undefined, stops: data.data.map((item, index) => ({ ...item, index })) };
     } catch (error) {
         // Handle unexpected errors
         return { error: (error as Error).message, stops: undefined };

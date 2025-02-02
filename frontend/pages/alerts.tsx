@@ -17,6 +17,7 @@ import { BellDot, ThumbsUp } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/services/notifications"
+import { TrainsApiResponse } from "@/components/services/types"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -27,9 +28,15 @@ export default function Alerts() {
         if (found) {
             setLoading(true)
             fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops/alerts/${value}`)
-                .then(res => res.json())
-                .then(data => setAlerts(data))
-                .finally(() => setLoading(false))
+                .then(async res => {
+                    const data: TrainsApiResponse<Alert[]> = await res.json()
+                    if (!res.ok) {
+                        console.error(data.message)
+                    } else {
+                        setAlerts(data.data)
+                    }
+                    setLoading(false)
+                })
 
         }
     }, [value, found])

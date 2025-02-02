@@ -6,8 +6,9 @@ import LoadingSpinner from "../loading-spinner"
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer"
 import { Button } from "../ui/button"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
-import { GeoJSONResponse } from "./geojson-types";
+import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
+import { TrainsApiResponse } from "../services/types";
 
 interface NavigateProps {
     start: { lat: number, lon: number, name: string },
@@ -37,11 +38,11 @@ export default function Navigate({ start, end }: NavigateProps) {
                 openNavigation(end.lat, end.lon)
                 return
             }
-            const data: OSRMResponse = await response.json();
+            const data: TrainsApiResponse<OSRMResponse> = await response.json();
 
-            let filteredData = data;
+            let filteredData = data.data;
 
-            filteredData = { ...filteredData, travelTime: Math.floor(data.duration / 60) }
+            filteredData = { ...filteredData, travelTime: Math.floor(data.data.duration / 60) }
 
             setData(filteredData)
         } catch (e) {
@@ -80,7 +81,7 @@ export default function Navigate({ start, end }: NavigateProps) {
                         <div className="w-full rounded-xl overflow-hidden">
 
                             <Suspense>
-                                <LeafletMap mapID={"nav-map"} height={"400px"} variant={"userLocation"} navPoints={data as unknown as GeoJSONResponse} mapItems={[{
+                                <LeafletMap mapID={"nav-map"} height={"400px"} variant={"userLocation"} navPoints={data as unknown as GeoJSON} mapItems={[{
                                     lat: end.lat, lon: end.lon, icon: "stop marker",
                                     id: "",
                                     routeID: "",

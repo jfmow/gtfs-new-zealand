@@ -172,7 +172,9 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		}
 	})
 
-	c.Start()
+	if val := os.Getenv("PRODUCTION"); val != "false" {
+		c.Start()
+	}
 
 	notificationRouter.POST("/add", func(c echo.Context) error {
 		stopIdOrName := c.FormValue("stopIdOrName")
@@ -926,14 +928,18 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 			})
 		}
 
-		type Response struct {
+		type MapResponse struct {
 			Color   string `json:"color"`
 			GeoJson any    `json:"geojson"`
 		}
 
 		return c.JSON(http.StatusOK, Response{
-			GeoJson: geoJson,
-			Color:   route.RouteColor,
+			Code:    http.StatusOK,
+			Message: "",
+			Data: MapResponse{
+				GeoJson: geoJson,
+				Color:   route.RouteColor,
+			},
 		})
 	})
 

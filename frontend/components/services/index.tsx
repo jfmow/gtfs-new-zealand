@@ -8,7 +8,7 @@ import {
 } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle, Loader2 } from "lucide-react"
-import { Service } from "./types"
+import { Service, TrainsApiResponse } from "./types"
 import { addSecondsToTime, convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
@@ -83,11 +83,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     )}`
                 )
                     .then(async (res) => {
+                        const data: TrainsApiResponse<SSEData[]> = await res.json();
                         if (res.ok) {
-                            const data = await res.json();
-                            setServices(data);
+                            setServices(data.data);
                             setErrorMessage("");
                         } else {
+                            console.error(data.message)
                             setErrorMessage("Failed to fetch data from the server.");
                         }
                     })

@@ -6,6 +6,7 @@ import "leaflet.markercluster";
 import { buttonVariants } from "../ui/button";
 import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
+import { TrainsApiResponse } from "../services/types";
 
 interface MapItem {
     lat: number;
@@ -254,15 +255,20 @@ function showRouteLine(map: Map, routeId: string, tripId: string, routeLineRef: 
                     method: "POST",
                     body: form
                 });
-                const data: ShapesResponse = await response.json();
+                const data: TrainsApiResponse<ShapesResponse> = await response.json();
 
-                const filteredData = data.geojson;
+                if (!response.ok) {
+                    console.error(data.message)
+                    return
+                }
+
+                const filteredData = data.data.geojson;
                 // Add GeoJSON data to the map with a smooth line
                 const routeLine = L.geoJSON(filteredData, {
                     //@ts-expect-error: is real config value
                     smoothFactor: 1.5, // Adjust the smoothness level
                     style: function () {
-                        return { color: data.color !== "" ? `#${data.color}` : '#393939', weight: 4 }; // Customize the line color and thickness
+                        return { color: data.data.color !== "" ? `#${data.data.color}` : '#393939', weight: 4 }; // Customize the line color and thickness
                     }
                 })
                 map.addLayer(routeLine)

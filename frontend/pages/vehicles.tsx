@@ -5,6 +5,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map"));
 import ServiceTrackerModal from "@/components/services/tracker";
 import Head from "next/head";
+import { TrainsApiResponse } from "@/components/services/types";
 
 
 export default function Vehicles() {
@@ -80,12 +81,12 @@ type GetVehiclesResult =
 
 async function getVehicles(): Promise<GetVehiclesResult> {
     const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/vehicles/locations`)
+    const data: TrainsApiResponse<Vehicle[]> = await req.json()
     if (!req.ok) {
-        const errorMessage = await req.text()
-        return { error: errorMessage, vehicles: null };
+        console.log(data.message)
+        return { error: data.message, vehicles: null };
     }
-    const res: Vehicle[] = await req.json()
-    return { error: undefined, vehicles: res }
+    return { error: undefined, vehicles: data.data }
 }
 
 export interface Vehicle {

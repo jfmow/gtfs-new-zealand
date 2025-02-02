@@ -3,6 +3,7 @@ import { SearchInput } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { TrainsApiResponse } from "../services/types"
 
 export default function SearchForStop({ url, defaultValue }: { url: string, defaultValue: string }) {
     const [searchTerm, setSearchTerm] = useState("")
@@ -108,15 +109,15 @@ type searchData =
 async function searchForStop(search: string): Promise<searchData> {
     if (search.length <= 1) return { error: "Search too short", result: null }
     try {
-        const req = await fetch(
+        const response = await fetch(
             `${process.env.NEXT_PUBLIC_TRAINS}/at/stops/find-stop/${encodeURIComponent(search)}`
         )
-        if (!req.ok) {
-            const errorMessage = await req.text()
-            return { error: errorMessage, result: null }
+        const data: TrainsApiResponse<StopSearch[]> = await response.json()
+        if (!response.ok) {
+            console.error(data.message)
+            return { error: data.message, result: null }
         }
-        const res: StopSearch[] = await req.json()
-        return { error: undefined, result: res }
+        return { error: undefined, result: data.data }
     } catch {
         return { error: "An error occurred while fetching data", result: null }
     }
