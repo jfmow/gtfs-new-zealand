@@ -7,6 +7,7 @@ import { buttonVariants } from "../ui/button";
 import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
 import { TrainsApiResponse } from "../services/types";
+import { useTheme } from "../theme";
 
 interface MapItem {
     lat: number;
@@ -53,6 +54,7 @@ export default function LeafletMap({
     const routeLineLayerRef = useRef<L.GeoJSON | null>(null)
     const vehicleFlyControlRef = useRef<L.Control | null>(null)
     const userLocationFlyControlRef = useRef<L.Control | null>(null)
+    const { theme } = useTheme()
 
     useEffect(() => {
         const hasUserLocation = userLocation[0] !== 0 && userLocation[1] !== 0;
@@ -61,7 +63,6 @@ export default function LeafletMap({
         if (!mapRef.current) {
             map = L.map(mapID);
             mapRef.current = map;
-            setMapTileTheme(map, "light");
 
             switch (variant) {
                 case "userLocation":
@@ -90,6 +91,8 @@ export default function LeafletMap({
             map = mapRef.current;
         }
 
+        setMapTileTheme(map, theme);
+
         if (routeLine && routeLine.routeId) {
             showRouteLine(map, routeLine.routeId, routeLine.tripId, routeLineLayerRef);
         }
@@ -104,7 +107,7 @@ export default function LeafletMap({
             addMarkerToMap(userLocationMarkerRef.current, map, null, userLocation, "user", "", "user", () => console.log("Stop clicking yourself you fool"), 9999, "You");
             addUserLocationButton(map, userLocation, userLocationFlyControlRef);
         }
-    }, [userLocation, mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints]);
+    }, [userLocation, mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints, theme]);
 
     useEffect(() => {
         if (mapRef.current && mapItems) {

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
+import ThemePicker from './theme'
 
 export default function NavBar({ title }: { title: string }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -33,9 +34,12 @@ export default function NavBar({ title }: { title: string }) {
             </h4>
 
             {/* Desktop menu */}
-            <ul className="hidden md:flex font-medium text-sm items-center gap-4">
-                <NavItems />
-            </ul>
+            <div className='flex items-center gap-2'>
+                <ul className="hidden md:flex font-medium text-sm items-center gap-4">
+                    <NavItems />
+                </ul>
+                <ThemePicker />
+            </div>
 
 
             {/* Hamburger menu button (mobile only) */}
@@ -99,12 +103,12 @@ function NavItems({ mobile = false }: { mobile?: boolean }) {
                         className={
                             mobile
                                 ? 'mb-8'
-                                : 'rounded p-2 hover:bg-zinc-300/70 transition-colors duration-200'
+                                : 'rounded p-2 hover:bg-zinc-300/70 dark:hover:bg-zinc-700/70 transition-colors duration-200'
                         }
                     >
-                        <div className="flex items-center">
+                        <div className="flex items-center " >
                             <item.icon className={mobile ? 'w-6 h-6 mr-4' : 'w-4 h-4 mr-2'} />
-                            <span>{item.label}</span>
+                            <span >{item.label}</span>
                         </div>
                         {mobile && (
                             <p className="text-sm text-gray-500 mt-1 ml-10">

@@ -1,3 +1,4 @@
+import { ThemeProvider } from "@/components/theme";
 import { checkStopSubscription, register } from "@/lib/notifications";
 import "@/styles/globals.css";
 import type { AppProps } from "next/app";
@@ -11,7 +12,9 @@ export default function App({ Component, pageProps }: AppProps) {
     })
   }, [])
   return <>
-    <Toaster richColors position={"top-center"} />
-    <Component {...pageProps} />
+    <ThemeProvider>
+      <Toaster richColors position={"top-center"} />
+      <Component {...pageProps} />
+    </ThemeProvider>
   </>;
 }
