@@ -34,7 +34,7 @@ export default function NavBar({ title }: { title: string }) {
             </h4>
 
             {/* Desktop menu */}
-            <div className='flex items-center gap-2'>
+            <div className='hidden md:flex items-center gap-2'>
                 <ul className="hidden md:flex font-medium text-sm items-center gap-4">
                     <NavItems />
                 </ul>
@@ -42,14 +42,17 @@ export default function NavBar({ title }: { title: string }) {
             </div>
 
 
-            {/* Hamburger menu button (mobile only) */}
-            <button
-                className="md:hidden z-50"
-                onClick={toggleMenu}
-                aria-label="Toggle menu"
-            >
-                {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
+            <div className='flex md:hidden items-center gap-4'>
+                <ThemePicker />
+                {/* Hamburger menu button (mobile only) */}
+                <button
+                    className="md:hidden z-50"
+                    onClick={toggleMenu}
+                    aria-label="Toggle menu"
+                >
+                    {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+                </button>
+            </div>
 
             {/* Mobile menu */}
             <div
