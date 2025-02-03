@@ -231,7 +231,11 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 					response.Route = &ServicesRoute{
 						RouteId:        service.TripData.RouteID,
 						RouteShortName: service.RouteShortName,
-						RouteColor:     service.RouteColor,
+					}
+					if service.RouteColor != "" {
+						response.Route.RouteColor = service.RouteColor
+					} else {
+						response.Route.RouteColor = "000000"
 					}
 					response.Stop = &ServicesStop{
 						Id:   service.StopId,

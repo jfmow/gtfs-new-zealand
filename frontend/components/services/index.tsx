@@ -59,7 +59,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map(service => service.platform);
-        return [...new Set(platforms)].filter((i) => i !== "").sort((a, b) => {
+        return [...new Set(platforms)].filter((i) => i !== "" && i !== undefined).sort((a, b) => {
             if (!isNaN(Number(a)) && !isNaN(Number(b))) {
                 return Number(a) - Number(b);
             }
@@ -182,7 +182,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${service.stops_away <= -1 ? "hidden" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -210,9 +210,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 </div>
                                                 <span
                                                     className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
-                                                    style={
-                                                        service.route?.color !== "" ? { background: "#" + service.route.color } : { background: "#71717a" }
-                                                    }
+                                                    style={{ background: "#" + service.route.color }}
                                                 >
                                                     {service.route.name}
                                                 </span>
