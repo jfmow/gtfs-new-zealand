@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
-import ThemePicker from './theme'
+import ThemePicker, {useTheme} from './theme'
+
 
 export default function NavBar({ title }: { title: string }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
-
+    const {theme} = useTheme()
     useEffect(() => {
         if (isMenuOpen) {
             document.body.style.overflow = 'hidden'
