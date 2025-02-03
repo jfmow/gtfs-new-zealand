@@ -59,7 +59,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map(service => service.platform);
-        return [...new Set(platforms)].filter((i) => i !== "" && i !== undefined).sort((a, b) => {
+        return [...new Set(platforms)].filter((i) => i !== "" && i !== undefined && i !== "no platform").sort((a, b) => {
             if (!isNaN(Number(a)) && !isNaN(Number(b))) {
                 return Number(a) - Number(b);
             }
