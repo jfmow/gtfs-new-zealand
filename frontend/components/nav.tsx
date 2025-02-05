@@ -3,12 +3,12 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
-import ThemePicker, {useTheme} from './theme'
+import ThemePicker, { useTheme } from './theme'
 
 
-export default function NavBar({ title }: { title: string }) {
+export default function NavBar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
-    const {theme} = useTheme()
+    const { theme } = useTheme()
     useEffect(() => {
         if (isMenuOpen) {
             document.body.style.overflow = 'hidden'
@@ -26,13 +26,8 @@ export default function NavBar({ title }: { title: string }) {
     return (
         <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
             <div className="flex items-center">
-                <img src={theme === "dark" ? "/nav-logo-dark.png" : "/nav-logo.png" } alt="Logo" className="w-8 h-8 mr-2" />
+                <img src={theme === "dark" ? "/nav-logo-dark.png" : "/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
             </div>
-
-
-            <h4 className="text-center scroll-m-20 text-xl font-semibold tracking-tight">
-                {title}
-            </h4>
 
             {/* Desktop menu */}
             <div className='hidden md:flex items-center gap-2'>

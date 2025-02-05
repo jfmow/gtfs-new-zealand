@@ -23,7 +23,7 @@ export default function Home() {
   return (
     <>
       <Header />
-      <NavBar title="" />
+      <NavBar />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
           <div className="grid items-center gap-2">

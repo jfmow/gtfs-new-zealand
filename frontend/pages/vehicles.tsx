@@ -47,7 +47,7 @@ export default function Vehicles() {
     return (
         <>
             <Header />
-            <NavBar title="" />
+            <NavBar />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
