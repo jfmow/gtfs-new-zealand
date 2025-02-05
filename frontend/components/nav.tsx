@@ -3,11 +3,12 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
-import ThemePicker from './theme'
+import ThemePicker, {useTheme} from './theme'
+
 
 export default function NavBar({ title }: { title: string }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
-
+    const {theme} = useTheme()
     useEffect(() => {
         if (isMenuOpen) {
             document.body.style.overflow = 'hidden'
@@ -25,7 +26,7 @@ export default function NavBar({ title }: { title: string }) {
     return (
         <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
             <div className="flex items-center">
-                <img src="/nav-logo.png" alt="Logo" className="w-8 h-8 mr-2" />
+                <img src={theme === "dark" ? "/nav-logo-dark.png" : "/nav-logo.png" } alt="Logo" className="w-8 h-8 mr-2" />
             </div>
 
 
