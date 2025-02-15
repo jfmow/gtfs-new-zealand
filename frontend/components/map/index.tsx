@@ -7,6 +7,7 @@ import { buttonVariants } from "../ui/button";
 import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
 import { TrainsApiResponse } from "../services/types";
+import { ApiFetch } from "@/lib/url-context";
 
 interface MapItem {
     lat: number;
@@ -252,7 +253,7 @@ function showRouteLine(map: Map, routeId: string, tripId: string, routeLineRef: 
                 const form = new FormData()
                 form.set("tripId", tripId)
                 form.set("routeId", routeId)
-                const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/geojson/shapes`, {
+                const response = await ApiFetch(`map/geojson/shapes`, {
                     method: "POST",
                     body: form
                 });

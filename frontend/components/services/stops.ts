@@ -1,4 +1,5 @@
 import { StopTimeUpdate, TrainsApiResponse } from "./types";
+import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
     next_stop: {
@@ -80,7 +81,7 @@ async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResul
     }
 
     try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops/${tripId}`);
+        const response = await ApiFetch(`stops/${tripId}`);
         const data: TrainsApiResponse<Stop[]> = await response.json()
 
         // Check if the response is OK

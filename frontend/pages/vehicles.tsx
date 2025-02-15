@@ -13,6 +13,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { ApiFetch } from "@/lib/url-context";
 
 export default function Vehicles() {
     const { loading, location } = useUserLocation()
@@ -102,7 +103,7 @@ type GetVehiclesResult =
 async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
     const form = new FormData()
     form.set("vehicle_type", vehicleType)
-    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/realtime/live`, {
+    const req = await ApiFetch(`realtime/live`, {
         method: "POST",
         body: form
     })

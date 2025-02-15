@@ -1,6 +1,7 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import NavBar from "@/components/nav";
 import { TrainsApiResponse } from "@/components/services/types";
+import { ApiFetch } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
@@ -74,7 +75,7 @@ type GetStopsResult =
     | { error: undefined; stops: Stop[] };
 
 async function getStops(): Promise<GetStopsResult> {
-    const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops?noChildren=1`)
+    const req = await ApiFetch(`stops?noChildren=1`)
     const data: TrainsApiResponse<Stop[]> = await req.json()
     if (!req.ok) {
         console.error(data.message)

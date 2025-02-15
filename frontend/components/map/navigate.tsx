@@ -9,6 +9,7 @@ import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
 import { TrainsApiResponse } from "../services/types";
+import { ApiFetch } from "@/lib/url-context";
 
 interface NavigateProps {
     start: { lat: number, lon: number, name: string },
@@ -33,7 +34,7 @@ export default function Navigate({ start, end }: NavigateProps) {
         form.set("method", "walking")
 
         try {
-            const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/map/nav`, { method: "POST", body: form });
+            const response = await ApiFetch(`map/nav`, { method: "POST", body: form });
             if (!response.ok) {
                 openNavigation(end.lat, end.lon)
                 return

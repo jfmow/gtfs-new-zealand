@@ -18,6 +18,7 @@ import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/services/notifications"
 import { TrainsApiResponse } from "@/components/services/types"
+import { ApiFetch } from "@/lib/url-context"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -27,7 +28,7 @@ export default function Alerts() {
     useEffect(() => {
         if (found) {
             setLoading(true)
-            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/stops/alerts/${value}`)
+            ApiFetch(`stops/alerts/${value}`)
                 .then(async res => {
                     const data: TrainsApiResponse<Alert[]> = await res.json()
                     if (!res.ok) {

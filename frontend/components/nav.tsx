@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
 import ThemePicker, { useTheme } from './theme'
+import { UrlSelector } from '@/lib/url-context'
 
 
 export default function NavBar() {
@@ -31,6 +32,7 @@ export default function NavBar() {
 
             {/* Desktop menu */}
             <div className='hidden md:flex items-center gap-2'>
+                <UrlSelector />
                 <ul className="hidden md:flex font-medium text-sm items-center gap-4">
                     <NavItems />
                 </ul>

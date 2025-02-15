@@ -1,3 +1,5 @@
+import { ApiFetch } from "./url-context";
+
 /**
     Remove a subscription to a stop.
 
@@ -15,7 +17,7 @@ export async function removeSubscription(stopIdOrName: string) {
     form.set("stopIdOrName", stopIdOrName);
 
     // Send subscription to the backend
-    const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/remove`, {
+    const response = await ApiFetch(`notifications/remove`, {
         method: 'POST',
         body: form, // Don't manually set Content-Type here
     });
@@ -109,7 +111,7 @@ export async function checkStopSubscription(stopIdOrName: string) {
 
     // Send subscription to the backend
     try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/find-client`, {
+        const response = await ApiFetch(`notifications/find-client`, {
             method: 'POST',
             body: form, // Don't manually set Content-Type here
         });
@@ -164,7 +166,7 @@ export async function subscribeToStop(stopIdOrName: string) {
 
     // Send subscription to the backend
     try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/add`, {
+        const response = await ApiFetch(`notifications/add`, {
             method: 'POST',
             body: form, // Don't manually set Content-Type here
         });
@@ -202,7 +204,7 @@ export async function refreshSubscription(): Promise<{ refreshed: boolean; subsc
     form.set("new_p256dh", newSubscription.keys.p256dh)
 
     try {
-        const req = await fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/notifications/refresh`, {
+        const req = await ApiFetch(`notifications/refresh`, {
             method: "POST",
             body: form
         })

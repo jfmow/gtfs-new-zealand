@@ -4,6 +4,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TrainsApiResponse } from "../services/types"
+import { ApiFetch } from "@/lib/url-context"
 
 export default function SearchForStop({ url, defaultValue }: { url: string, defaultValue: string }) {
     const [searchTerm, setSearchTerm] = useState("")
@@ -109,8 +110,8 @@ type searchData =
 async function searchForStop(search: string): Promise<searchData> {
     if (search.length <= 1) return { error: "Search too short", result: null }
     try {
-        const response = await fetch(
-            `${process.env.NEXT_PUBLIC_TRAINS}/at/stops/find-stop/${encodeURIComponent(search)}`
+        const response = await ApiFetch(
+            `stops/find-stop/${encodeURIComponent(search)}`
         )
         const data: TrainsApiResponse<StopSearch[]> = await response.json()
         if (!response.ok) {

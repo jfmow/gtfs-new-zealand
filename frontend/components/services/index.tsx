@@ -13,6 +13,8 @@ import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTil
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import { Toggle } from "../ui/toggle"
+import { urlStore } from "@/lib/url-store"
+import { ApiFetch } from "@/lib/url-context"
 
 interface ServicesProps {
     stopName: string
@@ -53,6 +55,7 @@ interface ServicesStop {
 
 
 export default function Services({ stopName, filterDate }: ServicesProps) {
+    const { url } = urlStore.currentUrl
     const [services, setServices] = useState<Service[]>([]);
     const [errorMessage, setErrorMessage] = useState("");
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
@@ -80,7 +83,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         const startEventSource = () => {
             if (!filterDate) {
                 eventSource = new EventSource(
-                    `${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}`
+                    `${url}/services/${stopName}`
                 );
 
                 eventSource.onmessage = (event) => {
@@ -104,8 +107,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     }
                 };
             } else {
-                fetch(
-                    `${process.env.NEXT_PUBLIC_TRAINS}/at/services/${stopName}/schedule?date=${Math.floor(
+                ApiFetch(
+                    `services/${stopName}/schedule?date=${Math.floor(
                         filterDate.getTime() / 1000
                     )}`
                 )
@@ -152,7 +155,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             stopEventSource();
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
-    }, [stopName, filterDate]);
+    }, [stopName, filterDate, url]);
 
 
     return (

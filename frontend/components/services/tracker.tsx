@@ -30,6 +30,7 @@ import LoadingSpinner from "../loading-spinner";
 import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
+import { ApiFetch } from "@/lib/url-context";
 
 
 interface ServiceTrackerModalProps {
@@ -58,7 +59,7 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
             if (!has) return
             const form = new FormData()
             form.set("tripId", tripId)
-            fetch(`${process.env.NEXT_PUBLIC_TRAINS}/at/realtime/live`, {
+            ApiFetch(`realtime/live`, {
                 method: "POST",
                 body: form
             }).then(async res => {
