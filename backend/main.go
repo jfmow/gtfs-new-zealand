@@ -55,8 +55,10 @@ func main() {
 	}))
 
 	atApi := e.Group("/at")
+	mlApi := e.Group("/wel")
 
 	at.SetupAucklandTransportAPI(atApi)
+	at.SetupMetlinkTransportAPI(mlApi)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
