@@ -1,3 +1,5 @@
+import Footer from "@/components/footer";
+import NavBar from "@/components/nav";
 import { ThemeProvider } from "@/components/theme";
 import { checkStopSubscription, register } from "@/lib/notifications";
 import { UrlProvider } from "@/lib/url-context";
@@ -15,8 +17,10 @@ export default function App({ Component, pageProps }: AppProps) {
   return <>
     <ThemeProvider>
       <UrlProvider>
+        <NavBar />
         <Toaster richColors position={"top-center"} />
         <Component {...pageProps} />
+        <Footer />
       </UrlProvider>
     </ThemeProvider>
   </>;

@@ -1,4 +1,3 @@
-import NavBar from "@/components/nav";
 import Services from "@/components/services";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
@@ -23,7 +22,6 @@ export default function Home() {
   return (
     <>
       <Header />
-      <NavBar />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
           <div className="grid items-center gap-2">

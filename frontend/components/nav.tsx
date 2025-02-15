@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
 import ThemePicker, { useTheme } from './theme'
-import { UrlSelector } from '@/lib/url-context'
 
 
 export default function NavBar() {
@@ -30,9 +29,9 @@ export default function NavBar() {
                 <img src={theme === "dark" ? "/nav-logo-dark.png" : "/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
             </div>
 
+
             {/* Desktop menu */}
             <div className='hidden md:flex items-center gap-2'>
-                <UrlSelector />
                 <ul className="hidden md:flex font-medium text-sm items-center gap-4">
                     <NavItems />
                 </ul>
@@ -61,14 +60,14 @@ export default function NavBar() {
                     <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">Menu</h1>
                 </div>
                 <ul className="flex flex-col h-full px-6 overflow-y-auto list-none">
-                    <NavItems mobile />
+                    <NavItems toggleMenu={toggleMenu} mobile />
                 </ul>
             </div>
         </nav>
     )
 }
 
-function NavItems({ mobile = false }: { mobile?: boolean }) {
+function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu?: () => void }) {
     const items = [
         {
             href: '/',
@@ -99,7 +98,7 @@ function NavItems({ mobile = false }: { mobile?: boolean }) {
     return (
         <>
             {items.map((item) => (
-                <Link key={item.href} href={item.href} className="block">
+                <Link key={item.href} href={item.href} className="block" onClick={() => typeof toggleMenu === "function" && toggleMenu()}>
                     <li
                         className={
                             mobile

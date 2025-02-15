@@ -1,4 +1,3 @@
-import NavBar from "@/components/nav"
 import Head from "next/head"
 import { useEffect, useState } from "react"
 import { useAQueryParam } from "."
@@ -46,7 +45,6 @@ export default function Alerts() {
     return (
         <>
             <Header />
-            <NavBar />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <div className="flex items-center gap-2 p-4">

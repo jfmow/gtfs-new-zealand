@@ -62,7 +62,12 @@ export function UrlSelector() {
                 </SelectTrigger>
                 <SelectContent>
                     {urlOptions.map((item) => (
-                        <SelectItem key={item.url} value={item.url}>{item.displayName}</SelectItem>
+                        <SelectItem key={item.url} value={item.url}>
+                            <div className="flex items-center gap-2">
+                                <img className="w-4 h-4" src={item.logoUrl} />
+                                <span style={{ color: item.textColor }}>{item.displayName}</span>
+                            </div>
+                        </SelectItem>
                     ))}
                 </SelectContent>
             </Select>

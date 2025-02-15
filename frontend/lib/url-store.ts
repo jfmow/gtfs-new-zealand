@@ -1,11 +1,13 @@
 export type UrlOption = {
     url: string
     displayName: string
+    logoUrl: string
+    textColor: string
 }
 
 export const urlOptions: UrlOption[] = [
-    { url: "https://trainapi.suddsy.dev/at", displayName: "AT" },
-    { url: "https://trainapi.suddsy.dev/wel", displayName: "Metlink" },
+    { url: "https://trainapi.suddsy.dev/at", displayName: "AT", logoUrl: "/provider logos/at.png", textColor: "#0073bd" },
+    { url: "https://trainapi.suddsy.dev/wel", displayName: "Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940" },
 ]
 
 class UrlStore {

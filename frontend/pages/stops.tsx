@@ -1,5 +1,4 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import NavBar from "@/components/nav";
 import { TrainsApiResponse } from "@/components/services/types";
 import { ApiFetch } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
@@ -32,7 +31,6 @@ export default function Stops() {
     return (
         <>
             <Header />
-            <NavBar />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
 

@@ -1,5 +1,4 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import NavBar from "@/components/nav";
 import { useUserLocation } from "@/lib/userLocation";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map"));
@@ -48,7 +47,6 @@ export default function Vehicles() {
     return (
         <>
             <Header />
-            <NavBar />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
