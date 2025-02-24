@@ -37,11 +37,7 @@ type Response struct {
 var notificationMutex sync.Mutex
 var notificationMutex2 sync.Mutex
 
-func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.RealtimeS, realtimeVehicles, realtimeTripUpdates, realtimeAlerts string) {
-
-	vehicles, _ := realtime.Vehicles(realtimeVehicles, 20*time.Second)
-	tripUpdates, _ := realtime.TripUpdates(realtimeTripUpdates, 20*time.Second)
-	alerts, _ := realtime.Alerts(realtimeAlerts, 30*time.Second)
+func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.RealtimeRedo) {
 
 	servicesRouter := primaryRouter.Group("/services")
 	stopsRouter := primaryRouter.Group("/stops")
@@ -68,7 +64,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			if notificationMutex.TryLock() {
 				defer notificationMutex.Unlock()
 				// fmt.Println("Checking canceled trips")
-				updates, err := tripUpdates.GetTripUpdates()
+				updates, err := realtime.GetTripUpdates()
 				if err == nil {
 					if err := notificationDB.NotifyTripUpdates(updates, gtfsData); err != nil {
 						fmt.Println(err)
@@ -88,7 +84,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			if notificationMutex2.TryLock() {
 				defer notificationMutex2.Unlock()
 				fmt.Println("Checking alerts")
-				alerts, err := alerts.GetAlerts()
+				alerts, err := realtime.GetAlerts()
 				if err == nil {
 					if err := notificationDB.NotifyAlerts(alerts, gtfsData); err != nil {
 						fmt.Println(err)
@@ -256,7 +252,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			}()
 
 			go func() {
-				tripUpdatesData, _ := tripUpdates.GetTripUpdates()
+				tripUpdatesData, _ := realtime.GetTripUpdates()
 
 				for _, service := range services {
 					var ResponseData ServicesResponse2
@@ -310,7 +306,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			}()
 
 			go func() {
-				vehicleLocations, _ := vehicles.GetVehicles()
+				vehicleLocations, _ := realtime.GetVehicles()
 
 				for _, service := range services {
 					var ResponseData ServicesResponse2
@@ -591,7 +587,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		}
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 
-		alerts, err := alerts.GetAlerts()
+		alerts, err := realtime.GetAlerts()
 		if err != nil {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
@@ -844,7 +840,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		vehicleType := c.FormValue("vehicle_type")
 		tripId := c.FormValue("tripId")
 
-		vehicles, err := vehicles.GetVehicles()
+		vehicles, err := realtime.GetVehicles()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,
@@ -852,7 +848,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				Data:    nil,
 			})
 		}
-		tripupdates, err := tripUpdates.GetTripUpdates()
+		tripupdates, err := realtime.GetTripUpdates()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,

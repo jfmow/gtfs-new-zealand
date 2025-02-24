@@ -3,6 +3,7 @@ package at
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
@@ -22,12 +23,12 @@ func SetupAucklandTransportAPI(router *echo.Group) {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	realtimeData, err := rt.New(atApiKey, "Ocp-Apim-Subscription-Key", "atrt")
+	realtimeData, err := rt.NewClient(atApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts")
 	if err != nil {
 		panic(err)
 	}
 
-	SetupProvider(router, AucklandTransportGTFSData, realtimeData, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts")
+	SetupProvider(router, AucklandTransportGTFSData, realtimeData)
 }
 
 func SetupMetlinkTransportAPI(router *echo.Group) {
@@ -43,10 +44,10 @@ func SetupMetlinkTransportAPI(router *echo.Group) {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	realtimeData, err := rt.New(metlinkApiKey, "x-api-key", "metrt")
+	realtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 20*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
 	if err != nil {
 		panic(err)
 	}
 
-	SetupProvider(router, AucklandTransportGTFSData, realtimeData, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
+	SetupProvider(router, AucklandTransportGTFSData, realtimeData)
 }
