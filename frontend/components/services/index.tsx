@@ -185,7 +185,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden ${service.stops_away <= -1 ? "hidden" : ""}`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${service.stops_away <= -1 || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -194,18 +194,18 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     {service.canceled ? (
                                                         <>
                                                             <span className="text-red-500">Cancled | </span>
-                                                            <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service.headsign))} </span>
+                                                            <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {service.stops_away <= 0 && timeTillArrival(service.arrival_time) <= 2 ? (
+                                                            {service.stops_away <= 0 || (!service.stops_away && timeTillArrival(service.arrival_time) <= 2) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
-                                                                    <span className="opacity-50">{formatTextToNiceLookingWords(removeShortHands(service.headsign))} </span>
+                                                                    <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                                 </>
                                                             ) : (
                                                                 <span className="">
-                                                                    {formatTextToNiceLookingWords(removeShortHands(service.headsign))}
+                                                                    {formatTextToNiceLookingWords(service.headsign)}
                                                                 </span>
                                                             )}
                                                         </>
@@ -276,12 +276,4 @@ function getService(serviceData: Service[]): Service[] {
 
 
     return result
-}
-
-function removeShortHands(name: string) {
-    let newName = name;
-    if (name.endsWith("/N")) { // Check if the name ends with "/N"
-        newName = name.replace("/N", " via Newmarket"); // Replace "/N" with " via Newmarket"
-    }
-    return newName;
 }
