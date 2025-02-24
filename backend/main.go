@@ -10,14 +10,12 @@ import (
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/at"
+	"github.com/jfmow/gtfs"
+	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
-
-var gzipConfig = middleware.GzipConfig{
-	Level: 5,
-}
 
 var rateLimiterConfig = middleware.RateLimiterConfig{
 	Skipper: middleware.DefaultSkipper,
@@ -35,6 +33,8 @@ var rateLimiterConfig = middleware.RateLimiterConfig{
 		return context.JSON(http.StatusTooManyRequests, nil)
 	},
 }
+
+var localTimeZone = time.FixedZone("NZST", 13*60*60)
 
 func main() {
 	//Loads a .env file in the current dir
@@ -57,8 +57,41 @@ func main() {
 	atApi := e.Group("/at")
 	mlApi := e.Group("/wel")
 
-	at.SetupAucklandTransportAPI(atApi)
-	at.SetupMetlinkTransportAPI(mlApi)
+	//Auckland Transport
+	atApiKey, found := os.LookupEnv("AT_APIKEY")
+	if !found {
+		panic("Env not found")
+	}
+
+	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", localTimeZone, "hi@suddsy.dev")
+	if err != nil {
+		fmt.Println("Error loading at gtfs db")
+	}
+
+	AucklandTransportRealtimeData, err := rt.NewClient(atApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts")
+	if err != nil {
+		panic(err)
+	}
+
+	at.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData)
+
+	//MetLink
+	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
+	if !found {
+		panic("Env not found")
+	}
+
+	MetLinkGTFSData, err := gtfs.New("https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", "welgtfs", localTimeZone, "hi@suddsy.dev")
+	if err != nil {
+		fmt.Println("Error loading at gtfs db")
+	}
+
+	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 20*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
+	if err != nil {
+		panic(err)
+	}
+
+	at.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")

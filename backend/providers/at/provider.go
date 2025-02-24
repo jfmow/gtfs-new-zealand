@@ -37,7 +37,7 @@ type Response struct {
 var notificationMutex sync.Mutex
 var notificationMutex2 sync.Mutex
 
-func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.RealtimeRedo) {
+func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime) {
 
 	servicesRouter := primaryRouter.Group("/services")
 	stopsRouter := primaryRouter.Group("/stops")
@@ -311,7 +311,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				for _, service := range services {
 					var ResponseData ServicesResponse2
 					ResponseData.Type = "vehicle"
-					if foundVehicle, err := vehicleLocations.GetVehicleByTripID(service.TripID); err == nil {
+					if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
 						ResponseData.Occupancy = int8(foundVehicle.OccupancyStatus)
 						ResponseData.Tracking = 1
 					} else {
