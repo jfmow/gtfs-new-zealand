@@ -160,7 +160,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			})
 		}
 
-		now := time.Now().In(localTimeZone)
+		now := time.Now().In(localTimeZone).Add(-10 * time.Minute)
 		currentTime := now.Format("15:04:05")
 
 		// Collect services
