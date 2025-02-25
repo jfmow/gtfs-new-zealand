@@ -167,7 +167,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, "", 120)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, "", 20)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
