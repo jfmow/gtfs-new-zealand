@@ -11,7 +11,7 @@ type ServicesResponse2 struct {
 	Platform    string `json:"platform,omitempty"`
 	StopsAway   int16  `json:"stops_away,omitempty"`
 	Occupancy   int8   `json:"occupancy,omitempty"`
-	Canceled    bool   `json:"canceled"`
+	Canceled    bool   `json:"canceled,omitempty"`
 
 	Route *ServicesRoute `json:"route,omitempty"`
 

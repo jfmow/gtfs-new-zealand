@@ -167,7 +167,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, "", 12)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, "", 120)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
@@ -253,12 +253,10 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 			go func() {
 				tripUpdatesData, _ := realtime.GetTripUpdates()
-
 				for _, service := range services {
 					var ResponseData ServicesResponse2
 					ResponseData.Type = "trip update"
 					if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-
 						defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
 						if err != nil {
 							continue
@@ -273,7 +271,8 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 						ResponseData.ArrivalTime = formattedTime
 
 						ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
-						if tripUpdate.StopTimeUpdate.ScheduleRelationship == 3 {
+						if tripUpdate.Trip.ScheduleRelationship == 3 {
+							fmt.Println(tripUpdate.Trip.ScheduleRelationship)
 							ResponseData.Canceled = true
 						}
 
@@ -314,6 +313,9 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 					if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
 						ResponseData.Occupancy = int8(foundVehicle.OccupancyStatus)
 						ResponseData.Tracking = 1
+						if foundVehicle.Trip.ScheduleRelationship == 3 {
+							ResponseData.Canceled = true
+						}
 					} else {
 						ResponseData.Tracking = 0
 					}
