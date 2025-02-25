@@ -8,6 +8,7 @@ export type UrlOption = {
 export const urlOptions: UrlOption[] = [
     { url: "https://trainapi.suddsy.dev/at", displayName: "AT", logoUrl: "/provider logos/at.png", textColor: "#0073bd" },
     { url: "https://trainapi.suddsy.dev/wel", displayName: "Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940" },
+    { url: "http://localhost:8090/at", displayName: "Local", logoUrl: "/provider logos/at.png", textColor: "#ced940" },
 ]
 
 class UrlStore {

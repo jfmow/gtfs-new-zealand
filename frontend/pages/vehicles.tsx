@@ -2,7 +2,7 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { useUserLocation } from "@/lib/userLocation";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map"));
-import ServiceTrackerModal from "@/components/services/tracker";
+import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
 import Head from "next/head";
 import { TrainsApiResponse } from "@/components/services/types";
 import {
@@ -16,10 +16,10 @@ import { ApiFetch } from "@/lib/url-context";
 
 export default function Vehicles() {
     const { loading, location } = useUserLocation()
-    const [vehicles, setVehicles] = useState<Vehicle[]>()
+    const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
     const [error, setError] = useState("")
 
-    const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null)
+    const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
     const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
 
     useEffect(() => {
@@ -63,7 +63,7 @@ export default function Vehicles() {
                     <div className="mb-4" />
 
                     {selectedVehicle !== null ? (
-                        <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.vehicle.trip.trip_id} />
+                        <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.trip_id} />
                     ) : null}
 
                     {error !== "" ? (
@@ -71,16 +71,16 @@ export default function Vehicles() {
                     ) : (
                         <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
                             <LeafletMap mapItems={[...(vehicles ? (
-                                vehicles.map(({ vehicle, trip_update }) => ({
-                                    lat: vehicle.position.latitude,
-                                    lon: vehicle.position.longitude,
-                                    icon: vehicle.vehicle.type,
-                                    id: vehicle.trip.trip_id,
-                                    routeID: vehicle.trip.route_id,
-                                    description: `${vehicle.trip.route_id} | ${Math.round(vehicle.position.speed)}km/h`,
+                                vehicles.map((vehicle) => ({
+                                    lat: vehicle.position.lat,
+                                    lon: vehicle.position.lon,
+                                    icon: vehicle.type,
+                                    id: vehicle.trip_id,
+                                    routeID: vehicle.route.id,
+                                    description: `${vehicle.route.name}`,
                                     zIndex: 1,
                                     onClick: () => {
-                                        setSelectedVehicle({ vehicle, trip_update })
+                                        setSelectedVehicle(vehicle)
                                     }
                                 }))
                             ) : [])]} zoom={17} mapID={"abcdefg"} height={"calc(100svh - 2rem - 70px)"} userLocation={location[0] === 0 ? [-36.85971694520651, 174.76042890091796] : location} variant={"userLocation"} />
@@ -96,7 +96,7 @@ export default function Vehicles() {
 
 type GetVehiclesResult =
     | { error: string; vehicles: null }
-    | { error: undefined; vehicles: Vehicle[] };
+    | { error: undefined; vehicles: VehiclesResponse[] };
 
 async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
     const form = new FormData()
@@ -105,79 +105,13 @@ async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise
         method: "POST",
         body: form
     })
-    const data: TrainsApiResponse<Vehicle[]> = await req.json()
+    const data: TrainsApiResponse<VehiclesResponse[]> = await req.json()
     if (!req.ok) {
         console.log(data.message)
         return { error: data.message, vehicles: null };
     }
     return { error: undefined, vehicles: data.data }
 }
-
-export interface Vehicle {
-    vehicle: TripUpdateVehicle;
-    trip_update: TripUpdate;
-}
-
-export interface TripUpdate {
-    trip: Trip;
-    stop_time_update: StopTimeUpdate;
-    vehicle: TripUpdateVehicle;
-    timestamp: number;
-    delay: number;
-}
-
-export interface StopTimeUpdate {
-    stop_sequence: number;
-    arrival: Arrival;
-    departure: Arrival;
-    stop_id: string;
-    schedule_relationship: number;
-}
-
-export interface Arrival {
-    delay: number;
-    time: number;
-    uncertainty: number;
-}
-
-export interface Trip {
-    trip_id: string;
-    start_time: string;
-    start_date: string;
-    schedule_relationship: number;
-    route_id: string;
-    direction_id?: number;
-}
-
-export interface TripUpdateVehicle {
-    trip: Trip;
-    position: Position;
-    timestamp: number;
-    vehicle: VehicleVehicle;
-    occupancy_status: number;
-}
-
-export interface Position {
-    latitude: number;
-    longitude: number;
-    speed: number;
-}
-
-export interface VehicleVehicle {
-    id: string;
-    label: string;
-    license_plate: string;
-    type: Type;
-}
-
-export enum Type {
-    Bus = "bus",
-    Empty = "",
-    Ferry = "ferry",
-    Train = "train",
-}
-
-
 
 
 function Header() {

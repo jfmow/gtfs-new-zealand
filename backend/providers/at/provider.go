@@ -568,10 +568,32 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			})
 		}
 
+		var result []ServicesStop
+		for _, i := range stops {
+			var responseData ServicesStop
+			stop, err := gtfsData.GetParentStopByChildStopID(i.StopId)
+			if err != nil {
+				return c.JSON(http.StatusNotFound, Response{
+					Code:    http.StatusNotFound,
+					Message: "no parent stop found for stop",
+					Data:    nil,
+				})
+			}
+
+			responseData.Id = stop.StopId
+			responseData.Lat = stop.StopLat
+			responseData.Lon = stop.StopLon
+			responseData.Name = stop.StopName
+			responseData.Platform = i.PlatformNumber
+			responseData.Sequence = i.Sequence
+
+			result = append(result, responseData)
+		}
+
 		return c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
 			Message: "",
-			Data:    stops,
+			Data:    result,
 		})
 	})
 
@@ -850,7 +872,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				Data:    nil,
 			})
 		}
-		tripupdates, err := realtime.GetTripUpdates()
+		tripUpdates, err := realtime.GetTripUpdates()
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,
@@ -859,25 +881,104 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			})
 		}
 
-		type res struct {
-			Vehicle    rt.Vehicle    `json:"vehicle"`
-			TripUpdate rt.TripUpdate `json:"trip_update"`
-		}
-
-		var result []res
+		var result []VehiclesResponse
 		for _, i := range vehicles {
-			var item res
+			var responseData VehiclesResponse
+
 			if tripId != "" && i.Trip.TripID != tripId {
 				//skip
 				continue
 			}
 			route, err := gtfsData.GetRouteByID((string)(i.Trip.RouteID))
-			if err == nil && (route.VehicleType == vehicleType || vehicleType == "" || vehicleType == "all") {
-				i.Trip.RouteID = rt.RouteID(route.RouteId)
-				i.Vehicle.Type = route.VehicleType
-				item.Vehicle = i
-				item.TripUpdate, _ = tripupdates.ByTripID(i.Trip.TripID)
-				result = append(result, item)
+			if err != nil {
+				continue
+			}
+			stopsForTrip, err := gtfsData.GetStopsForTripID(i.Trip.TripID)
+			if err != nil {
+				continue
+			}
+
+			tripUpdate, err := tripUpdates.ByTripID(i.Trip.TripID)
+			if err != nil {
+				continue
+			}
+
+			trip, err := gtfsData.GetTripByID(i.Trip.TripID)
+			if err != nil {
+				continue
+			}
+
+			if route.VehicleType == vehicleType || vehicleType == "" || vehicleType == "all" {
+
+				responseData.TripId = i.Trip.TripID
+				responseData.LicensePlate = i.Vehicle.LicensePlate
+				responseData.Occupancy = int8(i.OccupancyStatus)
+				responseData.Position.Lat = i.Position.Latitude
+				responseData.Position.Lon = i.Position.Longitude
+				responseData.Type = route.VehicleType
+
+				responseData.Route.RouteId = route.RouteId
+				responseData.Route.RouteShortName = route.RouteShortName
+				responseData.Route.RouteColor = route.RouteColor
+
+				responseData.Trip.Headsign = trip.TripHeadsign
+
+				firstStop := stopsForTrip[0]
+				responseData.Trip.FirstStop.Name = firstStop.StopName
+				responseData.Trip.FirstStop.Id = firstStop.StopId
+				responseData.Trip.FirstStop.Lat = firstStop.StopLat
+				responseData.Trip.FirstStop.Lon = firstStop.StopLon
+				responseData.Trip.FinalStop.Platform = firstStop.PlatformNumber
+				firstStopParentStop, err := gtfsData.GetParentStopByChildStopID(firstStop.StopId)
+				if err == nil {
+					responseData.Trip.FirstStop.Name = firstStopParentStop.StopName
+					responseData.Trip.FirstStop.Id = firstStopParentStop.StopId
+				}
+
+				currentStop, err := gtfsData.GetStopByStopID(tripUpdate.StopTimeUpdate.StopID)
+				if err == nil {
+					parentStop, err := gtfsData.GetParentStopByChildStopID(currentStop.StopId)
+					if err == nil {
+						responseData.Trip.CurrentStop.Name = parentStop.StopName
+						responseData.Trip.CurrentStop.Id = parentStop.StopId
+					}
+					responseData.Trip.CurrentStop.Name = currentStop.StopName
+					responseData.Trip.CurrentStop.Id = currentStop.StopId
+					responseData.Trip.CurrentStop.Lat = currentStop.StopLat
+					responseData.Trip.CurrentStop.Lon = currentStop.StopLon
+					responseData.Trip.CurrentStop.Platform = currentStop.PlatformNumber
+				}
+
+				stopSeq := tripUpdate.StopTimeUpdate.StopSequence
+				if stopSeq >= int64(len(stopsForTrip)) {
+					stopSeq = int64(len(stopsForTrip) - 1) // Use the last valid index
+				}
+
+				nextStop := stopsForTrip[stopSeq]
+				responseData.Trip.NextStop.Name = nextStop.StopName
+				responseData.Trip.NextStop.Id = nextStop.StopId
+				responseData.Trip.NextStop.Lat = nextStop.StopLat
+				responseData.Trip.NextStop.Lon = nextStop.StopLon
+				responseData.Trip.NextStop.Platform = nextStop.PlatformNumber
+				nextStopParentStop, err := gtfsData.GetParentStopByChildStopID(nextStop.StopId)
+				if err == nil {
+					responseData.Trip.NextStop.Name = nextStopParentStop.StopName
+					responseData.Trip.NextStop.Id = nextStopParentStop.StopId
+				}
+
+				finalStop := stopsForTrip[len(stopsForTrip)-1]
+				responseData.Trip.FinalStop.Name = finalStop.StopName
+				responseData.Trip.FinalStop.Id = finalStop.StopId
+				responseData.Trip.FinalStop.Lat = finalStop.StopLat
+				responseData.Trip.FinalStop.Lon = finalStop.StopLon
+				responseData.Trip.FinalStop.Platform = finalStop.PlatformNumber
+				finalStopParentStop, err := gtfsData.GetParentStopByChildStopID(finalStop.StopId)
+				if err == nil {
+					responseData.Trip.FinalStop.Name = finalStopParentStop.StopName
+					responseData.Trip.FinalStop.Id = finalStopParentStop.StopId
+				}
+
+				result = append(result, responseData)
 			}
 		}
 

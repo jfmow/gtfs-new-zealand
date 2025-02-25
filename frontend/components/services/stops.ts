@@ -1,4 +1,5 @@
-import { StopTimeUpdate, TrainsApiResponse } from "./types";
+import { ServicesStop } from "./tracker";
+import { TrainsApiResponse } from "./types";
 import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
@@ -18,61 +19,56 @@ export interface StopForTripsData {
         platformNumber: string;
         index: number;
     };
-    stops: Stop[];
+    stops: ServicesStop[];
 }
 
-export async function getStopsForTrip(tripId: string, stopTimeUpdate: StopTimeUpdate, filterPassedStops: boolean): Promise<StopForTripsData | null> {
+export async function getStopsForTrip(tripId: string, currentStopId: string, nextStopId: string, filterPassedStops: boolean): Promise<StopForTripsData | null> {
     const response = await getStopsDataForTrip(tripId);
     if (response.error !== undefined) {
         return null
     }
-
-    const currentStopNumber = stopTimeUpdate.stop_sequence
     //const currentStopId = stopTimeUpdate.stop_id
 
     const stopsData = response.stops
-    const stops = stopsData.sort((a, b) => a.stop_sequence - b.stop_sequence);
+    const stops = stopsData.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     const totalNumberOfStops = stops.length;
 
-    const nextStopIndex = Math.min(currentStopNumber, totalNumberOfStops - 1);
-    const nextStop = stops[nextStopIndex];
-    const finalStop = stops[totalNumberOfStops - 1];
+    const nextStop = stops.find((item) => item.id === nextStopId)
+    const finalStop = stops.find((item) => item.id === stops[totalNumberOfStops - 1].id);
 
-    const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.stop_name);
+    if (!nextStop || !finalStop) {
+        console.warn("Missing next or final stop");
+        return null;
+    }
+
+    const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.name);
     const nextStopData = {
-        lat: nextStop.stop_lat,
-        lon: nextStop.stop_lon,
+        lat: nextStop.lat,
+        lon: nextStop.lon,
         name: nextStopName,
-        stop_id: nextStop.stop_id,
+        stop_id: nextStop.id,
         platformNumber: nextStopPlatformNumber,
-        index: nextStop.stop_sequence - 1,
+        index: (nextStop.sequence ?? 0) - 1,
     };
 
-    const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.stop_name);
+    const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
     const finalStopData = {
-        lat: finalStop.stop_lat,
-        lon: finalStop.stop_lon,
+        lat: finalStop.lat,
+        lon: finalStop.lon,
         name: finalStopName,
-        stop_id: finalStop.stop_id,
+        stop_id: finalStop.id,
         platformNumber: finalStopPlatformNumber,
-        index: finalStop.stop_sequence - 1,
+        index: (finalStop.sequence ?? 0) - 1,
     };
 
-    return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? item.stop_sequence > currentStopNumber + 1 : true) };
+    return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? (item.sequence ?? 0) > stops.findIndex((item) => item.id === currentStopId) : true) };
 }
 
-interface Stop {
-    stop_lat: number;
-    stop_lon: number;
-    stop_name: string;
-    stop_sequence: number;
-    stop_code: string;
-    stop_id: string;
-}
+
 
 type GetStopsForTripResult =
     | { error: string; stops: undefined }
-    | { error: undefined; stops: Stop[] };
+    | { error: undefined; stops: ServicesStop[] };
 
 async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResult> {
     if (tripId == "") {
@@ -82,7 +78,7 @@ async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResul
 
     try {
         const response = await ApiFetch(`stops/${tripId}`);
-        const data: TrainsApiResponse<Stop[]> = await response.json()
+        const data: TrainsApiResponse<ServicesStop[]> = await response.json()
 
         // Check if the response is OK
         if (!response.ok) {

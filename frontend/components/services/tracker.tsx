@@ -1,7 +1,7 @@
 import { useUserLocation } from "@/lib/userLocation";
 const LeafletMap = lazy(() => import("../map"));
 import { lazy, Suspense, useEffect, useState } from "react";
-import { TrainsApiResponse, TripUpdate, TripUpdateVehicle } from "./types";
+import { TrainsApiResponse } from "./types";
 import {
     Dialog,
     DialogContent,
@@ -52,7 +52,7 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
 
-    const [vehicle, setVehicle] = useState<TripUpdateVehicle>()
+    const [vehicle, setVehicle] = useState<VehiclesResponse>()
 
     useEffect(() => {
         async function getData() {
@@ -68,8 +68,9 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                     console.error(data.message)
                     return
                 } else {
-                    setVehicle(data.data[0].vehicle)
-                    const stopsData = await getStopsForTrip(tripId, data.data[0].trip_update.stop_time_update, false)
+                    const vehicle = data.data[0]
+                    setVehicle(vehicle)
+                    const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id, false)
                     setStops(stopsData)
                 }
             })
@@ -113,8 +114,9 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                             <DialogTitle>Service tracker</DialogTitle>
                             <DialogDescription>
                                 <Separator className="my-1" />
-                                <p className="text-green-400">Next stop: {stops?.next_stop.name} (Platform {stops?.next_stop.platformNumber})</p>
-                                <p className="text-red-400">Final stop: {stops?.final_stop.name} (Platform {stops?.final_stop.platformNumber})</p>
+                                <p className="text-gray-400 opacity-50">Current/Previous stop: {vehicle.trip.current_stop.name} (Platform {vehicle.trip.current_stop.platform})</p>
+                                <p className="text-green-400">Next stop: {vehicle.trip.next_stop.name} (Platform {vehicle.trip.next_stop.platform})</p>
+                                <p className="text-red-400">Final stop: {vehicle.trip.final_stop.name} (Platform {vehicle.trip.final_stop.platform})</p>
                             </DialogDescription>
                         </DialogHeader>
                         <Tabs defaultValue="track" className="w-full">
@@ -127,31 +129,31 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                                         <LeafletMap
                                             routeLine={{
-                                                routeId: vehicle.trip.route_id,
-                                                tripId: vehicle.trip.trip_id,
+                                                routeId: vehicle.route.id,
+                                                tripId: vehicle.trip_id,
                                             }}
                                             userLocation={location}
                                             mapItems={[
                                                 {
-                                                    lat: vehicle.position.latitude,
-                                                    lon: vehicle.position.longitude,
-                                                    icon: vehicle.vehicle.type || "bus",
-                                                    id: vehicle.trip.trip_id,
-                                                    routeID: vehicle.trip.route_id,
+                                                    lat: vehicle.position.lat,
+                                                    lon: vehicle.position.lon,
+                                                    icon: vehicle.type || "bus",
+                                                    id: vehicle.trip_id,
+                                                    routeID: vehicle.route.id,
                                                     description: "Vehicle you're tracking",
                                                     zIndex: 1
                                                 },
                                                 ...(stops ? stops.stops.map((item) => ({
-                                                    lat: item.stop_lat,
-                                                    lon: item.stop_lon,
-                                                    icon: currentStop?.id === item.stop_id
+                                                    lat: item.lat,
+                                                    lon: item.lon,
+                                                    icon: currentStop?.id === item.id
                                                         ? "marked stop marker"
-                                                        : (stops?.final_stop.stop_id === item.stop_id ? "end marker" : (stops.next_stop.stop_id === item.stop_id ? "stop marker" : "dot")),
-                                                    id: item.stop_name + " " + item.stop_code,
+                                                        : (stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop.stop_id === item.id ? "stop marker" : "dot")),
+                                                    id: item.name,
                                                     routeID: "",
-                                                    description: item.stop_name + " " + item.stop_code,
+                                                    description: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
                                                     zIndex: 1,
-                                                    onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
+                                                    onClick: () => window.location.href = `/?s=${encodeURIComponent(item.name)}`
                                                 })) : [])
                                             ]}
                                             navPoints={undefined}
@@ -169,14 +171,14 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                                         </DrawerTrigger>
                                         <DrawerContent>
                                             <DrawerHeader>
-                                                <DrawerTitle>{vehicle.trip.route_id} stops</DrawerTitle>
+                                                <DrawerTitle>{vehicle.route.id} stops</DrawerTitle>
                                                 <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">
                                                 <ol className="flex items-center justify-center flex-col gap-1">
                                                     {stops?.stops.map((item, index) => (
-                                                        <li key={item.stop_code} className="flex items-center justify-center flex-col gap-1">
-                                                            <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.stop_name, true)}</p>
+                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1">
+                                                            <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
                                                             {index < stops.stops.length - 1 ? (
                                                                 <ChevronDown className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
                                                             ) : null}
@@ -222,8 +224,40 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
     )
 }
 
-
 export interface VehiclesResponse {
-    vehicle: TripUpdateVehicle;
-    trip_update: TripUpdate;
+    trip_id: string;
+    route: Route;
+    trip: Trip;
+    occupancy: number;
+    license_plate: string;
+    position: Position;
+    type: string;
+}
+
+export interface Position {
+    lat: number;
+    lon: number;
+}
+
+export interface Route {
+    id: string;
+    name: string;
+    color: string;
+}
+
+export interface Trip {
+    first_stop: ServicesStop;
+    next_stop: ServicesStop;
+    final_stop: ServicesStop;
+    current_stop: ServicesStop;
+    headsign: string;
+}
+
+export interface ServicesStop {
+    lat: number;
+    lon: number;
+    id: string;
+    name: string;
+    platform?: string;
+    sequence?: number;
 }
