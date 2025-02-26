@@ -910,10 +910,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				continue
 			}
 
-			tripUpdate, err := tripUpdates.ByTripID(i.Trip.TripID)
-			if err != nil {
-				continue
-			}
+			tripUpdate, _ := tripUpdates.ByTripID(i.Trip.TripID)
 
 			trip, err := gtfsData.GetTripByID(i.Trip.TripID)
 			if err != nil {
@@ -947,35 +944,37 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 					responseData.Trip.FirstStop.Id = firstStopParentStop.StopId
 				}
 
-				currentStop, err := gtfsData.GetStopByStopID(tripUpdate.StopTimeUpdate.StopID)
-				if err == nil {
-					parentStop, err := gtfsData.GetParentStopByChildStopID(currentStop.StopId)
+				if (tripUpdate != rt.TripUpdate{}) {
+					currentStop, err := gtfsData.GetStopByStopID(tripUpdate.StopTimeUpdate.StopID)
 					if err == nil {
-						responseData.Trip.CurrentStop.Name = parentStop.StopName
-						responseData.Trip.CurrentStop.Id = parentStop.StopId
+						parentStop, err := gtfsData.GetParentStopByChildStopID(currentStop.StopId)
+						if err == nil {
+							responseData.Trip.CurrentStop.Name = parentStop.StopName
+							responseData.Trip.CurrentStop.Id = parentStop.StopId
+						}
+						responseData.Trip.CurrentStop.Name = currentStop.StopName
+						responseData.Trip.CurrentStop.Id = currentStop.StopId
+						responseData.Trip.CurrentStop.Lat = currentStop.StopLat
+						responseData.Trip.CurrentStop.Lon = currentStop.StopLon
+						responseData.Trip.CurrentStop.Platform = currentStop.PlatformNumber
 					}
-					responseData.Trip.CurrentStop.Name = currentStop.StopName
-					responseData.Trip.CurrentStop.Id = currentStop.StopId
-					responseData.Trip.CurrentStop.Lat = currentStop.StopLat
-					responseData.Trip.CurrentStop.Lon = currentStop.StopLon
-					responseData.Trip.CurrentStop.Platform = currentStop.PlatformNumber
-				}
 
-				stopSeq := tripUpdate.StopTimeUpdate.StopSequence
-				if stopSeq >= int64(len(stopsForTrip)) {
-					stopSeq = int64(len(stopsForTrip) - 1) // Use the last valid index
-				}
+					stopSeq := tripUpdate.StopTimeUpdate.StopSequence
+					if stopSeq >= int64(len(stopsForTrip)) {
+						stopSeq = int64(len(stopsForTrip) - 1) // Use the last valid index
+					}
 
-				nextStop := stopsForTrip[stopSeq]
-				responseData.Trip.NextStop.Name = nextStop.StopName
-				responseData.Trip.NextStop.Id = nextStop.StopId
-				responseData.Trip.NextStop.Lat = nextStop.StopLat
-				responseData.Trip.NextStop.Lon = nextStop.StopLon
-				responseData.Trip.NextStop.Platform = nextStop.PlatformNumber
-				nextStopParentStop, err := gtfsData.GetParentStopByChildStopID(nextStop.StopId)
-				if err == nil {
-					responseData.Trip.NextStop.Name = nextStopParentStop.StopName
-					responseData.Trip.NextStop.Id = nextStopParentStop.StopId
+					nextStop := stopsForTrip[stopSeq]
+					responseData.Trip.NextStop.Name = nextStop.StopName
+					responseData.Trip.NextStop.Id = nextStop.StopId
+					responseData.Trip.NextStop.Lat = nextStop.StopLat
+					responseData.Trip.NextStop.Lon = nextStop.StopLon
+					responseData.Trip.NextStop.Platform = nextStop.PlatformNumber
+					nextStopParentStop, err := gtfsData.GetParentStopByChildStopID(nextStop.StopId)
+					if err == nil {
+						responseData.Trip.NextStop.Name = nextStopParentStop.StopName
+						responseData.Trip.NextStop.Id = nextStopParentStop.StopId
+					}
 				}
 
 				finalStop := stopsForTrip[len(stopsForTrip)-1]

@@ -3,7 +3,7 @@ import { TrainsApiResponse } from "./types";
 import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
-    next_stop: {
+    next_stop?: {
         lat: number;
         lon: number;
         name: string;
@@ -11,7 +11,7 @@ export interface StopForTripsData {
         platformNumber: string;
         index: number;
     };
-    final_stop: {
+    final_stop?: {
         lat: number;
         lon: number;
         name: string;
@@ -38,7 +38,7 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
 
     if (!nextStop || !finalStop) {
         console.warn("Missing next or final stop");
-        return null;
+        return { stops: stops };
     }
 
     const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.name);

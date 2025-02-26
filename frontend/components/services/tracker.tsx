@@ -148,7 +148,7 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                                                     lon: item.lon,
                                                     icon: currentStop?.id === item.id
                                                         ? "marked stop marker"
-                                                        : (stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop.stop_id === item.id ? "stop marker" : "dot")),
+                                                        : (stops?.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : "dot")),
                                                     id: item.name,
                                                     routeID: "",
                                                     description: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
@@ -178,9 +178,9 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                                                 <ol className="flex items-center justify-center flex-col gap-1">
                                                     {stops?.stops.map((item, index) => (
                                                         <li key={item.id} className="flex items-center justify-center flex-col gap-1">
-                                                            <p className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} ${index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
+                                                            <p className={`${stops.next_stop && index < stops.next_stop.index ? `text-zinc-400` : ``} ${stops.next_stop && index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
                                                             {index < stops.stops.length - 1 ? (
-                                                                <ChevronDown className={`${index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
+                                                                <ChevronDown className={`${stops.next_stop && index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
                                                             ) : null}
                                                         </li>
                                                     ))}
