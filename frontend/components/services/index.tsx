@@ -29,7 +29,7 @@ interface Service {
     headsign: string;
     arrival_time: string;
     platform: string;
-    stops_away: number;
+    stops_away?: number;
     occupancy: number;
     canceled: boolean;
 
@@ -185,7 +185,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden ${service.stops_away <= -1 || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""}`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${(service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -198,7 +198,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {service.stops_away <= 0 || (!service.stops_away && timeTillArrival(service.arrival_time) <= 0) ? (
+                                                            {(service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
@@ -222,11 +222,13 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
                                         <CardDescription>
                                             <div className="">
-                                                <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
-                                                {service.platform !== "" && service.platform !== "no platform" ? (
-                                                    <p className="text-blue-400">Platform: <span className="font-medium">{service.platform}</span></p>
-                                                ) : null}
-                                                <p>Stops away: {service.stops_away}</p>
+                                                <div className="flex items-center justify-between">
+                                                    <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
+                                                    {service.platform !== "" && service.platform !== "no platform" ? (
+                                                        <p className="text-blue-400">Platform: <span className="font-medium">{service.platform}</span></p>
+                                                    ) : null}
+                                                </div>
+                                                <p>Stops away: {service.stops_away || 0}</p>
                                                 <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
                                             </div>
                                         </CardDescription>
