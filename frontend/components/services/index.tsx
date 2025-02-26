@@ -193,12 +193,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 <div className="shrink flex-1 truncate overflow-hidden">
                                                     {service.canceled ? (
                                                         <>
-                                                            <span className="text-red-500">Cancled | </span>
+                                                            <span className="text-red-500">Canceled | </span>
                                                             <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {service.stops_away <= 0 || (!service.stops_away && timeTillArrival(service.arrival_time) <= 2) ? (
+                                                            {service.stops_away <= 0 || (!service.stops_away && timeTillArrival(service.arrival_time) <= 0) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>

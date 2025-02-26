@@ -190,6 +190,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				}
 			}
 		}
+
 		services = filteredServices
 
 		// Set SSE headers
