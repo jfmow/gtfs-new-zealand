@@ -185,7 +185,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden ${(service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""}`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${(service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -228,12 +228,16 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         <p className="text-blue-400">Platform: <span className="font-medium">{service.platform}</span></p>
                                                     ) : null}
                                                 </div>
-                                                <p>Stops away: {service.stops_away || 0}</p>
-                                                <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
+                                                {!service.canceled ? (
+                                                    <>
+                                                        <p>Stops away: {service.stops_away || 0}</p>
+                                                        <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
+                                                    </>
+                                                ) : null}
                                             </div>
                                         </CardDescription>
                                     </CardHeader>
-                                    {!filterDate ? (
+                                    {!filterDate && !service.canceled ? (
                                         <CardContent>
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                                 <ServiceTrackerModal currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
