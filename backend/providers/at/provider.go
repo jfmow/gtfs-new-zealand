@@ -181,6 +181,17 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			})
 		}
 
+		var filteredServices []gtfs.StopTimes
+		for _, service := range services {
+			stopsForService, err := gtfsData.GetStopsForTripID(service.TripID)
+			if err == nil {
+				if service.StopSequence != len(stopsForService) {
+					filteredServices = append(filteredServices, service)
+				}
+			}
+		}
+		services = filteredServices
+
 		// Set SSE headers
 		w := c.Response()
 		w.Header().Set("Content-Type", "text/event-stream")
