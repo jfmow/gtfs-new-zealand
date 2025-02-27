@@ -17,7 +17,8 @@ interface MapItem {
     routeID: string;
     zIndex: number;
     onClick?: () => void;
-    description: string
+    description: string;
+    showDiscriptionAlways?: boolean
 }
 
 interface MapWithVariantProps {
@@ -145,7 +146,8 @@ function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, 
                 item.id,
                 item.onClick ? item.onClick : onMapItemClick,
                 item.zIndex,
-                item.description
+                item.description,
+                item.showDiscriptionAlways
             )
         }
         );
@@ -164,7 +166,8 @@ function addMarkerToMap(
     itemID: string,
     onClick: (id: string) => void,
     zIndex: number,
-    hoverMessage: string
+    hoverMessage: string,
+    displayHoverAlways?: boolean
 ) {
     if (!icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
@@ -177,12 +180,49 @@ function addMarkerToMap(
         ? `/route_icons/${routeID}.png`
         : getIconUrl(icon);
 
-    const customIcon = L.icon({
-        iconUrl,
-        iconSize: [24, 24],
-        iconAnchor: [12, 24],
-        popupAnchor: [0, -24]
-    });
+        let customIcon
+
+        if(displayHoverAlways){
+
+            customIcon = L.divIcon({
+                className: "flex items-center justify-center",
+                html: `
+                  <div style="position: relative; width: max-content; height: 36px;">
+                    <span
+                      style="
+                        position: absolute;
+                        top: -12px; /* Adjust to control distance above icon */
+                        left: 50%;
+                        transform: translateX(-50%);
+                        color: white;
+                        font-size: 12px;
+                        font-weight: bold;
+                        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+                          1px 1px 0 #000;
+                        white-space: nowrap; /* Prevent text wrapping */
+                        padding: 0 5px; /* Add padding to prevent text touching edges */
+                      "
+                    >
+                      ${hoverMessage}
+                    </span>
+                    <img
+                      className="w-4 h-4"
+                      src="${iconUrl}"
+                      style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 24px; height: 24px;"
+                    />
+                  </div>
+                `,
+                iconAnchor: [12, 30],
+              });
+        }else {
+            customIcon = L.icon({
+                iconUrl,
+                iconSize: [24, 24],
+                iconAnchor: [12, 24],
+                popupAnchor: [0, -24]
+            });
+        }
+
 
     const marker = L.marker(location, { icon: customIcon, zIndexOffset: zIndex });
 
@@ -191,7 +231,7 @@ function addMarkerToMap(
     }
 
     // Add a hover message (tooltip) above the marker
-    if (hoverMessage !== "") {
+    if (hoverMessage !== "" && !displayHoverAlways) {
         marker.bindTooltip(hoverMessage, {
             direction: 'top',       // Positions the tooltip above the marker
             offset: [0, -24],       // Adjusts the tooltip position

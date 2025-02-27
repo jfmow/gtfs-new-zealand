@@ -81,7 +81,8 @@ export default function Vehicles() {
                                     zIndex: 1,
                                     onClick: () => {
                                         setSelectedVehicle(vehicle)
-                                    }
+                                    },
+                                    showDiscriptionAlways: true
                                 }))
                             ) : [])]} zoom={17} mapID={"abcdefg"} height={"calc(100svh - 2rem - 70px)"} userLocation={location[0] === 0 ? [-36.85971694520651, 174.76042890091796] : location} variant={"userLocation"} />
                         </Suspense>
