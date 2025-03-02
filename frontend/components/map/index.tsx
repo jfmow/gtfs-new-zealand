@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { memo, useEffect, useRef } from "react";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 //@ts-ignore
 import L, { Map, Marker, MarkerClusterGroup } from 'leaflet';
@@ -37,7 +37,7 @@ interface MapWithVariantProps {
     variant: "userLocation" | "userAndFirstPoint" | "firstAndSecondItem" | "firstItem";
 }
 
-export default function LeafletMap({
+const LeafletMap = memo(function LeafletMap({
     userLocation = [-36.876661612231636, 174.72755818561663],
     navPoints,
     mapItems,
@@ -121,7 +121,9 @@ export default function LeafletMap({
     return (
         <div id={mapID} style={{ height: height, width: '100%', maxHeight: height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }}></div>
     );
-}
+})
+
+export default LeafletMap;
 
 function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, clusterGroupRef: React.MutableRefObject<MarkerClusterGroup | null>, mapItems: MapItem[], onMapItemClick: (id: string) => void) {
     if (!map || !markersRef.current) return;
@@ -180,13 +182,13 @@ function addMarkerToMap(
         ? `/route_icons/${routeID}.png`
         : getIconUrl(icon);
 
-        let customIcon
+    let customIcon
 
-        if(displayHoverAlways){
+    if (displayHoverAlways) {
 
-            customIcon = L.divIcon({
-                className: "flex items-center justify-center",
-                html: `
+        customIcon = L.divIcon({
+            className: "flex items-center justify-center",
+            html: `
                   <div style="position: relative; width: max-content; height: 36px;">
                     <span
                       style="
@@ -212,16 +214,16 @@ function addMarkerToMap(
                     />
                   </div>
                 `,
-                iconAnchor: [12, 30],
-              });
-        }else {
-            customIcon = L.icon({
-                iconUrl,
-                iconSize: [24, 24],
-                iconAnchor: [12, 24],
-                popupAnchor: [0, -24]
-            });
-        }
+            iconAnchor: [12, 30],
+        });
+    } else {
+        customIcon = L.icon({
+            iconUrl,
+            iconSize: [24, 24],
+            iconAnchor: [12, 24],
+            popupAnchor: [0, -24]
+        });
+    }
 
 
     const marker = L.marker(location, { icon: customIcon, zIndexOffset: zIndex });
@@ -245,7 +247,6 @@ function addMarkerToMap(
     // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     markerClusterGroup ? markerClusterGroup.addLayer(marker) : marker.addTo(map);
 }
-
 
 function getIconUrl(icon: string): string {
     const iconMap: Record<string, string> = {
@@ -360,6 +361,7 @@ function addUserLocationButton(map: Map, userLocation: [number, number], control
     controlRef.current = userLocationControl
     map.addControl(userLocationControl)
 }
+
 function addSingleVehicleLocationButton(map: Map, vehicleLocation: [number, number], controlRef: React.MutableRefObject<L.Control | null>) {
     if (controlRef.current !== null) {
         map.removeControl(controlRef.current)

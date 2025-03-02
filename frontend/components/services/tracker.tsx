@@ -1,6 +1,6 @@
 import { useUserLocation } from "@/lib/userLocation";
 const LeafletMap = lazy(() => import("../map"));
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { TrainsApiResponse } from "./types";
 import {
     Dialog,
@@ -49,7 +49,7 @@ interface ServiceTrackerModalProps {
 
 const REFRESH_INTERVAL = 15; // Refresh interval in seconds
 
-export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
+const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -242,7 +242,9 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
 
         </>
     )
-}
+})
+
+export default ServiceTrackerModal
 
 export interface VehiclesResponse {
     trip_id: string;
