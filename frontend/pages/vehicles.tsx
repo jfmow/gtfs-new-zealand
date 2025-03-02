@@ -34,11 +34,13 @@ export default function Vehicles() {
         }
         getData()
 
-        const intervalId = setInterval(getData, 15000);
+        if (!selectedVehicle) {
+            const intervalId = setInterval(getData, 15000);
 
-        // Clean up the interval when the component unmounts or stopName changes
-        return () => clearInterval(intervalId);
-    }, [vehicleType])
+            // Clean up the interval when the component unmounts or stopName changes
+            return () => clearInterval(intervalId);
+        }
+    }, [vehicleType, selectedVehicle])
 
     if (loading) {
         return <LoadingSpinner height="100svh" />

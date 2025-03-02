@@ -26,7 +26,7 @@ import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
-import LoadingSpinner from "../loading-spinner";
+import LoadingSpinner, { ProgressCircleTimer } from "../loading-spinner";
 import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
@@ -47,12 +47,15 @@ interface ServiceTrackerModalProps {
     has: boolean
 }
 
+const REFRESH_INTERVAL = 15; // Refresh interval in seconds
+
 export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
     const { location } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
 
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
+    const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
 
     useEffect(() => {
         async function getData() {
@@ -83,9 +86,19 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
 
         const intervalId = setInterval(() => {
             if (open) {
-                getData()
+                getData();
+                setCountdown(REFRESH_INTERVAL);
             }
-        }, 15000);
+        }, REFRESH_INTERVAL * 1000);
+
+        const countdownInterval = setInterval(() => {
+            setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
+        }, 1000);
+
+        return () => {
+            clearInterval(intervalId);
+            clearInterval(countdownInterval);
+        };
 
         // Clean up the interval when the component unmounts or stopName changes
         return () => clearInterval(intervalId);
@@ -111,7 +124,14 @@ export default function ServiceTrackerModal({ loaded, tripId, currentStop, has, 
                 {!open || !vehicle ? null : (
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Service tracker</DialogTitle>
+                            <DialogTitle>
+                                <div className="flex items-center justify-between w-full">
+                                    <span>Service tracker</span>
+                                    <div className="progress-container">
+                                        <ProgressCircleTimer initialTime={REFRESH_INTERVAL} timeLeft={countdown} />
+                                    </div>
+                                </div>
+                            </DialogTitle>
                             <DialogDescription>
                                 <Separator className="my-1" />
                                 <p className="text-gray-400 opacity-50">Current/Previous stop: {vehicle.trip.current_stop.name} (Platform {vehicle.trip.current_stop.platform})</p>

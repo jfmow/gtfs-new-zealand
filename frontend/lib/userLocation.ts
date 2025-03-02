@@ -29,52 +29,28 @@ interface UseUserLocation {
     location: UserLocation;  // The user's location as [latitude, longitude]
     loading: boolean;        // Loading state
     error: Error | null;    // Error state
-    hasPermission: boolean | null; // Permission state
 }
 
 export function useUserLocation(): UseUserLocation {
     const [location, setLocation] = useState<UserLocation>([0, 0]); // Initialize location state
     const [loading, setLoading] = useState<boolean>(true); // Loading state for the location
     const [error, setError] = useState<Error | null>(null); // Error state for the location
-    const [hasPermission, setHasPermission] = useState<boolean | null>(null); // Track permission status
 
     useEffect(() => {
-        const checkPermissionAndFetch = async () => {
+        const fetchLocation = async () => {
+            setLoading(true); // Set loading to true before fetching location
             try {
-                const permissionStatus = await navigator.permissions.query({ name: "geolocation" });
-
-                if (permissionStatus.state === "granted") {
-                    setHasPermission(true);
-                    setLoading(true);
-
-                    const fetchLocation = async () => {
-                        try {
-                            const userLocation = await getUserLocation();
-                            setLocation(userLocation); // Update state with fetched location
-                            setError(null); // Reset error if successful
-                        } catch (err) {
-                            setError(err as Error); // Handle any errors
-                        } finally {
-                            setLoading(false); // Set loading to false after fetching location
-                        }
-                    };
-
-                    fetchLocation(); // Fetch immediately
-                    const intervalId = setInterval(fetchLocation, 1000); // Fetch location every second
-
-                    return () => clearInterval(intervalId); // Cleanup interval on unmount
-                } else {
-                    setHasPermission(false);
-                    setLoading(false);
-                }
+                const userLocation = await getUserLocation();
+                setLocation(userLocation); // Update state with fetched location
             } catch (err) {
-                setError(err as Error);
-                setLoading(false);
+                setError(err as Error); // Handle any errors
+            } finally {
+                setLoading(false); // Set loading to false after fetching location
             }
         };
 
-        checkPermissionAndFetch();
-    }, []); // Runs once on mount
+        fetchLocation(); // Call the function to get location
+    }, []); // Empty dependency array means this effect runs once on mount
 
-    return { location, loading, error, hasPermission }; // Return states
+    return { location, loading, error }; // Return location, loading, and error states
 }
