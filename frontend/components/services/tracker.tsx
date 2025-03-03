@@ -123,7 +123,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                         </Button>
                     </DialogTrigger>
                 ) : null}
-                {!open ? null : (
+                {open && vehicle ? (
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>
@@ -238,7 +238,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
 
 
                     </DialogContent>
-                )}
+                ):null}
             </Dialog>
 
 
