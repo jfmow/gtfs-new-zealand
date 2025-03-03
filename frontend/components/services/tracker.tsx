@@ -92,7 +92,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
         }, REFRESH_INTERVAL * 1000);
 
         const countdownInterval = setInterval(() => {
-            setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
+            if(open){
+                setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
+            }
         }, 1000);
 
         return () => {
