@@ -123,7 +123,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                         </Button>
                     </DialogTrigger>
                 ) : null}
-                {!open || !vehicle ? null : (
+                {!open ? null : (
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>
