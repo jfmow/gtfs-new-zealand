@@ -26,7 +26,7 @@ import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
-import LoadingSpinner, { ProgressCircleTimer } from "../loading-spinner";
+import LoadingSpinner from "../loading-spinner";
 import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
