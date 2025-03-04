@@ -89,7 +89,7 @@ export default function FavouriteStops() {
         <>
             <div className="flex flex-wrap items-center justify-center gap-4">
                 {favourites.map((item: string) => (
-                    <Button variant={"outline"} onClick={() => Router.push(`/?s=${encodeURIComponent(item)}`)}>
+                    <Button key={item} variant={"outline"} onClick={() => Router.push(`/?s=${encodeURIComponent(item)}`)}>
                         {item}
                     </Button>
                 ))}
