@@ -1,14 +1,26 @@
 import Services from "@/components/services";
+import FavouriteStops, { FavouritesProvider, useFavourites } from "@/components/stops/favourites";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import HelpMenu from "@/components/ui/help-menu";
-import { MessageCircleWarningIcon } from "lucide-react";
+import { Heart, HeartOff, MessageCircleWarningIcon } from "lucide-react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import { useEffect, useState } from "react";
 
-export default function Home() {
+export default function HomeWrapper() {
+  return (
+    <>
+      <FavouritesProvider>
+        <Home />
+      </FavouritesProvider>
+    </>
+  )
+}
+
+function Home() {
+  const { searchFavourites, addFavourite } = useFavourites()
   const { found, value } = useAQueryParam("s"); // Get the 's' parameter and if it's found
   const [selectedStop, setSelectedStop] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<Date | undefined>()
@@ -33,7 +45,17 @@ export default function Home() {
               <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
                 <MessageCircleWarningIcon />
               </Button>
+              <Button disabled={selectedStop === ""} onClick={() => addFavourite(selectedStop)}>
+                {searchFavourites(selectedStop) ? (
+                  <HeartOff />
+                ) : (
+                  <Heart />
+                )}
+              </Button>
             </div>
+            {selectedStop === "" ?
+              <FavouriteStops />
+              : null}
             <div className="flex items-center flex-wrap gap-2 hidden">
               <div className="flex items-center gap-2">
                 <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?r=${selectedStop}` }}>
