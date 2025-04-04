@@ -8,6 +8,7 @@ import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
 import { TrainsApiResponse } from "../services/types";
 import { ApiFetch } from "@/lib/url-context";
+import { useUserLocation } from "@/lib/userLocation";
 
 interface MapItem {
     lat: number;
@@ -22,7 +23,6 @@ interface MapItem {
 }
 
 interface MapWithVariantProps {
-    userLocation?: [number, number];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     navPoints?: GeoJSON; // Define a more specific type if available
     mapItems?: MapItem[];
@@ -38,7 +38,6 @@ interface MapWithVariantProps {
 }
 
 const LeafletMap = memo(function LeafletMap({
-    userLocation = [-36.876661612231636, 174.72755818561663],
     navPoints,
     mapItems,
     mapID = "map-abc",
@@ -55,9 +54,12 @@ const LeafletMap = memo(function LeafletMap({
     const routeLineLayerRef = useRef<L.GeoJSON | null>(null)
     const vehicleFlyControlRef = useRef<L.Control | null>(null)
     const userLocationFlyControlRef = useRef<L.Control | null>(null)
+    const { location, error, loading } = useUserLocation()
 
     useEffect(() => {
-        const hasUserLocation = userLocation[0] !== 0 && userLocation[1] !== 0;
+        if (loading) return
+        const userLocation: [number, number] = location[0] === 0 ? [-36.85971694520651, 174.76042890091796] : location
+        const hasUserLocation = error ? false : true
 
         let map: Map;
         if (!mapRef.current) {
@@ -107,7 +109,7 @@ const LeafletMap = memo(function LeafletMap({
             addMarkerToMap(userLocationMarkerRef.current, map, null, userLocation, "user", "", "user", () => console.log("Stop clicking yourself you fool"), 9999, "You");
             addUserLocationButton(map, userLocation, userLocationFlyControlRef);
         }
-    }, [userLocation, mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints]);
+    }, [mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints, location, error, loading]);
 
     useEffect(() => {
         if (mapRef.current && mapItems) {
@@ -164,7 +166,7 @@ function renderMapItems(
     markersRef.current.forEach(marker => map.removeLayer(marker));
     markersRef.current.length = 0;
 
-    if (visibleItems.length) {
+    if (visibleItems.length > 0) {
         const useCluster = visibleItems.length > 100 ? clusterGroup : null;
         visibleItems.forEach(item => {
             addMarkerToMap(

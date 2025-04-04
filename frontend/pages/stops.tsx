@@ -1,13 +1,11 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { TrainsApiResponse } from "@/components/services/types";
 import { ApiFetch } from "@/lib/url-context";
-import { useUserLocation } from "@/lib/userLocation";
 import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
 
 const LeafletMap = lazy(() => import("@/components/map"));
 export default function Stops() {
-    const { loading, location } = useUserLocation()
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")
 
@@ -24,7 +22,7 @@ export default function Stops() {
         getData()
     }, [])
 
-    if (loading) {
+    if (!stops) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -49,7 +47,7 @@ export default function Stops() {
                                     zIndex: 1,
                                     onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
                                 }))
-                            ) : [])]} zoom={17} mapID={"abcd"} height={"calc(100svh - 2rem - 70px)"} userLocation={location[0] === 0 ? [-36.85971694520651, 174.76042890091796] : location} variant={"userLocation"} />
+                            ) : [])]} zoom={17} mapID={"abcd"} height={"calc(100svh - 2rem - 70px)"} variant={"userLocation"} />
                         </Suspense>
                     )}
                 </div>

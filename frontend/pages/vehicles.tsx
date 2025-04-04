@@ -1,5 +1,4 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { useUserLocation } from "@/lib/userLocation";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map"));
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
@@ -15,7 +14,6 @@ import {
 import { ApiFetch } from "@/lib/url-context";
 
 export default function Vehicles() {
-    const { loading, location } = useUserLocation()
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
     const [error, setError] = useState("")
 
@@ -42,7 +40,7 @@ export default function Vehicles() {
         }
     }, [vehicleType, selectedVehicle])
 
-    if (loading) {
+    if (!vehicles) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -86,7 +84,7 @@ export default function Vehicles() {
                                     },
                                     showDiscriptionAlways: true
                                 }))
-                            ) : [])]} zoom={17} mapID={"abcdefg"} height={"calc(100svh - 2rem - 70px)"} userLocation={location[0] === 0 ? [-36.85971694520651, 174.76042890091796] : location} variant={"userLocation"} />
+                            ) : [])]} zoom={17} mapID={"abcdefg"} height={"calc(100svh - 2rem - 70px)"} variant={"userLocation"} />
                         </Suspense>
                     )}
 

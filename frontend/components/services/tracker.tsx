@@ -55,7 +55,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
     const [open, setOpen] = useState(defaultOpen)
 
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
-   // const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
+    // const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
 
     useEffect(() => {
         async function getData() {
@@ -87,15 +87,15 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
         const intervalId = setInterval(() => {
             if (open) {
                 getData();
-               // setCountdown(REFRESH_INTERVAL);
+                // setCountdown(REFRESH_INTERVAL);
             }
         }, REFRESH_INTERVAL * 1000);
 
-       /* const countdownInterval = setInterval(() => {
-            if(open){
-                setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
-            }
-        }, 1000);*/
+        /* const countdownInterval = setInterval(() => {
+             if(open){
+                 setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
+             }
+         }, 1000);*/
 
         // Clean up the interval when the component unmounts or stopName changes
         return () => clearInterval(intervalId);
@@ -124,7 +124,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                             <DialogTitle>
                                 <div className="flex items-center justify-between w-full">
                                     <span>Service tracker</span>
-                                    
+
                                 </div>
                             </DialogTitle>
                             <DialogDescription>
@@ -147,7 +147,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                 routeId: vehicle.route.id,
                                                 tripId: vehicle.trip_id,
                                             }}
-                                            userLocation={location}
                                             mapItems={[
                                                 {
                                                     lat: vehicle.position.lat,
@@ -231,7 +230,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
 
 
                     </DialogContent>
-                ):null}
+                ) : null}
             </Dialog>
 
 
