@@ -59,6 +59,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([]);
     const [errorMessage, setErrorMessage] = useState("");
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
+    const displayingSchedulePreview = filterDate ? true : false
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map(service => service.platform);
@@ -185,7 +186,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden ${(service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3 ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${!displayingSchedulePreview && ((service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3) ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -198,7 +199,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {(service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1) ? (
+                                                            {!displayingSchedulePreview &&( (service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
@@ -237,7 +238,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             </div>
                                         </CardDescription>
                                     </CardHeader>
-                                    {!filterDate && !service.canceled ? (
+                                    {!displayingSchedulePreview && !service.canceled ? (
                                         <CardContent>
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                                 <ServiceTrackerModal currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
