@@ -32,25 +32,30 @@ interface UseUserLocation {
 }
 
 export function useUserLocation(): UseUserLocation {
-    const [location, setLocation] = useState<UserLocation>([0, 0]); // Initialize location state
-    const [loading, setLoading] = useState<boolean>(true); // Loading state for the location
-    const [error, setError] = useState<Error | null>(null); // Error state for the location
+    const [location, setLocation] = useState<UserLocation>([0, 0]);
+    const [loading, setLoading] = useState<boolean>(true);
+    const [error, setError] = useState<Error | null>(null);
 
     useEffect(() => {
         const fetchLocation = async () => {
-            setLoading(true); // Set loading to true before fetching location
             try {
                 const userLocation = await getUserLocation();
-                setLocation(userLocation); // Update state with fetched location
+                setLocation(userLocation);
+                setError(null); // Clear previous errors if successful
             } catch (err) {
-                setError(err as Error); // Handle any errors
+                setError(err as Error);
             } finally {
-                setLoading(false); // Set loading to false after fetching location
             }
         };
 
-        fetchLocation(); // Call the function to get location
-    }, []); // Empty dependency array means this effect runs once on mount
+        // Fetch immediately and then every 3 seconds
+        fetchLocation().then(() => setLoading(false));
+        const intervalId = setInterval(fetchLocation, 3000);
 
-    return { location, loading, error }; // Return location, loading, and error states
+        // Clear the interval on unmount
+        return () => clearInterval(intervalId);
+    }, []);
+
+    return { location, loading, error };
 }
+
