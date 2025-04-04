@@ -12,9 +12,9 @@ import { TrainsApiResponse } from "./types"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
-import { Toggle } from "../ui/toggle"
 import { urlStore } from "@/lib/url-store"
 import { ApiFetch } from "@/lib/url-context"
+import { Button } from "../ui/button"
 
 interface ServicesProps {
     stopName: string
@@ -84,7 +84,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         const startEventSource = () => {
             if (!filterDate) {
                 eventSource = new EventSource(
-                    `${url}/services/${stopName}`
+                    encodeURI(`${url}/services/${stopName}`)
+                        .replace(/\(/g, '%28')
+                        .replace(/\)/g, '%29')
                 );
 
                 eventSource.onmessage = (event) => {
@@ -114,12 +116,14 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     )}`
                 )
                     .then(async (res) => {
-                        const data: TrainsApiResponse<Service[]> = await res.json();
                         if (res.ok) {
+                            const data: TrainsApiResponse<Service[]> = await res.json();
                             setServices(data.data);
                             setErrorMessage("");
                         } else {
-                            console.error(data.message)
+                            res.text().then((text) => {
+                                console.error("Error fetching schedule:", text);
+                            })
                             setErrorMessage("Failed to fetch data from the server.");
                         }
                     })
@@ -176,10 +180,13 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     {getUniquePlatforms(services).length > 0 ? (
                         <div className="mb-2 grid">
                             <div className="flex  gap-2 items-center">
+                                <Button aria-label="toggle all platforms" variant={"outline"} disabled={!platformFilter} className="w-full" size={"sm"} onClick={() => setPlatformFilter(undefined)}>
+                                    All
+                                </Button>
                                 {getUniquePlatforms(services).map((platform) => (
-                                    <Toggle key={platform} className="w-full" size={"sm"} variant={"outline"} pressed={platformFilter === platform} onPressedChange={(t) => setPlatformFilter(t ? platform : undefined)}>
+                                    <Button aria-label="toggle platform" key={platform} className="w-full disabled:border-green-300 disabled:bg-green-200" size={"sm"} variant={"outline"} disabled={platformFilter === platform} onClick={() => setPlatformFilter(platform)}>
                                         {platform}
-                                    </Toggle>
+                                    </Button>
                                 ))}
                             </div>
                         </div>
@@ -199,7 +206,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {!displayingSchedulePreview &&( (service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
+                                                            {!displayingSchedulePreview && ((service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
