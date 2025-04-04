@@ -1,18 +1,11 @@
 import Head from "next/head"
 import { useEffect, useState } from "react"
 import { useAQueryParam } from "."
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { BellDot, ThumbsUp } from "lucide-react"
+import { BellDot, MegaphoneOff } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/services/notifications"
@@ -29,10 +22,8 @@ export default function Alerts() {
             setLoading(true)
             ApiFetch(`stops/alerts/${value}`)
                 .then(async res => {
-                    const data: TrainsApiResponse<Alert[]> = await res.json()
-                    if (!res.ok) {
-                        console.error(data.message)
-                    } else {
+                    if (res.ok) {
+                        const data: TrainsApiResponse<Alert[]> = await res.json()
                         setAlerts(data.data)
                     }
                     setLoading(false)
@@ -51,6 +42,7 @@ export default function Alerts() {
                         <StopNotifications stopName={value}>
                             <Button>
                                 <BellDot />
+                                <span className="hidden sm:block">Notifications</span>
                             </Button>
                         </StopNotifications>
                         <SearchForStop defaultValue={value} url="/alerts?r=" />
@@ -111,10 +103,10 @@ export default function Alerts() {
                                 ) : value !== "" ? (
                                     <>
                                         <Alert>
-                                            <ThumbsUp className="h-4 w-4" />
+                                            <MegaphoneOff className="h-4 w-4" />
                                             <AlertTitle>No alerts found</AlertTitle>
                                             <AlertDescription>
-                                                This stop/route has no alerts at the moment.
+                                                This stop has no alerts at the moment.
                                                 <br />
                                                 <br />
                                                 Use the bell above to enable notifications for any future alerts/cancellations at this stop
@@ -124,8 +116,7 @@ export default function Alerts() {
                                     </>
                                 ) : (
                                     <div className="grid gap-1">
-                                        <small className="text-sm font-medium leading-none">Please search for a route or stop to view alerts.</small>
-                                        <small className="text-sm font-medium leading-none">Some routes may have alerts while the stops on that route do not show any.</small>
+                                        <p className="text-sm text-muted-foreground">Search for a stop to view alerts.</p>
                                     </div>
                                 )}
                             </div>
