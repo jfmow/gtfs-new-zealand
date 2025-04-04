@@ -118,6 +118,24 @@ const LeafletMap = memo(function LeafletMap({
         }
     }, [mapItems, onMapItemClick, variant]);
 
+    useEffect(() => {
+        const map = mapRef.current;
+
+        if (map && mapItems) {
+            const updateMarkers = () => {
+                renderMapItems(map, markersRef, clusterGroupRef, mapItems, onMapItemClick);
+            };
+
+            updateMarkers(); // initial render
+            map.on('moveend', updateMarkers); // re-render on pan/zoom
+
+            return () => {
+                map.off('moveend', updateMarkers); // cleanup
+            };
+        }
+    }, [mapItems, onMapItemClick]);
+
+
     return (
         <div id={mapID} style={{ height: height, width: '100%', maxHeight: height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }}></div>
     );
@@ -125,8 +143,19 @@ const LeafletMap = memo(function LeafletMap({
 
 export default LeafletMap;
 
-function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, clusterGroupRef: React.MutableRefObject<MarkerClusterGroup | null>, mapItems: MapItem[], onMapItemClick: (id: string) => void) {
+function renderMapItems(
+    map: Map,
+    markersRef: React.MutableRefObject<Marker[]>,
+    clusterGroupRef: React.MutableRefObject<MarkerClusterGroup | null>,
+    mapItems: MapItem[],
+    onMapItemClick: (id: string) => void
+) {
     if (!map || !markersRef.current) return;
+
+    const bounds = map.getBounds();
+    const visibleItems = mapItems.filter(item =>
+        bounds.contains([item.lat, item.lon])
+    );
 
     const clusterGroup = clusterGroupRef.current || createMapClusterGroup();
     clusterGroup.clearLayers();
@@ -135,9 +164,9 @@ function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, 
     markersRef.current.forEach(marker => map.removeLayer(marker));
     markersRef.current.length = 0;
 
-    if (mapItems.length) {
-        const useCluster = mapItems.length > 100 ? clusterGroup : null;
-        mapItems.forEach(item => {
+    if (visibleItems.length) {
+        const useCluster = visibleItems.length > 100 ? clusterGroup : null;
+        visibleItems.forEach(item => {
             addMarkerToMap(
                 markersRef.current,
                 map,
@@ -150,13 +179,13 @@ function renderMapItems(map: Map, markersRef: React.MutableRefObject<Marker[]>, 
                 item.zIndex,
                 item.description,
                 item.showDiscriptionAlways
-            )
-        }
-        );
+            );
+        });
     }
 
-    if (mapItems.length > 100) map.addLayer(clusterGroup);
+    if (visibleItems.length > 100) map.addLayer(clusterGroup);
 }
+
 
 function addMarkerToMap(
     markersRef: Marker[],
