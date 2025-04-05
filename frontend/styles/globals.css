@@ -71,3 +71,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+.list-none {
+  list-style-type: none;
+}
+
+.list-none::-webkit-details-marker {
+  display: none;
+}

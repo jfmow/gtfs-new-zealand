@@ -62,8 +62,8 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <details open={selectedStop === ""} className="bg-yellow-50 border border-yellow-100 shadow p-2 rounded-md my-2 p-2 [&_svg]:open:-rotate-180">
-            <summary className="flex items-center gap-1 justify-between ">
+          <details open={selectedStop === ""} className="bg-yellow-50 border border-yellow-100 shadow p-2 rounded-md my-2 p-2 [&_svg]:open:-rotate-180 ">
+            <summary className="flex items-center gap-1 justify-between list-none">
               <div className="flex items-center gap-1">
                 <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4 !rotate-0" />
                 <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
