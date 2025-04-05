@@ -88,7 +88,7 @@ export default function Navigate({ start, end }: NavigateProps) {
                                     routeID: "",
                                     zIndex: 0,
                                     description: ""
-                                }]} userLocation={[start.lat, start.lon]} />
+                                }]} />
                             </Suspense>
                         </div>
                     </>

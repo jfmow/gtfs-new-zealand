@@ -1,6 +1,5 @@
 import Head from "next/head"
 import { useEffect, useState } from "react"
-import { useAQueryParam } from "."
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import SearchForStop from "@/components/stops/search"
@@ -11,16 +10,17 @@ import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/services/notifications"
 import { TrainsApiResponse } from "@/components/services/types"
 import { ApiFetch } from "@/lib/url-context"
+import { useQueryParams } from "@/lib/url-params"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
-    const { value, found } = useAQueryParam("r")
+    const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } })
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        if (found) {
+        if (selected_stop.found) {
             setLoading(true)
-            ApiFetch(`stops/alerts/${value}`)
+            ApiFetch(`stops/alerts/${selected_stop.value}`)
                 .then(async res => {
                     if (res.ok) {
                         const data: TrainsApiResponse<Alert[]> = await res.json()
@@ -30,8 +30,7 @@ export default function Alerts() {
                 })
 
         }
-    }, [value, found])
-
+    }, [selected_stop])
 
     return (
         <>
@@ -39,13 +38,13 @@ export default function Alerts() {
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <div className="flex items-center gap-2 p-4">
-                        <StopNotifications stopName={value}>
+                        <StopNotifications stopName={selected_stop.value}>
                             <Button>
                                 <BellDot />
                                 <span className="hidden sm:block">Notifications</span>
                             </Button>
                         </StopNotifications>
-                        <SearchForStop defaultValue={value} url="/alerts?r=" />
+                        <SearchForStop defaultValue={selected_stop.value} url="/alerts?r=" />
                     </div>
                     {loading ? (
                         <LoadingSpinner description="Loading alerts..." />
@@ -100,7 +99,7 @@ export default function Alerts() {
                                             </>
                                         ))}
                                     </>
-                                ) : value !== "" ? (
+                                ) : selected_stop.found ? (
                                     <>
                                         <Alert>
                                             <MegaphoneOff className="h-4 w-4" />
