@@ -28,76 +28,70 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 	now := time.Now().In(v.timeZone)
 	currentTime := now.Format("15:04:05")
 
-	var canceledTrips = make(map[string]string)
-
+	// Collect all canceled trips
+	canceledTrips := make(map[string]string)
 	for _, trip := range tripUpdates {
 		if trip.Trip.ScheduleRelationship == 3 {
-			/*parsedTime, err := time.Parse("15:04:05", trip.Trip.StartTime)
-			if err != nil {
-				//fmt.Println("Error parsing time:", err)
-				continue
-			}*/
 			canceledTrips[trip.Trip.TripID] = trip.ID
 		}
 	}
 
-	for trip, tripUUID := range canceledTrips {
-		foundStops, err := gtfsDB.GetStopsForTripID(trip)
+	for tripID, tripUUID := range canceledTrips {
+		stops, err := gtfsDB.GetStopsForTripID(tripID)
 		if err != nil {
-			return errors.New("unable to find stops for trip")
+			return fmt.Errorf("unable to find stops for trip %s: %w", tripID, err)
 		}
-		for _, stop := range foundStops {
-			var limit = 500
-			var offset = 0
+
+		for _, stop := range stops {
+			service, err := gtfsDB.GetServiceByTripAndStop(tripID, stop.StopId, currentTime)
+			if err != nil {
+				continue
+			}
+
+			parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
+			if err != nil {
+				continue
+			}
+
+			serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
+				parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
+
+			if serviceTime.Before(now) {
+				continue
+			}
+
+			formattedTime := parsedTime.Format("3:04pm")
+
+			parentStopData, err := gtfsDB.GetParentStopByChildStopID(service.StopId)
+			if err != nil {
+				continue
+			}
+
+			data := map[string]string{
+				"url": fmt.Sprintf("/?s=%s", parentStopData.StopName),
+			}
+
+			title := parentStopData.StopName
+			body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)",
+				formattedTime, service.StopHeadsign, parentStopData.StopName, service.TripData.RouteID)
+
+			const limit = 500
+			offset := 0
+
 			for {
-				clients, err := v.GetNotificationClientsByStop(stop.StopId, trip, limit, offset)
-				if err != nil {
-					// errors.New("no clients for stopId")
+				clients, err := v.GetNotificationClientsByStop(stop.StopId, tripID, limit, offset)
+				if err != nil || len(clients) == 0 {
 					break
 				}
-
-				if len(clients) == 0 {
-					break
-				}
-
-				offset += limit
-
-				service, err := gtfsDB.GetServiceByTripAndStop(trip, stop.StopId, currentTime)
-				if err != nil {
-					//log.Println("no service found with trip id")
-					break
-				}
-				parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
-				if err != nil {
-					//fmt.Println("Error parsing time:", err)
-					break
-				}
-
-				serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
-					parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
-
-				if serviceTime.Before(now) {
-					//errors.New("service already arrived/left")
-					break
-				}
-
-				// Format the time in 12-hour format with AM/PM
-				formattedTime := parsedTime.Format("3:04pm")
-
-				data := map[string]string{
-					"url": fmt.Sprintf("/?s=%s", service.StopData.StopName),
-				}
-
-				title := service.StopData.StopName
-				body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)", formattedTime, service.StopHeadsign, service.StopData.StopName, service.TripData.RouteID)
 
 				for _, client := range clients {
 					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, tripUUID)
 					go v.SendNotification(client, body, title, data)
 				}
+
+				offset += limit
 			}
 		}
-
 	}
 
 	return nil
@@ -114,10 +108,10 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 		go func(alert realtime.Alert) {
 			defer wg.Done()
 
-			stopsSet := make(map[string]struct{}) // A set to track unique stop IDs
+			stopsSet := make(map[string]struct{})
 			var stopsToInform []string
 
-			// Collect stops to inform
+			// Collect unique stops from InformedEntity
 			for _, entity := range alert.InformedEntity {
 				if entity.StopID != "" {
 					if _, exists := stopsSet[entity.StopID]; !exists {
@@ -139,42 +133,32 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 				}
 			}
 
-			// Notify clients for each stop
 			for _, stop := range stopsToInform {
-				var limit = 500
-				var offset = 0
+				// Fetch stop data once
+				stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
+				if err != nil {
+					continue
+				}
+
+				var (
+					limit  = 500
+					offset = 0
+				)
 
 				for {
-					// Fetch parent stop data
-					stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
-					if err != nil {
-						break
-					}
-
-					// Fetch clients in batches
 					clients, err := v.GetNotificationClientsByStop(stop, alert.ID, limit, offset)
 					if err != nil || len(clients) == 0 {
 						break
 					}
 					offset += limit
 
-					// Prepare notification data
 					data := map[string]string{
-						"url": fmt.Sprintf("/alerts?r=%s", stopData.StopName+" "+stopData.StopCode),
-					}
-					var dates = "Active dates:\n"
-					for _, date := range alert.ActivePeriod {
-						startTime := time.Unix(date.Start, 0)
-						start := fmt.Sprintf("%d/%d/%d", startTime.Day(), startTime.Month(), startTime.Year())
-						endTime := time.Unix(date.End, 0)
-						end := fmt.Sprintf("%d/%d/%d", endTime.Day(), endTime.Month(), endTime.Year())
-						dates += fmt.Sprintf(" %s to %s\n", start, end)
+						"url": fmt.Sprintf("/alerts?s=%s", stopData.StopName+" "+stopData.StopCode),
 					}
 
 					title := stopData.StopName
-					body := fmt.Sprintf("%s\n%s\n\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text, dates)
+					body := fmt.Sprintf("%s\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text)
 
-					// Send notifications concurrently
 					var notifWG sync.WaitGroup
 					for _, client := range clients {
 						notifWG.Add(1)
