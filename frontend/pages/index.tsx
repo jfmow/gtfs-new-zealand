@@ -33,7 +33,7 @@ export default function Home() {
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
           <div className="grid items-center gap-2">
             <div className="flex gap-2 items-center w-full">
-              <SearchForStop defaultValue={selectedStop} url="/?s=" />
+              <SearchForStop />
               {selectedStop !== "" ? (
                 <DatePicker onChange={(date) => setSelectedDate(date)} />
               ) : null}

@@ -28,6 +28,7 @@ type ParsedValue<T extends ParamType> = T extends "string"
 type ParamResult<T extends ParamType> = {
     value: ParsedValue<T>;
     found: boolean;
+    set: (newValue: ParsedValue<T>) => void;
 };
 
 type QueryParamsResult<S extends ParamSchema> = {
@@ -79,17 +80,20 @@ export function useQueryParams<S extends ParamSchema>(
 ): QueryParamsResult<S> {
     const router = useRouter();
 
-    // Initialize with default values for each key in the schema
-    const initial: QueryParamsResult<S> = Object.keys(schema).reduce((acc, key) => {
-        const def = schema[key as keyof S];  // Ensure the key is valid in schema
-        acc[key as keyof S] = {
-            value: def.default as ParsedValue<S[keyof S]["type"]>,  // Explicitly cast to ParsedValue
-            found: false,
-        };
-        return acc;
-    }, {} as QueryParamsResult<S>);
+    const [params, setParams] = useState<QueryParamsResult<S>>(() => {
+        const result = {} as QueryParamsResult<S>;
 
-    const [params, setParams] = useState<QueryParamsResult<S>>(initial);
+        for (const key in schema) {
+            const def = schema[key];
+            result[key] = {
+                value: def.default as ParsedValue<typeof def["type"]>,
+                found: false,
+                set: () => { } // will be replaced later
+            };
+        }
+
+        return result;
+    });
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
@@ -100,21 +104,39 @@ export function useQueryParams<S extends ParamSchema>(
             let found = false;
             let value: string | null = null;
 
-            // Check the main key and any extra keys (if provided)
-            const allKeys = [key, ...(def.keys || [])];  // Include the original key and extra keys
+            const allKeys = [key, ...(def.keys || [])];
 
             for (const paramKey of allKeys) {
                 const raw = urlParams.get(paramKey);
                 if (raw !== null) {
                     value = raw;
                     found = true;
-                    break;  // Stop after finding the first valid value
+                    break;
                 }
             }
 
+            const parsedValue = parseValue(value, def);
+
             result[key] = {
-                value: parseValue(value, def) as ParsedValue<S[typeof key]["type"]>,
+                value: parsedValue as ParsedValue<typeof def["type"]>,
                 found,
+                set: (newValue: ParsedValue<typeof def["type"]>) => {
+                    const newParams = new URLSearchParams(window.location.search);
+                    const mainKey = def.keys?.[0] || key;
+
+                    // Update value
+                    newParams.set(mainKey, String(newValue));
+
+                    // Use shallow routing to update the URL
+                    router.replace(
+                        {
+                            pathname: router.pathname,
+                            query: Object.fromEntries(newParams.entries()),
+                        },
+                        undefined,
+                        { shallow: true }
+                    );
+                },
             };
         }
 
@@ -124,4 +146,5 @@ export function useQueryParams<S extends ParamSchema>(
 
     return params;
 }
+
 

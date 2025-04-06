@@ -5,16 +5,24 @@ import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { TrainsApiResponse } from "../services/types"
 import { ApiFetch } from "@/lib/url-context"
+import { useQueryParams } from "@/lib/url-params"
 
-export default function SearchForStop({ url, defaultValue }: { url: string, defaultValue: string }) {
+export default function SearchForStop() {
+    const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } })
     const [searchTerm, setSearchTerm] = useState("")
     const [result, setResult] = useState<StopSearch[]>([])
     const [isLoading, setIsLoading] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [isOpen, setIsOpen] = useState(false)
     const searchRef = useRef<HTMLDivElement>(null)
+    const skipSearchRef = useRef(false)
 
     useEffect(() => {
+        if (skipSearchRef.current) {
+            skipSearchRef.current = false
+            return
+        }
+
         const delayDebounceFn = setTimeout(async () => {
             if (searchTerm.length >= 2) {
                 setIsLoading(true)
@@ -38,6 +46,13 @@ export default function SearchForStop({ url, defaultValue }: { url: string, defa
     }, [searchTerm])
 
     useEffect(() => {
+        if (selected_stop.found) {
+            skipSearchRef.current = true
+            setSearchTerm(selected_stop.value)
+        }
+    }, [selected_stop])
+
+    useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
             if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
                 setIsOpen(false)
@@ -53,7 +68,7 @@ export default function SearchForStop({ url, defaultValue }: { url: string, defa
     return (
         <div className="relative w-full" ref={searchRef}>
             <SearchInput
-                defaultValue={defaultValue}
+                value={searchTerm}
                 className="w-full"
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search for stop..."
@@ -72,18 +87,21 @@ export default function SearchForStop({ url, defaultValue }: { url: string, defa
                             <ul className="p-2 space-y-1">
                                 {result.map((item) => (
                                     <li key={item.name}>
-                                        <a href={`${url}${encodeURIComponent(item.name)}`}>
-                                            <Button
-                                                variant="ghost"
-                                                className="w-full justify-start text-left font-normal"
-                                                onClick={() => setIsOpen(false)}
-                                            >
-                                                <span className="truncate">{item.name}</span>
-                                                <span className="ml-auto text-xs text-muted-foreground">
-                                                    {item.type_of_stop}
-                                                </span>
-                                            </Button>
-                                        </a>
+                                        <Button
+                                            variant="ghost"
+                                            className="w-full justify-start text-left font-normal"
+                                            onClick={() => {
+                                                skipSearchRef.current = true
+                                                setSearchTerm(item.name)
+                                                selected_stop.set(item.name)
+                                                setIsOpen(false)
+                                            }}
+                                        >
+                                            <span className="truncate">{item.name}</span>
+                                            <span className="ml-auto text-xs text-muted-foreground">
+                                                {item.type_of_stop}
+                                            </span>
+                                        </Button>
                                     </li>
                                 ))}
                             </ul>

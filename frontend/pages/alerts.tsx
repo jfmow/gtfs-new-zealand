@@ -44,7 +44,7 @@ export default function Alerts() {
                                 <span className="hidden sm:block">Notifications</span>
                             </Button>
                         </StopNotifications>
-                        <SearchForStop defaultValue={selected_stop.value} url="/alerts?r=" />
+                        <SearchForStop />
                     </div>
                     {loading ? (
                         <LoadingSpinner description="Loading alerts..." />
