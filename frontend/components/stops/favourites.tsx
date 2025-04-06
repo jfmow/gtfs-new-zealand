@@ -5,6 +5,7 @@ import { toast } from "sonner"
 import { useEffect, useState, useRef } from "react"
 import Router from "next/router"
 
+
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
 

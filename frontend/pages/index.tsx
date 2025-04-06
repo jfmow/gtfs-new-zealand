@@ -8,6 +8,12 @@ import { useQueryParams } from "@/lib/url-params";
 import { MessageCircleWarningIcon, StarIcon } from "lucide-react";
 import Head from "next/head";
 import { useEffect, useState } from "react";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion"
 
 export default function Home() {
   const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } }); // Get the 's' parameter and if it's found
@@ -62,23 +68,21 @@ export default function Home() {
               </div>
             </div>
           </div>
-          <details open={selectedStop === ""} className="bg-yellow-50 border border-yellow-100 shadow p-2 rounded-md my-2 p-2 [&_svg]:open:-rotate-180 ">
-            <summary className="flex items-center gap-1 justify-between list-none">
-              <div className="flex items-center gap-1">
-                <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4 !rotate-0" />
-                <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
-                  Favorites
-                </h4>
-              </div>
-              <div>
-                <svg className="rotate-0 transform transition-all duration-300" fill="none" height="20" width="20" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewBox="0 0 24 24">
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </div>
-            </summary>
-            <div className="m-1" />
-            <Favorites />
-          </details>
+          <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible>
+            <AccordionItem value="item-1">
+              <AccordionTrigger>
+                <div className="flex items-center gap-1">
+                  <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4" />
+                  <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
+                    Favorites
+                  </h4>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent>
+                <Favorites />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
           <div className="my-2" />
           <Services filterDate={selectedDate} stopName={selectedStop} />
         </div>
