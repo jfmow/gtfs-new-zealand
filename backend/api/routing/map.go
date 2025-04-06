@@ -57,8 +57,6 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 	// Final URL
 	url := baseURL + query + queryParams
 
-	fmt.Println(url)
-
 	// Make HTTP request
 	resp, err := http.Get(url)
 	if err != nil {

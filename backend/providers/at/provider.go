@@ -25,8 +25,6 @@ var gzipConfig = middleware.GzipConfig{
 	Level: 5,
 }
 
-var localTimeZone = time.FixedZone("NZST", 13*60*60)
-
 type Response struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
@@ -37,7 +35,7 @@ type Response struct {
 var notificationMutex sync.Mutex
 var notificationMutex2 sync.Mutex
 
-func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime) {
+func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
 
 	servicesRouter := primaryRouter.Group("/services")
 	stopsRouter := primaryRouter.Group("/stops")
@@ -284,7 +282,6 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 						ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
 						if tripUpdate.Trip.ScheduleRelationship == 3 {
-							fmt.Println(tripUpdate.Trip.ScheduleRelationship)
 							ResponseData.Canceled = true
 						}
 

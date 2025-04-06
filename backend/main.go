@@ -34,7 +34,7 @@ var rateLimiterConfig = middleware.RateLimiterConfig{
 	},
 }
 
-var localTimeZone = time.FixedZone("NZST", 13*60*60)
+var localTimeZone, _ = time.LoadLocation("Pacific/Auckland")
 
 func main() {
 	//Loads a .env file in the current dir
@@ -73,7 +73,7 @@ func main() {
 		panic(err)
 	}
 
-	at.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData)
+	at.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
 
 	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
@@ -91,7 +91,7 @@ func main() {
 		panic(err)
 	}
 
-	at.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData)
+	at.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
