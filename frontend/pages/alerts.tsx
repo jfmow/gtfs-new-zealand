@@ -14,7 +14,7 @@ import { useQueryParams } from "@/lib/url-params"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
-    const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } })
+    const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s", "r"] } })
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
