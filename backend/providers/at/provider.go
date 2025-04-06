@@ -165,7 +165,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, "", 20)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, now, 20)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
@@ -400,14 +400,12 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			})
 		}
 		now := time.Unix(dateInt, 0).In(localTimeZone)
-		//currentTime := now.Format("15:04:05")
-		dateString := now.Format("20060102")
 
 		// Collect services
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, "", dateString, 400)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, "", now, 1000)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
