@@ -8,7 +8,7 @@ import { ShapesResponse, GeoJSON } from "./geojson-types";
 import 'leaflet/dist/leaflet.css';
 import { TrainsApiResponse } from "../services/types";
 import { ApiFetch } from "@/lib/url-context";
-import { useUserLocation } from "@/lib/userLocation";
+import { getUserLocation, useUserLocation } from "@/lib/userLocation";
 
 interface MapItem {
     lat: number;
@@ -54,7 +54,7 @@ const LeafletMap = memo(function LeafletMap({
     const routeLineLayerRef = useRef<L.GeoJSON | null>(null)
     const vehicleFlyControlRef = useRef<L.Control | null>(null)
     const userLocationFlyControlRef = useRef<L.Control | null>(null)
-    const { location, error, loading } = useUserLocation()
+    const { location, error, loading } = useUserLocation(true)
 
     useEffect(() => {
         if (loading) return
@@ -109,7 +109,31 @@ const LeafletMap = memo(function LeafletMap({
             addMarkerToMap(userLocationMarkerRef.current, map, null, userLocation, "user", "", "user", () => console.log("Stop clicking yourself you fool"), 9999, "You");
             addUserLocationButton(map, userLocation, userLocationFlyControlRef);
         }
-    }, [mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints, location, error, loading]);
+    }, [error, loading, location, mapID, mapItems, navPoints, routeLine, variant, zoom]);
+
+    useEffect(() => {
+        const map = mapRef.current;
+        let Interval: NodeJS.Timeout | null = null;
+        if (map && !error && !loading) {
+            const fetchLocation = async () => {
+                try {
+                    const location = await getUserLocation()
+                    userLocationMarkerRef.current.forEach(marker => map.removeLayer(marker));
+                    userLocationMarkerRef.current = [];
+                    addMarkerToMap(userLocationMarkerRef.current, map, null, location, "user", "", "user", () => console.log("Stop clicking yourself you fool"), 9999, "You");
+                    addUserLocationButton(map, location, userLocationFlyControlRef);
+                } catch {
+                    console.error("Error fetching location:", error)
+                }
+            }
+            Interval = setInterval(fetchLocation, 3000);
+        }
+        return () => {
+            if (Interval) {
+                clearInterval(Interval)
+            }
+        }
+    }, [error, loading])
 
 
     useEffect(() => {
@@ -142,7 +166,7 @@ function renderMapItems(
     if (!map || !markersRef.current) return;
 
     const visibleItems = mapItems
-
+    debugger
     const clusterGroup = clusterGroupRef.current || createMapClusterGroup();
     clusterGroup.clearLayers();
     clusterGroupRef.current = clusterGroup;

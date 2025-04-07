@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 // Define the return type for the location
 type UserLocation = [number, number]; // Tuple type for latitude and longitude
 
-function getUserLocation(): Promise<UserLocation> {
+export function getUserLocation(): Promise<UserLocation> {
     return new Promise((resolve) => {
         if (!navigator.geolocation) {
             console.error("Geolocation is not supported by this browser.");
@@ -31,7 +31,7 @@ interface UseUserLocation {
     error: Error | null;    // Error state
 }
 
-export function useUserLocation(): UseUserLocation {
+export function useUserLocation(doNotAutoUpdate?: boolean): UseUserLocation {
     const [location, setLocation] = useState<UserLocation>([0, 0]);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<Error | null>(null);
@@ -50,11 +50,12 @@ export function useUserLocation(): UseUserLocation {
 
         // Fetch immediately and then every 3 seconds
         fetchLocation().then(() => setLoading(false));
+        if (doNotAutoUpdate) return; // If doNotAutoUpdate is true, skip the interval
         const intervalId = setInterval(fetchLocation, 3000);
 
         // Clear the interval on unmount
         return () => clearInterval(intervalId);
-    }, []);
+    }, [doNotAutoUpdate]);
 
     return { location, loading, error };
 }
