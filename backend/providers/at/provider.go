@@ -280,7 +280,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 						ResponseData.ArrivalTime = formattedTime
 
-						ResponseData.StopsAway = int16(service.StopSequence-int(tripUpdate.StopTimeUpdate.StopSequence)) - 1
+						ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
 						if tripUpdate.Trip.ScheduleRelationship == 3 {
 							ResponseData.Canceled = true
 						}

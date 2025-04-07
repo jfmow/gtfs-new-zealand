@@ -206,7 +206,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {!displayingSchedulePreview && ((service.stops_away && service.stops_away <= 0) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
+                                                            {!displayingSchedulePreview && ((service.stops_away && service.stops_away <= -1) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
@@ -238,7 +238,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 </div>
                                                 {!service.canceled ? (
                                                     <>
-                                                        <p>Stops away: {service.stops_away || 0}</p>
+                                                        <p>Stops away: {service.stops_away && service.stops_away - 1 || 0}</p>
                                                         <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
                                                     </>
                                                 ) : null}
