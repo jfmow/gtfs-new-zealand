@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
 import ThemePicker, { useTheme } from './theme'
+import { buttonVariants } from './ui/button'
 
 
 export default function NavBar() {
@@ -53,9 +54,17 @@ export default function NavBar() {
 
             {/* Mobile menu */}
             <div
-                className={`fixed inset-0 bg-background z-40 md:hidden transition-transform duration-300 ease-in-out ${isMenuOpen ? 'translate-x-0' : 'translate-x-full'
-                    }`}
-            >
+                className={`
+                fixed inset-0 
+                bg-white/10 
+                backdrop-blur-md 
+                z-40 
+                md:hidden 
+                transition-all 
+                duration-500 
+                ease-in-out 
+                ${isMenuOpen ? 'opacity-100 pointer-events-auto translate-x-0' : 'opacity-0 pointer-events-none translate-x-full'}
+              `}>
                 <div className="flex flex-col pt-20 px-6">
                     <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">Menu</h1>
                 </div>
@@ -98,12 +107,13 @@ function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu
     return (
         <>
             {items.map((item) => (
-                <Link key={item.href} href={item.href} className="block" onClick={() => typeof toggleMenu === "function" && toggleMenu()}>
-                    <li
+                <li key={item.href} className="block" onClick={() => typeof toggleMenu === "function" && toggleMenu()}>
+                    <Link
+                        href={item.href}
                         className={
                             mobile
-                                ? 'mb-8'
-                                : 'rounded p-2 hover:bg-zinc-300/70 dark:hover:bg-zinc-700/70 transition-colors duration-200'
+                                ? 'grid active:bg-gray-100 rounded-lg p-4 text-sm font-medium text-gray-900 hover:bg-gray-100'
+                                : buttonVariants({ variant: 'ghost', size: 'default' })
                         }
                     >
                         <div className="flex items-center " >
@@ -115,8 +125,8 @@ function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu
                                 {item.description}
                             </p>
                         )}
-                    </li>
-                </Link>
+                    </Link>
+                </li>
             ))}
         </>
     )
