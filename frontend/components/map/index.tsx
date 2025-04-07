@@ -111,31 +111,18 @@ const LeafletMap = memo(function LeafletMap({
         }
     }, [mapID, routeLine, variant, mapItems, zoom, onMapItemClick, navPoints, location, error, loading]);
 
-    useEffect(() => {
-        if (mapRef.current && mapItems) {
-            if (variant === "firstItem" || variant === "userAndFirstPoint") {
-                addSingleVehicleLocationButton(mapRef.current, [mapItems[0].lat, mapItems[0].lon], vehicleFlyControlRef)
-            }
-            renderMapItems(mapRef.current, markersRef, clusterGroupRef, mapItems, onMapItemClick);
-        }
-    }, [mapItems, onMapItemClick, variant]);
 
     useEffect(() => {
         const map = mapRef.current;
 
-        if (map && mapItems) {
-            const updateMarkers = () => {
-                renderMapItems(map, markersRef, clusterGroupRef, mapItems, onMapItemClick);
-            };
+        if (map && mapItems && typeof onMapItemClick === 'function' && variant) {
+            renderMapItems(map, markersRef, clusterGroupRef, mapItems, onMapItemClick);
 
-            updateMarkers(); // initial render
-            map.on('moveend', updateMarkers); // re-render on pan/zoom
-
-            return () => {
-                map.off('moveend', updateMarkers); // cleanup
-            };
+            if (variant === "firstItem" || variant === "userAndFirstPoint") {
+                addSingleVehicleLocationButton(map, [mapItems[0].lat, mapItems[0].lon], vehicleFlyControlRef);
+            }
         }
-    }, [mapItems, onMapItemClick]);
+    }, [mapItems, onMapItemClick, variant]);
 
 
     return (
@@ -154,15 +141,11 @@ function renderMapItems(
 ) {
     if (!map || !markersRef.current) return;
 
-    const bounds = map.getBounds();
-    const visibleItems = mapItems.filter(item =>
-        bounds.contains([item.lat, item.lon])
-    );
+    const visibleItems = mapItems
 
     const clusterGroup = clusterGroupRef.current || createMapClusterGroup();
     clusterGroup.clearLayers();
     clusterGroupRef.current = clusterGroup;
-
     markersRef.current.forEach(marker => map.removeLayer(marker));
     markersRef.current.length = 0;
 
