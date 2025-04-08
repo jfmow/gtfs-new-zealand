@@ -1,5 +1,3 @@
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-//@ts-ignore
 import leaflet, { MarkerClusterGroup } from "leaflet"
 import React, { useEffect, useRef, useState } from "react"
 import 'leaflet/dist/leaflet.css';
@@ -124,7 +122,7 @@ export default function Map(Props: MapProps) {
                 activeStops.clusterGroup.addLayer(marker)
                 activeStops.markers.push({ id: stop.id, marker })
             })
-            map.addLayer(activeStops.clusterGroup)
+            map.addLayer(activeStops.clusterGroup as leaflet.Layer)
             itemsOnMap.current.stops = activeStops
         }
 
@@ -144,7 +142,7 @@ export default function Map(Props: MapProps) {
                 activeVehicles.clusterGroup.addLayer(marker)
                 activeVehicles.markers.push({ id: vehicle.id, marker })
             })
-            map.addLayer(activeVehicles.clusterGroup)
+            map.addLayer(activeVehicles.clusterGroup as leaflet.Layer)
             itemsOnMap.current.vehicles = activeVehicles
         }
 
@@ -360,12 +358,8 @@ function getIconUrl(icon: string): string {
 }
 
 function createMapClusterGroup(): MarkerClusterGroup {
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    //@ts-expect-error
-    return L.markerClusterGroup({
-        maxClusterRadius: 50, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion.
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        //@ts-expect-error        
+    return leaflet.markerClusterGroup({
+        maxClusterRadius: 50, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion. 
         iconCreateFunction: function (cluster) {
             // Define a custom cluster icon using /blank.png and the number of markers
             const count = cluster.getChildCount();
