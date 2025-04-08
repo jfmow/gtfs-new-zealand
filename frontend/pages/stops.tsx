@@ -1,13 +1,16 @@
 import LoadingSpinner from "@/components/loading-spinner";
+import { MapItem } from "@/components/map/new";
 import { TrainsApiResponse } from "@/components/services/types";
 import { ApiFetch } from "@/lib/url-context";
+import { useUserLocation } from "@/lib/userLocation";
 import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
 
-const LeafletMap = lazy(() => import("@/components/map"));
+const LeafletMap = lazy(() => import("@/components/map/new"));
 export default function Stops() {
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")
+    const { location, loading } = useUserLocation()
 
     useEffect(() => {
         async function getData() {
@@ -22,7 +25,7 @@ export default function Stops() {
         getData()
     }, [])
 
-    if (!stops) {
+    if (!stops || loading) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -36,18 +39,18 @@ export default function Stops() {
                         "Err: " + error
                     ) : (
                         <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
-                            <LeafletMap mapItems={[...(stops ? (
+                            <LeafletMap userLocation={{ found: location[0] !== 0, lat: location[0], lon: location[1] }} map_id="stops_map" stops={[...(stops ? (
                                 stops.map((item) => ({
                                     lat: item.stop_lat,
                                     lon: item.stop_lon,
                                     icon: "dot",
                                     id: item.stop_name + " " + item.stop_code,
                                     routeID: "",
-                                    description: item.stop_name + " " + item.stop_code,
+                                    description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
                                     zIndex: 1,
                                     onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
-                                }))
-                            ) : [])]} zoom={17} mapID={"abcd"} height={"calc(100svh - 2rem - 70px)"} variant={"userLocation"} />
+                                } as MapItem))
+                            ) : [])]} height={"calc(100svh - 2rem - 70px)"} />
                         </Suspense>
                     )}
                 </div>
