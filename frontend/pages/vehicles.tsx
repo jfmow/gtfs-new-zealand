@@ -1,6 +1,6 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { lazy, Suspense, useEffect, useState } from "react";
-const LeafletMap = lazy(() => import("@/components/map"));
+const LeafletMap = lazy(() => import("@/components/map/map"));
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
 import Head from "next/head";
 import { TrainsApiResponse } from "@/components/services/types";
@@ -12,6 +12,8 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { ApiFetch } from "@/lib/url-context";
+import { useUserLocation } from "@/lib/userLocation";
+import { MapItem } from "@/components/map/map";
 
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
@@ -19,6 +21,7 @@ export default function Vehicles() {
 
     const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
     const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
+    const { location, loading } = useUserLocation()
 
     useEffect(() => {
         async function getData() {
@@ -40,7 +43,7 @@ export default function Vehicles() {
         }
     }, [vehicleType, selectedVehicle])
 
-    if (!vehicles) {
+    if (!vehicles || loading) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -70,21 +73,20 @@ export default function Vehicles() {
                         "Err: " + error
                     ) : (
                         <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                            <LeafletMap mapItems={[...(vehicles ? (
+                            <LeafletMap vehicles={[...(vehicles ? (
                                 vehicles.map((vehicle) => ({
                                     lat: vehicle.position.lat,
                                     lon: vehicle.position.lon,
                                     icon: vehicle.type,
                                     id: vehicle.trip_id,
                                     routeID: vehicle.route.id,
-                                    description: `${vehicle.route.name}`,
+                                    description: { text: `${vehicle.route.name}`, alwaysShow: true },
                                     zIndex: 1,
                                     onClick: () => {
                                         setSelectedVehicle(vehicle)
                                     },
-                                    showDiscriptionAlways: true
-                                }))
-                            ) : [])]} zoom={17} mapID={"abcdefg"} height={"calc(100svh - 2rem - 70px)"} variant={"userLocation"} />
+                                }) as MapItem)
+                            ) : [])]} map_id="vehicles_map" userLocation={{ found: location[0] !== 0, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px)"} />
                         </Suspense>
                     )}
 

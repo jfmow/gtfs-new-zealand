@@ -1,26 +1,9 @@
 import { useUserLocation } from "@/lib/userLocation";
-const LeafletMap = lazy(() => import("../map"));
+const LeafletMap = lazy(() => import("../map/map"));
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { TrainsApiResponse } from "./types";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-    Drawer,
-    DrawerClose,
-    DrawerContent,
-    DrawerDescription,
-    DrawerFooter,
-    DrawerHeader,
-    DrawerTitle,
-    DrawerTrigger,
-} from "@/components/ui/drawer"
-
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
@@ -31,6 +14,7 @@ import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
 import { ApiFetch } from "@/lib/url-context";
+import { MapItem } from "../map/map";
 
 
 interface ServiceTrackerModalProps {
@@ -50,7 +34,7 @@ interface ServiceTrackerModalProps {
 const REFRESH_INTERVAL = 15; // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
-    const { location } = useUserLocation()
+    const { location, loading, error } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
 
@@ -143,20 +127,22 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                 <>
                                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                                         <LeafletMap
-                                            routeLine={{
+                                            userLocation={{ found: !loading && !error ? true : false, lat: location[0], lon: location[1] }}
+                                            trip={{
                                                 routeId: vehicle.route.id,
                                                 tripId: vehicle.trip_id,
                                             }}
-                                            mapItems={[
-                                                {
-                                                    lat: vehicle.position.lat,
-                                                    lon: vehicle.position.lon,
-                                                    icon: vehicle.type || "bus",
-                                                    id: vehicle.trip_id,
-                                                    routeID: vehicle.route.id,
-                                                    description: "Vehicle you're tracking",
-                                                    zIndex: 1
-                                                },
+                                            vehicles={[{
+                                                lat: vehicle.position.lat,
+                                                lon: vehicle.position.lon,
+                                                icon: vehicle.type || "bus",
+                                                id: vehicle.trip_id,
+                                                routeID: vehicle.route.id,
+                                                description: { text: "Vehicle you're tracking", alwaysShow: false },
+                                                zIndex: 1,
+                                                onClick: () => { }
+                                            }]}
+                                            stops={[
                                                 ...(stops ? stops.stops.map((item) => ({
                                                     lat: item.lat,
                                                     lon: item.lon,
@@ -165,15 +151,16 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                         : (stops?.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : "dot")),
                                                     id: item.name,
                                                     routeID: "",
-                                                    description: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                    description: {
+                                                        text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                        alwaysShow: false
+                                                    },
                                                     zIndex: 1,
                                                     onClick: () => window.location.href = `/?s=${encodeURIComponent(item.name)}`
-                                                })) : [])
+                                                }) as MapItem) : [])
                                             ]}
-                                            navPoints={undefined}
-                                            mapID={"tracker" + Math.random()}
+                                            map_id={"tracker" + Math.random()}
                                             height={"300px"}
-                                            variant={"userAndFirstPoint"}
                                         />
                                     </Suspense>
 
