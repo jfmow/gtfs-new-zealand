@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { ChevronDown, TriangleAlert } from "lucide-react"
-const LeafletMap = lazy(() => import('../map/index'));
+const LeafletMap = lazy(() => import('./map'));
 import LoadingSpinner from "../loading-spinner"
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer"
 import { Button } from "../ui/button"
@@ -10,6 +10,7 @@ import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
 import { TrainsApiResponse } from "../services/types";
 import { ApiFetch } from "@/lib/url-context";
+import { useUserLocation } from "@/lib/userLocation";
 
 interface NavigateProps {
     start: { lat: number, lon: number, name: string },
@@ -17,6 +18,7 @@ interface NavigateProps {
 }
 
 export default function Navigate({ start, end }: NavigateProps) {
+    const { loading, error, location } = useUserLocation()
     const [data, setData] = useState<OSRMResponse | null>(null)
 
     async function getPoints() {
@@ -82,12 +84,13 @@ export default function Navigate({ start, end }: NavigateProps) {
                         <div className="w-full rounded-xl overflow-hidden">
 
                             <Suspense>
-                                <LeafletMap mapID={"nav-map"} height={"400px"} variant={"userLocation"} navPoints={data as unknown as GeoJSON} mapItems={[{
+                                <LeafletMap userLocation={{ found: !error && !loading ? true : false, lat: location[0], lon: location[1] }} map_id={"nav-map"} height={"400px"} line={data as unknown as GeoJSON} stops={[{
                                     lat: end.lat, lon: end.lon, icon: "stop marker",
                                     id: "",
                                     routeID: "",
                                     zIndex: 0,
-                                    description: ""
+                                    description: { text: end.name, alwaysShow: true },
+                                    onClick: () => { }
                                 }]} />
                             </Suspense>
                         </div>
