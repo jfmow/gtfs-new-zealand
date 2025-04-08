@@ -46,6 +46,7 @@ type ItemsOnMap = {
     vehicles: {
         clusterGroup: MarkerClusterGroup | null
         markers: { id: string, marker: leaflet.Marker }[]
+        control: leaflet.Control | null
     }
     user: {
         marker: leaflet.Marker | null
@@ -66,7 +67,7 @@ type ItemsOnMap = {
 export default function Map(Props: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
     const [mapZoomSet, setMapZoomState] = useState(false)
-    const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [] }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
+    const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
 
     //Stuff on the map, like markers  and the map itself
     useEffect(() => {
@@ -94,9 +95,9 @@ export default function Map(Props: MapProps) {
                 map.setView([userLocation.lat, userLocation.lon], 13);
             } else {
                 if (vehicles.length > 0) {
-                    map.setView([vehicles[0].lat, vehicles[0].lon], 15);
+                    map.setView([vehicles[0].lat, vehicles[0].lon], 13);
                 } else if (stops.length > 0) {
-                    map.setView([stops[0].lat, stops[0].lon], 15);
+                    map.setView([stops[0].lat, stops[0].lon], 13);
                 } else {
                     //otherwise your toast
                     throw new Error("No vehicles or stops or user location found");
@@ -153,6 +154,9 @@ export default function Map(Props: MapProps) {
                 activeVehicles.clusterGroup.addLayer(marker)
                 activeVehicles.markers.push({ id: vehicle.id, marker })
             })
+            if (vehicles.length === 1) {
+                addVehicleZoomControl(map, [vehicles[0].lat, vehicles[0].lon], activeVehicles)
+            }
             map.addLayer(activeVehicles.clusterGroup as leaflet.Layer)
             itemsOnMap.current.vehicles = activeVehicles
         }
@@ -244,6 +248,24 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: Ma
         }).addTo(map);
     }
     return map
+}
+
+function addVehicleZoomControl(map: leaflet.Map, vehicleLocation: [number, number], activeMapItemsVehicle: ItemsOnMap["vehicles"]) {
+    const vehicleControl = activeMapItemsVehicle.control
+    if (vehicleControl) {
+        map.removeControl(vehicleControl)
+    }
+    const vehicleLocationControl = new leaflet.Control({ position: 'topright' });
+    vehicleLocationControl.onAdd = () => {
+        const button = leaflet.DomUtil.create('button', ` ${buttonVariants({ variant: "default", size: "icon" })}`);
+        button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>';
+        button.onclick = () => {
+            map.flyTo(vehicleLocation, 15);
+        };
+        return button;
+    };
+    activeMapItemsVehicle.control = vehicleLocationControl
+    map.addControl(vehicleLocationControl)
 }
 
 function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: MapProps["userLocation"]) {
