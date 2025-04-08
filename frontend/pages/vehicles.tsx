@@ -80,7 +80,7 @@ export default function Vehicles() {
                                     icon: vehicle.type,
                                     id: vehicle.trip_id,
                                     routeID: vehicle.route.id,
-                                    description: { text: `${vehicle.route.name}`, alwaysShow: false },
+                                    description: { text: `${vehicle.route.name}`, alwaysShow: true },
                                     zIndex: 1,
                                     onClick: () => {
                                         setSelectedVehicle(vehicle)
