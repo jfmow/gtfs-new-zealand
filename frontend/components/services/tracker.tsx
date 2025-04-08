@@ -1,26 +1,9 @@
 import { useUserLocation } from "@/lib/userLocation";
-const LeafletMap = lazy(() => import("../map/new"));
+const LeafletMap = lazy(() => import("../map/map"));
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { TrainsApiResponse } from "./types";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogHeader,
-    DialogTitle,
-    DialogTrigger,
-} from "@/components/ui/dialog"
-import {
-    Drawer,
-    DrawerClose,
-    DrawerContent,
-    DrawerDescription,
-    DrawerFooter,
-    DrawerHeader,
-    DrawerTitle,
-    DrawerTrigger,
-} from "@/components/ui/drawer"
-
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
@@ -31,7 +14,7 @@ import { Separator } from "../ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
 import { ApiFetch } from "@/lib/url-context";
-import { MapItem } from "../map/new";
+import { MapItem } from "../map/map";
 
 
 interface ServiceTrackerModalProps {
@@ -51,7 +34,7 @@ interface ServiceTrackerModalProps {
 const REFRESH_INTERVAL = 15; // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
-    const { location, loading } = useUserLocation()
+    const { location, loading, error } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
 
@@ -144,7 +127,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                 <>
                                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                                         <LeafletMap
-                                            userLocation={{ found: location[0] !== 0 ? true : false, lat: location[0], lon: location[1] }}
+                                            userLocation={{ found: !loading && !error ? true : false, lat: location[0], lon: location[1] }}
                                             trip={{
                                                 routeId: vehicle.route.id,
                                                 tripId: vehicle.trip_id,

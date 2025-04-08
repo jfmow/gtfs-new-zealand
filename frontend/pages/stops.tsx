@@ -1,12 +1,12 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { MapItem } from "@/components/map/new";
+import { MapItem } from "@/components/map/map";
 import { TrainsApiResponse } from "@/components/services/types";
 import { ApiFetch } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
 
-const LeafletMap = lazy(() => import("@/components/map/new"));
+const LeafletMap = lazy(() => import("@/components/map/map"));
 export default function Stops() {
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")

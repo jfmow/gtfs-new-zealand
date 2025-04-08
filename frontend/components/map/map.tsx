@@ -167,6 +167,7 @@ export default function Map(Props: MapProps) {
 
         }
 
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [Props.vehicles, Props.userLocation, Props.stops, Props.map_id, Props.line, mapRef])
 
     //Route line

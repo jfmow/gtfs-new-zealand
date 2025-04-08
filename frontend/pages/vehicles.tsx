@@ -1,6 +1,6 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { lazy, Suspense, useEffect, useState } from "react";
-const LeafletMap = lazy(() => import("@/components/map/new"));
+const LeafletMap = lazy(() => import("@/components/map/map"));
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
 import Head from "next/head";
 import { TrainsApiResponse } from "@/components/services/types";
@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { ApiFetch } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
-import { MapItem } from "@/components/map/new";
+import { MapItem } from "@/components/map/map";
 
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>()

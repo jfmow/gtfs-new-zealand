@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react"
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert"
 import { ChevronDown, TriangleAlert } from "lucide-react"
-const LeafletMap = lazy(() => import('../map/new'));
+const LeafletMap = lazy(() => import('./map'));
 import LoadingSpinner from "../loading-spinner"
 import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from "../ui/drawer"
 import { Button } from "../ui/button"
