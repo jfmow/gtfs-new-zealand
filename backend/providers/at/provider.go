@@ -590,7 +590,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			responseData.Id = stop.StopId
 			responseData.Lat = stop.StopLat
 			responseData.Lon = stop.StopLon
-			responseData.Name = stop.StopName
+			responseData.Name = stop.StopName + " " + stop.StopCode
 			responseData.Platform = i.PlatformNumber
 			responseData.Sequence = i.Sequence
 
