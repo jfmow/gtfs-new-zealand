@@ -51,10 +51,27 @@ export function useUserLocation(doNotAutoUpdate?: boolean): UseUserLocation {
         // Fetch immediately and then every 3 seconds
         fetchLocation().then(() => setLoading(false));
         if (doNotAutoUpdate) return; // If doNotAutoUpdate is true, skip the interval
-        const intervalId = setInterval(fetchLocation, 3000);
+        let intervalId: NodeJS.Timeout | null
 
-        // Clear the interval on unmount
-        return () => clearInterval(intervalId);
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                intervalId = setInterval(fetchLocation, 3000);
+            } else if (document.visibilityState === "hidden") {
+                if (intervalId) {
+                    clearInterval(intervalId);
+                }
+            }
+        };
+        handleVisibilityChange()
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        // Cleanup on unmount, visibility change, or dependencies update
+        return () => {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            document.removeEventListener("visibilitychange", handleVisibilityChange);
+        };
     }, [doNotAutoUpdate]);
 
     return { location, loading, error };
