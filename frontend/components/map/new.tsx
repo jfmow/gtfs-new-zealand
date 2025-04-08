@@ -3,14 +3,14 @@ import React, { useEffect, useRef, useState } from "react"
 import 'leaflet/dist/leaflet.css';
 import "leaflet.markercluster";
 import { TrainsApiResponse } from "../services/types";
-import { ShapesResponse } from "./geojson-types";
+import { ShapesResponse, GeoJSON } from "./geojson-types";
 import { ApiFetch } from "@/lib/url-context";
 import { buttonVariants } from "../ui/button";
 
 export interface MapItem {
     lat: number;
     lon: number;
-    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker";
+    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | string;
     id: string;
     routeID: string;
     zIndex: number;
@@ -22,6 +22,7 @@ export interface MapItem {
 }
 
 interface MapProps {
+    line?: GeoJSON
     trip?: {
         routeId: string
         tripId: string
@@ -55,6 +56,9 @@ type ItemsOnMap = {
         routeId: string
         tripId: string
     }
+    navigation: {
+        line: leaflet.GeoJSON | null
+    }
 }
 
 //TODO: create nav line map in own file, do not make it a part of this component
@@ -62,8 +66,7 @@ type ItemsOnMap = {
 export default function Map(Props: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
     const [mapZoomSet, setMapZoomState] = useState(false)
-    const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [] }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" } })
-
+    const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [] }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
 
     //Stuff on the map, like markers  and the map itself
     useEffect(() => {
@@ -108,21 +111,29 @@ export default function Map(Props: MapProps) {
 
         const activeStops = activeMapItems.stops
         const activeVehicles = activeMapItems.vehicles
+        const activeNavigation = activeMapItems.navigation
 
         addUserMarker(activeMapItems.user, map, userLocation)
 
         if (stops.length > 0) {
+            if (!activeStops.clusterGroup) {
+                activeStops.clusterGroup = createMapClusterGroup()
+            }
             stops.forEach((stop) => {
                 if (activeStops.markers.find((item) => item.id === stop.id)) return
                 //Add the stop to the map
                 const marker = createNewMarker(stop)
-                if (!activeStops.clusterGroup) {
-                    activeStops.clusterGroup = createMapClusterGroup()
+                //Only make the cluster if theres more than 100 stops, otherwise just add the marker
+                if (activeStops.clusterGroup && stops.length > 100) {
+                    activeStops.clusterGroup.addLayer(marker)
+                } else {
+                    map.addLayer(marker)
                 }
-                activeStops.clusterGroup.addLayer(marker)
                 activeStops.markers.push({ id: stop.id, marker })
             })
-            map.addLayer(activeStops.clusterGroup as leaflet.Layer)
+            if (activeStops.clusterGroup && stops.length > 100) {
+                map.addLayer(activeStops.clusterGroup as leaflet.Layer)
+            }
             itemsOnMap.current.stops = activeStops
         }
 
@@ -146,7 +157,17 @@ export default function Map(Props: MapProps) {
             itemsOnMap.current.vehicles = activeVehicles
         }
 
-    }, [Props.vehicles, Props.userLocation, Props.stops, Props.map_id, mapRef])
+        if (Props.line) {
+            if (activeNavigation.line) {
+                map.removeLayer(activeNavigation.line)
+            }
+            const line = createNavigationLine(Props.line)
+            activeMapItems.navigation.line = line
+            line.addTo(map)
+
+        }
+
+    }, [Props.vehicles, Props.userLocation, Props.stops, Props.map_id, Props.line, mapRef])
 
     //Route line
     useEffect(() => {
@@ -375,6 +396,18 @@ function createMapClusterGroup(): MarkerClusterGroup {
             });
         },
     });
+}
+
+function createNavigationLine(geoJson: GeoJSON) {
+    const line = leaflet.geoJSON(geoJson, {
+        //@ts-expect-error: is real config value
+        smoothFactor: 1.5, // Adjust the smoothness level
+        style: function () {
+            return { color: '#db6ecb', weight: 4 }; // Customize the line color and thickness
+        }
+    })
+
+    return line
 }
 
 
