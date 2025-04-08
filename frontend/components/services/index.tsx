@@ -85,8 +85,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             if (!filterDate) {
                 eventSource = new EventSource(
                     encodeURI(`${url}/services/${stopName}`)
-                        .replace(/\(/g, '%28')
-                        .replace(/\)/g, '%29')
                 );
 
                 eventSource.onmessage = (event) => {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -146,7 +147,15 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 			}
 		}()
 
-		stopName := c.PathParam("stationName")
+		stopNameEncoded := c.PathParam("stationName")
+		stopName, err := url.PathUnescape(stopNameEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop",
+				Data:    nil,
+			})
+		}
 
 		// Fetch stop data
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
@@ -381,7 +390,15 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	})
 
 	servicesRouter.GET("/:stationName/schedule", func(c echo.Context) error {
-		stopName := c.PathParam("stationName")
+		stopNameEncoded := c.PathParam("stationName")
+		stopName, err := url.PathUnescape(stopNameEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop",
+				Data:    nil,
+			})
+		}
 
 		// Fetch stop data
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
@@ -464,9 +481,17 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	//Returns a route by routeId
 	routesRouter.GET("/find-route/:routeId", func(c echo.Context) error {
 
-		stopName := c.PathParam("routeId")
+		routeIdEncoded := c.PathParam("routeId")
+		routeId, err := url.PathUnescape(routeIdEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
+			})
+		}
 
-		routes, err := gtfsData.SearchForRouteByID(stopName)
+		routes, err := gtfsData.SearchForRouteByID(routeId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -543,9 +568,17 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	})
 
 	//Return a route by routeId
-	routesRouter.GET("/:routeID", func(c echo.Context) error {
-		routeID := c.PathParam("routeID")
-		routes, err := gtfsData.SearchForRouteByID(routeID)
+	routesRouter.GET("/:routeId", func(c echo.Context) error {
+		routeIdEncoded := c.PathParam("routeId")
+		routeId, err := url.PathUnescape(routeIdEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
+			})
+		}
+		routes, err := gtfsData.SearchForRouteByID(routeId)
 
 		if len(routes) == 0 || err != nil {
 			return c.JSON(http.StatusNotFound, Response{
@@ -564,7 +597,15 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 	//Returns stops for a trip by tripId
 	stopsRouter.GET("/:tripId", func(c echo.Context) error {
-		tripId := c.PathParam("tripId")
+		tripIdEncoded := c.PathParam("tripId")
+		tripId, err := url.PathUnescape(tripIdEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid trip id",
+				Data:    nil,
+			})
+		}
 
 		stops, err := gtfsData.GetStopsForTripID(tripId)
 		if len(stops) == 0 || err != nil {
@@ -606,7 +647,15 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 	//Returns alerts from AT for a stop
 	stopsRouter.GET("/alerts/:stopName", func(c echo.Context) error {
-		stopName := c.PathParam("stopName")
+		stopNameEncoded := c.PathParam("stopName")
+		stopName, err := url.PathUnescape(stopNameEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop",
+				Data:    nil,
+			})
+		}
 
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
@@ -799,8 +848,15 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
 	stopsRouter.GET("/find-stop/:stopName", func(c echo.Context) error {
-
-		stopName := c.PathParam("stopName")
+		stopNameEncoded := c.PathParam("stopName")
+		stopName, err := url.PathUnescape(stopNameEncoded)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid stop",
+				Data:    nil,
+			})
+		}
 		children := c.QueryParam("children")
 
 		stops, err := gtfsData.SearchForStopsByNameOrCode(stopName, children == "true")
