@@ -155,15 +155,17 @@ export default function Map(Props: MapProps) {
         const map: leaflet.Map | null = mapRef.current
         if (!map) return
 
-        const hasTrip = Props.trip && Props.trip.routeId !== "" && Props.trip.tripId !== "" ? true : false
-        if (!hasTrip || !Props.trip) return
+        const routeId = Props.trip ? Props.trip.routeId : ""
+        const tripId = Props.trip ? Props.trip.tripId : ""
 
-        const routeId = Props.trip.routeId
-        const tripId = Props.trip.tripId
+        const hasTrip = routeId !== "" && tripId !== "" ? true : false
+        if (!hasTrip) return
 
         if (itemsOnMap.current.routeLine.line && itemsOnMap.current.routeLine.routeId !== routeId && itemsOnMap.current.routeLine.tripId !== tripId) {
             //Remove old route line if there is one
             map.removeLayer(itemsOnMap.current.routeLine.line)
+        } else if (itemsOnMap.current.routeLine.line && itemsOnMap.current.routeLine.routeId === routeId && itemsOnMap.current.routeLine.tripId === tripId) {
+            return
         }
         //Add route line to map
         const getRouteLine = async () => {
@@ -194,6 +196,8 @@ export default function Map(Props: MapProps) {
                 map.addLayer(routeLine)
                 //Save the route line to the ref
                 itemsOnMap.current.routeLine.line = routeLine
+                itemsOnMap.current.routeLine.routeId = routeId
+                itemsOnMap.current.routeLine.tripId = tripId
             } catch (error) {
                 console.error(error)
             }
