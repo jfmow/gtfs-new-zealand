@@ -78,6 +78,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
 
         setServices([])
+        setPlatformFilter(undefined)
 
         let eventSource: EventSource | null = null;
 
