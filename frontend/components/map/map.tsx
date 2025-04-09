@@ -398,6 +398,7 @@ function getIconUrl(icon: string): string {
         "stop marker": "/vehicle_icons/stop marker.png",
         "end marker": "/vehicle_icons/end marker.png",
         "marked stop marker": "/vehicle_icons/marked stop marker.png",
+        "dot gray": "/vehicle_icons/stop_dot_passed.png"
     };
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }

@@ -3,7 +3,7 @@ import { TrainsApiResponse } from "./types";
 import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
-    next_stop?: {
+    next_stop: {
         lat: number;
         lon: number;
         name: string;
@@ -11,7 +11,7 @@ export interface StopForTripsData {
         platformNumber: string;
         index: number;
     };
-    final_stop?: {
+    final_stop: {
         lat: number;
         lon: number;
         name: string;
@@ -22,7 +22,7 @@ export interface StopForTripsData {
     stops: ServicesStop[];
 }
 
-export async function getStopsForTrip(tripId: string, currentStopId: string, nextStopId: string, filterPassedStops: boolean): Promise<StopForTripsData | null> {
+export async function getStopsForTrip(tripId: string, currentStopId: string, nextStopId: string, filterPassedStops: boolean) {
     const response = await getStopsDataForTrip(tripId);
     if (response.error !== undefined) {
         return null
@@ -38,7 +38,7 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
 
     if (!nextStop || !finalStop) {
         console.warn("Missing next or final stop");
-        return { stops: stops };
+        return undefined
     }
 
     const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.name);
@@ -61,7 +61,14 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
         index: (finalStop.sequence ?? 0) - 1,
     };
 
-    return { next_stop: nextStopData, final_stop: finalStopData, stops: stops.filter((item) => filterPassedStops ? (item.sequence ?? 0) > stops.findIndex((item) => item.id === currentStopId) : true) };
+    const modifiedStops = stops.map((stop) => {
+        if (stop.sequence && stop.sequence <= nextStopData.index) {
+            return { ...stop, passed: true }
+        }
+        return stop
+    }).filter((item) => filterPassedStops ? (item.sequence ?? 0) > stops.findIndex((item) => item.id === currentStopId) : true)
+
+    return { next_stop: nextStopData, final_stop: finalStopData, stops: modifiedStops };
 }
 
 

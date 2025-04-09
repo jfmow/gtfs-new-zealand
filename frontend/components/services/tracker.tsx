@@ -58,7 +58,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                     const vehicle = data.data[0]
                     setVehicle(vehicle)
                     const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id, false)
-                    setStops(stopsData)
+                    if (stopsData) {
+                        setStops(stopsData)
+                    }
                 }
             })
 
@@ -143,21 +145,23 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                 onClick: () => { }
                                             }]}
                                             stops={[
-                                                ...(stops ? stops.stops.map((item) => ({
-                                                    lat: item.lat,
-                                                    lon: item.lon,
-                                                    icon: currentStop?.id === item.id
-                                                        ? "marked stop marker"
-                                                        : (stops?.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : "dot")),
-                                                    id: item.name,
-                                                    routeID: "",
-                                                    description: {
-                                                        text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
-                                                        alwaysShow: false
-                                                    },
-                                                    zIndex: 1,
-                                                    onClick: () => window.location.href = `/?s=${encodeURIComponent(item.name)}`
-                                                }) as MapItem) : [])
+                                                ...(stops ? stops.stops.map((item) =>
+                                                    ({
+                                                        lat: item.lat,
+                                                        lon: item.lon,
+                                                        icon: currentStop?.name === item.name
+                                                            ? "marked stop marker"
+                                                            : (stops?.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : item.passed ? "dot gray" : "dot")),
+                                                        id: item.name,
+                                                        routeID: "",
+                                                        description: {
+                                                            text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                            alwaysShow: false
+                                                        },
+                                                        zIndex: 1,
+                                                        onClick: () => window.location.href = `/?s=${encodeURIComponent(item.name)}`
+                                                    }) as MapItem
+                                                ) : [])
                                             ]}
                                             map_id={"tracker" + Math.random()}
                                             height={"300px"}
@@ -261,6 +265,7 @@ export interface ServicesStop {
     lon: number;
     id: string;
     name: string;
-    platform?: string;
-    sequence?: number;
+    platform: string;
+    sequence: number;
+    passed?: boolean
 }
