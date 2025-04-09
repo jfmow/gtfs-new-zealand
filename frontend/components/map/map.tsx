@@ -62,8 +62,6 @@ type ItemsOnMap = {
     }
 }
 
-//TODO: create nav line map in own file, do not make it a part of this component
-
 export default function Map(Props: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
     const [mapZoomSet, setMapZoomState] = useState(false)
@@ -82,30 +80,8 @@ export default function Map(Props: MapProps) {
 
         if (!mapZoomSet) {
             //User and only vehicle - tracker modal
-            if (userLocation.found && vehicles.length === 1) {
-                const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [vehicles[0].lat, vehicles[0].lon]);
-                map.fitBounds(bounds);
-            } else if (userLocation.found && stops.length === 1) {
-                //User and only stop - nav modal
-                const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [stops[0].lat, stops[0].lon]);
-                map.fitBounds(bounds);
-
-                //User and multiple vehicles/stops - vehicle map/stops map
-            } else if (userLocation.found) {
-                map.setView([userLocation.lat, userLocation.lon], 13);
-            } else {
-                if (vehicles.length > 0) {
-                    map.setView([vehicles[0].lat, vehicles[0].lon], 13);
-                } else if (stops.length > 0) {
-                    map.setView([stops[0].lat, stops[0].lon], 13);
-                } else {
-                    //otherwise your toast
-                    throw new Error("No vehicles or stops or user location found");
-                }
-            }
+            setDefaultZoom(map, userLocation, vehicles, stops);
             setMapZoomState(true)
-
-
         }
 
         const activeMapItems = itemsOnMap.current
@@ -233,6 +209,8 @@ export default function Map(Props: MapProps) {
     )
 }
 
+
+
 function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: MapProps): leaflet.Map {
     let map: leaflet.Map | null = ref.current
     if (!map || Props.map_id === "") {
@@ -242,12 +220,35 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: Ma
         map = leaflet.map(Props.map_id);
         ref.current = map;
         leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
+            maxZoom: 30,
             minZoom: 10,
             attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
         }).addTo(map);
     }
     return map
+}
+
+function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: number; lon: number; }, vehicles: MapItem[], stops: MapItem[]) {
+    if (userLocation.found && vehicles.length === 1) {
+        const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [vehicles[0].lat, vehicles[0].lon]);
+        map.fitBounds(bounds);
+    } else if (userLocation.found && stops.length === 1) {
+        //User and only stop - nav modal
+        const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [stops[0].lat, stops[0].lon]);
+        map.fitBounds(bounds);
+        //User and multiple vehicles/stops - vehicle map/stops map
+    } else if (userLocation.found) {
+        map.setView([userLocation.lat, userLocation.lon], 13);
+    } else {
+        if (vehicles.length > 0) {
+            map.setView([vehicles[0].lat, vehicles[0].lon], 13);
+        } else if (stops.length > 0) {
+            map.setView([stops[0].lat, stops[0].lon], 13);
+        } else {
+            //otherwise your toast
+            throw new Error("No vehicles or stops or user location found");
+        }
+    }
 }
 
 function addVehicleZoomControl(map: leaflet.Map, vehicleLocation: [number, number], activeMapItemsVehicle: ItemsOnMap["vehicles"]) {
