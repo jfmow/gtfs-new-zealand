@@ -240,7 +240,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 						Id:   service.StopId,
 						Lat:  service.StopData.StopLat,
 						Lon:  service.StopData.StopLon,
-						Name: stop.StopName,
+						Name: stop.StopName + " " + stop.StopCode,
 					}
 					response.Tracking = 2
 					response.TripId = service.TripID
