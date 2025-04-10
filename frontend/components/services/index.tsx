@@ -237,7 +237,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 </div>
                                                 {!service.canceled ? (
                                                     <>
-                                                        <p>Stops away: {service.stops_away && service.stops_away - 1 || 0}</p>
+                                                        <p>Stops away: {service.stops_away || 0}</p>
                                                         <p>Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} /></p>
                                                     </>
                                                 ) : null}

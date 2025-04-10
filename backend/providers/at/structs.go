@@ -31,8 +31,8 @@ type ServicesStop struct {
 	Lon      float64 `json:"lon"`
 	Id       string  `json:"id"`
 	Name     string  `json:"name"`
-	Platform string  `json:"platform,omitempty"`
-	Sequence int     `json:"sequence,omitempty"`
+	Platform string  `json:"platform"`
+	Sequence int     `json:"sequence"`
 }
 
 // Routes

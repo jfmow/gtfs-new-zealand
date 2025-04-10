@@ -9,7 +9,7 @@ export interface StopForTripsData {
         name: string;
         stop_id: string;
         platformNumber: string;
-        index: number;
+        sequence: number;
     };
     final_stop: {
         lat: number;
@@ -17,7 +17,7 @@ export interface StopForTripsData {
         name: string;
         stop_id: string;
         platformNumber: string;
-        index: number;
+        sequence: number;
     };
     stops: ServicesStop[];
 }
@@ -48,7 +48,7 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
         name: nextStopName,
         stop_id: nextStop.id,
         platformNumber: nextStopPlatformNumber,
-        index: (nextStop.sequence ?? 0) - 1,
+        sequence: nextStop.sequence
     };
 
     const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
@@ -58,11 +58,11 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
         name: finalStopName,
         stop_id: finalStop.id,
         platformNumber: finalStopPlatformNumber,
-        index: (finalStop.sequence ?? 0) - 1,
+        sequence: finalStop.sequence
     };
 
     const modifiedStops = stops.map((stop) => {
-        if (stop.sequence && stop.sequence <= nextStopData.index) {
+        if (stop.sequence < nextStopData.sequence) {
             return { ...stop, passed: true }
         }
         return stop

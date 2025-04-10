@@ -183,9 +183,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                 <ol className="flex items-center justify-center flex-col gap-1">
                                                     {stops?.stops.map((item, index) => (
                                                         <li key={item.id} className="flex items-center justify-center flex-col gap-1">
-                                                            <p className={`${stops.next_stop && index < stops.next_stop.index ? `text-zinc-400` : ``} ${stops.next_stop && index === stops.next_stop.index ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
+                                                            <p className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
                                                             {index < stops.stops.length - 1 ? (
-                                                                <ChevronDown className={`${stops.next_stop && index < stops.next_stop.index ? `text-zinc-400` : ``} w-4 h-4`} />
+                                                                <ChevronDown className={`${item.passed ? `text-zinc-400` : ``} w-4 h-4`} />
                                                             ) : null}
                                                         </li>
                                                     ))}

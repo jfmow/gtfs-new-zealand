@@ -191,7 +191,18 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		var filteredServices []gtfs.StopTimes
 		for _, service := range services {
 			stopsForService, err := gtfsData.GetStopsForTripID(service.TripID)
+
+			var lowestSequence = 1
+			for _, stop := range stopsForService {
+				if stop.Sequence < lowestSequence {
+					lowestSequence = stop.Sequence
+				}
+			}
+
 			if err == nil {
+				if lowestSequence == 1 {
+					service.StopSequence = service.StopSequence - 1
+				}
 				if service.StopSequence != len(stopsForService) {
 					filteredServices = append(filteredServices, service)
 				}
@@ -289,7 +300,23 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 						ResponseData.ArrivalTime = formattedTime
 
-						ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
+						stops, err := gtfsData.GetStopsForTripID(service.TripID)
+						var lowestSequence = 1
+						if len(stops) > 0 && err == nil {
+							for _, stop := range stops {
+								if stop.Sequence < lowestSequence {
+									lowestSequence = stop.Sequence
+								}
+							}
+							if lowestSequence == 1 {
+								ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
+							} else {
+								ResponseData.StopsAway = int16(service.StopSequence-int(tripUpdate.StopTimeUpdate.StopSequence)) - 1
+							}
+						} else {
+							ResponseData.StopsAway = int16(service.StopSequence - int(tripUpdate.StopTimeUpdate.StopSequence))
+						}
+
 						if tripUpdate.Trip.ScheduleRelationship == 3 {
 							ResponseData.Canceled = true
 						}
@@ -614,6 +641,19 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				Message: "no stops found for trip",
 				Data:    nil,
 			})
+		}
+
+		var lowestSequence = 1
+		for _, stop := range stops {
+			if stop.Sequence < lowestSequence {
+				lowestSequence = stop.Sequence
+			}
+		}
+		if lowestSequence == 1 {
+			for i, stop := range stops {
+				stop.Sequence = stop.Sequence - 1
+				stops[i] = stop
+			}
 		}
 
 		var result []ServicesStop
@@ -961,6 +1001,19 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				continue
 			}
 
+			var lowestSequence = 1
+			for _, stop := range stopsForTrip {
+				if stop.Sequence < lowestSequence {
+					lowestSequence = stop.Sequence
+				}
+			}
+			if lowestSequence == 1 {
+				for i, stop := range stopsForTrip {
+					stop.Sequence = stop.Sequence - 1
+					stopsForTrip[i] = stop
+				}
+			}
+
 			tripUpdate, _ := tripUpdates.ByTripID(i.Trip.TripID)
 
 			trip, err := gtfsData.GetTripByID(i.Trip.TripID)
@@ -988,7 +1041,8 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				responseData.Trip.FirstStop.Id = firstStop.StopId
 				responseData.Trip.FirstStop.Lat = firstStop.StopLat
 				responseData.Trip.FirstStop.Lon = firstStop.StopLon
-				responseData.Trip.FinalStop.Platform = firstStop.PlatformNumber
+				responseData.Trip.FirstStop.Platform = firstStop.PlatformNumber
+				responseData.Trip.FirstStop.Sequence = firstStop.Sequence
 				firstStopParentStop, err := gtfsData.GetParentStopByChildStopID(firstStop.StopId)
 				if err == nil {
 					responseData.Trip.FirstStop.Name = firstStopParentStop.StopName
@@ -1008,11 +1062,17 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 						responseData.Trip.CurrentStop.Lat = currentStop.StopLat
 						responseData.Trip.CurrentStop.Lon = currentStop.StopLon
 						responseData.Trip.CurrentStop.Platform = currentStop.PlatformNumber
+						responseData.Trip.CurrentStop.Sequence = currentStop.Sequence
 					}
 
-					stopSeq := tripUpdate.StopTimeUpdate.StopSequence
-					if stopSeq >= int64(len(stopsForTrip)) {
-						stopSeq = int64(len(stopsForTrip) - 1) // Use the last valid index
+					var stopSeq int
+					if lowestSequence == 1 {
+						stopSeq = int(tripUpdate.StopTimeUpdate.StopSequence)
+					} else {
+						stopSeq = int(tripUpdate.StopTimeUpdate.StopSequence) + 1
+					}
+					if stopSeq >= len(stopsForTrip) {
+						stopSeq = len(stopsForTrip) - 1 // Use the last valid index
 					}
 
 					nextStop := stopsForTrip[stopSeq]
@@ -1021,6 +1081,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 					responseData.Trip.NextStop.Lat = nextStop.StopLat
 					responseData.Trip.NextStop.Lon = nextStop.StopLon
 					responseData.Trip.NextStop.Platform = nextStop.PlatformNumber
+					responseData.Trip.NextStop.Sequence = nextStop.Sequence
 					nextStopParentStop, err := gtfsData.GetParentStopByChildStopID(nextStop.StopId)
 					if err == nil {
 						responseData.Trip.NextStop.Name = nextStopParentStop.StopName
@@ -1034,6 +1095,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				responseData.Trip.FinalStop.Lat = finalStop.StopLat
 				responseData.Trip.FinalStop.Lon = finalStop.StopLon
 				responseData.Trip.FinalStop.Platform = finalStop.PlatformNumber
+				responseData.Trip.FinalStop.Sequence = finalStop.Sequence
 				finalStopParentStop, err := gtfsData.GetParentStopByChildStopID(finalStop.StopId)
 				if err == nil {
 					responseData.Trip.FinalStop.Name = finalStopParentStop.StopName
