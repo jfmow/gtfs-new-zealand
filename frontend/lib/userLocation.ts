@@ -4,10 +4,10 @@ import { useEffect, useState } from "react";
 type UserLocation = [number, number]; // Tuple type for latitude and longitude
 
 export function getUserLocation(): Promise<UserLocation> {
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
             console.error("Geolocation is not supported by this browser.");
-            return resolve([0, 0]); // Return [0, 0] if geolocation is not supported
+            return reject([0, 0]); // Return [0, 0] if geolocation is not supported
         }
 
         navigator.geolocation.getCurrentPosition(
@@ -18,7 +18,7 @@ export function getUserLocation(): Promise<UserLocation> {
             },
             (error) => {
                 console.error("Error getting location:", error);
-                resolve([0, 0]); // Return [0, 0] if there's an error
+                reject([0, 0]); // Return [0, 0] if there's an error
             }
         );
     });
