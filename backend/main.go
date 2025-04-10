@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jfmow/at-trains-api/providers/at"
+	"github.com/jfmow/at-trains-api/providers"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/joho/godotenv"
@@ -73,7 +73,7 @@ func main() {
 		panic(err)
 	}
 
-	at.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
+	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
 
 	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
@@ -91,7 +91,7 @@ func main() {
 		panic(err)
 	}
 
-	at.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
+	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
@@ -115,7 +115,9 @@ func main() {
 	}
 
 	// Start server using the extracted IP and port
-	if err := e.Start(fmt.Sprintf("%s:%s", ip, port)); err != nil {
+	fmt.Println("Server is running on: http://" + ip + ":" + port + "/")
+	s := http.Server{Addr: ip + ":" + port, Handler: e}
+	if err := s.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
 }

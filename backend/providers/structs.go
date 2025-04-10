@@ -1,4 +1,4 @@
-package at
+package providers
 
 // Services
 type ServicesResponse2 struct {
