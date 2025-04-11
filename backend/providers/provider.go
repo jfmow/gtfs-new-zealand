@@ -1049,6 +1049,19 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 					responseData.Trip.FirstStop.Id = firstStopParentStop.StopId
 				}
 
+				finalStop := stopsForTrip[len(stopsForTrip)-1]
+				responseData.Trip.FinalStop.Name = finalStop.StopName
+				responseData.Trip.FinalStop.Id = finalStop.StopId
+				responseData.Trip.FinalStop.Lat = finalStop.StopLat
+				responseData.Trip.FinalStop.Lon = finalStop.StopLon
+				responseData.Trip.FinalStop.Platform = finalStop.PlatformNumber
+				responseData.Trip.FinalStop.Sequence = finalStop.Sequence
+				finalStopParentStop, err := gtfsData.GetParentStopByChildStopID(finalStop.StopId)
+				if err == nil {
+					responseData.Trip.FinalStop.Name = finalStopParentStop.StopName
+					responseData.Trip.FinalStop.Id = finalStopParentStop.StopId
+				}
+
 				if (tripUpdate != rt.TripUpdate{}) {
 					currentStop, err := gtfsData.GetStopByStopID(tripUpdate.StopTimeUpdate.StopID)
 					if err == nil {
@@ -1087,19 +1100,10 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 						responseData.Trip.NextStop.Name = nextStopParentStop.StopName
 						responseData.Trip.NextStop.Id = nextStopParentStop.StopId
 					}
-				}
-
-				finalStop := stopsForTrip[len(stopsForTrip)-1]
-				responseData.Trip.FinalStop.Name = finalStop.StopName
-				responseData.Trip.FinalStop.Id = finalStop.StopId
-				responseData.Trip.FinalStop.Lat = finalStop.StopLat
-				responseData.Trip.FinalStop.Lon = finalStop.StopLon
-				responseData.Trip.FinalStop.Platform = finalStop.PlatformNumber
-				responseData.Trip.FinalStop.Sequence = finalStop.Sequence
-				finalStopParentStop, err := gtfsData.GetParentStopByChildStopID(finalStop.StopId)
-				if err == nil {
-					responseData.Trip.FinalStop.Name = finalStopParentStop.StopName
-					responseData.Trip.FinalStop.Id = finalStopParentStop.StopId
+				} else {
+					//Incase the vehicle has no trip update, in which it's probably just starting, set it to the first stop by default
+					responseData.Trip.NextStop = responseData.Trip.FirstStop
+					responseData.Trip.CurrentStop = responseData.Trip.FirstStop
 				}
 
 				result = append(result, responseData)
