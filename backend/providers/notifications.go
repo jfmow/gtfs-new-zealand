@@ -17,6 +17,7 @@ import (
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
+	"github.com/jfmow/gtfs/realtime/proto"
 	"github.com/jmoiron/sqlx"
 )
 
@@ -31,8 +32,8 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 	// Collect all canceled trips
 	canceledTrips := make(map[string]string)
 	for _, trip := range tripUpdates {
-		if trip.Trip.ScheduleRelationship == 3 {
-			canceledTrips[trip.Trip.TripID] = trip.ID
+		if *trip.GetTrip().GetScheduleRelationship().Enum() == 3 {
+			canceledTrips[trip.GetTrip().GetTripId()] = trip.GetTrip().GetTripId()
 		}
 	}
 
@@ -103,9 +104,9 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 	}
 
 	var wg sync.WaitGroup
-	for _, alert := range alerts {
+	for alertId, alert := range alerts {
 		wg.Add(1)
-		go func(alert realtime.Alert) {
+		go func(alert *proto.Alert) {
 			defer wg.Done()
 
 			stopsSet := make(map[string]struct{})
@@ -113,14 +114,14 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 
 			// Collect unique stops from InformedEntity
 			for _, entity := range alert.InformedEntity {
-				if entity.StopID != "" {
-					if _, exists := stopsSet[entity.StopID]; !exists {
-						stopsToInform = append(stopsToInform, entity.StopID)
-						stopsSet[entity.StopID] = struct{}{}
+				if entity.GetStopId() != "" {
+					if _, exists := stopsSet[entity.GetStopId()]; !exists {
+						stopsToInform = append(stopsToInform, entity.GetStopId())
+						stopsSet[entity.GetStopId()] = struct{}{}
 					}
 				}
-				if entity.RouteID != "" {
-					foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.RouteID))
+				if entity.GetRouteId() != "" {
+					foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.GetRouteId()))
 					if err != nil {
 						continue
 					}
@@ -146,7 +147,7 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 				)
 
 				for {
-					clients, err := v.GetNotificationClientsByStop(stop, alert.ID, limit, offset)
+					clients, err := v.GetNotificationClientsByStop(stop, alertId, limit, offset)
 					if err != nil || len(clients) == 0 {
 						break
 					}
@@ -164,7 +165,7 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 						notifWG.Add(1)
 						go func(client NotificationClient) {
 							defer notifWG.Done()
-							v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alert.ID)
+							v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alertId)
 							v.SendNotification(client, body, title, data)
 						}(client)
 					}

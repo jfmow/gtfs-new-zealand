@@ -56,6 +56,7 @@ func main() {
 
 	atApi := e.Group("/at")
 	mlApi := e.Group("/wel")
+	christchurchApi := e.Group("/christ")
 
 	//Auckland Transport
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
@@ -63,7 +64,7 @@ func main() {
 		panic("Env not found")
 	}
 
-	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", "atfgtfs", localTimeZone, "hi@suddsy.dev")
+	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", gtfs.ApiKey{Header: "", Value: ""}, "atfgtfs", localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
@@ -81,7 +82,7 @@ func main() {
 		panic("Env not found")
 	}
 
-	MetLinkGTFSData, err := gtfs.New("https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", "welgtfs", localTimeZone, "hi@suddsy.dev")
+	MetLinkGTFSData, err := gtfs.New("https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", gtfs.ApiKey{Header: "", Value: ""}, "welgtfs", localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
@@ -92,6 +93,18 @@ func main() {
 	}
 
 	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
+
+	ChristChurchGTFSData, err := gtfs.New("https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: "dfa6b9810e6446558e2ef12d23842dfe"}, "christgtfs", localTimeZone, "hi@suddsy.dev")
+	if err != nil {
+		fmt.Println("Error loading at gtfs db")
+	}
+
+	ChristChurchRealtimeData, err := rt.NewClient("dfa6b9810e6446558e2ef12d23842dfe", "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb")
+	if err != nil {
+		panic(err)
+	}
+
+	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, localTimeZone)
 
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
