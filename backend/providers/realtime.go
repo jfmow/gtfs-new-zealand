@@ -150,7 +150,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 			stopUpdates := tripUpdate.GetStopTimeUpdate()
 
-			nextStopSequenceNumber, arrival_time := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+			nextStopSequenceNumber, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 
 			responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
 			responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
@@ -160,7 +160,6 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			responseData.Trip.Headsign = cachedTrips[currentTripId].TripHeadsign
 
 			responseData.VehicleType = responseData.Route.VehicleType
-			responseData.Trip.Headsign = arrival_time.String()
 
 			response = append(response, responseData)
 		}
@@ -328,10 +327,10 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 	if arrivalTimestamp == 0 && departureTimestamp == 0 {
 		// No arrival or departure time, assume next stop
 		nextStopSequenceNumber = sequence
-	} else if arrivalTimestamp != 0 && now.Before(arrivalTimeLocal) && !now.Add(20*time.Second).After(arrivalTimeLocal) {
+	} else if arrivalTimestamp != 0 && now.Before(arrivalTimeLocal) && !now.Add(30*time.Second).After(arrivalTimeLocal) {
 		// Approaching the stop
 		nextStopSequenceNumber = sequence
-	} else if arrivalTimestamp != 0 && now.Add(20*time.Second).After(arrivalTimeLocal) {
+	} else if arrivalTimestamp != 0 && now.Add(30*time.Second).After(arrivalTimeLocal) {
 		nextStopSequenceNumber = sequence + 1
 	} else if departureTimestamp != 0 && now.After(departureTimeLocal) {
 		// Passed the stop
