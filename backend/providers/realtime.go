@@ -2,7 +2,6 @@ package providers
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"net/url"
@@ -26,9 +25,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			newCache[route.RouteId] = route
 		}
 		return newCache, nil
-	}, 5*time.Minute)
+	}, 5*time.Minute, make(map[string]gtfs.Route, 0))
 	if err != nil {
-		log.Fatalf("Failed to init routes cache: %v", err)
+		log.Printf("Failed to init routes cache: %v", err)
 	}
 
 	type StopsForTripIdCache struct {
@@ -54,9 +53,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return result, nil
 		},
 		5*time.Minute,
+		make(map[string]StopsForTripIdCache, 0),
 	)
 	if err != nil {
-		log.Fatalf("Failed to init trip stops cache: %v", err)
+		log.Printf("Failed to init trip stops cache: %v", err)
 	}
 
 	getChildStopsCache, err := gtfs.GenerateACache(func() ([]gtfs.Stop, error) {
@@ -73,17 +73,17 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return nil, errors.New("no child stops found")
 		}
 		return newMap, nil
-	}, 5*time.Minute)
+	}, 5*time.Minute, make(map[string][]gtfs.Stop, 0))
 	if err != nil {
-		log.Fatalf("Failed to initialize child stop cache: %v", err)
+		log.Printf("Failed to initialize child stop cache: %v", err)
 	}
 
 	getTripByIdCache, err := gtfs.GenerateACache(func() (map[string]gtfs.Trip, error) {
 		trips, err := gtfsData.GetAllTrips()
 		return trips, err
-	}, gtfs.Identity[map[string]gtfs.Trip], 5*time.Minute)
+	}, gtfs.Identity[map[string]gtfs.Trip], 5*time.Minute, make(map[string]gtfs.Trip))
 	if err != nil {
-		log.Fatalf("Failed to initialize trips cache: %v", err)
+		log.Printf("Failed to initialize trips cache: %v", err)
 	}
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {
@@ -124,14 +124,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 			}
+			responseData.Trip.Headsign = cachedTrips[currentTripId].TripHeadsign
 
 			if routeData, err := getVehicleRouteData(currentRouteId, getRouteCache); err == nil {
 				responseData.Route = *routeData
+				responseData.VehicleType = responseData.Route.VehicleType
 				if vehicleTypeFilter != "" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
 					continue
 				}
-			} else {
-				fmt.Println(err)
 			}
 
 			cachedStops := getStopsForTripCache()
@@ -143,23 +143,16 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			tripUpdate, err := tripUpdates.ByTripID(currentTripId)
-			if err != nil {
-				//TODO: return here instead with no next stop etc
-				continue //Skip, no trip updates
+			if err == nil {
+				stopUpdates := tripUpdate.GetStopTimeUpdate()
+
+				nextStopSequenceNumber, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+
+				responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
+				responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
+				responseData.Trip.NextStop = getXStop(stopsForTripId, min(nextStopSequenceNumber, len(stopsForTripId)-1))
+				responseData.Trip.FinalStop = getXStop(stopsForTripId, len(stopsForTripId)-1)
 			}
-
-			stopUpdates := tripUpdate.GetStopTimeUpdate()
-
-			nextStopSequenceNumber, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
-
-			responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
-			responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
-			responseData.Trip.NextStop = getXStop(stopsForTripId, min(nextStopSequenceNumber, len(stopsForTripId)-1))
-			responseData.Trip.FinalStop = getXStop(stopsForTripId, len(stopsForTripId)-1)
-
-			responseData.Trip.Headsign = cachedTrips[currentTripId].TripHeadsign
-
-			responseData.VehicleType = responseData.Route.VehicleType
 
 			response = append(response, responseData)
 		}
