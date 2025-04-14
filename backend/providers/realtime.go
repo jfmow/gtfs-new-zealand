@@ -2,13 +2,16 @@ package providers
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
+	"github.com/jfmow/gtfs/realtime/proto"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
@@ -75,9 +78,17 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		log.Fatalf("Failed to initialize child stop cache: %v", err)
 	}
 
+	getTripByIdCache, err := gtfs.GenerateACache(func() (map[string]gtfs.Trip, error) {
+		trips, err := gtfsData.GetAllTrips()
+		return trips, err
+	}, gtfs.Identity[map[string]gtfs.Trip], 5*time.Minute)
+	if err != nil {
+		log.Fatalf("Failed to initialize trips cache: %v", err)
+	}
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {
 		filterTripId := c.FormValue("tripId")
+		vehicleTypeFilter := c.FormValue("vehicle_type")
 
 		vehicles, err := realtime.GetVehicles()
 		if err != nil {
@@ -99,6 +110,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		var response []VehiclesResponse
 
+		cachedTrips := getTripByIdCache()
+
 		for _, vehicle := range vehicles {
 			currentTripId := vehicle.GetTrip().GetTripId()
 			currentRouteId := vehicle.GetTrip().GetRouteId()
@@ -114,6 +127,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 			if routeData, err := getVehicleRouteData(currentRouteId, getRouteCache); err == nil {
 				responseData.Route = *routeData
+				if vehicleTypeFilter != "" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
+					continue
+				}
+			} else {
+				fmt.Println(err)
 			}
 
 			cachedStops := getStopsForTripCache()
@@ -131,35 +149,18 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			stopUpdates := tripUpdate.GetStopTimeUpdate()
-			var currentStop int = 0
-			if len(stopUpdates) >= 1 {
-				currentStop = int(stopUpdates[0].GetStopSequence())
-			}
 
-			if lowestSequence >= 1 {
-				currentStop = max(0, currentStop-lowestSequence)
-			} else {
-				currentStop = min(len(stopsForTripId)-1, currentStop+1)
-			}
-
-			nextStop := min(currentStop+1, len(stopsForTripId)-1)
-
-			// Special case: only one stop update means index 0 is previous stop
-			if len(stopUpdates) == 1 {
-				currentStop = max(0, currentStop-1)
-				nextStop = max(0, nextStop-1)
-			}
+			nextStopSequenceNumber, arrival_time := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 
 			responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
-			responseData.Trip.CurrentStop = getXStop(stopsForTripId, currentStop)
-			responseData.Trip.NextStop = getXStop(stopsForTripId, nextStop)
+			responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
+			responseData.Trip.NextStop = getXStop(stopsForTripId, min(nextStopSequenceNumber, len(stopsForTripId)-1))
 			responseData.Trip.FinalStop = getXStop(stopsForTripId, len(stopsForTripId)-1)
 
-			if responseData.Trip.NextStop.Sequence == responseData.Trip.CurrentStop.Sequence {
-				continue
-			}
+			responseData.Trip.Headsign = cachedTrips[currentTripId].TripHeadsign
 
-			responseData.VehicleType = "Bus"
+			responseData.VehicleType = responseData.Route.VehicleType
+			responseData.Trip.Headsign = arrival_time.String()
 
 			response = append(response, responseData)
 		}
@@ -302,6 +303,47 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 	})
 
+}
+
+func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time) {
+	if len(stopUpdates) == 0 {
+		return 0, nil
+	}
+	var nextStopSequenceNumber int
+
+	now := time.Now().In(localTimeZone)
+
+	update := stopUpdates[0] //Latest one
+	arrivalTimestamp := update.GetArrival().GetTime()
+	departureTimestamp := update.GetDeparture().GetTime()
+	sequence := int(update.GetStopSequence())
+	arrivalDelay := update.GetArrival().GetDelay()
+	arrivalTimestamp += int64(arrivalDelay)
+	departureDelay := update.GetDeparture().GetDelay()
+	departureTimestamp += int64(departureDelay)
+
+	arrivalTimeLocal := time.Unix(arrivalTimestamp, 0).In(localTimeZone)
+	departureTimeLocal := time.Unix(departureTimestamp, 0).In(localTimeZone)
+
+	if arrivalTimestamp == 0 && departureTimestamp == 0 {
+		// No arrival or departure time, assume next stop
+		nextStopSequenceNumber = sequence
+	} else if arrivalTimestamp != 0 && now.Before(arrivalTimeLocal) && !now.Add(20*time.Second).After(arrivalTimeLocal) {
+		// Approaching the stop
+		nextStopSequenceNumber = sequence
+	} else if arrivalTimestamp != 0 && now.Add(20*time.Second).After(arrivalTimeLocal) {
+		nextStopSequenceNumber = sequence + 1
+	} else if departureTimestamp != 0 && now.After(departureTimeLocal) {
+		// Passed the stop
+		nextStopSequenceNumber = sequence + 1
+	} else {
+		// At the stop
+		nextStopSequenceNumber = sequence
+	}
+
+	nextStopSequenceNumber -= lowestSequence
+
+	return nextStopSequenceNumber, &arrivalTimeLocal
 }
 
 func getXStop(stopsForTripId []gtfs.Stop, currentStop int) ServicesStop {

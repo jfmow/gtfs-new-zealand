@@ -173,24 +173,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						ResponseData.ArrivalTime = formattedTime
 
 						stopUpdates := tripUpdate.GetStopTimeUpdate()
-						currentStop := int(stopUpdates[0].GetStopSequence())
 
-						stops, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
-
+						_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 						if err == nil {
-							if lowestSequence >= 1 {
-								currentStop = max(0, currentStop-lowestSequence) + 1
-							} else {
-								currentStop = min(len(stops)-1, currentStop+1)
-							}
-
-							// Special case: only one stop update means index 0 is previous stop
-							if len(stopUpdates) == 1 {
-								currentStop = max(0, currentStop-1)
-							}
+							nextStopSequence, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+							ResponseData.StopsAway = int16(nextStopSequence - 1)
 						}
-
-						ResponseData.StopsAway = int16(service.StopSequence - currentStop)
 
 						if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
 							ResponseData.Canceled = true

@@ -31,7 +31,7 @@ interface ServiceTrackerModalProps {
     has: boolean
 }
 
-const REFRESH_INTERVAL = 15; // Refresh interval in seconds
+const REFRESH_INTERVAL = 5; // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
     const { location, loading, error } = useUserLocation()
@@ -109,8 +109,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                         <DialogHeader>
                             <DialogTitle>
                                 <div className="flex items-center justify-between w-full">
-                                    <span>Service tracker</span>
-
+                                    <span>{vehicle.trip.headsign}</span>
                                 </div>
                             </DialogTitle>
                             <DialogDescription>
@@ -176,7 +175,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         </DrawerTrigger>
                                         <DrawerContent>
                                             <DrawerHeader>
-                                                <DrawerTitle>{vehicle.route.id} stops</DrawerTitle>
+                                                <DrawerTitle>{vehicle.route.name} - {vehicle.trip.headsign}</DrawerTitle>
                                                 <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">

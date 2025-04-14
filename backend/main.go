@@ -61,7 +61,7 @@ func main() {
 	//Auckland Transport
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
 	if !found {
-		panic("Env not found")
+		panic("Auckland transport api key Env not found")
 	}
 
 	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", gtfs.ApiKey{Header: "", Value: ""}, "atfgtfs", localTimeZone, "hi@suddsy.dev")
@@ -79,7 +79,7 @@ func main() {
 	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
 	if !found {
-		panic("Env not found")
+		panic("metlink api key Env not found")
 	}
 
 	MetLinkGTFSData, err := gtfs.New("https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", gtfs.ApiKey{Header: "", Value: ""}, "welgtfs", localTimeZone, "hi@suddsy.dev")
@@ -87,19 +87,24 @@ func main() {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 5*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
+	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 10*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
 	if err != nil {
 		panic(err)
 	}
 
 	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
 
+	christchurchApiKey, found := os.LookupEnv("CHRISTCHURCH_APIKEY")
+	if !found {
+		panic("Christchurch api key Env not found")
+	}
+
 	ChristChurchGTFSData, err := gtfs.New("https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: "dfa6b9810e6446558e2ef12d23842dfe"}, "christgtfs", localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	ChristChurchRealtimeData, err := rt.NewClient("dfa6b9810e6446558e2ef12d23842dfe", "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb")
+	ChristChurchRealtimeData, err := rt.NewClient(christchurchApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb")
 	if err != nil {
 		panic(err)
 	}

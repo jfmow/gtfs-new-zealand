@@ -17,35 +17,6 @@ func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtim
 
 	//TODO: remove one of these
 
-	//Return a route by routeID
-	routesRoute.GET("/find-route/:routeId", func(c echo.Context) error {
-
-		routeIdEncoded := c.PathParam("routeId")
-		routeId, err := url.PathUnescape(routeIdEncoded)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid route id",
-				Data:    nil,
-			})
-		}
-
-		routes, err := gtfsData.SearchForRouteByID(routeId)
-		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "no matching routes found",
-				Data:    nil,
-			})
-		}
-
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    routes,
-		})
-	})
-
 	//Return a route by routeId
 	routesRoute.GET("/:routeId", func(c echo.Context) error {
 		routeIdEncoded := c.PathParam("routeId")
