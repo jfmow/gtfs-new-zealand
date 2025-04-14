@@ -6,7 +6,7 @@ toolchain go1.23.4
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/jfmow/gtfs v0.4.2
+	github.com/jfmow/gtfs v0.4.3
 	github.com/jmoiron/sqlx v1.4.0
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
