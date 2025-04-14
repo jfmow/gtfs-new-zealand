@@ -1,4 +1,4 @@
-package providers
+package notifications
 
 import (
 	"database/sql"
@@ -38,7 +38,7 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 	}
 
 	for tripID, tripUUID := range canceledTrips {
-		stops, err := gtfsDB.GetStopsForTripID(tripID)
+		stops, _, err := gtfsDB.GetStopsForTripID(tripID)
 		if err != nil {
 			return fmt.Errorf("unable to find stops for trip %s: %w", tripID, err)
 		}
@@ -158,7 +158,7 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) e
 					}
 
 					title := stopData.StopName
-					body := fmt.Sprintf("%s\n%s", alert.HeaderText.Translation[0].Text, alert.DescriptionText.Translation[0].Text)
+					body := fmt.Sprintf("%s\n%s", alert.GetHeaderText().GetTranslation()[0].GetText(), alert.GetDescriptionText().GetTranslation()[0].GetText())
 
 					var notifWG sync.WaitGroup
 					for _, client := range clients {
@@ -183,10 +183,10 @@ Create a new notification database
 */
 func newDatabase(tz *time.Location, mailToEmail string) (Database, error) {
 
-	os.Mkdir(filepath.Join(GetWorkDir(), "_providers"), os.ModePerm)
-	os.Mkdir(filepath.Join(GetWorkDir(), "_providers", "at"), os.ModePerm)
+	os.Mkdir(filepath.Join(getWorkDir(), "_providers"), os.ModePerm)
+	os.Mkdir(filepath.Join(getWorkDir(), "_providers", "at"), os.ModePerm)
 
-	db, err := sqlx.Open("sqlite", filepath.Join(GetWorkDir(), "_providers", "at", "notifications.db"))
+	db, err := sqlx.Open("sqlite", filepath.Join(getWorkDir(), "_providers", "at", "notifications.db"))
 	if err != nil {
 		fmt.Println(err)
 		panic("Failed to open the database")
@@ -886,7 +886,7 @@ type NotificationClient struct {
 	ExpiryWarningSent   int
 }
 
-func GetWorkDir() string {
+func getWorkDir() string {
 	ex, err := os.Executable()
 	if err != nil {
 		panic(err)
