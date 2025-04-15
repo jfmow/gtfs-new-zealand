@@ -37,4 +37,4 @@ require (
 	modernc.org/token v1.1.0 // indirect
 )
 
-//replace github.com/jfmow/gtfs => C:\Users\James\Desktop\gtfs
+replace github.com/jfmow/gtfs => C:\Users\James\Desktop\gtfs

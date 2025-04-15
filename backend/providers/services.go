@@ -25,7 +25,10 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		LowestSequence int
 	}
 	getStopsForTripCache, err := gtfs.GenerateACache(
-		gtfsData.GetStopsForTrips,
+		func() (map[string][]gtfs.Stop, error) {
+			trips, err := gtfsData.GetStopsForTrips(1)
+			return trips, err
+		},
 		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
 			result := make(map[string]StopsForTripIdCache)
 			for key, trip := range input {

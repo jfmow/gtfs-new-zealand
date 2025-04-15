@@ -19,6 +19,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
+	log.Println("Generating realtime caches")
 	getRouteCache, err := gtfs.GenerateACache(gtfsData.GetRoutes, func(routes []gtfs.Route) (map[string]gtfs.Route, error) {
 		newCache := make(map[string]gtfs.Route)
 		for _, route := range routes {
@@ -35,7 +36,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		LowestSequence int
 	}
 	getStopsForTripCache, err := gtfs.GenerateACache(
-		gtfsData.GetStopsForTrips,
+		func() (map[string][]gtfs.Stop, error) {
+			trips, err := gtfsData.GetStopsForTrips(1)
+			return trips, err
+		},
 		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
 			result := make(map[string]StopsForTripIdCache)
 			for key, trip := range input {
@@ -85,6 +89,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	if err != nil {
 		log.Printf("Failed to initialize trips cache: %v", err)
 	}
+
+	log.Println("Generated realtime caches")
+
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {
 		filterTripId := c.FormValue("tripId")
