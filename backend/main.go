@@ -99,7 +99,7 @@ func main() {
 		panic("Christchurch api key Env not found")
 	}
 
-	ChristChurchGTFSData, err := gtfs.New("https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: "dfa6b9810e6446558e2ef12d23842dfe"}, "christgtfs", localTimeZone, "hi@suddsy.dev")
+	ChristChurchGTFSData, err := gtfs.New("https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: christchurchApiKey}, "christgtfs", localTimeZone, "hi@suddsy.dev")
 	if err != nil {
 		fmt.Println("Error loading at gtfs db")
 	}
