@@ -96,8 +96,13 @@ export default function Map(Props: MapProps) {
             if (!activeStops.clusterGroup) {
                 activeStops.clusterGroup = createMapClusterGroup()
             }
+            if (activeStops.clusterGroup) {
+                activeStops.clusterGroup.clearLayers()
+            }
+            activeStops.markers.forEach((item) => {
+                map.removeLayer(item.marker)
+            })
             stops.forEach((stop) => {
-                if (activeStops.markers.find((item) => item.id === stop.id)) return
                 //Add the stop to the map
                 const marker = createNewMarker(stop)
                 //Only make the cluster if theres more than 100 stops, otherwise just add the marker
@@ -402,7 +407,8 @@ function getIconUrl(icon: string): string {
         "stop marker": "/vehicle_icons/stop marker.png",
         "end marker": "/vehicle_icons/end marker.png",
         "marked stop marker": "/vehicle_icons/marked stop marker.png",
-        "dot gray": "/vehicle_icons/stop_dot_passed.png"
+        "dot gray": "/vehicle_icons/stop_dot_passed.png",
+        "current stop marker": "/vehicle_icons/stop_dot_currently_at.png",
     };
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }

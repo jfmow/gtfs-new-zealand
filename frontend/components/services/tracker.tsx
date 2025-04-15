@@ -31,7 +31,7 @@ interface ServiceTrackerModalProps {
     has: boolean
 }
 
-const REFRESH_INTERVAL = 15; // Refresh interval in seconds
+const REFRESH_INTERVAL = 5; // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
     const { location, loading, error } = useUserLocation()
@@ -109,8 +109,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                         <DialogHeader>
                             <DialogTitle>
                                 <div className="flex items-center justify-between w-full">
-                                    <span>Service tracker</span>
-
+                                    <span>{vehicle.trip.headsign}</span>
                                 </div>
                             </DialogTitle>
                             <DialogDescription>
@@ -118,6 +117,14 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                 <p className="text-gray-400 opacity-50">Current/Previous stop: {vehicle.trip.current_stop.name} (Platform {vehicle.trip.current_stop.platform})</p>
                                 <p className="text-green-400">Next stop: {vehicle.trip.next_stop.name} (Platform {vehicle.trip.next_stop.platform})</p>
                                 <p className="text-red-400">Final stop: {vehicle.trip.final_stop.name} (Platform {vehicle.trip.final_stop.platform})</p>
+                                <details>
+                                    <summary>
+                                        Departure/Arrival Info
+                                    </summary>
+                                    <p>
+                                        {vehicle.state}
+                                    </p>
+                                </details>
                             </DialogDescription>
                         </DialogHeader>
                         <Tabs defaultValue="track" className="w-full">
@@ -151,7 +158,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                         lon: item.lon,
                                                         icon: currentStop?.name === item.name
                                                             ? "marked stop marker"
-                                                            : (stops?.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : item.passed ? "dot gray" : "dot")),
+                                                            : (stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop.stop_id === item.id ? "stop marker" : item.id === stops.current_stop.stop_id ? "current stop marker" : item.passed ? "dot gray" : "dot")),
                                                         id: item.name,
                                                         routeID: "",
                                                         description: {
@@ -176,7 +183,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         </DrawerTrigger>
                                         <DrawerContent>
                                             <DrawerHeader>
-                                                <DrawerTitle>{vehicle.route.id} stops</DrawerTitle>
+                                                <DrawerTitle>{vehicle.route.name} - {vehicle.trip.headsign}</DrawerTitle>
                                                 <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">
@@ -239,6 +246,7 @@ export interface VehiclesResponse {
     license_plate: string;
     position: Position;
     type: string;
+    state: string;
 }
 
 export interface Position {

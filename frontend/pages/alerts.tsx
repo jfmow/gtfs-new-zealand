@@ -1,7 +1,6 @@
 import Head from "next/head"
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { formatTextToNiceLookingWords } from "@/lib/formating"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { BellDot, MegaphoneOff } from "lucide-react"
@@ -58,41 +57,45 @@ export default function Alerts() {
                                                 <Card>
                                                     <CardHeader>
                                                         <CardTitle>
-                                                            {alert.header_text.translation[0].text}
+                                                            {alert.title}
                                                         </CardTitle>
                                                         <CardDescription>
-                                                            <p>
+                                                            <p className="font-medium">
                                                                 Currently active:
-                                                                {alert.active_period.some(period => {
-                                                                    const now = Date.now() / 1000;
-                                                                    return period.start <= now && period.end >= now;
-                                                                }) ? <span className="text-red-500"> Yes</span> : <span className="text-green-500"> No</span>}
+                                                                {alert.start_date <= Date.now() / 1000 && alert.end_date >= Date.now() / 1000 ? <span className="text-red-500"> Yes</span> : <span className="text-green-500"> No</span>}
                                                             </p>
-                                                            <p>{alert.active_period.map((period, idx) => (
-                                                                <div key={idx}>
-                                                                    Start: {new Date(period.start * 1000).toLocaleString()} | End: {new Date(period.end * 1000).toLocaleString()}
-                                                                </div>
-                                                            ))}</p>
                                                             <p>
-                                                                Affects:
-                                                                <ul className="list-disc list-inside">
-                                                                    {alert.informed_entity.map((item) => (
-                                                                        <>
-                                                                            {item.stop_id !== "" ? <li>Stop: {item.stop_id}</li> : <li>Route: {item.route_id}</li>}
-                                                                        </>
-                                                                    ))}
-                                                                </ul>
+                                                                Start: {new Date(alert.start_date * 1000).toLocaleString()} {'->'} End: {new Date(alert.end_date * 1000).toLocaleString()}
+                                                            </p>
+                                                            <p>
+                                                                <details>
+                                                                    <summary className="text-bold text-blue-500 cursor-pointer">
+                                                                        Affected stops/routes (click)
+                                                                    </summary>
+                                                                    <ul className="list-disc list-inside">
+                                                                        {alert.affected.map((item) => (
+                                                                            <>
+                                                                                <li>{item}</li>
+                                                                            </>
+                                                                        ))}
+                                                                    </ul>
+                                                                </details>
                                                             </p>
                                                         </CardDescription>
                                                     </CardHeader>
                                                     <CardContent>
                                                         <p>
-                                                            {alert.description_text.translation[0].text}
+                                                            {alert.description.split('\n').map((line, index) => (
+                                                                <span key={index}>
+                                                                    {line}
+                                                                    <br />
+                                                                </span>
+                                                            ))}
                                                         </p>
                                                     </CardContent>
                                                     <CardFooter>
                                                         <p className="text-sm text-muted-foreground">
-                                                            Cause: {formatTextToNiceLookingWords(alert.cause, true)} | Effect: {formatTextToNiceLookingWords(alert.effect, true).replace("_", " ")}
+                                                            Cause: {alert.cause} | Effect: {alert.effect}
                                                         </p>
                                                     </CardFooter>
                                                 </Card>
@@ -159,29 +162,12 @@ function Header() {
 }
 
 export interface Alert {
-    active_period: ActivePeriod[];
-    informed_entity: InformedEntity[];
+    start_date: number;
+    end_date: number;
     cause: string;
     effect: string;
-    header_text: Text;
-    description_text: Text;
+    title: string;
+    description: string;
+    affected: string[];
 }
 
-export interface ActivePeriod {
-    start: number;
-    end: number;
-}
-
-export interface Text {
-    translation: Translation[];
-}
-
-export interface Translation {
-    text: string;
-    language: string;
-}
-
-export interface InformedEntity {
-    stop_id: string;
-    route_id: string;
-}
