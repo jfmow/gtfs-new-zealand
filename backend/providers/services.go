@@ -20,6 +20,35 @@ import (
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
 	servicesRoute := primaryRoute.Group("/services")
 
+	type StopsForTripIdCache struct {
+		Stops          []gtfs.Stop
+		LowestSequence int
+	}
+	getStopsForTripCache, err := gtfs.GenerateACache(
+		gtfsData.GetStopsForTrips,
+		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
+			result := make(map[string]StopsForTripIdCache)
+			for key, trip := range input {
+				lowest := -1
+				for _, stop := range trip {
+					if stop.Sequence < lowest || lowest == -1 {
+						lowest = stop.Sequence
+					}
+				}
+				result[key] = StopsForTripIdCache{
+					Stops:          trip,
+					LowestSequence: lowest,
+				}
+			}
+			return result, nil
+		},
+		5*time.Minute,
+		make(map[string]StopsForTripIdCache, 0),
+	)
+	if err != nil {
+		log.Printf("Failed to init trip stops cache: %v", err)
+	}
+
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		defer func() {
 			if r := recover(); r != nil {
@@ -69,13 +98,14 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		var filteredServices []gtfs.StopTimes
+		stopsForTripsCache := getStopsForTripCache()
 		for _, service := range services {
-			stopsForService, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
-			if err == nil {
-				if lowestSequence == 1 {
+			stopsForService, ok := stopsForTripsCache[service.TripID]
+			if ok {
+				if stopsForService.LowestSequence == 1 {
 					service.StopSequence = service.StopSequence - 1
 				}
-				if service.StopSequence != len(stopsForService) {
+				if service.StopSequence != len(stopsForService.Stops) {
 					filteredServices = append(filteredServices, service)
 				}
 			}
@@ -176,8 +206,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 						_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 						if err == nil {
-							nextStopSequence, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
-							ResponseData.StopsAway = int16(nextStopSequence - 1)
+							nextStopSequence, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+							ResponseData.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSequence)
 						}
 
 						if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
@@ -261,7 +291,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		go func() {
 			<-ctx.Done() // Wait for the client to disconnect
-			log.Printf("The client is disconnected: %v\n", c.RealIP())
+			//log.Printf("The client is disconnected: %v\n", c.RealIP())
 		}()
 
 		sendTripUpdates(ctx, w, flusher)
@@ -271,7 +301,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("SSE client disconnected, ip: %v", c.RealIP())
+				//log.Printf("SSE client disconnected, ip: %v", c.RealIP())
 				return nil
 			case <-ticker.C:
 				sendTripUpdates(ctx, w, flusher)

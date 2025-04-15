@@ -117,6 +117,14 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                 <p className="text-gray-400 opacity-50">Current/Previous stop: {vehicle.trip.current_stop.name} (Platform {vehicle.trip.current_stop.platform})</p>
                                 <p className="text-green-400">Next stop: {vehicle.trip.next_stop.name} (Platform {vehicle.trip.next_stop.platform})</p>
                                 <p className="text-red-400">Final stop: {vehicle.trip.final_stop.name} (Platform {vehicle.trip.final_stop.platform})</p>
+                                <details>
+                                    <summary>
+                                        Departure/Arrival Info
+                                    </summary>
+                                    <p>
+                                        {vehicle.state}
+                                    </p>
+                                </details>
                             </DialogDescription>
                         </DialogHeader>
                         <Tabs defaultValue="track" className="w-full">
@@ -238,6 +246,7 @@ export interface VehiclesResponse {
     license_plate: string;
     position: Position;
     type: string;
+    state: string;
 }
 
 export interface Position {

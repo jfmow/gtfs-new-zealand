@@ -146,12 +146,13 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			if err == nil {
 				stopUpdates := tripUpdate.GetStopTimeUpdate()
 
-				nextStopSequenceNumber, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+				nextStopSequenceNumber, _, state := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 
 				responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
 				responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
 				responseData.Trip.NextStop = getXStop(stopsForTripId, min(nextStopSequenceNumber, len(stopsForTripId)-1))
 				responseData.Trip.FinalStop = getXStop(stopsForTripId, len(stopsForTripId)-1)
+				responseData.State = state
 			}
 
 			response = append(response, responseData)
@@ -297,11 +298,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 }
 
-func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time) {
+func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string) {
 	if len(stopUpdates) == 0 {
-		return 0, nil
+		return 0, nil, "Unknown"
 	}
-	var nextStopSequenceNumber int
 
 	now := time.Now().In(localTimeZone)
 
@@ -309,33 +309,55 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 	arrivalTimestamp := update.GetArrival().GetTime()
 	departureTimestamp := update.GetDeparture().GetTime()
 	sequence := int(update.GetStopSequence())
-	arrivalDelay := update.GetArrival().GetDelay()
-	arrivalTimestamp += int64(arrivalDelay)
-	departureDelay := update.GetDeparture().GetDelay()
-	departureTimestamp += int64(departureDelay)
+	//arrivalDelay := update.GetArrival().GetDelay()
+	//arrivalTimestamp += int64(arrivalDelay)
+	//departureDelay := update.GetDeparture().GetDelay()
+	//departureTimestamp += int64(departureDelay)
 
 	arrivalTimeLocal := time.Unix(arrivalTimestamp, 0).In(localTimeZone)
 	departureTimeLocal := time.Unix(departureTimestamp, 0).In(localTimeZone)
+	var nextStopSequenceNumber int = sequence
 
-	if arrivalTimestamp == 0 && departureTimestamp == 0 {
-		// No arrival or departure time, assume next stop
-		nextStopSequenceNumber = sequence
-	} else if arrivalTimestamp != 0 && now.Before(arrivalTimeLocal) && !now.Add(30*time.Second).After(arrivalTimeLocal) {
-		// Approaching the stop
-		nextStopSequenceNumber = sequence
-	} else if arrivalTimestamp != 0 && now.Add(30*time.Second).After(arrivalTimeLocal) {
-		nextStopSequenceNumber = sequence + 1
-	} else if departureTimestamp != 0 && now.After(departureTimeLocal) {
-		// Passed the stop
-		nextStopSequenceNumber = sequence + 1
-	} else {
-		// At the stop
-		nextStopSequenceNumber = sequence
+	var state = "Unknown"
+	if arrivalTimestamp != 0 && departureTimestamp != 0 {
+		if now.Before(arrivalTimeLocal) {
+			// Approaching the stop
+			nextStopSequenceNumber = sequence
+			state = "Approaching stop (arrival pending): " + arrivalTimeLocal.String()
+		} else if now.Before(departureTimeLocal) {
+			// At the stop, not yet departed
+			nextStopSequenceNumber = sequence
+			state = "At stop (awaiting departure): " + departureTimeLocal.String()
+		} else {
+			// Already departed → next stop is the next one
+			nextStopSequenceNumber = sequence + 1
+			state = "Departed stop: " + departureTimeLocal.String()
+		}
+	} else if arrivalTimestamp != 0 {
+		if now.Before(arrivalTimeLocal) {
+			// Approaching stop
+			nextStopSequenceNumber = sequence
+			state = "Approaching stop (arrival only): " + arrivalTimeLocal.String()
+		} else {
+			// Already arrived → next stop must be next
+			nextStopSequenceNumber = sequence + 1
+			state = "Arrived at stop (arrival only): " + arrivalTimeLocal.String()
+		}
+	} else if departureTimestamp != 0 {
+		if now.Before(departureTimeLocal) {
+			// Still at stop → haven't left yet
+			nextStopSequenceNumber = sequence
+			state = "Waiting to depart (departure only): " + departureTimeLocal.String()
+		} else {
+			// Already departed
+			nextStopSequenceNumber = sequence + 1
+			state = "Departed stop (departure only): " + departureTimeLocal.String()
+		}
 	}
 
-	nextStopSequenceNumber -= lowestSequence
+	nextStopSequenceNumber = nextStopSequenceNumber - lowestSequence
 
-	return nextStopSequenceNumber, &arrivalTimeLocal
+	return nextStopSequenceNumber, &arrivalTimeLocal, state
 }
 
 func getXStop(stopsForTripId []gtfs.Stop, currentStop int) ServicesStop {
@@ -370,6 +392,7 @@ type VehiclesResponse struct {
 	LicensePlate string           `json:"license_plate"`
 	Position     VehiclesPosition `json:"position"`
 	VehicleType  string           `json:"type"` //bus, tram, metro
+	State        string           `json:"state"`
 }
 
 type VehiclesRoute struct {

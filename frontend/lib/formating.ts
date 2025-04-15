@@ -86,13 +86,19 @@ export function timeTillArrivalString(arrivalTime: string): string {
 
 export function formatTextToNiceLookingWords(words: string, retainDigits: boolean = false): string {
     if (!retainDigits) {
-        words = words.replace(/\d+/g, ''); // Remove any digits if retainDigits is false
+        try {
+            words = words.replace(/\d+/g, ''); // Remove any digits if retainDigits is false
+        } catch { }
     }
-    return words
-        .replace(/\s{2,}/g, ' ') // Remove extra spaces
-        .trim() // Trim spaces
-        .toLowerCase() // Convert to lowercase
-        .replace(/\b\w/g, char => char.toUpperCase()); // Capitalize the first letter of each word
+    try {
+        return words
+            .replace(/\s{2,}/g, ' ') // Remove extra spaces
+            .trim() // Trim spaces
+            .toLowerCase() // Convert to lowercase
+            .replace(/\b\w/g, char => char.toUpperCase()); // Capitalize the first letter of each word
+    } catch {
+        return words
+    }
 }
 
 export async function getUserLocation(): Promise<number[]> {
