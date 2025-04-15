@@ -1,5 +1,9 @@
 name: Build and Push Docker Image
 
+permissions:
+      contents: read
+      packages: write
+
 on:
   push:
     paths:
@@ -28,6 +32,7 @@ jobs:
         registry: registry.suddsy.dev
         username: ${{ secrets.REGISTRY_USERNAME }}
         password: ${{ secrets.REGISTRY_PASSWORD }}
+        logout: false
 
     - name: Set environment variables
       run: |
