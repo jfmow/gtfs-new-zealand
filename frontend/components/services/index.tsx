@@ -9,7 +9,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import { TrainsApiResponse } from "./types"
-import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival, timeTillArrivalString } from "@/lib/formating"
+import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import { urlStore } from "@/lib/url-store"
@@ -23,7 +23,7 @@ interface ServicesProps {
 
 interface Service {
     time: number;
-    type: "service" | "trip update" | "vehicle"; // "initial" or "update"
+    type: "service" | "realtime" // "initial" or "update"
 
     trip_id: string;
     headsign: string;
@@ -38,6 +38,9 @@ interface Service {
     tracking: 0 | 1 | 2;
 
     stop: ServicesStop;
+
+    departed: boolean
+    time_till_arrival: string
 }
 
 interface ServicesRoute {
@@ -192,7 +195,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services).filter((item) => item.platform === platformFilter || platformFilter === undefined).sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)).map((service) => (
-                            <li key={service.trip_id} className={`overflow-hidden ${!displayingSchedulePreview && ((service.stops_away && service.stops_away <= -1) || timeTillArrival(service.arrival_time) <= -3) ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}>
+                            <li key={service.trip_id} className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}>
                                 <Card>
                                     <CardHeader>
                                         <CardTitle>
@@ -205,7 +208,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     ) : (
                                                         <>
-                                                            {!displayingSchedulePreview && ((service.stops_away && service.stops_away <= -1) || (!service.stops_away && timeTillArrival(service.arrival_time) <= -1)) ? (
+                                                            {!displayingSchedulePreview && service.departed ? (
                                                                 <>
                                                                     <span className="text-orange-500">Departed | </span>
                                                                     <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
@@ -249,7 +252,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                                 <ServiceTrackerModal currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
                                                 <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
-                                                    {timeTillArrivalString(service.arrival_time)}
+                                                    {service.time_till_arrival}min
                                                 </span>
                                             </div>
                                         </CardContent>
@@ -270,8 +273,7 @@ function getService(serviceData: Service[]): Service[] {
         return [];
     }
 
-    const tripUpdates = serviceData.filter((item) => item.type === "trip update").sort((a, b) => b.time - a.time);
-    const vehicleUpdates = serviceData.filter((item) => item.type === "vehicle").sort((a, b) => b.time - a.time);
+    const realtimeUpdates = serviceData.filter((item) => item.type === "realtime").sort((a, b) => b.time - a.time);
 
     const seenTripIds = new Set<string>(); // Keep track of trip IDs already processed
 
@@ -280,10 +282,9 @@ function getService(serviceData: Service[]): Service[] {
     services.map((service) => {
         if (!seenTripIds.has(service.trip_id)) {
             seenTripIds.add(service.trip_id)
-            const latest_trip_update = tripUpdates.find((item) => item.trip_id === service.trip_id)
-            const latest_vehicle_update = vehicleUpdates.find((item) => item.trip_id === service.trip_id)
+            const latest_realtime_update = realtimeUpdates.find((item) => item.trip_id === service.trip_id)
 
-            result.push({ ...service, ...latest_trip_update, ...latest_vehicle_update, type: "service" })
+            result.push({ ...service, ...latest_realtime_update, type: "service" })
         }
     })
 
