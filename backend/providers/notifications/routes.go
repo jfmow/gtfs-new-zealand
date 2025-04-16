@@ -6,14 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SherClockHolmes/webpush-go"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
 	"github.com/robfig/cron/v3"
 )
-
-var notificationMutex sync.Mutex
-var notificationMutex2 sync.Mutex
 
 type Response struct {
 	Code    int    `json:"code"`
@@ -23,6 +21,8 @@ type Response struct {
 }
 
 func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location) {
+	var tripUpdatesCronMutex sync.Mutex
+	var alertsCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
 
 	notificationDB, err := newDatabase(localTimeZone, "hi@suddsy.dev")
@@ -32,47 +32,41 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	c := cron.New(cron.WithLocation(localTimeZone))
 
-	c.AddFunc("@every 00h00m20s", func() {
+	//Check trip updates, for cancellations
+	c.AddFunc("@every 00h00m30s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
-			if notificationMutex.TryLock() {
-				defer notificationMutex.Unlock()
+			if tripUpdatesCronMutex.TryLock() {
+				defer tripUpdatesCronMutex.Unlock()
 				// fmt.Println("Checking canceled trips")
 				updates, err := realtime.GetTripUpdates()
 				if err == nil {
 					if err := notificationDB.NotifyTripUpdates(updates, gtfsData); err != nil {
 						fmt.Println(err)
 					}
-				} else {
-					fmt.Println(err)
 				}
-			} else {
-				fmt.Println("cancellation notification mutex locked")
-			}
+			} //else the function is still running from before, which we will TODO: and speed this up
 		}
 	})
 
+	//Check realtime alerts
 	c.AddFunc("@every 00h00m30s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
-			if notificationMutex2.TryLock() {
-				defer notificationMutex2.Unlock()
-				fmt.Println("Checking alerts")
+			if alertsCronMutex.TryLock() {
+				defer alertsCronMutex.Unlock()
 				alerts, err := realtime.GetAlerts()
 				if err == nil {
 					if err := notificationDB.NotifyAlerts(alerts, gtfsData); err != nil {
 						fmt.Println(err)
 					}
-				} else {
-					fmt.Println(err)
 				}
-			} else {
-				fmt.Println("alert notification mutex locked")
-			}
+			} //else the function is still running from before, which we will TODO: and speed this up
 		}
 	})
 
-	c.AddFunc("@every 00h05m00s", func() {
+	//Check notification expiry
+	c.AddFunc("@every 01h00m00s", func() {
 		var limit = 500
 		var offset = 0
 		now := time.Now().In(localTimeZone)
@@ -128,7 +122,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		err = notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, gtfsData)
+		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, gtfsData)
 		if err != nil {
 			fmt.Println(err)
 			return c.JSON(http.StatusBadRequest, Response{
@@ -137,6 +131,20 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				Data:    nil,
 			})
 		}
+
+		notificationDB.SendNotification(NotificationClient{
+			Id: newClient.Id,
+			Notification: webpush.Subscription{
+				Endpoint: newClient.Endpoint,
+				Keys: webpush.Keys{
+					Auth:   newClient.Auth,
+					P256dh: newClient.P256dh,
+				},
+			},
+			RecentNotifications: newClient.RecentNotifications,
+			Created:             newClient.Created,
+			ExpiryWarningSent:   newClient.ExpiryWarningSent,
+		}, "This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications Enabled for %s", stop.StopName), nil)
 
 		return c.JSON(200, Response{
 			Code:    200,

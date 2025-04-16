@@ -244,21 +244,21 @@ Create a new notification client, MUST be unique.
 
 stops can be parents or child's
 */
-func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId string, gtfsDB gtfs.Database) error {
+func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId string, gtfsDB gtfs.Database) (Notification, error) {
 	// Validate input parameters
 	if len(endpoint) < 2 || !isValidURL(endpoint) {
-		return errors.New("invalid endpoint url")
+		return Notification{}, errors.New("invalid endpoint url")
 	}
 	if len(p256dh) < 10 || !isBase64Url(p256dh) {
-		return errors.New("invalid p256dh")
+		return Notification{}, errors.New("invalid p256dh")
 	}
 	if len(auth) < 8 || !isBase64Url(auth) {
-		return errors.New("invalid auth")
+		return Notification{}, errors.New("invalid auth")
 	}
 
 	foundStops, err := gtfsDB.GetChildStopsByParentStopID(stopId)
 	if err != nil || len(foundStops) == 0 {
-		return errors.New("invalid parent stop id")
+		return Notification{}, errors.New("invalid parent stop id")
 	}
 
 	var childStopsIds []string
@@ -269,7 +269,7 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 	}
 
 	if len(childStopsIds) == 0 {
-		return errors.New("no stops found?")
+		return Notification{}, errors.New("no stops found?")
 	}
 
 	// Insert the new notification client into the `notifications` table
@@ -285,25 +285,23 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 		Created:  int(time.Now().In(v.timeZone).Unix()),
 	}
 
-	var clientID int
-
 	existingClient, err := v.FindNotificationClientByParentStop(notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, "")
 	if err == nil {
-		clientID = existingClient.Id
+		notificationClient.Id = existingClient.Id
 	} else {
 		// Execute the query and get the last inserted ID
 		result, err := v.db.Exec(query, notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, notificationClient.Created)
 		if err != nil {
 			fmt.Println(err)
-			return errors.New("failed to create new client")
+			return Notification{}, errors.New("failed to create new client")
 		}
 
 		// Get the ID of the newly created notification
 		newRecordId, err := result.LastInsertId()
 		if err != nil {
-			return errors.New("failed to retrieve client ID")
+			return Notification{}, errors.New("failed to retrieve client ID")
 		}
-		clientID = int(newRecordId)
+		notificationClient.Id = int(newRecordId)
 	}
 
 	// Insert each stop into the `stops` table
@@ -313,13 +311,13 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 	`
 
 	for _, stop := range childStopsIds {
-		_, err := v.db.Exec(stopQuery, clientID, stop, stopId)
+		_, err := v.db.Exec(stopQuery, notificationClient.Id, stop, stopId)
 		if err != nil {
-			return errors.New("failed to create stop entry")
+			return Notification{}, errors.New("failed to create stop entry")
 		}
 	}
 
-	return nil
+	return notificationClient, nil
 }
 
 /*

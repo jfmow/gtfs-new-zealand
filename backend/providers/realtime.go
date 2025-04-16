@@ -19,25 +19,13 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
-	log.Println("Generating realtime caches")
-	getRouteCache, err := gtfs.GenerateACache(gtfsData.GetRoutes, func(routes []gtfs.Route) (map[string]gtfs.Route, error) {
-		newCache := make(map[string]gtfs.Route)
-		for _, route := range routes {
-			newCache[route.RouteId] = route
-		}
-		return newCache, nil
-	}, 12*time.Hour, make(map[string]gtfs.Route, 0))
-	if err != nil {
-		log.Printf("Failed to init routes cache: %v", err)
-	}
-
 	type StopsForTripIdCache struct {
 		Stops          []gtfs.Stop
 		LowestSequence int
 	}
 	getStopsForTripCache, err := gtfs.GenerateACache(
 		func() (map[string][]gtfs.Stop, error) {
-			trips, err := gtfsData.GetStopsForTrips(1)
+			trips, err := gtfsData.GetStopsForTrips(2)
 			return trips, err
 		},
 		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
@@ -63,34 +51,16 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		log.Printf("Failed to init trip stops cache: %v", err)
 	}
 
-	getChildStopsCache, err := gtfs.GenerateACache(func() ([]gtfs.Stop, error) {
-		stops, err := gtfsData.GetStops(true)
-		return stops, err
-	}, func(stops []gtfs.Stop) (map[string][]gtfs.Stop, error) {
-		var newMap map[string][]gtfs.Stop = make(map[string][]gtfs.Stop)
-		for _, stop := range stops {
-			if stop.ParentStation != "" || (stop.LocationType == 0 && stop.ParentStation == "") {
-				newMap[stop.ParentStation] = append(newMap[stop.ParentStation], stop)
-			}
+	getRouteCache, err := gtfs.GenerateACache(gtfsData.GetRoutes, func(routes []gtfs.Route) (map[string]gtfs.Route, error) {
+		newCache := make(map[string]gtfs.Route)
+		for _, route := range routes {
+			newCache[route.RouteId] = route
 		}
-		if len(newMap) == 0 {
-			return nil, errors.New("no child stops found")
-		}
-		return newMap, nil
-	}, 12*time.Hour, make(map[string][]gtfs.Stop, 0))
+		return newCache, nil
+	}, 1*time.Hour, make(map[string]gtfs.Route, 0))
 	if err != nil {
-		log.Printf("Failed to initialize child stop cache: %v", err)
+		log.Printf("Failed to init routes cache: %v", err)
 	}
-
-	getTripByIdCache, err := gtfs.GenerateACache(func() (map[string]gtfs.Trip, error) {
-		trips, err := gtfsData.GetAllTrips()
-		return trips, err
-	}, gtfs.Identity[map[string]gtfs.Trip], 1*time.Hour, make(map[string]gtfs.Trip))
-	if err != nil {
-		log.Printf("Failed to initialize trips cache: %v", err)
-	}
-
-	log.Println("Generated realtime caches")
 
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {
@@ -117,7 +87,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		var response []VehiclesResponse
 
-		cachedTrips := getTripByIdCache()
+		cachedRoutes := getRouteCache()
 
 		for _, vehicle := range vehicles {
 			currentTripId := vehicle.GetTrip().GetTripId()
@@ -131,9 +101,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 			}
-			responseData.Trip.Headsign = cachedTrips[currentTripId].TripHeadsign
+			currentTrip, err := gtfsData.GetTripByID(currentTripId)
+			if err != nil {
+				//Missing trip in db
+				continue
+			}
+			responseData.Trip.Headsign = currentTrip.TripHeadsign
 
-			if routeData, err := getVehicleRouteData(currentRouteId, getRouteCache); err == nil {
+			if routeData, err := getVehicleRouteData(currentRouteId, cachedRoutes); err == nil {
 				responseData.Route = *routeData
 				responseData.VehicleType = responseData.Route.VehicleType
 				if vehicleTypeFilter != "" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
@@ -193,10 +168,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			})
 		}
 
-		cachedChildStopsByParentId := getChildStopsCache()
 		//Get all the child stops of our parent stop, basically platforms, so we can then get all the routes that stop there
-		childStops, ok := cachedChildStopsByParentId[stop.StopId]
-		if !ok {
+		childStops, err := gtfsData.GetChildStopsByParentStopID(stop.StopId)
+		if err != nil {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
 				Message: "no c stops found",
@@ -316,10 +290,6 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 	arrivalTimestamp := update.GetArrival().GetTime()
 	departureTimestamp := update.GetDeparture().GetTime()
 	sequence := int(update.GetStopSequence())
-	//arrivalDelay := update.GetArrival().GetDelay()
-	//arrivalTimestamp += int64(arrivalDelay)
-	//departureDelay := update.GetDeparture().GetDelay()
-	//departureTimestamp += int64(departureDelay)
 
 	arrivalTimeLocal := time.Unix(arrivalTimestamp, 0).In(localTimeZone)
 	departureTimeLocal := time.Unix(departureTimestamp, 0).In(localTimeZone)
@@ -376,10 +346,9 @@ func getXStop(stopsForTripId []gtfs.Stop, currentStop int) ServicesStop {
 	return result
 }
 
-func getVehicleRouteData(currentRouteId string, getRouteCache func() map[string]gtfs.Route) (*VehiclesRoute, error) {
-	currentCache := getRouteCache()
+func getVehicleRouteData(currentRouteId string, routeCache map[string]gtfs.Route) (*VehiclesRoute, error) {
 	var routeData VehiclesRoute
-	currentRoute, ok := currentCache[currentRouteId]
+	currentRoute, ok := routeCache[currentRouteId]
 	if !ok {
 		return nil, errors.New("no route found")
 	}

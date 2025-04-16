@@ -21,38 +21,6 @@ import (
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
 	servicesRoute := primaryRoute.Group("/services")
 
-	type StopsForTripIdCache struct {
-		Stops          []gtfs.Stop
-		LowestSequence int
-	}
-	getStopsForTripCache, err := gtfs.GenerateACache(
-		func() (map[string][]gtfs.Stop, error) {
-			trips, err := gtfsData.GetStopsForTrips(1)
-			return trips, err
-		},
-		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
-			result := make(map[string]StopsForTripIdCache)
-			for key, trip := range input {
-				lowest := -1
-				for _, stop := range trip {
-					if stop.Sequence < lowest || lowest == -1 {
-						lowest = stop.Sequence
-					}
-				}
-				result[key] = StopsForTripIdCache{
-					Stops:          trip,
-					LowestSequence: lowest,
-				}
-			}
-			return result, nil
-		},
-		12*time.Hour,
-		make(map[string]StopsForTripIdCache, 0),
-	)
-	if err != nil {
-		log.Printf("Failed to init trip stops cache: %v", err)
-	}
-
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		defer func() {
 			if r := recover(); r != nil {
@@ -102,14 +70,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		var filteredServices []gtfs.StopTimes
-		stopsForTripsCache := getStopsForTripCache()
 		for _, service := range services {
-			stopsForService, ok := stopsForTripsCache[service.TripID]
-			if ok {
-				if stopsForService.LowestSequence == 1 {
+			stopsForService, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
+			if err == nil {
+				if lowestSequence == 1 {
 					service.StopSequence = service.StopSequence - 1
 				}
-				if service.StopSequence != len(stopsForService.Stops) {
+				if service.StopSequence != len(stopsForService) {
 					filteredServices = append(filteredServices, service)
 				}
 			}
@@ -174,7 +141,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 							0, localTimeZone,
 						)
 
-						if defaultArrivalTime.Add(1 * time.Minute).Before(now) {
+						if defaultArrivalTime.Add(30 * time.Second).Before(now) {
 							response.Departed = true
 						}
 						response.TimeTillArrival = strconv.Itoa(int(math.Round(defaultArrivalTime.Sub(now).Minutes())))
@@ -262,29 +229,31 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 								ResponseData.Canceled = true
 							}
 						}
-						ResponseData.TripId = service.TripID
-						ResponseData.Time = time.Now().In(localTimeZone).Unix()
-						jsonData, _ := json.Marshal(ResponseData)
 
-						select {
-						case <-ctx.Done():
-							return
-						default:
-							mu.Lock()
-							if ctx.Err() != nil { // Check if the context is canceled
-								log.Printf("Client disconnected")
-								mu.Unlock()
-								return
-							}
+					}
 
-							if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
-								log.Printf("Error writing trip updates: %v", err)
-								mu.Unlock()
-								return
-							}
-							flusher.Flush()
+					ResponseData.TripId = service.TripID
+					ResponseData.Time = time.Now().In(localTimeZone).Unix()
+					jsonData, _ := json.Marshal(ResponseData)
+
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						mu.Lock()
+						if ctx.Err() != nil { // Check if the context is canceled
+							log.Printf("Client disconnected")
 							mu.Unlock()
+							return
 						}
+
+						if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
+							log.Printf("Error writing trip updates: %v", err)
+							mu.Unlock()
+							return
+						}
+						flusher.Flush()
+						mu.Unlock()
 					}
 
 				}
