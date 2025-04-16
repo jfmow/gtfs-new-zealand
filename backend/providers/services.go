@@ -244,7 +244,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 								ResponseData.Departed = false
 							}
 
-							ResponseData.TimeTillArrival = strconv.Itoa(int(math.Round(defaultArrivalTime.Sub(now).Minutes())))
+							ResponseData.TimeTillArrival = strconv.Itoa(int(math.Round(newTime.Sub(now).Minutes())))
 
 							stopUpdates := tripUpdate.GetStopTimeUpdate()
 
