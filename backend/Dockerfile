@@ -8,7 +8,8 @@ COPY ./base /trains/base
 
 ENV AT_APIKEY="" \
     port="8085" \
-    OSRM_URL="http://router.project-osrm.org/route/v1/walking/"
+    OSRM_URL="http://router.project-osrm.org/route/v1/walking/"\
+    GOMEMLIMIT="500MiB"
 
 RUN chmod +x /trains/base
 
