@@ -46,7 +46,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 			return result, nil
 		},
-		5*time.Minute,
+		12*time.Hour,
 		make(map[string]StopsForTripIdCache, 0),
 	)
 	if err != nil {

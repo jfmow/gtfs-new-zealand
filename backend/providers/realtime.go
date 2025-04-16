@@ -26,7 +26,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			newCache[route.RouteId] = route
 		}
 		return newCache, nil
-	}, 5*time.Minute, make(map[string]gtfs.Route, 0))
+	}, 12*time.Hour, make(map[string]gtfs.Route, 0))
 	if err != nil {
 		log.Printf("Failed to init routes cache: %v", err)
 	}
@@ -56,7 +56,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 			return result, nil
 		},
-		5*time.Minute,
+		12*time.Hour,
 		make(map[string]StopsForTripIdCache, 0),
 	)
 	if err != nil {
@@ -77,7 +77,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return nil, errors.New("no child stops found")
 		}
 		return newMap, nil
-	}, 5*time.Minute, make(map[string][]gtfs.Stop, 0))
+	}, 12*time.Hour, make(map[string][]gtfs.Stop, 0))
 	if err != nil {
 		log.Printf("Failed to initialize child stop cache: %v", err)
 	}
@@ -85,7 +85,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	getTripByIdCache, err := gtfs.GenerateACache(func() (map[string]gtfs.Trip, error) {
 		trips, err := gtfsData.GetAllTrips()
 		return trips, err
-	}, gtfs.Identity[map[string]gtfs.Trip], 5*time.Minute, make(map[string]gtfs.Trip))
+	}, gtfs.Identity[map[string]gtfs.Trip], 1*time.Hour, make(map[string]gtfs.Trip))
 	if err != nil {
 		log.Printf("Failed to initialize trips cache: %v", err)
 	}
