@@ -14,6 +14,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import { HeaderMeta } from "@/components/nav";
 
 export default function Home() {
   const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } }); // Get the 's' parameter and if it's found
@@ -99,19 +100,7 @@ function Header() {
     <Head>
       <title>Train, Bus, Ferry</title>
 
-      <link rel="manifest" href="manifest.json" />
-      <meta name="mobile-web-app-capable" content="yes" />
-      <meta name="apple-mobile-web-app-capable" content="yes" />
-      <meta name="application-name" content="Trains" />
-      <meta name="apple-mobile-web-app-title" content="Trains" />
-      <meta name="theme-color" content="#ffffff" />
-      <meta name="msapplication-navbutton-color" content="#ffffff" />
-      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      <meta name="msapplication-starturl" content="/" />
-      <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-      <link rel='icon' type='image/png' href={`/Favicon.png`} />
-      <link rel="apple-touch-icon" href={`/Favicon.png`} />
-      <link rel="shortcut icon" href={`/Favicon.png`} />
+      <HeaderMeta />
 
       <meta name="description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
       <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>

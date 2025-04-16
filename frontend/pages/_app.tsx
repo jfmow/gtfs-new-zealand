@@ -12,7 +12,7 @@ import { GeistSans } from "geist/font/sans";
 
 export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
-    register("/sw.js", {}).then(() => {
+    register("/pwa/sw.js", {}).then(() => {
       checkStopSubscription("")
     })
 

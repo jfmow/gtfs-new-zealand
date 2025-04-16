@@ -27,7 +27,7 @@ export default function NavBar() {
     return (
         <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
             <div className="flex items-center">
-                <img src={theme === "dark" ? "/nav-logo-dark.png" : "/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
             </div>
 
 
@@ -128,6 +128,28 @@ function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu
                     </Link>
                 </li>
             ))}
+        </>
+    )
+}
+
+
+export function HeaderMeta() {
+    return (
+        <>
+
+            <link rel="manifest" href="/pwa/manifest.json" />
+            <meta name="mobile-web-app-capable" content="yes" />
+            <meta name="apple-mobile-web-app-capable" content="yes" />
+            <meta name="application-name" content="Trains" />
+            <meta name="apple-mobile-web-app-title" content="Trains" />
+            <meta name="theme-color" content="#ffffff" />
+            <meta name="msapplication-navbutton-color" content="#ffffff" />
+            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+            <meta name="msapplication-starturl" content="/" />
+            <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+            <link rel='icon' type='image/png' href={`/branding/Favicon.png`} />
+            <link rel="apple-touch-icon" href={`/branding/Favicon.png`} />
+            <link rel="shortcut icon" href={`/branding/Favicon.png`} />
         </>
     )
 }

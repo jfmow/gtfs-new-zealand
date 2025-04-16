@@ -14,6 +14,7 @@ import {
 import { ApiFetch } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import { MapItem } from "@/components/map/map";
+import { HeaderMeta } from "@/components/nav";
 
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
@@ -122,19 +123,7 @@ function Header() {
         <Head>
             <title>Vehicles</title>
 
-            <link rel="manifest" href="manifest.json" />
-            <meta name="mobile-web-app-capable" content="yes" />
-            <meta name="apple-mobile-web-app-capable" content="yes" />
-            <meta name="application-name" content="Trains" />
-            <meta name="apple-mobile-web-app-title" content="Trains" />
-            <meta name="theme-color" content="#ffffff" />
-            <meta name="msapplication-navbutton-color" content="#ffffff" />
-            <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-            <meta name="msapplication-starturl" content="/" />
-            <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-            <link rel='icon' type='image/png' href={`/Favicon.png`} />
-            <link rel="apple-touch-icon" href={`/Favicon.png`} />
-            <link rel="shortcut icon" href={`/Favicon.png`} />
+            <HeaderMeta />
 
             <meta name="description" content="Track public transport vehicles live!" />
             <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
