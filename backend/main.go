@@ -35,7 +35,8 @@ var rateLimiterConfig = middleware.RateLimiterConfig{
 }
 
 var localTimeZone, _ = time.LoadLocation("Pacific/Auckland")
-var aestZone, _ = time.LoadLocation("Australia/Sydney") // or Brisbane, etc.
+
+//var aestZone, _ = time.LoadLocation("Australia/Sydney") // or Brisbane, etc.
 
 func main() {
 	//Loads a .env file in the current dir
@@ -57,7 +58,7 @@ func main() {
 
 	atApi := e.Group("/at")
 	mlApi := e.Group("/wel")
-	seqAPI := e.Group("/seq")
+	//seqAPI := e.Group("/seq")
 	christchurchApi := e.Group("/christ")
 
 	//Auckland Transport
@@ -112,19 +113,19 @@ func main() {
 	}
 
 	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, localTimeZone)
+	/*
+		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
+		if err != nil {
+			fmt.Println("Error loading at gtfs db")
+		}
 
-	SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
-	if err != nil {
-		fmt.Println("Error loading at gtfs db")
-	}
+		SEQRealtimeData, err := rt.NewClient("", "", 20*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
+		if err != nil {
+			panic(err)
+		}
 
-	SEQRealtimeData, err := rt.NewClient("", "", 20*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
-	if err != nil {
-		panic(err)
-	}
-
-	providers.SetupProvider(seqAPI, SEQGTFSData, SEQRealtimeData, aestZone)
-
+		providers.SetupProvider(seqAPI, SEQGTFSData, SEQRealtimeData, aestZone)
+	*/
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
 
