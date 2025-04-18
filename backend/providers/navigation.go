@@ -42,6 +42,7 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 			})
 		}
 
+		//No cache because this route isn't used a lot (yet)
 		route, err := gtfsData.GetRouteByID(routeId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{

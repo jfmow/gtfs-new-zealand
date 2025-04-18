@@ -11,11 +11,9 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getRouteCache func() map[string]gtfs.Route) {
 	routesRoute := primaryRoute.Group("/routes")
 	routesRoute.Use(middleware.GzipWithConfig(gzipConfig))
-
-	//TODO: remove one of these
 
 	//Return a route by routeId
 	routesRoute.GET("/:routeId", func(c echo.Context) error {
@@ -28,9 +26,10 @@ func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtim
 				Data:    nil,
 			})
 		}
-		routes, err := gtfsData.SearchForRouteByID(routeId)
+		cachedRoutes := getRouteCache()
+		route, ok := cachedRoutes[routeId]
 
-		if len(routes) == 0 || err != nil {
+		if !ok {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
 				Message: "no route found",
@@ -41,15 +40,15 @@ func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtim
 		return c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
 			Message: "",
-			Data:    routes,
+			Data:    route,
 		})
 	})
 
 	//Returns a list of routes from the AT api
 	primaryRoute.GET("/routes", func(c echo.Context) error {
-		routes, err := gtfsData.GetRoutes()
+		cachedRoutes := getRouteCache()
 
-		if len(routes) == 0 || err != nil {
+		if len(cachedRoutes) == 0 {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
 				Message: "no routes found",
@@ -60,7 +59,7 @@ func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtim
 		return c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
 			Message: "",
-			Data:    routes,
+			Data:    cachedRoutes,
 		})
 	})
 }

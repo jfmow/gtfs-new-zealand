@@ -12,7 +12,7 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getParentStopsCache func() []gtfs.Stop, getAllStopsCache func() []gtfs.Stop, getStopsForTripCache func() map[string]stopsForTripId) {
 	stopsRoute := primaryRoute.Group("/stops")
 	stopsRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
@@ -28,8 +28,10 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			})
 		}
 
-		stops, _, err := gtfsData.GetStopsForTripID(tripId)
-		if len(stops) == 0 || err != nil {
+		stopsForTripCache := getStopsForTripCache()
+
+		stops, ok := stopsForTripCache[tripId]
+		if len(stops.Stops) == 0 || !ok {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
 				Message: "no stops found for trip",
@@ -38,7 +40,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 		}
 
 		var result []ServicesStop
-		for _, i := range stops {
+		for _, i := range stops.Stops {
 			var responseData ServicesStop
 			stop, err := gtfsData.GetParentStopByChildStopID(i.StopId)
 			if err != nil {
@@ -90,8 +92,8 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			})
 		}
 
-		stops, err := gtfsData.GetStops(true)
-		if err != nil {
+		stops := getAllStopsCache()
+		if len(stops) == 0 {
 			return c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,
 				Message: "no stops found",
@@ -148,8 +150,14 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 
 	//Returns a list of all stops from the AT api
 	primaryRoute.GET("/stops", func(c echo.Context) error {
-		stops, err := gtfsData.GetStops(true)
-		if len(stops) == 0 || err != nil {
+		noChildren := c.QueryParam("noChildren")
+		var stops []gtfs.Stop
+		if noChildren == "1" {
+			stops = getParentStopsCache()
+		} else {
+			stops = getAllStopsCache()
+		}
+		if len(stops) == 0 {
 			return c.JSON(http.StatusNotFound, Response{
 				Code:    http.StatusNotFound,
 				Message: "no stops found",
@@ -157,42 +165,11 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			})
 		}
 
-		noChildren := c.QueryParam("noChildren")
-
-		var filteredStops gtfs.Stops
-
-		if noChildren == "1" {
-			for _, i := range stops {
-				if i.LocationType == 1 {
-					filteredStops = append(filteredStops, i)
-				} else if i.LocationType == 0 && i.ParentStation == "" {
-					filteredStops = append(filteredStops, i)
-				}
-			}
-		}
-
-		if len(filteredStops) == 0 {
-			return c.JSON(http.StatusOK, Response{
-				Code:    http.StatusOK,
-				Message: "",
-				Data:    stops,
-			})
-		} else {
-			return c.JSON(http.StatusOK, Response{
-				Code:    http.StatusOK,
-				Message: "",
-				Data:    filteredStops,
-			})
-		}
+		return c.JSON(http.StatusOK, Response{
+			Code:    http.StatusOK,
+			Message: "",
+			Data:    stops,
+		})
 
 	})
-}
-
-func containsRoute(routes []gtfs.Route, routeID string) bool {
-	for _, r := range routes {
-		if r.RouteId == routeID {
-			return true
-		}
-	}
-	return false
 }

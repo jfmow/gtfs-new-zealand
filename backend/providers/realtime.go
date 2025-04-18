@@ -2,7 +2,6 @@ package providers
 
 import (
 	"errors"
-	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -16,52 +15,9 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache func() map[string]stopsForTripId, getRouteCache func() map[string]gtfs.Route) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
-
-	type StopsForTripIdCache struct {
-		Stops          []gtfs.Stop
-		LowestSequence int
-	}
-	getStopsForTripCache, err := gtfs.GenerateACache(
-		func() (map[string][]gtfs.Stop, error) {
-			trips, err := gtfsData.GetStopsForTrips(2)
-			return trips, err
-		},
-		func(input map[string][]gtfs.Stop) (map[string]StopsForTripIdCache, error) {
-			result := make(map[string]StopsForTripIdCache)
-			for key, trip := range input {
-				lowest := -1
-				for _, stop := range trip {
-					if stop.Sequence < lowest || lowest == -1 {
-						lowest = stop.Sequence
-					}
-				}
-				result[key] = StopsForTripIdCache{
-					Stops:          trip,
-					LowestSequence: lowest,
-				}
-			}
-			return result, nil
-		},
-		12*time.Hour,
-		make(map[string]StopsForTripIdCache, 0),
-	)
-	if err != nil {
-		log.Printf("Failed to init trip stops cache: %v", err)
-	}
-
-	getRouteCache, err := gtfs.GenerateACache(gtfsData.GetRoutes, func(routes []gtfs.Route) (map[string]gtfs.Route, error) {
-		newCache := make(map[string]gtfs.Route)
-		for _, route := range routes {
-			newCache[route.RouteId] = route
-		}
-		return newCache, nil
-	}, 1*time.Hour, make(map[string]gtfs.Route, 0))
-	if err != nil {
-		log.Printf("Failed to init routes cache: %v", err)
-	}
 
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {
@@ -89,6 +45,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		var response []VehiclesResponse
 
 		cachedRoutes := getRouteCache()
+		cachedStopsForTrips := getStopsForTripCache()
 
 		for _, vehicle := range vehicles {
 			currentTripId := vehicle.GetTrip().GetTripId()
@@ -102,12 +59,6 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 			}
-			currentTrip, err := gtfsData.GetTripByID(currentTripId)
-			if err != nil {
-				//Missing trip in db
-				continue
-			}
-			responseData.Trip.Headsign = currentTrip.TripHeadsign
 
 			if routeData, err := getVehicleRouteData(currentRouteId, cachedRoutes); err == nil {
 				responseData.Route = *routeData
@@ -116,29 +67,39 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					continue
 				}
 			}
+			if filterTripId != "" {
+				var tripData VehiclesTrip
+				//If they are selecting a single vehicle, we can give stop info, otherwise its a waste of time because we don't even show it
+				currentTrip, err := gtfsData.GetTripByID(currentTripId)
+				if err != nil {
+					//Missing trip in db
+					continue
+				}
+				tripData.Headsign = currentTrip.TripHeadsign
 
-			cachedStops := getStopsForTripCache()
-			cachedStopsForTrip, ok := cachedStops[currentTripId]
-			stopsForTripId := cachedStopsForTrip.Stops
-			sort.Slice(stopsForTripId, func(i, j int) bool {
-				return stopsForTripId[i].Sequence < stopsForTripId[j].Sequence
-			})
-			lowestSequence := cachedStopsForTrip.LowestSequence
-			if !ok || len(cachedStopsForTrip.Stops) == 0 || lowestSequence == -1 {
-				continue //Skip
-			}
+				stopsForTripData, ok := cachedStopsForTrips[currentTripId]
+				stopsForTrip := stopsForTripData.Stops
+				if !ok || len(stopsForTrip) == 0 || stopsForTripData.LowestSequence == -1 {
+					continue //Skip
+				}
 
-			tripUpdate, err := tripUpdates.ByTripID(currentTripId)
-			if err == nil {
-				stopUpdates := tripUpdate.GetStopTimeUpdate()
+				sort.Slice(stopsForTrip, func(i, j int) bool {
+					return stopsForTrip[i].Sequence < stopsForTrip[j].Sequence
+				})
 
-				nextStopSequenceNumber, _, state := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+				tripUpdate, err := tripUpdates.ByTripID(currentTripId)
+				if err == nil {
+					stopUpdates := tripUpdate.GetStopTimeUpdate()
 
-				responseData.Trip.FirstStop = getXStop(stopsForTripId, 0)
-				responseData.Trip.CurrentStop = getXStop(stopsForTripId, min(nextStopSequenceNumber-1, len(stopsForTripId)-1))
-				responseData.Trip.NextStop = getXStop(stopsForTripId, min(nextStopSequenceNumber, len(stopsForTripId)-1))
-				responseData.Trip.FinalStop = getXStop(stopsForTripId, len(stopsForTripId)-1)
-				responseData.State = state
+					nextStopSequenceNumber, _, state := getNextStopSequence(stopUpdates, stopsForTripData.LowestSequence, localTimeZone)
+
+					tripData.FirstStop = getXStop(stopsForTrip, 0)
+					tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1))
+					tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1))
+					tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1)
+					responseData.State = state
+				}
+				responseData.Trip = &tripData
 			}
 
 			response = append(response, responseData)
@@ -191,7 +152,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			})
 		}
 
-		var foundRoutes []gtfs.Route
+		var foundRoutes map[string]gtfs.Route = make(map[string]gtfs.Route)
 
 		for _, child := range childStops {
 			//Get all the routes that stop at our parent stop's platforms
@@ -200,10 +161,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				continue
 			}
 			for _, v := range routes {
-				if containsRoute(foundRoutes, v.RouteId) {
+				if _, found := foundRoutes[v.RouteId]; found {
 					continue
 				}
-				foundRoutes = append(foundRoutes, v)
+				foundRoutes[v.RouteId] = v
 			}
 
 		}
@@ -259,20 +220,42 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						affected = append(affected, stop.StopName)
 					}
 				}
-				//TODO: sort active period by start and then end to get the biggest and smallest
+
+				activePeriods := alert.GetActivePeriod()
+				if len(activePeriods) == 0 {
+					//no start or end
+					continue
+				}
+				smallestStart := activePeriods[0].GetStart()
+				biggestEnd := activePeriods[0].GetEnd()
+
+				for _, period := range activePeriods {
+					if period.GetStart() < smallestStart {
+						smallestStart = period.GetStart()
+					}
+					if period.GetEnd() > biggestEnd {
+						biggestEnd = period.GetEnd()
+					}
+				}
+
 				var parsedAlert = AlertResponse{
-					StartDate:   int(alert.GetActivePeriod()[0].GetStart()),
-					EndDate:     int(alert.GetActivePeriod()[len(alert.GetActivePeriod())-1].GetEnd()),
+					StartDate:   int(smallestStart),
+					EndDate:     int(biggestEnd),
 					Cause:       alert.GetCause().String(),
 					Effect:      alert.GetEffect().String(),
 					Title:       alert.GetHeaderText().GetTranslation()[0].GetText(),
 					Description: alert.GetDescriptionText().GetTranslation()[0].GetText(),
 					Affected:    affected,
+					Severity:    alert.GetSeverityLevel().String(),
 				}
 
 				foundAlerts = append(foundAlerts, parsedAlert)
 			}
 		}
+		//Sort by start, smallest to biggest
+		sort.Slice(foundAlerts, func(i, j int) bool {
+			return foundAlerts[i].StartDate < foundAlerts[j].StartDate
+		})
 
 		return c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
@@ -368,19 +351,19 @@ func getVehicleRouteData(currentRouteId string, routeCache map[string]gtfs.Route
 type VehiclesResponse struct {
 	TripId       string           `json:"trip_id"`
 	Route        VehiclesRoute    `json:"route"`
-	Trip         VehiclesTrip     `json:"trip"`
+	Trip         *VehiclesTrip    `json:"trip,omitempty"` // Omit trip if not set
 	Occupancy    int8             `json:"occupancy"`
 	LicensePlate string           `json:"license_plate"`
 	Position     VehiclesPosition `json:"position"`
-	VehicleType  string           `json:"type"` //bus, tram, metro
-	State        string           `json:"state"`
+	VehicleType  string           `json:"type"` // bus, tram, metro
+	State        string           `json:"state,omitempty"`
 }
 
 type VehiclesRoute struct {
 	RouteId        string `json:"id"`
 	RouteShortName string `json:"name"`
 	RouteColor     string `json:"color"`
-	VehicleType    string `json:"type"` //bus, tram, metro
+	VehicleType    string `json:"type"` // bus, tram, metro
 }
 
 type VehiclesTrip struct {
@@ -405,4 +388,5 @@ type AlertResponse struct {
 	Title       string   `json:"title"`
 	Description string   `json:"description"`
 	Affected    []string `json:"affected"`
+	Severity    string   `json:"severity"`
 }

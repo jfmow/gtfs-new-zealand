@@ -18,7 +18,7 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache func() map[string]stopsForTripId, getParentStopCache func() []gtfs.Stop) {
 	servicesRoute := primaryRoute.Group("/services")
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
@@ -70,13 +70,14 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		var filteredServices []gtfs.StopTimes
+		stopsForTripCache := getStopsForTripCache()
 		for _, service := range services {
-			stopsForService, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
-			if err == nil {
-				if lowestSequence == 1 {
+			stopsForService, found := stopsForTripCache[service.TripID]
+			if found {
+				if stopsForService.LowestSequence == 1 {
 					service.StopSequence = service.StopSequence - 1
 				}
-				if service.StopSequence != len(stopsForService) {
+				if service.StopSequence != len(stopsForService.Stops) {
 					filteredServices = append(filteredServices, service)
 				}
 			}
@@ -169,10 +170,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						mu.Unlock()
 					}
 				}
-			}()
 
-			go func() {
-				now := time.Now().In(localTimeZone)
 				tripUpdatesData, _ := realtime.GetTripUpdates()
 				vehicleLocations, _ := realtime.GetVehicles()
 				for _, service := range services {
@@ -258,6 +256,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 				}
 			}()
+
 		}
 
 		ctx, cancel := context.WithCancel(c.Request().Context())
