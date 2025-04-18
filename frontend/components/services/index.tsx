@@ -31,7 +31,7 @@ interface Service {
     platform: string;
     stops_away?: number | undefined;
     occupancy: number;
-    canceled: boolean;
+    canceled?: boolean;
 
     route: ServicesRoute;
 
@@ -39,8 +39,8 @@ interface Service {
 
     stop: ServicesStop;
 
-    departed: boolean
-    time_till_arrival: string
+    departed?: boolean
+    time_till_arrival?: number
 }
 
 interface ServicesRoute {

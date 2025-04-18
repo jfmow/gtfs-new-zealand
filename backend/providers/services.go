@@ -106,6 +106,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				for _, service := range services {
 					var response ServicesResponse2
 					response.Type = "service"
+					response.StopsAway = int16(service.StopSequence)
 
 					response.ArrivalTime = service.ArrivalTime
 
@@ -142,10 +143,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 							0, localTimeZone,
 						)
 
-						if defaultArrivalTime.Add(30 * time.Second).Before(now) {
-							response.Departed = true
+						timeTillArrival := int(math.Round(defaultArrivalTime.Sub(now).Minutes()))
+
+						if timeTillArrival <= -1 {
+							departed := true
+							response.Departed = &departed
 						}
-						response.TimeTillArrival = strconv.Itoa(int(math.Round(defaultArrivalTime.Sub(now).Minutes())))
+						response.TimeTillArrival = &timeTillArrival
 					}
 
 					jsonData, _ := json.Marshal(response)
@@ -180,7 +184,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						ResponseData.Occupancy = int8(foundVehicle.GetOccupancyStatus())
 						ResponseData.Tracking = 1
 						if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
-							ResponseData.Canceled = true
+							canceled := true
+							ResponseData.Canceled = &canceled
 						}
 					} else {
 						ResponseData.Tracking = 0
@@ -202,14 +207,16 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 							formattedTime := newTime.Format("15:04:05")
 
 							ResponseData.ArrivalTime = formattedTime
+							timeTillArrival := int(math.Round(newTime.Sub(now).Minutes()))
 
-							if newTime.Add(1 * time.Minute).Before(now) {
-								ResponseData.Departed = true
+							if newTime.Add(1*time.Minute).Before(now) || timeTillArrival <= -1 {
+								departed := true
+								ResponseData.Departed = &departed
 							} else {
-								ResponseData.Departed = false
+								departed := false
+								ResponseData.Departed = &departed
 							}
-
-							ResponseData.TimeTillArrival = strconv.Itoa(int(math.Round(newTime.Sub(now).Minutes())))
+							ResponseData.TimeTillArrival = &timeTillArrival
 
 							stopUpdates := tripUpdate.GetStopTimeUpdate()
 
@@ -219,12 +226,14 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 								stopsAway := int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSequence)
 								ResponseData.StopsAway = stopsAway
 								if stopsAway <= -1 {
-									ResponseData.Departed = true
+									departed := true
+									ResponseData.Departed = &departed
 								}
 							}
 
 							if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
-								ResponseData.Canceled = true
+								canceled := true
+								ResponseData.Canceled = &canceled
 							}
 						}
 
@@ -383,15 +392,15 @@ type ServicesResponse2 struct {
 	Platform    string `json:"platform,omitempty"`
 	StopsAway   int16  `json:"stops_away,omitempty"`
 	Occupancy   int8   `json:"occupancy,omitempty"`
-	Canceled    bool   `json:"canceled,omitempty"`
+	Canceled    *bool  `json:"canceled,omitempty"`
 
 	Route *ServicesRoute `json:"route,omitempty"`
 
 	Stop *ServicesStop `json:"stop,omitempty"`
 
-	Tracking        int8   `json:"tracking"` //0: no, 1: yes, 2: loading
-	Departed        bool   `json:"departed"`
-	TimeTillArrival string `json:"time_till_arrival,omitempty"`
+	Tracking        int8  `json:"tracking"` //0: no, 1: yes, 2: loading
+	Departed        *bool `json:"departed,omitempty"`
+	TimeTillArrival *int  `json:"time_till_arrival,omitempty"`
 }
 
 type ServicesRoute struct {
