@@ -11,7 +11,7 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
-func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getRouteCache func() map[string]gtfs.Route) {
+func setupRoutesRoutes(primaryRoute *echo.Group, realtime rt.Realtime, localTimeZone *time.Location, getRouteCache func() map[string]gtfs.Route) {
 	routesRoute := primaryRoute.Group("/routes")
 	routesRoute.Use(middleware.GzipWithConfig(gzipConfig))
 

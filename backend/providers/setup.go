@@ -89,7 +89,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getStopsForTripCache, getParentStopsCache)
-	setupRoutesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getRouteCache)
+	setupRoutesRoutes(primaryRouter, realtime, localTimeZone, getRouteCache)
 	setupStopsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getParentStopsCache, getAllStopsCache, getStopsForTripCache)
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getStopsForTripCache, getRouteCache)
 	setupNavigationRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
