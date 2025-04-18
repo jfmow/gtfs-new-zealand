@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -119,6 +120,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			cachedStops := getStopsForTripCache()
 			cachedStopsForTrip, ok := cachedStops[currentTripId]
 			stopsForTripId := cachedStopsForTrip.Stops
+			sort.Slice(stopsForTripId, func(i, j int) bool {
+				return stopsForTripId[i].Sequence < stopsForTripId[j].Sequence
+			})
 			lowestSequence := cachedStopsForTrip.LowestSequence
 			if !ok || len(cachedStopsForTrip.Stops) == 0 || lowestSequence == -1 {
 				continue //Skip
@@ -255,6 +259,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						affected = append(affected, stop.StopName)
 					}
 				}
+				//TODO: sort active period by start and then end to get the biggest and smallest
 				var parsedAlert = AlertResponse{
 					StartDate:   int(alert.GetActivePeriod()[0].GetStart()),
 					EndDate:     int(alert.GetActivePeriod()[len(alert.GetActivePeriod())-1].GetEnd()),
