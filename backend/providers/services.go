@@ -151,6 +151,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 						}
 						response.TimeTillArrival = &timeTillArrival
 					}
+					response.WheelchairsAllowed = &service.StopData.WheelChairBoarding
+					response.BikesAllowed = &service.TripData.BikesAllowed
 
 					jsonData, _ := json.Marshal(response)
 
@@ -386,13 +388,15 @@ type ServicesResponse2 struct {
 	Time int64  `json:"time,omitempty"`
 	Type string `json:"type"` //service, trip update, vehicle
 
-	TripId      string `json:"trip_id,omitempty"`
-	Headsign    string `json:"headsign,omitempty"`
-	ArrivalTime string `json:"arrival_time,omitempty"`
-	Platform    string `json:"platform,omitempty"`
-	StopsAway   int16  `json:"stops_away,omitempty"`
-	Occupancy   int8   `json:"occupancy,omitempty"`
-	Canceled    *bool  `json:"canceled,omitempty"`
+	TripId             string `json:"trip_id,omitempty"`
+	Headsign           string `json:"headsign,omitempty"`
+	ArrivalTime        string `json:"arrival_time,omitempty"`
+	Platform           string `json:"platform,omitempty"`
+	StopsAway          int16  `json:"stops_away,omitempty"`
+	Occupancy          int8   `json:"occupancy,omitempty"`
+	Canceled           *bool  `json:"canceled,omitempty"`
+	BikesAllowed       *int   `json:"bikes_allowed,omitempty"`
+	WheelchairsAllowed *int   `json:"wheelchairs_allowed,omitempty"`
 
 	Route *ServicesRoute `json:"route,omitempty"`
 

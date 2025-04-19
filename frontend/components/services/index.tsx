@@ -7,7 +7,7 @@ import {
     CardTitle,
 } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { AccessibilityIcon, AlertCircle, BikeIcon } from "lucide-react"
 import { TrainsApiResponse } from "./types"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
@@ -15,6 +15,13 @@ import ServiceTrackerModal from "./tracker"
 import { urlStore } from "@/lib/url-store"
 import { ApiFetch } from "@/lib/url-context"
 import { Button } from "../ui/button"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
+
 
 interface ServicesProps {
     stopName: string
@@ -32,6 +39,8 @@ interface Service {
     stops_away?: number | undefined;
     occupancy: number;
     canceled?: boolean;
+    bikes_allowed: number;
+    wheelchairs_allowed: number;
 
     route: ServicesRoute;
 
@@ -39,8 +48,8 @@ interface Service {
 
     stop: ServicesStop;
 
-    departed?: boolean
-    time_till_arrival?: number
+    departed?: boolean;
+    time_till_arrival?: number;
 }
 
 interface ServicesRoute {
@@ -221,12 +230,37 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </>
                                                     )}
                                                 </div>
+                                                <div className="flex gap-1 items-center mr-2">
+                                                    <TooltipProvider>
+                                                        <Tooltip delayDuration={0}>
+                                                            <TooltipTrigger>
+                                                                <BikeIcon aria-label="Bikes allowed icon" className={`w-4 h-4 ${service.bikes_allowed === 0 ? "text-yellow-500" : service.bikes_allowed === 1 ? "text-green-500" : "text-red-500"}`} />
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                {service.bikes_allowed === 0 ? "Bikes might/might not be allowed" : service.bikes_allowed === 1 ? "Bikes are allowed" : "Bikes are not allowed"}
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+                                                    <TooltipProvider>
+                                                        <Tooltip delayDuration={0}>
+                                                            <TooltipTrigger>
+                                                                <AccessibilityIcon aria-label="Wheelchair accessability icon" className={`w-4 h-4 ${service.wheelchairs_allowed === 0 ? "text-yellow-500" : service.wheelchairs_allowed === 1 ? "text-green-500" : "text-red-500"}`} />
+
+                                                            </TooltipTrigger>
+                                                            <TooltipContent>
+                                                                {service.wheelchairs_allowed === 0 ? "Might/Might not be wheelchair accessible" : service.wheelchairs_allowed === 1 ? "Is wheelchair accessible" : "Not Wheelchair accessible"}
+                                                            </TooltipContent>
+                                                        </Tooltip>
+                                                    </TooltipProvider>
+
+                                                </div>
                                                 <span
                                                     className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
                                                     style={{ background: "#" + service.route.color }}
                                                 >
                                                     {service.route.name}
                                                 </span>
+
                                             </div>
                                         </CardTitle>
 
@@ -250,7 +284,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     {!displayingSchedulePreview && !service.canceled ? (
                                         <CardContent>
                                             <div className="grid grid-cols-2 items-center justify-items-center gap-2">
-                                                <ServiceTrackerModal currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
+                                                <ServiceTrackerModal previewData={{ tripHeadsign: service.headsign, route_id: service.route.id, route_name: service.route.name, trip_id: service.trip_id }} currentStop={service.stop} loaded={service.tracking !== 2} has={service.tracking === 1} tripId={service.trip_id} />
                                                 <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
                                                     {service.time_till_arrival}min
                                                 </span>
@@ -261,6 +295,36 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                             </li>
                         ))}
                     </ul>
+                    <div className="py-4 mt-2 flex flex-col gap-2 sm:gap-1">
+                        <div className="flex items-center gap-2">
+                            <div className="flex gap-1 items-center justify-center">
+                                <BikeIcon aria-label="Bikes might be allowed icon" className={`w-4 h-4 text-yellow-500`} />
+                                <small className="text-xs font-medium leading-none">Bikes might be allowed (ask)</small>
+                            </div>
+                            <div className="flex gap-1 items-center justify-center">
+                                <BikeIcon aria-label="Bikes are allowed icon" className={`w-4 h-4 text-green-500`} />
+                                <small className="text-xs font-medium leading-none">Bikes are allowed</small>
+                            </div>
+                            <div className="flex gap-1 items-center justify-center">
+                                <BikeIcon aria-label="Bikes are not allowed icon" className={`w-4 h-4 text-red-500`} />
+                                <small className="text-xs font-medium leading-none">Bikes are not allowed</small>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="flex gap-1 items-center justify-center">
+                                <AccessibilityIcon aria-label="Might not be wheelchair accessible icon" className={`w-4 h-4 text-yellow-500`} />
+                                <small className="text-xs font-medium leading-none">Might not be wheelchair accessible (ask)</small>
+                            </div>
+                            <div className="flex gap-1 items-center justify-center">
+                                <AccessibilityIcon aria-label="Is wheelchair accessible icon" className={`w-4 h-4 text-green-500`} />
+                                <small className="text-xs font-medium leading-none">Is wheelchair accessible</small>
+                            </div>
+                            <div className="flex gap-1 items-center justify-center">
+                                <AccessibilityIcon aria-label="Is not wheelchair accessible icon" className={`w-4 h-4 text-red-500`} />
+                                <small className="text-xs font-medium leading-none">Is not wheelchair accessible</small>
+                            </div>
+                        </div>
+                    </div>
                 </>
             ) : null}
         </>

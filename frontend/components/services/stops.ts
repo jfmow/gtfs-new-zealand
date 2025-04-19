@@ -3,7 +3,7 @@ import { TrainsApiResponse } from "./types";
 import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
-    current_stop: {
+    current_stop?: {
         lat: number;
         lon: number;
         name: string;
@@ -11,7 +11,7 @@ export interface StopForTripsData {
         platformNumber: string;
         sequence: number;
     };
-    next_stop: {
+    next_stop?: {
         lat: number;
         lon: number;
         name: string;
@@ -19,7 +19,7 @@ export interface StopForTripsData {
         platformNumber: string;
         sequence: number;
     };
-    final_stop: {
+    final_stop?: {
         lat: number;
         lon: number;
         name: string;
@@ -30,64 +30,66 @@ export interface StopForTripsData {
     stops: ServicesStop[];
 }
 
-export async function getStopsForTrip(tripId: string, currentStopId: string, nextStopId: string, filterPassedStops: boolean) {
+export async function getStopsForTrip(tripId: string, currentStopId: string, nextStopId: string): Promise<StopForTripsData | null> {
     const response = await getStopsDataForTrip(tripId);
     if (response.error !== undefined) {
         return null
     }
-    //const currentStopId = stopTimeUpdate.stop_id
 
     const stopsData = response.stops
     const stops = stopsData.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     const totalNumberOfStops = stops.length;
+    if (currentStopId !== "" && nextStopId !== "") {
+        const currentStop = stops.find((item) => item.id === currentStopId)
+        const nextStop = stops.find((item) => item.id === nextStopId)
+        const finalStop = stops.find((item) => item.id === stops[totalNumberOfStops - 1].id);
 
-    const currentStop = stops.find((item) => item.id === currentStopId)
-    const nextStop = stops.find((item) => item.id === nextStopId)
-    const finalStop = stops.find((item) => item.id === stops[totalNumberOfStops - 1].id);
+        if (!nextStop || !finalStop || !currentStop) {
+            console.warn("Missing next or final or current stop");
+            return null
+        }
 
-    if (!nextStop || !finalStop || !currentStop) {
-        console.warn("Missing next or final or current stop");
-        return undefined
+        const [currentStopPlatformNumber, currentStopName] = getPlatformNumberOrLetterFromStopName(currentStop.name);
+        const currentStopData = {
+            lat: nextStop.lat,
+            lon: nextStop.lon,
+            name: currentStopName,
+            stop_id: currentStop.id,
+            platformNumber: currentStopPlatformNumber,
+            sequence: nextStop.sequence
+        };
+
+        const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.name);
+        const nextStopData = {
+            lat: nextStop.lat,
+            lon: nextStop.lon,
+            name: nextStopName,
+            stop_id: nextStop.id,
+            platformNumber: nextStopPlatformNumber,
+            sequence: nextStop.sequence
+        };
+
+        const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
+        const finalStopData = {
+            lat: finalStop.lat,
+            lon: finalStop.lon,
+            name: finalStopName,
+            stop_id: finalStop.id,
+            platformNumber: finalStopPlatformNumber,
+            sequence: finalStop.sequence
+        };
+
+        const modifiedStops = stops.map((stop) => {
+            if (stop.sequence < nextStopData.sequence) {
+                return { ...stop, passed: true }
+            }
+            return stop
+        })
+        return { next_stop: nextStopData, final_stop: finalStopData, stops: modifiedStops, current_stop: currentStopData };
     }
 
-    const [currentStopPlatformNumber, currentStopName] = getPlatformNumberOrLetterFromStopName(currentStop.name);
-    const currentStopData = {
-        lat: nextStop.lat,
-        lon: nextStop.lon,
-        name: currentStopName,
-        stop_id: currentStop.id,
-        platformNumber: currentStopPlatformNumber,
-        sequence: nextStop.sequence
-    };
+    return { stops: stops };
 
-    const [nextStopPlatformNumber, nextStopName] = getPlatformNumberOrLetterFromStopName(nextStop.name);
-    const nextStopData = {
-        lat: nextStop.lat,
-        lon: nextStop.lon,
-        name: nextStopName,
-        stop_id: nextStop.id,
-        platformNumber: nextStopPlatformNumber,
-        sequence: nextStop.sequence
-    };
-
-    const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
-    const finalStopData = {
-        lat: finalStop.lat,
-        lon: finalStop.lon,
-        name: finalStopName,
-        stop_id: finalStop.id,
-        platformNumber: finalStopPlatformNumber,
-        sequence: finalStop.sequence
-    };
-
-    const modifiedStops = stops.map((stop) => {
-        if (stop.sequence < nextStopData.sequence) {
-            return { ...stop, passed: true }
-        }
-        return stop
-    }).filter((item) => filterPassedStops ? (item.sequence ?? 0) > stops.findIndex((item) => item.id === currentStopId) : true)
-
-    return { next_stop: nextStopData, final_stop: finalStopData, stops: modifiedStops, current_stop: currentStopData };
 }
 
 

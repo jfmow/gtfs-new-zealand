@@ -5,7 +5,7 @@ import { TrainsApiResponse } from "./types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
 import { Button } from "../ui/button";
-import { ChevronDown, Loader2, Navigation } from "lucide-react";
+import { ChevronDown, Loader2, MapIcon, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ScrollArea } from "../ui/scroll-area";
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
 import { ApiFetch } from "@/lib/url-context";
 import { MapItem } from "../map/map";
+import { toast } from "sonner";
 
 
 interface ServiceTrackerModalProps {
@@ -29,11 +30,18 @@ interface ServiceTrackerModalProps {
     onOpenChange?: (v: boolean) => void
     loaded: boolean
     has: boolean
+    previewData?: PreviewData
+}
+interface PreviewData {
+    tripHeadsign: string
+    route_id: string
+    route_name: string
+    trip_id: string
 }
 
 const REFRESH_INTERVAL = 5; // Refresh interval in seconds
 
-const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange }: ServiceTrackerModalProps) {
+const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, currentStop, has, defaultOpen, onOpenChange, previewData }: ServiceTrackerModalProps) {
     const { location, loading, error } = useUserLocation()
     const [stops, setStops] = useState<StopForTripsData | null>(null)
     const [open, setOpen] = useState(defaultOpen)
@@ -43,7 +51,15 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
 
     useEffect(() => {
         async function getData() {
-            if (!has) return
+            const loadingToast = toast.loading("Loading tracker/preview")
+            if (!has) {
+                const stopsData = await getStopsForTrip(tripId, "", "")
+                if (stopsData) {
+                    setStops(stopsData)
+                }
+                toast.dismiss(loadingToast)
+                return
+            }
             const form = new FormData()
             form.set("tripId", tripId)
             ApiFetch(`realtime/live`, {
@@ -53,14 +69,23 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                 const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
                 if (!res.ok) {
                     console.error(data.message)
+                    toast.dismiss(loadingToast)
                     return
                 } else {
-                    const vehicle = data.data[0]
-                    setVehicle(vehicle)
-                    const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id, false)
-                    if (stopsData) {
-                        setStops(stopsData)
+                    if (data.data && data.data.length >= 1) {
+                        const vehicle = data.data[0]
+                        setVehicle(vehicle)
+                        const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id)
+                        if (stopsData) {
+                            setStops(stopsData)
+                        }
+                    } else {
+                        const stopsData = await getStopsForTrip(tripId, "", "")
+                        if (stopsData) {
+                            setStops(stopsData)
+                        }
                     }
+                    toast.dismiss(loadingToast)
                 }
             })
 
@@ -95,11 +120,23 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             }}>
                 {!defaultOpen ? (
                     <DialogTrigger asChild>
-                        <Button aria-label="Track service on map" disabled={!has || !loaded} className="w-full" variant={"default"}>
+                        <Button aria-label="Track service on map" disabled={!loaded} className="w-full" variant={!loaded ? "default" : !has ? "secondary" : "default"}>
                             {!loaded ? (
                                 <Loader2 className="h-4 w-4 animate-spin text-secondary" />
                             ) : (
-                                <Navigation />
+                                <>
+                                    {has ? (
+                                        <>
+                                            <Navigation className="w-4 h-4" />
+                                            Track
+                                        </>
+                                    ) : (
+                                        <>
+                                            <MapIcon className="w-4 h-4" />
+                                            Preview
+                                        </>
+                                    )}
+                                </>
                             )}
                         </Button>
                     </DialogTrigger>
@@ -158,7 +195,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                         lon: item.lon,
                                                         icon: currentStop?.name === item.name
                                                             ? "marked stop marker"
-                                                            : (stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop.stop_id === item.id ? "stop marker" : item.id === stops.current_stop.stop_id ? "current stop marker" : item.passed ? "dot gray" : "dot")),
+                                                            : (stops.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : (stops.next_stop && stops.next_stop.stop_id === item.id ? "stop marker" : stops.current_stop && item.id === stops.current_stop.stop_id ? "current stop marker" : item.passed ? "dot gray" : "dot")),
                                                         id: item.name,
                                                         routeID: "",
                                                         description: {
@@ -184,6 +221,109 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         <DrawerContent>
                                             <DrawerHeader>
                                                 <DrawerTitle>{vehicle.route.name} - {vehicle.trip.headsign}</DrawerTitle>
+                                                <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
+                                            </DrawerHeader>
+                                            <ScrollArea className="h-[50vh] w-full">
+                                                <ol className="flex items-center justify-center flex-col gap-1">
+                                                    {stops?.stops.map((item, index) => (
+                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1">
+                                                            <p className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
+                                                            {index < stops.stops.length - 1 ? (
+                                                                <ChevronDown className={`${item.passed ? `text-zinc-400` : ``} w-4 h-4`} />
+                                                            ) : null}
+                                                        </li>
+                                                    ))}
+                                                </ol>
+                                            </ScrollArea>
+
+                                            <DrawerFooter>
+                                                <DrawerClose asChild>
+                                                    <Button variant="outline" className="w-full">Close</Button>
+                                                </DrawerClose>
+                                            </DrawerFooter>
+                                        </DrawerContent>
+                                    </Drawer>
+                                </>
+                            </TabsContent>
+                            {currentStop && tripId !== "" ? (
+                                <>
+                                    <TabsContent value="navigate">
+                                        <Navigate start={{
+                                            lat: location[0],
+                                            lon: location[1],
+                                            name: "Your location"
+                                        }} end={{
+                                            lat: currentStop.lat,
+                                            lon: currentStop.lon,
+                                            name: currentStop.name
+                                        }} />
+                                    </TabsContent>
+                                </>
+                            ) : null}
+
+                        </Tabs>
+
+
+                    </DialogContent>
+                ) : null}
+                {open && !has && !vehicle && previewData && stops ? (
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>
+                                <div className="flex items-center justify-between w-full">
+                                    <span>{previewData.tripHeadsign}</span>
+                                </div>
+                            </DialogTitle>
+                            <DialogDescription>
+                                <p>Preview the stops for this service</p>
+                            </DialogDescription>
+                        </DialogHeader>
+                        <Tabs defaultValue="track" className="w-full">
+                            <TabsList className="w-full">
+                                <TabsTrigger className="w-full" value="track">Track</TabsTrigger>
+                                <TabsTrigger disabled={!currentStop || tripId === ""} className="w-full" value="navigate">Navigate</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="track">
+                                <>
+                                    <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
+                                        <LeafletMap
+                                            alwaysFitBoundsWithoutUser={true}
+                                            userLocation={{ found: false, lat: 0, lon: 0 }}
+                                            trip={{
+                                                routeId: previewData.route_id,
+                                                tripId: previewData.trip_id,
+                                            }}
+                                            stops={[
+                                                ...(stops ? stops.stops.map((item) =>
+                                                    ({
+                                                        lat: item.lat,
+                                                        lon: item.lon,
+                                                        icon: "dot",
+                                                        id: item.name,
+                                                        routeID: "",
+                                                        description: {
+                                                            text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                            alwaysShow: false
+                                                        },
+                                                        zIndex: 1,
+                                                        onClick: () => window.location.href = `/?s=${encodeURIComponent(item.name)}`
+                                                    }) as MapItem
+                                                ) : [])
+                                            ]}
+                                            map_id={"tracker preview" + Math.random()}
+                                            height={"300px"}
+                                        />
+                                    </Suspense>
+
+                                    <Drawer>
+                                        <DrawerTrigger asChild>
+                                            <Button className="w-full mt-2">
+                                                List of stops
+                                            </Button>
+                                        </DrawerTrigger>
+                                        <DrawerContent>
+                                            <DrawerHeader>
+                                                <DrawerTitle>{previewData.route_name} - {previewData.tripHeadsign}</DrawerTitle>
                                                 <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">

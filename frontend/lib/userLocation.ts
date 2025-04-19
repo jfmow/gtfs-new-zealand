@@ -16,8 +16,8 @@ export function getUserLocation(): Promise<UserLocation> {
                 const userLon = position.coords.longitude;
                 resolve([userLat, userLon]);
             },
-            (error) => {
-                console.error("Error getting location:", error);
+            () => {
+                //console.error("Error getting location:", error);
                 reject([0, 0]); // Return [0, 0] if there's an error
             }
         );

@@ -36,6 +36,7 @@ interface MapProps {
         lon: number
     }
     height: string
+    alwaysFitBoundsWithoutUser?: boolean
 }
 
 type ItemsOnMap = {
@@ -80,7 +81,7 @@ export default function Map(Props: MapProps) {
 
         if (!mapZoomSet) {
             //User and only vehicle - tracker modal
-            setDefaultZoom(map, userLocation, vehicles, stops);
+            setDefaultZoom(map, userLocation, vehicles, stops, Props.alwaysFitBoundsWithoutUser || false);
             setMapZoomState(true)
         }
 
@@ -237,7 +238,7 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: Ma
     return map
 }
 
-function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: number; lon: number; }, vehicles: MapItem[], stops: MapItem[]) {
+function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: number; lon: number; }, vehicles: MapItem[], stops: MapItem[], alwaysFitBoundsWithoutUser: boolean) {
     if (userLocation.found && vehicles.length === 1) {
         const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [vehicles[0].lat, vehicles[0].lon]);
         map.fitBounds(bounds);
@@ -250,9 +251,19 @@ function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: n
         map.setView([userLocation.lat, userLocation.lon], 13);
     } else {
         if (vehicles.length > 0) {
-            map.setView([vehicles[0].lat, vehicles[0].lon], 13);
+            if (alwaysFitBoundsWithoutUser) {
+                const bounds = leaflet.latLngBounds([vehicles[0].lat, vehicles[0].lon], [vehicles[vehicles.length - 1].lat, vehicles[vehicles.length - 1].lon]);
+                map.fitBounds(bounds);
+            } else {
+                map.setView([vehicles[0].lat, vehicles[0].lon], 13);
+            }
         } else if (stops.length > 0) {
-            map.setView([stops[0].lat, stops[0].lon], 13);
+            if (alwaysFitBoundsWithoutUser) {
+                const bounds = leaflet.latLngBounds([stops[0].lat, stops[0].lon], [stops[stops.length - 1].lat, stops[stops.length - 1].lon]);
+                map.fitBounds(bounds);
+            } else {
+                map.setView([stops[0].lat, stops[0].lon], 13);
+            }
         } else {
             //otherwise your toast
             throw new Error("No vehicles or stops or user location found");
