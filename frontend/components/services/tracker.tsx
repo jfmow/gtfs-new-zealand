@@ -51,13 +51,11 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
 
     useEffect(() => {
         async function getData() {
-            const loadingToast = toast.loading("Loading tracker/preview")
             if (!has) {
                 const stopsData = await getStopsForTrip(tripId, "", "")
                 if (stopsData) {
                     setStops(stopsData)
                 }
-                toast.dismiss(loadingToast)
                 return
             }
             const form = new FormData()
@@ -69,7 +67,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                 const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
                 if (!res.ok) {
                     console.error(data.message)
-                    toast.dismiss(loadingToast)
                     return
                 } else {
                     if (data.data && data.data.length >= 1) {
@@ -85,14 +82,16 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                             setStops(stopsData)
                         }
                     }
-                    toast.dismiss(loadingToast)
                 }
             })
 
         }
 
         if (open) {
-            getData()
+            const loadingToast = toast.loading("Loading tracker/preview")
+            getData().then(() => {
+                toast.dismiss(loadingToast)
+            })
         }
 
         const intervalId = setInterval(() => {
