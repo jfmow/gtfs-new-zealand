@@ -3,7 +3,7 @@ const LeafletMap = lazy(() => import("../map/map"));
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { TrainsApiResponse } from "./types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
-import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
+import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, MapIcon, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
@@ -221,7 +221,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         <DrawerContent>
                                             <DrawerHeader>
                                                 <DrawerTitle>{vehicle.route.name} - {vehicle.trip.headsign}</DrawerTitle>
-                                                <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">
                                                 <ol className="flex items-center justify-center flex-col gap-1">
@@ -271,7 +270,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                         <DialogHeader>
                             <DialogTitle>
                                 <div className="flex items-center justify-between w-full">
-                                    <span>{previewData.tripHeadsign}</span>
+                                    <span>{formatTextToNiceLookingWords(previewData.tripHeadsign)}</span>
                                 </div>
                             </DialogTitle>
                             <DialogDescription>
@@ -324,7 +323,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         <DrawerContent>
                                             <DrawerHeader>
                                                 <DrawerTitle>{previewData.route_name} - {previewData.tripHeadsign}</DrawerTitle>
-                                                <DrawerDescription>Click on a stop to view service departing from that stop.</DrawerDescription>
                                             </DrawerHeader>
                                             <ScrollArea className="h-[50vh] w-full">
                                                 <ol className="flex items-center justify-center flex-col gap-1">
