@@ -70,7 +70,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [errorMessage, setErrorMessage] = useState("")
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
     const displayingSchedulePreview = filterDate ? true : false
-    const [page, setPage] = useState(0)
+    //const [page, setPage] = useState(0)
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map((service) => service.platform)
@@ -91,7 +91,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
         setServices([])
         setPlatformFilter(undefined)
-        setPage(0)
+        //setPage(0)
 
         let eventSource: EventSource | null = null
 
@@ -168,11 +168,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
     }, [stopName, filterDate, url])
 
-    useEffect(() => {
-        if (typeof window !== undefined) {
-            window.scrollTo({ top: 0, behavior: "smooth" })
-        }
-    }, [page])
+    /* useEffect(() => {
+         if (typeof window !== undefined) {
+             window.scrollTo({ top: 0, behavior: "smooth" })
+         }
+     }, [page])*/
 
     return (
         <>
@@ -216,7 +216,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ) : null}
                     <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                         {getService(services, platformFilter, displayingSchedulePreview)
-                            .slice(page * 20, (page + 1) * 20)
                             .map((service) => (
                                 <li
                                     key={service.trip_id}
@@ -341,9 +340,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                 </li>
                             ))}
                     </ul>
-                    <div className="mt-4">
-                        <PaginationComponent services={getService(services, platformFilter, displayingSchedulePreview)} page={page} setPage={setPage} />
-                    </div>
                     <div className="py-4 mt-2 flex flex-col gap-2 sm:gap-1">
                         <div className="flex items-center gap-2">
                             <div className="flex gap-1 items-center justify-center">
@@ -410,6 +406,7 @@ function getService(serviceData: Service[], platformFilter: string | number | un
         .filter((item) => !(!displayingSchedulePreview && item.departed))
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function PaginationComponent({ services, page, setPage }: { services: Service[], page: number, setPage: (newNumber: number) => void }) {
 
     return (
