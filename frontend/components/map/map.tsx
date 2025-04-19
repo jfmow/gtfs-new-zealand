@@ -230,7 +230,7 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: Ma
         map = leaflet.map(Props.map_id);
         ref.current = map;
         leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 30,
+            maxZoom: 19,
             minZoom: 8,
             attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
         }).addTo(map);
