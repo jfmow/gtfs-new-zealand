@@ -20,7 +20,7 @@ export default function Alerts() {
     useEffect(() => {
         if (selected_stop.found) {
             setLoading(true)
-            ApiFetch(`realtime/alerts/${selected_stop.value}`)
+            ApiFetch(`realtime/alerts/${selected_stop.value.replace("/", "%2F")}`)
                 .then(async res => {
                     if (res.ok) {
                         const data: TrainsApiResponse<Alert[]> = await res.json()

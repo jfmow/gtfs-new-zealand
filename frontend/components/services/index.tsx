@@ -97,7 +97,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
         const startEventSource = () => {
             if (!filterDate) {
-                eventSource = new EventSource(encodeURI(`${url}/services/${stopName}`))
+                eventSource = new EventSource(encodeURI(`${url}/services/${stopName.replace("/", "%2F")}`))
 
                 eventSource.onmessage = (event) => {
                     try {
@@ -120,7 +120,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     }
                 }
             } else {
-                ApiFetch(`services/${stopName}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`)
+                ApiFetch(`services/${stopName.replace("/", "%2F")}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`)
                     .then(async (res) => {
                         if (res.ok) {
                             const data: TrainsApiResponse<Service[]> = await res.json()
