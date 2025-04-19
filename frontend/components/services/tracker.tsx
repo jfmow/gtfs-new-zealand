@@ -15,7 +15,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
 import { ApiFetch } from "@/lib/url-context";
 import { MapItem } from "../map/map";
-import { toast } from "sonner";
 
 
 interface ServiceTrackerModalProps {
@@ -47,6 +46,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
     const [open, setOpen] = useState(defaultOpen)
 
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
+    const [initialLoading, setInitialLoading] = useState(false)
     // const [countdown, setCountdown] = useState(REFRESH_INTERVAL);
 
     useEffect(() => {
@@ -60,49 +60,39 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             }
             const form = new FormData()
             form.set("tripId", tripId)
-            ApiFetch(`realtime/live`, {
+            const res = await ApiFetch(`realtime/live`, {
                 method: "POST",
                 body: form
-            }).then(async res => {
-                const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
-                if (!res.ok) {
-                    console.error(data.message)
-                    return
+            })
+            const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
+            if (!res.ok) {
+                console.error(data.message)
+                return
+            } else {
+                if (data.data && data.data.length >= 1) {
+                    const vehicle = data.data[0]
+                    setVehicle(vehicle)
+                    const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id)
+                    if (stopsData) {
+                        setStops(stopsData)
+                    }
                 } else {
-                    if (data.data && data.data.length >= 1) {
-                        const vehicle = data.data[0]
-                        setVehicle(vehicle)
-                        const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id)
-                        if (stopsData) {
-                            setStops(stopsData)
-                        }
-                    } else {
-                        const stopsData = await getStopsForTrip(tripId, "", "")
-                        if (stopsData) {
-                            setStops(stopsData)
-                        }
+                    const stopsData = await getStopsForTrip(tripId, "", "")
+                    if (stopsData) {
+                        setStops(stopsData)
                     }
                 }
-            })
+            }
 
         }
 
-        if (open) {
-            const loadingToast = toast.loading("Loading tracker/preview")
-            getData().then(() => {
-                toast.dismiss(loadingToast)
-            })
-        }
 
         let intervalId: NodeJS.Timeout | null
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
-                intervalId = setInterval(() => {
-                    if (open) {
-                        getData();
-                    }
-                }, REFRESH_INTERVAL * 1000);
+                getData()
+                intervalId = setInterval(getData, REFRESH_INTERVAL * 1000);
             } else if (document.visibilityState === "hidden") {
                 if (intervalId) {
                     clearInterval(intervalId);
@@ -110,7 +100,12 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             }
         };
 
-        document.addEventListener("visibilitychange", handleVisibilityChange)
+        if (open) {
+            setInitialLoading(true)
+            getData().then(() => setInitialLoading(false))
+            handleVisibilityChange()
+            document.addEventListener("visibilitychange", handleVisibilityChange)
+        }
 
         // Cleanup on unmount, visibility change, or dependencies update
         return () => {
@@ -129,8 +124,8 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             }}>
                 {!defaultOpen ? (
                     <DialogTrigger asChild>
-                        <Button aria-label="Track service on map" disabled={!loaded} className="w-full" variant={!loaded ? "default" : !has ? "secondary" : "default"}>
-                            {!loaded ? (
+                        <Button aria-label="Track service on map" disabled={!loaded || initialLoading} className="w-full" variant={!loaded ? "default" : !has ? "secondary" : "default"}>
+                            {!loaded || initialLoading ? (
                                 <Loader2 className="h-4 w-4 animate-spin text-secondary" />
                             ) : (
                                 <>
