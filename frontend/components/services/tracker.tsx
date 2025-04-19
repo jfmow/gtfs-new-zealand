@@ -94,21 +94,31 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             })
         }
 
-        const intervalId = setInterval(() => {
-            if (open) {
-                getData();
-                // setCountdown(REFRESH_INTERVAL);
+        let intervalId: NodeJS.Timeout | null
+
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "visible") {
+                intervalId = setInterval(() => {
+                    if (open) {
+                        getData();
+                    }
+                }, REFRESH_INTERVAL * 1000);
+            } else if (document.visibilityState === "hidden") {
+                if (intervalId) {
+                    clearInterval(intervalId);
+                }
             }
-        }, REFRESH_INTERVAL * 1000);
+        };
 
-        /* const countdownInterval = setInterval(() => {
-             if(open){
-                 setCountdown(prev => (prev > 0 ? prev - 1 : REFRESH_INTERVAL));
-             }
-         }, 1000);*/
+        document.addEventListener("visibilitychange", handleVisibilityChange)
 
-        // Clean up the interval when the component unmounts or stopName changes
-        return () => clearInterval(intervalId);
+        // Cleanup on unmount, visibility change, or dependencies update
+        return () => {
+            document.removeEventListener("visibilitychange", handleVisibilityChange)
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+        }
     }, [has, open, tripId])
 
     return (
