@@ -35,3 +35,21 @@ export function formatDistance(meters: number) {
     return Math.round(meters) + " m";
   }
 }
+
+export function fullyEncodeURIComponent(str: string) {
+  return Array.from(str)
+    .map(char => {
+      const code = char.charCodeAt(0);
+      // Don't encode unreserved URI characters
+      if (
+        (code >= 0x30 && code <= 0x39) || // 0-9
+        (code >= 0x41 && code <= 0x5A) || // A-Z
+        (code >= 0x61 && code <= 0x7A) || // a-z
+        '-_.~'.includes(char)
+      ) {
+        return char;
+      }
+      return '%' + code.toString(16).toUpperCase().padStart(2, '0');
+    })
+    .join('');
+}

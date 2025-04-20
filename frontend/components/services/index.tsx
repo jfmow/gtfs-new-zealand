@@ -21,6 +21,7 @@ import {
     PaginationNext,
     PaginationPrevious,
 } from "@/components/ui/pagination"
+import { fullyEncodeURIComponent } from "@/lib/utils"
 
 interface ServicesProps {
     stopName: string
@@ -97,7 +98,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
         const startEventSource = () => {
             if (!filterDate) {
-                eventSource = new EventSource(encodeURI(`${url}/services/${encodeURIComponent(stopName)}`))
+                eventSource = new EventSource(encodeURI(`${url}/services/${fullyEncodeURIComponent(stopName)}`))
 
                 eventSource.onmessage = (event) => {
                     try {
@@ -120,7 +121,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     }
                 }
             } else {
-                ApiFetch(`services/${encodeURIComponent(stopName)}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`)
+                ApiFetch(`services/${fullyEncodeURIComponent(stopName)}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`)
                     .then(async (res) => {
                         if (res.ok) {
                             const data: TrainsApiResponse<Service[]> = await res.json()

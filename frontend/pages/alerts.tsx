@@ -11,6 +11,7 @@ import { TrainsApiResponse } from "@/components/services/types"
 import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 import { HeaderMeta } from "@/components/nav"
+import { fullyEncodeURIComponent } from "@/lib/utils"
 
 export default function Alerts() {
     const [alerts, setAlerts] = useState<Alert[]>([])
@@ -20,7 +21,7 @@ export default function Alerts() {
     useEffect(() => {
         if (selected_stop.found) {
             setLoading(true)
-            ApiFetch(`realtime/alerts/${encodeURIComponent(selected_stop.value)}`)
+            ApiFetch(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`)
                 .then(async res => {
                     if (res.ok) {
                         const data: TrainsApiResponse<Alert[]> = await res.json()
