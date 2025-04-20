@@ -9,7 +9,7 @@ import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
 import { TrainsApiResponse } from "../services/types";
-import { ApiFetch } from "@/lib/url-context";
+import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 
 interface NavigateProps {
@@ -20,6 +20,7 @@ interface NavigateProps {
 export default function Navigate({ start, end }: NavigateProps) {
     const { loading, error, location } = useUserLocation()
     const [data, setData] = useState<OSRMResponse | null>(null)
+    const { currentUrl } = useUrl()
 
     async function getPoints() {
 
@@ -84,7 +85,7 @@ export default function Navigate({ start, end }: NavigateProps) {
                         <div className="w-full rounded-xl overflow-hidden">
 
                             <Suspense>
-                                <LeafletMap userLocation={{ found: !error && !loading ? true : false, lat: location[0], lon: location[1] }} map_id={"nav-map"} height={"400px"} line={data as unknown as GeoJSON} stops={[{
+                                <LeafletMap defaultCenter={currentUrl.defaultMapCenter} userLocation={{ found: !error && !loading ? true : false, lat: location[0], lon: location[1] }} map_id={"nav-map"} height={"400px"} line={data as unknown as GeoJSON} stops={[{
                                     lat: end.lat, lon: end.lon, icon: "stop marker",
                                     id: "",
                                     routeID: "",
