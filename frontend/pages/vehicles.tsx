@@ -11,22 +11,27 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
-import { ApiFetch } from "@/lib/url-context";
+import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
-import { MapItem } from "@/components/map/map";
+import { Bounds, MapItem } from "@/components/map/map";
 import { HeaderMeta } from "@/components/nav";
+import ErrorScreen from "@/components/ui/error-screen";
+
+const MAPID = "vehicles-amazing-map"
+const REFRESH_INTERVAL = 10; // Refresh interval in seconds
 
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
     const [error, setError] = useState("")
-
     const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
     const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
-    const { location, loading } = useUserLocation()
+    const { location, loading, locationFound } = useUserLocation()
+    const [bounds, setBounds] = useState<Bounds>(null)
+    const { currentUrl } = useUrl()
 
     useEffect(() => {
         async function getData() {
-            const data = await getVehicles(vehicleType)
+            const data = await getVehicles(vehicleType, bounds)
             if (data.error !== undefined) {
                 setError(data.error)
             }
@@ -34,17 +39,37 @@ export default function Vehicles() {
                 setVehicles(data.vehicles)
             }
         }
-        getData()
 
-        if (!selectedVehicle) {
-            const intervalId = setInterval(getData, 15000);
-
-            // Clean up the interval when the component unmounts or stopName changes
+        let intervalId: NodeJS.Timeout | null = null
+        if (bounds) {
+            getData()
+            if (!selectedVehicle) {
+                intervalId = setInterval(getData, REFRESH_INTERVAL * 1000);
+            }
+        }
+        if (intervalId) {
             return () => clearInterval(intervalId);
         }
-    }, [vehicleType, selectedVehicle])
+    }, [vehicleType, selectedVehicle, bounds])
 
-    if (!vehicles || loading) {
+    useEffect(() => {
+        const handleMapBoundsUpdate = (event: Event) => {
+            const customEvent = event as CustomEvent<{ bounds: Bounds }>;
+            setBounds(customEvent.detail.bounds);
+        };
+
+        document.addEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
+
+        return () => {
+            document.removeEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
+        };
+    }, []);
+
+    if (error !== "") {
+        return <ErrorScreen errorTitle="An error occurred while loading the vehicles" errorText={error} />
+    }
+
+    if (loading) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -74,7 +99,7 @@ export default function Vehicles() {
                         "Err: " + error
                     ) : (
                         <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                            <LeafletMap vehicles={[...(vehicles ? (
+                            <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(vehicles ? (
                                 vehicles.map((vehicle) => ({
                                     lat: vehicle.position.lat,
                                     lon: vehicle.position.lon,
@@ -87,7 +112,7 @@ export default function Vehicles() {
                                         setSelectedVehicle(vehicle)
                                     },
                                 }) as MapItem)
-                            ) : [])]} map_id="vehicles_map" userLocation={{ found: location[0] !== 0, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px)"} />
+                            ) : [])]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px)"} />
                         </Suspense>
                     )}
 
@@ -102,9 +127,10 @@ type GetVehiclesResult =
     | { error: string; vehicles: null }
     | { error: undefined; vehicles: VehiclesResponse[] };
 
-async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
+async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | "", bounds: Bounds): Promise<GetVehiclesResult> {
     const form = new FormData()
     form.set("vehicle_type", vehicleType)
+    form.set("bounds", bounds === null ? "" : JSON.stringify(bounds))
     const req = await ApiFetch(`realtime/live`, {
         method: "POST",
         body: form

@@ -1,5 +1,5 @@
 import leaflet, { MarkerClusterGroup } from "leaflet"
-import React, { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef } from "react"
 import 'leaflet/dist/leaflet.css';
 import "leaflet.markercluster";
 import { TrainsApiResponse } from "../services/types";
@@ -21,6 +21,8 @@ export interface MapItem {
     }
 }
 
+type LatLng = [number, number]
+
 interface MapProps {
     line?: GeoJSON
     trip?: {
@@ -37,6 +39,7 @@ interface MapProps {
     }
     height: string
     alwaysFitBoundsWithoutUser?: boolean
+    defaultCenter: LatLng
 }
 
 type ItemsOnMap = {
@@ -63,106 +66,109 @@ type ItemsOnMap = {
     }
 }
 
-export default function Map(Props: MapProps) {
+export default function Map({
+    userLocation,
+    vehicles = [],
+    stops = [],
+    line,
+    alwaysFitBoundsWithoutUser,
+    map_id,
+    trip,
+    height,
+    defaultCenter
+}: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
-    const [mapZoomSet, setMapZoomState] = useState(false)
     const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
-
     //Stuff on the map, like markers  and the map itself
+
     useEffect(() => {
+        if (!defaultCenter) throw Error("Missing default center")
         let map: leaflet.Map | null = mapRef.current
         if (!map) {
-            map = createNewMap(mapRef, Props)
+            map = createNewMap(mapRef, map_id)
+            setDefaultZoom(map, defaultCenter, userLocation, vehicles, stops, alwaysFitBoundsWithoutUser || false);
         }
 
-        const userLocation = Props.userLocation
-        const vehicles = Props.vehicles || []
-        const stops = Props.stops || []
+    }, [alwaysFitBoundsWithoutUser, defaultCenter, map_id, stops, userLocation, vehicles])
 
-        if (!mapZoomSet) {
-            //User and only vehicle - tracker modal
-            setDefaultZoom(map, userLocation, vehicles, stops, Props.alwaysFitBoundsWithoutUser || false);
-            setMapZoomState(true)
-        }
+    useEffect(() => {
+        const map = mapRef.current
+        if (map) {
+            const activeMapItems = itemsOnMap.current
+            addUserMarker(activeMapItems.user, map, userLocation)
 
-        const activeMapItems = itemsOnMap.current
-
-        const activeStops = activeMapItems.stops
-        const activeVehicles = activeMapItems.vehicles
-        const activeNavigation = activeMapItems.navigation
-
-        addUserMarker(activeMapItems.user, map, userLocation)
-
-        if (stops.length > 0) {
-            if (!activeStops.clusterGroup) {
-                activeStops.clusterGroup = createMapClusterGroup()
-            }
-            if (activeStops.clusterGroup) {
-                activeStops.clusterGroup.clearLayers()
-            }
-            activeStops.markers.forEach((item) => {
-                map.removeLayer(item.marker)
-            })
-            stops.forEach((stop) => {
-                //Add the stop to the map
-                const marker = createNewMarker(stop)
-                //Only make the cluster if theres more than 100 stops, otherwise just add the marker
+            const activeStops = activeMapItems.stops
+            const activeVehicles = activeMapItems.vehicles
+            const activeNavigation = activeMapItems.navigation
+            if (stops.length > 0) {
+                if (!activeStops.clusterGroup) {
+                    activeStops.clusterGroup = createMapClusterGroup()
+                }
+                if (activeStops.clusterGroup) {
+                    activeStops.clusterGroup.clearLayers()
+                }
+                activeStops.markers.forEach((item) => {
+                    map.removeLayer(item.marker)
+                })
+                stops.forEach((stop) => {
+                    //Add the stop to the map
+                    const marker = createNewMarker(stop)
+                    //Only make the cluster if theres more than 100 stops, otherwise just add the marker
+                    if (activeStops.clusterGroup && stops.length > 100) {
+                        activeStops.clusterGroup.addLayer(marker)
+                    } else {
+                        map.addLayer(marker)
+                    }
+                    activeStops.markers.push({ id: stop.id, marker })
+                })
                 if (activeStops.clusterGroup && stops.length > 100) {
-                    activeStops.clusterGroup.addLayer(marker)
-                } else {
-                    map.addLayer(marker)
+                    map.addLayer(activeStops.clusterGroup as leaflet.Layer)
                 }
-                activeStops.markers.push({ id: stop.id, marker })
-            })
-            if (activeStops.clusterGroup && stops.length > 100) {
-                map.addLayer(activeStops.clusterGroup as leaflet.Layer)
+                itemsOnMap.current.stops = activeStops
             }
-            itemsOnMap.current.stops = activeStops
-        }
 
-        if (vehicles.length > 0) {
-            if (activeVehicles.clusterGroup) {
-                activeVehicles.clusterGroup.clearLayers()
-            }
-            activeVehicles.markers.forEach((item) => {
-                map.removeLayer(item.marker)
-            })
-            vehicles.forEach((vehicle) => {
-                //Add the vehicle to the map
-                const marker = createNewMarker(vehicle)
-                if (!activeVehicles.clusterGroup) {
-                    activeVehicles.clusterGroup = createMapClusterGroup()
+            if (vehicles.length > 0) {
+                if (activeVehicles.clusterGroup) {
+                    activeVehicles.clusterGroup.clearLayers()
                 }
-                activeVehicles.clusterGroup.addLayer(marker)
-                activeVehicles.markers.push({ id: vehicle.id, marker })
-            })
-            if (vehicles.length === 1) {
-                addVehicleZoomControl(map, [vehicles[0].lat, vehicles[0].lon], activeVehicles)
+                activeVehicles.markers.forEach((item) => {
+                    map.removeLayer(item.marker)
+                })
+                vehicles.forEach((vehicle) => {
+                    //Add the vehicle to the map
+                    const marker = createNewMarker(vehicle)
+                    if (!activeVehicles.clusterGroup) {
+                        activeVehicles.clusterGroup = createMapClusterGroup()
+                    }
+                    activeVehicles.clusterGroup.addLayer(marker)
+                    activeVehicles.markers.push({ id: vehicle.id, marker })
+                })
+                if (vehicles.length === 1) {
+                    addVehicleZoomControl(map, [vehicles[0].lat, vehicles[0].lon], activeVehicles)
+                }
+                map.addLayer(activeVehicles.clusterGroup as leaflet.Layer)
+                itemsOnMap.current.vehicles = activeVehicles
             }
-            map.addLayer(activeVehicles.clusterGroup as leaflet.Layer)
-            itemsOnMap.current.vehicles = activeVehicles
-        }
 
-        if (Props.line) {
-            if (activeNavigation.line) {
-                map.removeLayer(activeNavigation.line)
+            if (line) {
+                if (activeNavigation.line) {
+                    map.removeLayer(activeNavigation.line)
+                }
+                const leafletLine = createNavigationLine(line as unknown as GeoJSON)
+                activeMapItems.navigation.line = leafletLine
+                leafletLine.addTo(map)
+
             }
-            const line = createNavigationLine(Props.line)
-            activeMapItems.navigation.line = line
-            line.addTo(map)
-
         }
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [Props.vehicles, Props.userLocation, Props.stops, Props.map_id, Props.line, mapRef])
+    }, [line, stops, userLocation, vehicles])
 
     //Route line
     useEffect(() => {
         const map: leaflet.Map | null = mapRef.current
         if (!map) return
 
-        const routeId = Props.trip ? Props.trip.routeId : ""
-        const tripId = Props.trip ? Props.trip.tripId : ""
+        const routeId = trip ? trip.routeId : ""
+        const tripId = trip ? trip.tripId : ""
 
         const hasTrip = routeId !== "" && tripId !== "" ? true : false
         if (!hasTrip) return
@@ -209,25 +215,43 @@ export default function Map(Props: MapProps) {
             }
         }
         getRouteLine()
-    }, [Props.trip, mapRef])
+    }, [trip])
+
+    function handleMapMoveEnd() {
+        const map = mapRef.current
+        if (map) updateMapBoundsEvent(map, map_id)
+    }
+
+    useEffect(() => {
+        const map = mapRef.current
+        if (map) {
+            handleMapMoveEnd()
+            map.on("zoomend", handleMapMoveEnd)
+            return () => {
+                map.off("zoomend", handleMapMoveEnd)
+            }
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
 
 
     return (
         <>
-            <div id={Props.map_id} style={{ height: Props.height, width: '100%', maxHeight: Props.height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }} />
+            <div id={map_id} style={{ height: height, width: '100%', maxHeight: height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }} />
         </>
     )
 }
 
 
 
-function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: MapProps): leaflet.Map {
+function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: string): leaflet.Map {
     let map: leaflet.Map | null = ref.current
-    if (!map || Props.map_id === "") {
-        if (Props.map_id.length < 3) throw new Error("Map ID is too short, must be at least 3 characters")
-        if (document.getElementById(Props.map_id) === null) throw new Error("Element with Map ID does NOT exist in the DOM")
+    if (!map || map_id === "") {
+        if (map_id.length < 3) throw new Error("Map ID is too short, must be at least 3 characters")
+        if (document.getElementById(map_id) === null) throw new Error("Element with Map ID does NOT exist in the DOM")
         //Create the map
-        map = leaflet.map(Props.map_id);
+        map = leaflet.map(map_id);
         ref.current = map;
         leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
             maxZoom: 19,
@@ -238,7 +262,7 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, Props: Ma
     return map
 }
 
-function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: number; lon: number; }, vehicles: MapItem[], stops: MapItem[], alwaysFitBoundsWithoutUser: boolean) {
+function setDefaultZoom(map: leaflet.Map, defaultZoomCenter: LatLng, userLocation: { found: boolean; lat: number; lon: number; }, vehicles: MapItem[], stops: MapItem[], alwaysFitBoundsWithoutUser: boolean) {
     if (userLocation.found && vehicles.length === 1) {
         const bounds = leaflet.latLngBounds([userLocation.lat, userLocation.lon], [vehicles[0].lat, vehicles[0].lon]);
         map.fitBounds(bounds);
@@ -266,9 +290,29 @@ function setDefaultZoom(map: leaflet.Map, userLocation: { found: boolean; lat: n
             }
         } else {
             //otherwise your toast
-            throw new Error("No vehicles or stops or user location found");
+            map.setView(defaultZoomCenter, 15)
         }
     }
+}
+
+export type Bounds = [LatLng, LatLng] | null
+function updateMapBoundsEvent(map: leaflet.Map, map_id: string) {
+    const bounds = map.getBounds();
+    const sw = bounds.getSouthWest(); // southwest corner (LatLng)
+    const ne = bounds.getNorthEast(); // northeast corner (LatLng)
+
+    const boundsEvent = new CustomEvent(`mapBoundsUpdate-${map_id}`, {
+        detail: {
+            bounds: [
+                [sw.lat, sw.lng], // [south, west]
+                [ne.lat, ne.lng], // [north, east]
+            ] as Bounds,
+            time: new Date(),
+        },
+        bubbles: true
+    });
+
+    return document.dispatchEvent(boundsEvent);
 }
 
 function addVehicleZoomControl(map: leaflet.Map, vehicleLocation: [number, number], activeMapItemsVehicle: ItemsOnMap["vehicles"]) {
@@ -329,7 +373,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
 }
 
 function createNewMarker(MapItem: MapItem): leaflet.Marker {
-    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon, MapItem.description.text, MapItem.description.alwaysShow);
+    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.description.text, MapItem.description.alwaysShow);
 
     const marker = leaflet.marker([MapItem.lat, MapItem.lon], { icon: customIcon, zIndexOffset: MapItem.zIndex });
 

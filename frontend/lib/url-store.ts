@@ -1,15 +1,16 @@
+type LatLng = [number, number]
 export type UrlOption = {
     url: string
     displayName: string
     logoUrl: string
     textColor: string
-    devOnly?: boolean
+    defaultMapCenter: LatLng
 }
 
 export const urlOptions: UrlOption[] = [
-    { url: "https://trainapi.suddsy.dev/at", displayName: "Auckland Transport", logoUrl: "/provider logos/at.png", textColor: "#0073bd" },
-    { url: "https://trainapi.suddsy.dev/wel", displayName: "Wellington - Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940" },
-    { url: "https://trainapi.suddsy.dev/christ", displayName: "Christchurch - Metro", logoUrl: "/provider logos/metro.png", textColor: "#2a286b" },
+    { url: "https://trainapi.suddsy.dev/at", displayName: "Auckland Transport", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342] },
+    { url: "https://trainapi.suddsy.dev/wel", displayName: "Wellington - Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
+    { url: "https://trainapi.suddsy.dev/christ", displayName: "Christchurch - Metro", logoUrl: "/provider logos/metro.png", textColor: "#2a286b", defaultMapCenter: [-43.530792707375035, 172.6366263226067] },
 ]
 
 class UrlStore {
@@ -19,12 +20,15 @@ class UrlStore {
 
     private constructor() {
 
-
-        const defaultUrl = urlOptions[0]
+        let url: UrlOption
+        url = urlOptions[0]
 
         // Initialize with saved URL or default
         const savedUrl = typeof window !== "undefined" ? localStorage.getItem("selectedUrl") : null
-        this._currentUrl = savedUrl ? JSON.parse(savedUrl) : defaultUrl
+        if (savedUrl && Object.keys(JSON.parse(savedUrl)).length === Object.keys(url).length) {
+            url = JSON.parse(savedUrl)
+        }
+        this._currentUrl = url
     }
 
     public static getInstance(): UrlStore {

@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -15,6 +16,11 @@ import (
 	"github.com/labstack/echo/v5/middleware"
 )
 
+type LatLng struct {
+	Lat float64
+	Lng float64
+}
+
 func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache func() map[string]stopsForTripId, getRouteCache func() map[string]gtfs.Route) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
@@ -23,6 +29,36 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	realtimeRoute.POST("/live", func(c echo.Context) error {
 		filterTripId := c.FormValue("tripId")
 		vehicleTypeFilter := c.FormValue("vehicle_type")
+		boundsStr := c.FormValue("bounds")
+
+		var rawBounds [][]float64
+		var hasBounds = true
+
+		if boundsStr == "" {
+			// Default to [[0,0],[0,0]]
+			hasBounds = false
+			rawBounds = [][]float64{
+				{0.0, 0.0},
+				{0.0, 0.0},
+			}
+		} else {
+			// Try to unmarshal JSON input
+			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "Invalid bounds format",
+				})
+			}
+
+			// Basic validation
+			if len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]",
+				})
+			}
+		}
+
+		point1 := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
+		point2 := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
 
 		vehicles, err := realtime.GetVehicles()
 		if err != nil {
@@ -48,6 +84,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		cachedStopsForTrips := getStopsForTripCache()
 
 		for _, vehicle := range vehicles {
+			if hasBounds && !pointInBounds(float64(vehicle.GetPosition().GetLatitude()), float64(vehicle.GetPosition().GetLongitude()), point1, point2) {
+				//skip
+				continue
+			}
 			currentTripId := vehicle.GetTrip().GetTripId()
 			currentRouteId := vehicle.GetTrip().GetRouteId()
 			if currentRouteId == "" || currentTripId == "" || (filterTripId != "" && currentTripId != filterTripId) {
@@ -265,6 +305,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 	})
 
+}
+
+func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
+	return lat >= sw.Lat && lat <= ne.Lat && lng >= sw.Lng && lng <= ne.Lng
 }
 
 func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string) {

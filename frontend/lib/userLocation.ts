@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
-// Define the return type for the location
-type UserLocation = [number, number]; // Tuple type for latitude and longitude
+type UserLocation = [number, number];
 
 export function getUserLocation(): Promise<UserLocation> {
     return new Promise((resolve, reject) => {
         if (!navigator.geolocation) {
             console.error("Geolocation is not supported by this browser.");
-            return reject([0, 0]); // Return [0, 0] if geolocation is not supported
+            return reject(new Error("Geolocation not supported"));
         }
 
         navigator.geolocation.getCurrentPosition(
@@ -16,64 +15,73 @@ export function getUserLocation(): Promise<UserLocation> {
                 const userLon = position.coords.longitude;
                 resolve([userLat, userLon]);
             },
-            () => {
-                //console.error("Error getting location:", error);
-                reject([0, 0]); // Return [0, 0] if there's an error
+            (error) => {
+                reject(error); // Pass the error object
             }
         );
     });
 }
 
-
 interface UseUserLocation {
-    location: UserLocation;  // The user's location as [latitude, longitude]
-    loading: boolean;        // Loading state
-    error: Error | null;    // Error state
+    location: UserLocation;
+    loading: boolean;
+    error: Error | null;
+    locationFound: boolean;
 }
 
 export function useUserLocation(doNotAutoUpdate?: boolean): UseUserLocation {
     const [location, setLocation] = useState<UserLocation>([0, 0]);
     const [loading, setLoading] = useState<boolean>(true);
+    const [found, setFound] = useState<boolean>(false)
     const [error, setError] = useState<Error | null>(null);
+    const permissionDeniedRef = useRef(false); // Track if permission was denied
 
     useEffect(() => {
         const fetchLocation = async () => {
+            if (permissionDeniedRef.current) return;
+
             try {
                 const userLocation = await getUserLocation();
                 setLocation(userLocation);
-                setError(null); // Clear previous errors if successful
+                setFound(true)
+                setError(null);
             } catch (err) {
-                setError(err as Error);
+                const errorObj = err as GeolocationPositionError;
+                // Only set permission denied once
+                if (errorObj.code === errorObj.PERMISSION_DENIED) {
+                    permissionDeniedRef.current = true;
+                    setError(new Error("Location permission denied"));
+                } else {
+                    setError(errorObj as unknown as Error);
+                }
+                setFound(false)
             } finally {
+                setLoading(false);
             }
         };
 
-        // Fetch immediately and then every 3 seconds
-        fetchLocation().then(() => setLoading(false));
-        if (doNotAutoUpdate) return; // If doNotAutoUpdate is true, skip the interval
-        let intervalId: NodeJS.Timeout | null
+        fetchLocation();
+
+        if (doNotAutoUpdate || permissionDeniedRef.current) return;
+
+        let intervalId: NodeJS.Timeout | null = null;
 
         const handleVisibilityChange = () => {
-            if (document.visibilityState === "visible") {
-                intervalId = setInterval(fetchLocation, 3000);
-            } else if (document.visibilityState === "hidden") {
-                if (intervalId) {
-                    clearInterval(intervalId);
-                }
-            }
-        };
-        handleVisibilityChange()
-        document.addEventListener("visibilitychange", handleVisibilityChange);
-
-        // Cleanup on unmount, visibility change, or dependencies update
-        return () => {
-            if (intervalId) {
+            if (document.visibilityState === "visible" && !permissionDeniedRef.current) {
+                intervalId = setInterval(fetchLocation, 5000);
+            } else if (document.visibilityState === "hidden" && intervalId) {
                 clearInterval(intervalId);
             }
+        };
+
+        handleVisibilityChange();
+        document.addEventListener("visibilitychange", handleVisibilityChange);
+
+        return () => {
+            if (intervalId) clearInterval(intervalId);
             document.removeEventListener("visibilitychange", handleVisibilityChange);
         };
     }, [doNotAutoUpdate]);
 
-    return { location, loading, error };
+    return { location, loading, error, locationFound: found };
 }
-

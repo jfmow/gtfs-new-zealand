@@ -1,21 +1,26 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { MapItem } from "@/components/map/map";
+import { Bounds, MapItem } from "@/components/map/map";
 import { HeaderMeta } from "@/components/nav";
 import { TrainsApiResponse } from "@/components/services/types";
-import { ApiFetch } from "@/lib/url-context";
+import ErrorScreen from "@/components/ui/error-screen";
+import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
-
 const LeafletMap = lazy(() => import("@/components/map/map"));
+
+const MAPID = "stops-amazing-map"
+
 export default function Stops() {
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")
-    const { location, loading } = useUserLocation()
+    const { location, loading, locationFound } = useUserLocation()
+    const [bounds, setBounds] = useState<Bounds>(null)
+    const { currentUrl } = useUrl()
 
     useEffect(() => {
         async function getData() {
-            const data = await getStops()
+            const data = await getStops(bounds)
             if (data.error !== undefined) {
                 setError(data.error)
             }
@@ -23,10 +28,31 @@ export default function Stops() {
                 setStops(data.stops)
             }
         }
-        getData()
-    }, [])
+        if (bounds) {
+            getData()
+        }
+    }, [bounds, loading])
 
-    if (!stops || loading) {
+
+
+    useEffect(() => {
+        const handleMapBoundsUpdate = (event: Event) => {
+            const customEvent = event as CustomEvent<{ bounds: Bounds }>;
+            setBounds(customEvent.detail.bounds);
+        };
+
+        document.addEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
+
+        return () => {
+            document.removeEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
+        };
+    }, []);
+
+    if (error !== "") {
+        return <ErrorScreen errorTitle="An error occurred while loading the stops" errorText={error} />
+    }
+
+    if (loading) {
         return <LoadingSpinner height="100svh" />
     }
 
@@ -35,25 +61,20 @@ export default function Stops() {
             <Header />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-
-                    {error !== "" ? (
-                        "Err: " + error
-                    ) : (
-                        <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
-                            <LeafletMap userLocation={{ found: location[0] !== 0, lat: location[0], lon: location[1] }} map_id="stops_map" stops={[...(stops ? (
-                                stops.map((item) => ({
-                                    lat: item.stop_lat,
-                                    lon: item.stop_lon,
-                                    icon: "dot",
-                                    id: item.stop_name + " " + item.stop_code,
-                                    routeID: "",
-                                    description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
-                                    zIndex: 1,
-                                    onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
-                                } as MapItem))
-                            ) : [])]} height={"calc(100svh - 2rem - 70px)"} />
-                        </Suspense>
-                    )}
+                    <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
+                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} map_id={MAPID} stops={[...(stops ? (
+                            stops.map((item) => ({
+                                lat: item.stop_lat,
+                                lon: item.stop_lon,
+                                icon: "dot",
+                                id: item.stop_name + " " + item.stop_code,
+                                routeID: "",
+                                description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
+                                zIndex: 1,
+                                onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
+                            } as MapItem))
+                        ) : [])]} height={"calc(100svh - 2rem - 70px)"} />
+                    </Suspense>
                 </div>
             </div>
 
@@ -74,8 +95,11 @@ type GetStopsResult =
     | { error: string; stops: null }
     | { error: undefined; stops: Stop[] };
 
-async function getStops(): Promise<GetStopsResult> {
-    const req = await ApiFetch(`stops?noChildren=1`)
+async function getStops(bounds: Bounds): Promise<GetStopsResult> {
+    const form = new FormData()
+    form.set("children", "no")
+    form.set("bounds", bounds === null ? "" : JSON.stringify(bounds))
+    const req = await ApiFetch(`stops`, { method: "POST", body: form })
     const data: TrainsApiResponse<Stop[]> = await req.json()
     if (!req.ok) {
         console.error(data.message)

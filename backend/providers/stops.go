@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -149,10 +150,55 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 	})
 
 	//Returns a list of all stops from the AT api
-	primaryRoute.GET("/stops", func(c echo.Context) error {
-		noChildren := c.QueryParam("noChildren")
+	primaryRoute.POST("/stops", func(c echo.Context) error {
+		filterChildren := c.FormValue("children")
+		var noChildren bool
+		if filterChildren == "yes" {
+			noChildren = false
+		} else if filterChildren == "no" {
+			noChildren = true
+		} else {
+			if filterChildren != "" {
+				return c.JSON(http.StatusNotFound, Response{
+					Code:    http.StatusNotFound,
+					Message: "Invalid children filter",
+					Data:    nil,
+				})
+			}
+		}
+		boundsStr := c.FormValue("bounds")
+
+		var rawBounds [][]float64
+		var hasBounds = true
+
+		if boundsStr == "" {
+			// Default to [[0,0],[0,0]]
+			hasBounds = false
+			rawBounds = [][]float64{
+				{0.0, 0.0},
+				{0.0, 0.0},
+			}
+		} else {
+			// Try to unmarshal JSON input
+			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "Invalid bounds format",
+				})
+			}
+
+			// Basic validation
+			if len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
+				return c.JSON(http.StatusBadRequest, map[string]string{
+					"error": "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]",
+				})
+			}
+		}
+
+		point1 := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
+		point2 := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
+
 		var stops []gtfs.Stop
-		if noChildren == "1" {
+		if noChildren {
 			stops = getParentStopsCache()
 		} else {
 			stops = getAllStopsCache()
@@ -165,10 +211,20 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			})
 		}
 
+		var filteredStops []gtfs.Stop
+
+		for _, stop := range stops {
+			if hasBounds && !pointInBounds(stop.StopLat, stop.StopLon, point1, point2) {
+				continue
+			} else {
+				filteredStops = append(filteredStops, stop)
+			}
+		}
+
 		return c.JSON(http.StatusOK, Response{
 			Code:    http.StatusOK,
 			Message: "",
-			Data:    stops,
+			Data:    filteredStops,
 		})
 
 	})
