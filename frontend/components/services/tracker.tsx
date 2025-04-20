@@ -3,7 +3,6 @@ const LeafletMap = lazy(() => import("../map/map"));
 import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { TrainsApiResponse } from "./types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
-import { Drawer, DrawerClose, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, } from "@/components/ui/drawer"
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, MapIcon, Navigation } from "lucide-react";
 import { getStopsForTrip, StopForTripsData } from "./stops";
@@ -15,6 +14,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Navigate from "../map/navigate";
 import { ApiFetch } from "@/lib/url-context";
 import { MapItem } from "../map/map";
+import {
+    Sheet,
+    SheetClose,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet"
+
 
 
 interface ServiceTrackerModalProps {
@@ -216,21 +224,27 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         />
                                     </Suspense>
 
-                                    <Drawer>
-                                        <DrawerTrigger asChild>
-                                            <Button className="w-full mt-2">
-                                                List of stops
-                                            </Button>
-                                        </DrawerTrigger>
-                                        <DrawerContent>
-                                            <DrawerHeader>
-                                                <DrawerTitle>{vehicle.route.name} - {vehicle.trip.headsign}</DrawerTitle>
-                                            </DrawerHeader>
-                                            <ScrollArea className="h-[50vh] w-full">
-                                                <ol className="flex items-center justify-center flex-col gap-1">
+                                    <Sheet>
+                                        <SheetTrigger asChild>
+                                            <Button className="w-full mt-2">List of stops</Button>
+                                        </SheetTrigger>
+                                        <SheetContent side={"right"} className="flex flex-col">
+                                            <SheetHeader>
+                                                <SheetTitle>
+                                                    Stops for: {vehicle.route.name} - {vehicle.trip.headsign}
+                                                </SheetTitle>
+                                            </SheetHeader>
+
+                                            {/* ScrollArea with fixed height to enable scrolling */}
+                                            <ScrollArea className="flex-1 my-4">
+                                                <ol className="flex items-center justify-center flex-col gap-1 px-1">
                                                     {stops?.stops.map((item, index) => (
-                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1">
-                                                            <p className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
+                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm">
+                                                            <p
+                                                                className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}
+                                                            >
+                                                                {formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}
+                                                            </p>
                                                             {index < stops.stops.length - 1 ? (
                                                                 <ChevronDown className={`${item.passed ? `text-zinc-400` : ``} w-4 h-4`} />
                                                             ) : null}
@@ -239,13 +253,14 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                 </ol>
                                             </ScrollArea>
 
-                                            <DrawerFooter>
-                                                <DrawerClose asChild>
-                                                    <Button variant="outline" className="w-full">Close</Button>
-                                                </DrawerClose>
-                                            </DrawerFooter>
-                                        </DrawerContent>
-                                    </Drawer>
+                                            <SheetClose asChild>
+                                                <Button className="w-full mt-auto" variant={"default"}>
+                                                    Close
+                                                </Button>
+                                            </SheetClose>
+                                        </SheetContent>
+                                    </Sheet>
+
                                 </>
                             </TabsContent>
                             {currentStop && tripId !== "" ? (
@@ -318,21 +333,27 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                         />
                                     </Suspense>
 
-                                    <Drawer>
-                                        <DrawerTrigger asChild>
-                                            <Button className="w-full mt-2">
-                                                List of stops
-                                            </Button>
-                                        </DrawerTrigger>
-                                        <DrawerContent>
-                                            <DrawerHeader>
-                                                <DrawerTitle>{previewData.route_name} - {previewData.tripHeadsign}</DrawerTitle>
-                                            </DrawerHeader>
-                                            <ScrollArea className="h-[50vh] w-full">
-                                                <ol className="flex items-center justify-center flex-col gap-1">
+                                    <Sheet>
+                                        <SheetTrigger asChild>
+                                            <Button className="w-full mt-2">List of stops</Button>
+                                        </SheetTrigger>
+                                        <SheetContent side={"right"} className="flex flex-col">
+                                            <SheetHeader>
+                                                <SheetTitle>
+                                                    Stops for: {previewData.route_name} - {previewData.tripHeadsign}
+                                                </SheetTitle>
+                                            </SheetHeader>
+
+                                            {/* ScrollArea with fixed height to enable scrolling */}
+                                            <ScrollArea className="flex-1 my-4">
+                                                <ol className="flex items-center justify-center flex-col gap-1 px-1">
                                                     {stops?.stops.map((item, index) => (
-                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1">
-                                                            <p className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}>{formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}</p>
+                                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm">
+                                                            <p
+                                                                className={`${item.passed ? `text-zinc-400` : ``} ${stops.next_stop && item.sequence === stops.next_stop.sequence ? `text-blue-600 font-bold` : ``}`}
+                                                            >
+                                                                {formatTextToNiceLookingWords(item.name, true)} {item.platform ? `| Platform ${item.platform}` : ""}
+                                                            </p>
                                                             {index < stops.stops.length - 1 ? (
                                                                 <ChevronDown className={`${item.passed ? `text-zinc-400` : ``} w-4 h-4`} />
                                                             ) : null}
@@ -341,13 +362,13 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                 </ol>
                                             </ScrollArea>
 
-                                            <DrawerFooter>
-                                                <DrawerClose asChild>
-                                                    <Button variant="outline" className="w-full">Close</Button>
-                                                </DrawerClose>
-                                            </DrawerFooter>
-                                        </DrawerContent>
-                                    </Drawer>
+                                            <SheetClose asChild>
+                                                <Button className="w-full mt-auto" variant={"default"}>
+                                                    Close
+                                                </Button>
+                                            </SheetClose>
+                                        </SheetContent>
+                                    </Sheet>
                                 </>
                             </TabsContent>
                             {currentStop && tripId !== "" ? (
