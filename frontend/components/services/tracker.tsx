@@ -301,7 +301,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                                                     ({
                                                         lat: item.lat,
                                                         lon: item.lon,
-                                                        icon: "dot",
+                                                        icon: stops.final_stop && stops.final_stop.stop_id === item.id ? "end marker" : "dot",
                                                         id: item.name,
                                                         routeID: "",
                                                         description: {

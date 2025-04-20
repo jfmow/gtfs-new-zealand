@@ -39,10 +39,23 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
     const stopsData = response.stops
     const stops = stopsData.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
     const totalNumberOfStops = stops.length;
+    const finalStop = stops.find((item) => item.id === stops[totalNumberOfStops - 1].id);
+    if (!finalStop) {
+        return { stops: stops };
+    }
+    const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
+    const finalStopData = {
+        lat: finalStop.lat,
+        lon: finalStop.lon,
+        name: finalStopName,
+        stop_id: finalStop.id,
+        platformNumber: finalStopPlatformNumber,
+        sequence: finalStop.sequence
+    };
+
     if (currentStopId !== "" && nextStopId !== "") {
         const currentStop = stops.find((item) => item.id === currentStopId)
         const nextStop = stops.find((item) => item.id === nextStopId)
-        const finalStop = stops.find((item) => item.id === stops[totalNumberOfStops - 1].id);
 
         if (!nextStop || !finalStop || !currentStop) {
             console.warn("Missing next or final or current stop");
@@ -69,15 +82,7 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
             sequence: nextStop.sequence
         };
 
-        const [finalStopPlatformNumber, finalStopName] = getPlatformNumberOrLetterFromStopName(finalStop.name);
-        const finalStopData = {
-            lat: finalStop.lat,
-            lon: finalStop.lon,
-            name: finalStopName,
-            stop_id: finalStop.id,
-            platformNumber: finalStopPlatformNumber,
-            sequence: finalStop.sequence
-        };
+
 
         const modifiedStops = stops.map((stop) => {
             if (stop.sequence < nextStopData.sequence) {
@@ -88,7 +93,7 @@ export async function getStopsForTrip(tripId: string, currentStopId: string, nex
         return { next_stop: nextStopData, final_stop: finalStopData, stops: modifiedStops, current_stop: currentStopData };
     }
 
-    return { stops: stops };
+    return { stops: stops, final_stop: finalStopData };
 
 }
 
