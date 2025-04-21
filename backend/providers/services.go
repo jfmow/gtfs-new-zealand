@@ -74,10 +74,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		for _, service := range services {
 			stopsForService, found := stopsForTripCache[service.TripID]
 			if found {
+				if service.TripData.TripHeadsign == "" && stopsForService.Stops[0].StopHeadsign != "" {
+					service.TripData.TripHeadsign = stopsForService.Stops[0].StopHeadsign
+				}
 				if stopsForService.LowestSequence == 1 {
 					service.StopSequence = service.StopSequence - 1
 				}
-				if service.StopSequence != len(stopsForService.Stops) {
+				if service.StopSequence != len(stopsForService.Stops)-1 {
 					filteredServices = append(filteredServices, service)
 				}
 			}

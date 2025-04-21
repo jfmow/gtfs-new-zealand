@@ -168,8 +168,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         <>
 
             {getUniquePlatforms(services).length > 0 ? (
-                <div className="mb-2 grid">
-                    <div className="flex  gap-2 items-center">
+                <ol className="flex mb-2 gap-2 items-center" aria-label="Toggle platforms list">
+                    <li className="w-full">
                         <Button
                             aria-label="toggle all platforms"
                             variant={"outline"}
@@ -180,10 +180,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                         >
                             All
                         </Button>
-                        {getUniquePlatforms(services).map((platform) => (
+                    </li>
+                    {getUniquePlatforms(services).map((platform) => (
+                        <li key={platform} className="w-full">
                             <Button
-                                aria-label="toggle platform"
-                                key={platform}
+                                aria-label="toggle platform button"
                                 className="w-full disabled:border-green-300 disabled:bg-green-200"
                                 size={"sm"}
                                 variant={"outline"}
@@ -192,16 +193,16 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                             >
                                 {platform}
                             </Button>
-                        ))}
-                    </div>
-                </div>
+                        </li>
+                    ))}
+                </ol>
             ) : null}
-            <ul className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
+            <ul aria-label="List of services for the stop" className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
                 {getService(services, platformFilter, displayingSchedulePreview)
                     .map((service) => (
                         <li
                             key={service.trip_id}
-                            className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "hidden" : ""} ${service.canceled ? "opacity-50" : ""}`}
+                            className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
                         >
                             <Card>
                                 <CardHeader>
@@ -233,7 +234,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     <Tooltip delayDuration={0}>
                                                         <TooltipTrigger>
                                                             <BikeIcon
-                                                                aria-label="Bikes allowed icon"
+                                                                aria-label={service.bikes_allowed === 0
+                                                                    ? "Bikes might/might not be allowed"
+                                                                    : service.bikes_allowed === 1
+                                                                        ? "Bikes are allowed"
+                                                                        : "Bikes are not allowed"}
                                                                 className={`w-4 h-4 ${service.bikes_allowed === 0 ? "text-yellow-500" : service.bikes_allowed === 1 ? "text-green-500" : "text-red-500"}`}
                                                             />
                                                         </TooltipTrigger>
@@ -250,7 +255,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     <Tooltip delayDuration={0}>
                                                         <TooltipTrigger>
                                                             <AccessibilityIcon
-                                                                aria-label="Wheelchair accessability icon"
+                                                                aria-label={service.wheelchairs_allowed === 0
+                                                                    ? "Might/Might not be wheelchair accessible"
+                                                                    : service.wheelchairs_allowed === 1
+                                                                        ? "Is wheelchair accessible"
+                                                                        : "Not Wheelchair accessible"}
                                                                 className={`w-4 h-4 ${service.wheelchairs_allowed === 0 ? "text-yellow-500" : service.wheelchairs_allowed === 1 ? "text-green-500" : "text-red-500"}`}
                                                             />
                                                         </TooltipTrigger>
@@ -265,6 +274,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 </TooltipProvider>
                                             </div>
                                             <span
+                                                aria-label="Service route name"
                                                 className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
                                                 style={{ background: "#" + service.route.color }}
                                             >
@@ -274,23 +284,25 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     </CardTitle>
 
                                     <CardDescription>
-                                        <div className="">
-                                            <div className="flex items-center justify-between">
+                                        <div className="grid grid-cols-2">
+                                            <div className="grid">
                                                 <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
+                                                {!service.canceled ? (
+                                                    <>
+                                                        <p>Stops away: {service.stops_away || 0}</p>
+                                                        <p className="inline-flex gap-1 items-center">
+                                                            Occupancy: <OccupancyStatusIndicator type="people" value={service.occupancy} />
+                                                        </p>
+                                                    </>
+                                                ) : null}
+                                            </div>
+                                            <div>
                                                 {service.platform !== "" && service.platform !== "no platform" ? (
-                                                    <p className="text-blue-400">
+                                                    <p className="text-blue-400 text-right">
                                                         Platform: <span className="font-medium">{service.platform}</span>
                                                     </p>
                                                 ) : null}
                                             </div>
-                                            {!service.canceled ? (
-                                                <>
-                                                    <p>Stops away: {service.stops_away || 0}</p>
-                                                    <p>
-                                                        Occupancy: <OccupancyStatusIndicator type="message" value={service.occupancy} />
-                                                    </p>
-                                                </>
-                                            ) : null}
                                         </div>
                                     </CardDescription>
                                 </CardHeader>

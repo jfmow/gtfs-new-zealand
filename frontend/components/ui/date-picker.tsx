@@ -23,6 +23,7 @@ export function DatePicker({ onChange, defaultValue }: { onChange: (date: Date |
             <PopoverTrigger asChild>
                 <Button
                     variant={"outline"}
+                    aria-label="Service calendar picker"
                 >
                     <CalendarIcon className="h-4 w-4" />
                 </Button>

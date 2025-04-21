@@ -141,7 +141,7 @@ export function AddToFavorites({ stopName }: { stopName: string }) {
     }
 
     return (
-        <Button onClick={() => handleAddToFavorites()} disabled={stopName === ""} variant={"outline"}>
+        <Button aria-label="Favorite current stop toggle" onClick={() => handleAddToFavorites()} disabled={stopName === ""} variant={"outline"}>
             {isFavorited ? <Star className="fill-yellow-500 text-yellow-500" /> : <Star className="text-yellow-500" />}
         </Button>
     )

@@ -38,7 +38,7 @@ export default function Home() {
               {selectedStop !== "" ? (
                 <DatePicker onChange={(date) => setSelectedDate(date)} />
               ) : null}
-              <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
+              <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
                 <MessageCircleWarningIcon />
               </Button>
               <AddToFavorites stopName={selectedStop} />
