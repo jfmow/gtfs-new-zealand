@@ -20,7 +20,7 @@ type Response struct {
 	Time    int64  `json:"time"`
 }
 
-func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location) {
+func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache func() map[string]gtfs.Stop) {
 	var tripUpdatesCronMutex sync.Mutex
 	var alertsCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
@@ -33,7 +33,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	c := cron.New(cron.WithLocation(localTimeZone))
 
 	//Check trip updates, for cancellations
-	c.AddFunc("@every 00h00m30s", func() {
+	c.AddFunc("@every 00h01m00s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if tripUpdatesCronMutex.TryLock() {
@@ -50,18 +50,16 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	//Check realtime alerts
-	c.AddFunc("@every 00h00m30s", func() {
+	c.AddFunc("@every 00h02m15s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if alertsCronMutex.TryLock() {
 				defer alertsCronMutex.Unlock()
 				alerts, err := realtime.GetAlerts()
 				if err == nil {
-					if err := notificationDB.NotifyAlerts(alerts, gtfsData); err != nil {
-						fmt.Println(err)
-					}
+					notificationDB.NotifyAlerts(alerts, gtfsData, parentStopsCache)
 				}
-			} //else the function is still running from before, which we will TODO: and speed this up
+			}
 		}
 	})
 
@@ -122,7 +120,13 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, stop.StopId, gtfsData)
+		cachedStops := parentStopsCache()
+		parentStop, found := cachedStops[stop.StopId]
+		if !found {
+			return c.String(http.StatusBadRequest, "invalid stop")
+		}
+
+		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, parentStop.StopId, gtfsData)
 		if err != nil {
 			fmt.Println(err)
 			return c.JSON(http.StatusBadRequest, Response{
@@ -144,7 +148,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			RecentNotifications: newClient.RecentNotifications,
 			Created:             newClient.Created,
 			ExpiryWarningSent:   newClient.ExpiryWarningSent,
-		}, "This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications Enabled for %s", stop.StopName), nil)
+		}, "This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications Enabled for %s", parentStop.StopName), nil)
 
 		return c.JSON(200, Response{
 			Code:    200,
@@ -199,10 +203,15 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			if err != nil {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
-			stopId = stop.StopId
+			cachedStops := parentStopsCache()
+			parentStop, found := cachedStops[stop.StopId]
+			if !found {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = parentStop.StopId
 		}
 
-		notification, err := notificationDB.FindNotificationClientByParentStop(endpoint, p256dh, auth, stopId)
+		notification, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -231,7 +240,12 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			if err != nil {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
-			stopId = stop.StopId
+			cachedStops := parentStopsCache()
+			parentStop, found := cachedStops[stop.StopId]
+			if !found {
+				return c.String(http.StatusBadRequest, "invalid stop")
+			}
+			stopId = parentStop.StopId
 		}
 
 		err = notificationDB.DeleteNotificationClient(endpoint, p256dh, auth, stopId)

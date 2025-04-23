@@ -67,6 +67,29 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		log.Fatal(err)
 	}
 
+	getParentStopsByChildCache, err := gtfs.GenerateACache(func() (map[string]gtfs.Stop, error) {
+		allStops, err := gtfsData.GetStopsMap(true)
+		if err != nil {
+			return nil, err
+		}
+		parentStops, err := gtfsData.GetStopsMap(false)
+		if err != nil {
+			return nil, err
+		}
+		var result map[string]gtfs.Stop = make(map[string]gtfs.Stop)
+		for _, stop := range allStops {
+			if stop.IsChildStop {
+				if parentStop, found := parentStops[stop.ParentStation]; found {
+					result[stop.StopId] = parentStop
+				}
+			}
+		}
+		return result, nil
+	}, gtfs.Identity[map[string]gtfs.Stop], nil, gtfsData)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	//Does include child stops
 	getAllStopsCache, err := gtfs.GenerateACache(func() ([]gtfs.Stop, error) {
 		stops, err := gtfsData.GetStops(true)
@@ -94,8 +117,8 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getStopsForTripCache, getRouteCache)
 	setupNavigationRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
 
-	if val := os.Getenv("PRODUCTION"); val != "false" {
-		notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
+	if val := os.Getenv("PRODUCTION"); val == "true" {
+		notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, getParentStopsByChildCache)
 	}
 
 }

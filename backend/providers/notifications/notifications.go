@@ -14,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"slices"
+
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
@@ -87,9 +89,9 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 
 				for _, client := range clients {
 					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, tripUUID)
-					go v.SendNotification(client, body, title, data)
 				}
 
+				v.SendNotificationsInBatches(clients, body, title, data, tripUUID)
 				offset += limit
 			}
 		}
@@ -98,84 +100,38 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 	return nil
 }
 
-func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database) error {
-	if len(alerts) == 0 {
-		return errors.New("no alerts provided")
-	}
-
-	var wg sync.WaitGroup
+func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, parentStopsCache func() map[string]gtfs.Stop) {
+	cachedStops := parentStopsCache()
+	// Process alerts
 	for alertId, alert := range alerts {
-		wg.Add(1)
-		go func(alert *proto.Alert) {
-			defer wg.Done()
-
-			stopsSet := make(map[string]struct{})
-			var stopsToInform []string
-
-			// Collect unique stops from InformedEntity
-			for _, entity := range alert.InformedEntity {
-				if entity.GetStopId() != "" {
-					if _, exists := stopsSet[entity.GetStopId()]; !exists {
-						stopsToInform = append(stopsToInform, entity.GetStopId())
-						stopsSet[entity.GetStopId()] = struct{}{}
-					}
-				}
-				if entity.GetRouteId() != "" {
-					foundStops, err := gtfsDB.GetStopsByRouteId(string(entity.GetRouteId()))
-					if err != nil {
-						continue
-					}
-					for _, stop := range foundStops {
-						if _, exists := stopsSet[stop.StopId]; !exists {
-							stopsToInform = append(stopsToInform, stop.StopId)
-							stopsSet[stop.StopId] = struct{}{}
+		for _, period := range alert.GetActivePeriod() {
+			startTime := time.Unix(int64(period.GetStart()), 0)
+			if startTime.After(time.Now().Add(-24*time.Hour)) && startTime.Before(time.Now().Add(24*time.Hour)) {
+				stopsToInform := getStopsForAlert(alert, cachedStops)
+				for _, stop := range stopsToInform {
+					offset := 0
+					limit := 500
+					for {
+						clients, err := v.GetNotificationClientsByStop(stop.StopId, alertId, limit, offset)
+						if err != nil || len(clients) == 0 {
+							break
 						}
+						offset += limit
+
+						// Prepare notification data
+						data := map[string]string{
+							"url": fmt.Sprintf("/alerts?s=%s", stop.StopName+" "+stop.StopCode),
+						}
+						title := stop.StopName + " " + stop.StopCode
+						body := fmt.Sprintf("%s\n%s", alert.GetHeaderText().GetTranslation()[0].GetText(), alert.GetDescriptionText().GetTranslation()[0].GetText())
+
+						// Send notifications in batches
+						v.SendNotificationsInBatches(clients, body, title, data, alertId)
 					}
 				}
 			}
-
-			for _, stop := range stopsToInform {
-				// Fetch stop data once
-				stopData, err := gtfsDB.GetParentStopByChildStopID(stop)
-				if err != nil {
-					continue
-				}
-
-				var (
-					limit  = 500
-					offset = 0
-				)
-
-				for {
-					clients, err := v.GetNotificationClientsByStop(stop, alertId, limit, offset)
-					if err != nil || len(clients) == 0 {
-						break
-					}
-					offset += limit
-
-					data := map[string]string{
-						"url": fmt.Sprintf("/alerts?s=%s", stopData.StopName+" "+stopData.StopCode),
-					}
-
-					title := stopData.StopName
-					body := fmt.Sprintf("%s\n%s", alert.GetHeaderText().GetTranslation()[0].GetText(), alert.GetDescriptionText().GetTranslation()[0].GetText())
-
-					var notifWG sync.WaitGroup
-					for _, client := range clients {
-						notifWG.Add(1)
-						go func(client NotificationClient) {
-							defer notifWG.Done()
-							v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alertId)
-							v.SendNotification(client, body, title, data)
-						}(client)
-					}
-					notifWG.Wait()
-				}
-			}
-		}(alert)
+		}
 	}
-	wg.Wait()
-	return nil
 }
 
 /*
@@ -224,7 +180,6 @@ func (v Database) createNotificationsTable() {
 		CREATE TABLE IF NOT EXISTS stops (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,    -- Auto-incrementing primary key
 			clientId INTEGER NOT NULL,               -- Foreign key referencing notifications.id
-			stop TEXT NOT NULL DEFAULT '',
 			parent_stop TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY (clientId) REFERENCES notifications(id) ON DELETE CASCADE
 			CONSTRAINT unique_stops UNIQUE (stop, clientId)  -- Composite unique constraint
@@ -244,7 +199,7 @@ Create a new notification client, MUST be unique.
 
 stops can be parents or child's
 */
-func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId string, gtfsDB gtfs.Database) (Notification, error) {
+func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, parentStopId string, gtfsDB gtfs.Database) (Notification, error) {
 	// Validate input parameters
 	if len(endpoint) < 2 || !isValidURL(endpoint) {
 		return Notification{}, errors.New("invalid endpoint url")
@@ -254,22 +209,6 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 	}
 	if len(auth) < 8 || !isBase64Url(auth) {
 		return Notification{}, errors.New("invalid auth")
-	}
-
-	foundStops, err := gtfsDB.GetChildStopsByParentStopID(stopId)
-	if err != nil || len(foundStops) == 0 {
-		return Notification{}, errors.New("invalid parent stop id")
-	}
-
-	var childStopsIds []string
-
-	for _, stop := range foundStops {
-		//Is a lone stop with no parent (so is the parent)
-		childStopsIds = append(childStopsIds, stop.StopId)
-	}
-
-	if len(childStopsIds) == 0 {
-		return Notification{}, errors.New("no stops found?")
 	}
 
 	// Insert the new notification client into the `notifications` table
@@ -285,7 +224,7 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 		Created:  int(time.Now().In(v.timeZone).Unix()),
 	}
 
-	existingClient, err := v.FindNotificationClientByParentStop(notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, "")
+	existingClient, err := v.FindNotificationClient(notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, "")
 	if err == nil {
 		notificationClient.Id = existingClient.Id
 	} else {
@@ -306,15 +245,12 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, stopId
 
 	// Insert each stop into the `stops` table
 	stopQuery := `
-		INSERT INTO stops (clientId, stop, parent_stop)
-		VALUES (?, ?, ?);
+		INSERT INTO stops (clientId, parent_stop)
+		VALUES (?, ?);
 	`
 
-	for _, stop := range childStopsIds {
-		_, err := v.db.Exec(stopQuery, notificationClient.Id, stop, stopId)
-		if err != nil {
-			return Notification{}, errors.New("failed to create stop entry")
-		}
+	if _, err := v.db.Exec(stopQuery, notificationClient.Id, parentStopId); err != nil {
+		return Notification{}, errors.New("failed to create stop entry")
 	}
 
 	return notificationClient, nil
@@ -325,7 +261,7 @@ Delete a notification client
 
 stop can be parent or child or "" (to delete all)
 */
-func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, stopId string) error {
+func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, parentStopId string) error {
 	// Validate input parameters
 	if len(endpoint) < 2 || !isValidURL(endpoint) {
 		return errors.New("invalid endpoint url")
@@ -337,7 +273,7 @@ func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, stopId string
 		return errors.New("invalid auth")
 	}
 
-	if stopId == "" {
+	if parentStopId == "" {
 		query := `
 				DELETE FROM notifications
 				WHERE endpoint = ? AND p256dh = ? AND auth = ?
@@ -355,10 +291,10 @@ func (v Database) DeleteNotificationClient(endpoint, p256dh, auth, stopId string
 					SELECT n.id
 					FROM notifications n
 					WHERE n.endpoint = ? AND n.p256dh = ? AND n.auth = ? 
-				) AND parent_stop = ? OR stop = ?
+				) AND parent_stop = ?
 			`
 
-		_, err := v.db.Exec(query, endpoint, p256dh, auth, stopId, stopId)
+		_, err := v.db.Exec(query, endpoint, p256dh, auth, parentStopId)
 		if err != nil {
 			return errors.New("failed to delete stop entry")
 		}
@@ -378,7 +314,7 @@ hasSeenId is a unique id given to check if that notification has already been se
 
 USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
 */
-func (v Database) GetNotificationClientsByStop(stopId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
+func (v Database) GetNotificationClientsByStop(parentStopId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
 	// Query to find notification clients by stop
 	query := `
 		SELECT 
@@ -396,14 +332,14 @@ func (v Database) GetNotificationClientsByStop(stopId string, hasSeenId string, 
 		ON 
 			n.id = s.clientId  -- Adjust this to the actual column for the join
 		WHERE 
-			s.stop = ?
+			s.parent_stop = ?
 		LIMIT ?
 		OFFSET ?
 
 	`
 
 	// Prepare the query
-	rows, err := v.db.Query(query, stopId, limit, offset)
+	rows, err := v.db.Query(query, parentStopId, limit, offset)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			// If no client found, return an error
@@ -441,13 +377,7 @@ func (v Database) GetNotificationClientsByStop(stopId string, hasSeenId string, 
 		}
 
 		// Check if recent_notifications contains any tripAlertIds
-		excludeClient := false
-		for _, notification := range notification.RecentNotifications {
-			if notification == hasSeenId {
-				excludeClient = true
-				break
-			}
-		}
+		excludeClient := slices.Contains(notification.RecentNotifications, hasSeenId)
 
 		client := NotificationClient{
 			Id: notification.Id,
@@ -584,6 +514,40 @@ func (v Database) GetNotificationClients(limit int, offset int) ([]NotificationC
 }
 
 /*
+Send notifications in batches
+*/
+func (v Database) SendNotificationsInBatches(clients []NotificationClient, body, title string, data map[string]string, alertId string) {
+	const maxWorkers = 10 // Limit the number of concurrent workers
+	jobs := make(chan NotificationClient, len(clients))
+	var wg sync.WaitGroup
+
+	// Start worker pool
+	for i := 0; i < maxWorkers; i++ {
+		wg.Add(1) // Track each worker
+		go func() {
+			defer wg.Done()
+			for client := range jobs {
+				err := v.SendNotification(client, body, title, data)
+				if err != nil {
+					log.Printf("Failed to send notification to %s: %v", client.Notification.Endpoint, err)
+				} else {
+					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, alertId)
+				}
+			}
+		}()
+	}
+
+	// Add jobs to the queue
+	for _, client := range clients {
+		jobs <- client
+	}
+	close(jobs) // Close the channel after all jobs are added
+
+	// Wait for all workers to finish
+	wg.Wait()
+}
+
+/*
 Send a notification
 */
 func (v Database) SendNotification(client NotificationClient, body, title string, data map[string]string) error {
@@ -603,15 +567,20 @@ func (v Database) SendNotification(client NotificationClient, body, title string
 	}
 	payloadBytes, _ := json.Marshal(payload)
 
-	// Send Notification
-	resp, err := webpush.SendNotification(payloadBytes, &client.Notification, &webpush.Options{
+	// Reuse HTTP/2 connection
+	clientOptions := &webpush.Options{
 		Subscriber:      v.mailToEmail,
 		VAPIDPublicKey:  publicKey,
 		VAPIDPrivateKey: privateKey,
 		TTL:             30,
-	})
-	if err != nil || (resp != nil && resp.StatusCode == 410) {
-		v.DeleteNotificationClient(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, "")
+	}
+
+	resp, err := webpush.SendNotification(payloadBytes, &client.Notification, clientOptions)
+	if err != nil {
+		if resp != nil && resp.StatusCode == 410 {
+			v.DeleteNotificationClient(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, "")
+		}
+		return err
 	}
 	if resp != nil {
 		defer resp.Body.Close()
@@ -708,9 +677,7 @@ func (v Database) SendNotificationToAllClients(body string, title string, url st
 			"url": url,
 		}
 
-		for _, client := range clients {
-			go v.SendNotification(client, body, title, data)
-		}
+		v.SendNotificationsInBatches(clients, body, title, data, "")
 	}
 	return nil
 }
@@ -720,10 +687,10 @@ Find a notification client by its subscription
 
 stopId MUST be a PARENT stop
 */
-func (v Database) FindNotificationClientByParentStop(endpoint, p256dh, auth string, stopId string) (*NotificationClient, error) {
+func (v Database) FindNotificationClient(endpoint, p256dh, auth string, parentStopId string) (*NotificationClient, error) {
 	// Query to find notification clients by stop
 	var query string
-	if stopId == "" {
+	if parentStopId == "" {
 		query = `
 			SELECT 
 				id,
@@ -761,7 +728,7 @@ func (v Database) FindNotificationClientByParentStop(endpoint, p256dh, auth stri
 	}
 
 	// Prepare the query
-	rows := v.db.QueryRow(query, endpoint, p256dh, auth, stopId)
+	rows := v.db.QueryRow(query, endpoint, p256dh, auth, parentStopId)
 
 	// Iterate over the rows
 	var notification Notification
@@ -833,7 +800,7 @@ func (v Database) RefreshSubscription(oldClient Notification, newClient Notifica
 		return nil, errors.New("problem updating client")
 	}
 
-	newRecord, err := v.FindNotificationClientByParentStop(newClient.Endpoint, newClient.P256dh, newClient.Auth, "")
+	newRecord, err := v.FindNotificationClient(newClient.Endpoint, newClient.P256dh, newClient.Auth, "")
 	if err != nil {
 		return nil, errors.New("problem retrieving new client")
 	}
@@ -911,4 +878,23 @@ func isBase64Url(s string) bool {
 	// Base64url strings may end with 0, 1, or 2 `=` characters
 	_, err := base64.RawURLEncoding.DecodeString(s)
 	return err == nil
+}
+
+func getStopsForAlert(alert *proto.Alert, parentStops map[string]gtfs.Stop) []gtfs.Stop {
+	stopsSet := make(map[string]struct{})
+	var stopsToInform []gtfs.Stop
+
+	// Extract unique stop IDs from InformedEntity
+	for _, entity := range alert.InformedEntity {
+		if stopId := entity.GetStopId(); stopId != "" {
+			if parentStop, found := parentStops[stopId]; found {
+				if _, exists := stopsSet[parentStop.StopId]; !exists {
+					stopsSet[parentStop.StopId] = struct{}{}
+					stopsToInform = append(stopsToInform, parentStop)
+				}
+			}
+		}
+	}
+
+	return stopsToInform
 }
