@@ -95,7 +95,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				if durationSinceCreation > twentyNineDays && durationSinceCreation < thirtyDays {
 					//fmt.Println("It has been more than 29 days but less than 30 days since creation.")
 					if err := notificationDB.SetClientExpiryWarningSent(client); err == nil {
-						notificationDB.SendNotification(client, "It's about to be 30 days since you enabled notifications, please open the app to refresh your notifications to continue to receive alerts.", "Your notifications are going to expire!", map[string]string{"url": "/notifications"})
+						notificationDB.SendNotification(client, "It's about to be 30 days since you enabled notifications, please open the app to refresh your notifications to continue to receive alerts.", "Your notifications are going to expire!", map[string]string{"url": "/notifications"}, "high")
 					}
 				}
 			}
@@ -148,7 +148,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			RecentNotifications: newClient.RecentNotifications,
 			Created:             newClient.Created,
 			ExpiryWarningSent:   newClient.ExpiryWarningSent,
-		}, "This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications Enabled for %s", parentStop.StopName), nil)
+		}, "This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications Enabled for %s", parentStop.StopName), nil, "normal")
 
 		return c.JSON(200, Response{
 			Code:    200,

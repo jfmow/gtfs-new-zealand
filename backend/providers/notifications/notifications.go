@@ -91,7 +91,7 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, tripUUID)
 				}
 
-				v.SendNotificationsInBatches(clients, body, title, data, tripUUID)
+				v.SendNotificationsInBatches(clients, body, title, data, tripUUID, "high")
 				offset += limit
 			}
 		}
@@ -126,7 +126,7 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, p
 						body := fmt.Sprintf("%s\n%s", alert.GetHeaderText().GetTranslation()[0].GetText(), alert.GetDescriptionText().GetTranslation()[0].GetText())
 
 						// Send notifications in batches
-						v.SendNotificationsInBatches(clients, body, title, data, alertId)
+						v.SendNotificationsInBatches(clients, body, title, data, alertId, "normal")
 					}
 				}
 			}
@@ -516,7 +516,7 @@ func (v Database) GetNotificationClients(limit int, offset int) ([]NotificationC
 /*
 Send notifications in batches
 */
-func (v Database) SendNotificationsInBatches(clients []NotificationClient, body, title string, data map[string]string, alertId string) {
+func (v Database) SendNotificationsInBatches(clients []NotificationClient, body, title string, data map[string]string, alertId string, urgency webpush.Urgency) {
 	const maxWorkers = 10 // Limit the number of concurrent workers
 	jobs := make(chan NotificationClient, len(clients))
 	var wg sync.WaitGroup
@@ -527,7 +527,7 @@ func (v Database) SendNotificationsInBatches(clients []NotificationClient, body,
 		go func() {
 			defer wg.Done()
 			for client := range jobs {
-				err := v.SendNotification(client, body, title, data)
+				err := v.SendNotification(client, body, title, data, urgency)
 				if err != nil {
 					log.Printf("Failed to send notification to %s: %v", client.Notification.Endpoint, err)
 				} else {
@@ -550,7 +550,7 @@ func (v Database) SendNotificationsInBatches(clients []NotificationClient, body,
 /*
 Send a notification
 */
-func (v Database) SendNotification(client NotificationClient, body, title string, data map[string]string) error {
+func (v Database) SendNotification(client NotificationClient, body, title string, data map[string]string, urgency webpush.Urgency) error {
 	publicKey, found := os.LookupEnv("WP_PUB")
 	if !found {
 		panic("missing public VAPID key (env:WP_PUB)")
@@ -573,6 +573,7 @@ func (v Database) SendNotification(client NotificationClient, body, title string
 		VAPIDPublicKey:  publicKey,
 		VAPIDPrivateKey: privateKey,
 		TTL:             30,
+		Urgency:         urgency,
 	}
 
 	resp, err := webpush.SendNotification(payloadBytes, &client.Notification, clientOptions)
@@ -677,7 +678,7 @@ func (v Database) SendNotificationToAllClients(body string, title string, url st
 			"url": url,
 		}
 
-		v.SendNotificationsInBatches(clients, body, title, data, "")
+		v.SendNotificationsInBatches(clients, body, title, data, "", "high")
 	}
 	return nil
 }
