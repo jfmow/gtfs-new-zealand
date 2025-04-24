@@ -24,19 +24,19 @@ import (
 	"github.com/jmoiron/sqlx"
 )
 
-func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
+func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database, parentStopsCache caches.ParentStopsByChildCache) {
 	var (
-		cachedStopsForTrips = stopsForTripCache()
-		cachedParentStops   = parentStopsCache()
-		now                 = time.Now().In(v.timeZone)
-		currentTime         = now.Format("15:04:05")
+		cachedParentStops = parentStopsCache()
+		now               = time.Now().In(v.timeZone)
+		currentTime       = now.Format("15:04:05")
 	)
 
 	for updateUID, update := range tripUpdates {
 		if update.GetTrip().GetScheduleRelationship().Number() == 3 {
 			tripId := update.GetTrip().GetTripId()
-			if stopsForTrip, found := cachedStopsForTrips[tripId]; found {
-				for _, stop := range stopsForTrip.Stops {
+
+			if stopsForTrip, _, err := gtfsDB.GetStopsForTripID(tripId); err == nil {
+				for _, stop := range stopsForTrip {
 					if parentStop, found := cachedParentStops[stop.StopId]; found {
 						offset := 0
 						limit := 500

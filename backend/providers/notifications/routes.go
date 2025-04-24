@@ -41,7 +41,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				defer tripUpdatesCronMutex.Unlock()
 				updates, err := realtime.GetTripUpdates()
 				if err == nil {
-					notificationDB.NotifyTripUpdates(updates, gtfsData, parentStopsCache, stopsForTripCache)
+					notificationDB.NotifyTripUpdates(updates, gtfsData, parentStopsCache)
 				}
 			}
 		}
