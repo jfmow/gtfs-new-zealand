@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
+	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
@@ -20,7 +21,7 @@ type Response struct {
 	Time    int64  `json:"time"`
 }
 
-func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache func() map[string]gtfs.Stop) {
+func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
 	var tripUpdatesCronMutex sync.Mutex
 	var alertsCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
@@ -38,14 +39,11 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if tripUpdatesCronMutex.TryLock() {
 				defer tripUpdatesCronMutex.Unlock()
-				// fmt.Println("Checking canceled trips")
 				updates, err := realtime.GetTripUpdates()
 				if err == nil {
-					if err := notificationDB.NotifyTripUpdates(updates, gtfsData); err != nil {
-						fmt.Println(err)
-					}
+					notificationDB.NotifyTripUpdates(updates, gtfsData, parentStopsCache, stopsForTripCache)
 				}
-			} //else the function is still running from before, which we will TODO: and speed this up
+			}
 		}
 	})
 

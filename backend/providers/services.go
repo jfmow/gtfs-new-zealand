@@ -13,12 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
 )
 
-func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache func() map[string]stopsForTripId, getParentStopCache func() []gtfs.Stop) {
+func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getParentStopCache caches.ParentStopsCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {

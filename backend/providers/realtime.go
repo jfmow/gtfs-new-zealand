@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
@@ -21,7 +22,7 @@ type LatLng struct {
 	Lng float64
 }
 
-func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache func() map[string]stopsForTripId, getRouteCache func() map[string]gtfs.Route) {
+func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
 

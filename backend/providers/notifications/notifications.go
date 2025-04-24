@@ -17,87 +17,74 @@ import (
 	"slices"
 
 	"github.com/SherClockHolmes/webpush-go"
+	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
 	"github.com/jmoiron/sqlx"
 )
 
-func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database) error {
-	if len(tripUpdates) == 0 {
-		return errors.New("no trip updates provided")
-	}
+func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
+	var (
+		cachedStopsForTrips = stopsForTripCache()
+		cachedParentStops   = parentStopsCache()
+		now                 = time.Now().In(v.timeZone)
+		currentTime         = now.Format("15:04:05")
+	)
 
-	now := time.Now().In(v.timeZone)
-	currentTime := now.Format("15:04:05")
+	for updateUID, update := range tripUpdates {
+		if update.GetTrip().GetScheduleRelationship().Number() == 3 {
+			tripId := update.GetTrip().GetTripId()
+			if stopsForTrip, found := cachedStopsForTrips[tripId]; found {
+				for _, stop := range stopsForTrip.Stops {
+					if parentStop, found := cachedParentStops[stop.StopId]; found {
+						offset := 0
+						limit := 500
+						for {
+							clients, err := v.GetNotificationClientsByStop(parentStop.StopId, updateUID, limit, offset)
+							if err != nil || len(clients) == 0 {
+								break
+							}
+							offset += limit
 
-	// Collect all canceled trips
-	canceledTrips := make(map[string]string)
-	for _, trip := range tripUpdates {
-		if *trip.GetTrip().GetScheduleRelationship().Enum() == 3 {
-			canceledTrips[trip.GetTrip().GetTripId()] = trip.GetTrip().GetTripId()
-		}
-	}
+							// Prepare notification data
+							data := map[string]string{
+								"url": fmt.Sprintf("/?s=%s", stop.StopName+" "+stop.StopCode),
+							}
+							title := stop.StopName + " " + stop.StopCode
 
-	for tripID, tripUUID := range canceledTrips {
-		stops, _, err := gtfsDB.GetStopsForTripID(tripID)
-		if err != nil {
-			return fmt.Errorf("unable to find stops for trip %s: %w", tripID, err)
-		}
+							service, err := gtfsDB.GetServiceByTripAndStop(tripId, stop.StopId, currentTime)
+							if err != nil {
+								continue
+							}
+							parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
+							if err != nil {
+								continue
+							}
 
-		for _, stop := range stops {
-			service, err := gtfsDB.GetServiceByTripAndStop(tripID, stop.StopId, currentTime)
-			if err != nil {
-				continue
-			}
+							serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
+								parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
 
-			parsedTime, err := time.Parse("15:04:05", service.ArrivalTime)
-			if err != nil {
-				continue
-			}
+							if serviceTime.Before(now) {
+								continue
+							}
 
-			serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
-				parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
+							formattedTime := parsedTime.Format("3:04pm")
 
-			if serviceTime.Before(now) {
-				continue
-			}
+							body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)",
+								formattedTime, service.StopHeadsign, parentStop.StopName, service.TripData.RouteID)
 
-			formattedTime := parsedTime.Format("3:04pm")
+							// Send notifications in batches
+							v.SendNotificationsInBatches(clients, body, title, data, updateUID, "normal")
+						}
 
-			parentStopData, err := gtfsDB.GetParentStopByChildStopID(service.StopId)
-			if err != nil {
-				continue
-			}
-
-			data := map[string]string{
-				"url": fmt.Sprintf("/?s=%s", parentStopData.StopName),
-			}
-
-			title := parentStopData.StopName
-			body := fmt.Sprintf("The %s to %s from %s has been canceled. (%s)",
-				formattedTime, service.StopHeadsign, parentStopData.StopName, service.TripData.RouteID)
-
-			const limit = 500
-			offset := 0
-
-			for {
-				clients, err := v.GetNotificationClientsByStop(stop.StopId, tripID, limit, offset)
-				if err != nil || len(clients) == 0 {
-					break
+					}
 				}
-
-				for _, client := range clients {
-					v.AppendToRecentNotifications(client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, tripUUID)
-				}
-
-				v.SendNotificationsInBatches(clients, body, title, data, tripUUID, "high")
-				offset += limit
+			} else {
+				log.Printf("Unable to find stops for trip %s", tripId)
 			}
 		}
 	}
-
-	return nil
 }
 
 func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, parentStopsCache func() map[string]gtfs.Stop) {
