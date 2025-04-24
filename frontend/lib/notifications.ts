@@ -6,7 +6,7 @@ import { ApiFetch } from "./url-context";
     ***Set stopIdOrName to "" to remove all subscriptions**
 */
 export async function removeSubscription(stopIdOrName: string) {
-    const sw = await navigator.serviceWorker.getRegistration("/sw.js")
+    const sw = await navigator.serviceWorker.getRegistration("/pwa/sw.js")
     if (!sw) return false
     const subscription = await sw.pushManager.getSubscription()
     const form = new FormData();
@@ -37,9 +37,12 @@ export function unregister() {
 }
 
 export async function register(swPath: string, options: RegistrationOptions) {
+    if (swPath === "") {
+        throw Error("No sw path provided")
+    }
     if ('serviceWorker' in navigator) {
         try {
-            const registration = await navigator.serviceWorker.register(swPath || '/service-worker.js', options)
+            const registration = await navigator.serviceWorker.register(swPath, options)
             const registered = await registration.update()
             console.log('SW registered: ', registered);
         } catch (error) {
@@ -49,10 +52,10 @@ export async function register(swPath: string, options: RegistrationOptions) {
 }
 
 async function getSwRegistration() {
-    let registration = await navigator.serviceWorker.getRegistration("/sw.js")
+    let registration = await navigator.serviceWorker.getRegistration("/pwa/sw.js")
     if (!registration) {
-        register("/sw.js", {})
-        registration = await navigator.serviceWorker.getRegistration("/sw.js") as ServiceWorkerRegistration
+        register("/pwa/sw.js", {})
+        registration = await navigator.serviceWorker.getRegistration("/pwa/sw.js") as ServiceWorkerRegistration
     }
     return registration
 }
