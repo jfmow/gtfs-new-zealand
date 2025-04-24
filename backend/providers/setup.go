@@ -82,6 +82,8 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 				if parentStop, found := parentStops[stop.ParentStation]; found {
 					result[stop.StopId] = parentStop
 				}
+			} else if stop.ParentStation == "" {
+				result[stop.StopId] = stop
 			}
 		}
 		return result, nil

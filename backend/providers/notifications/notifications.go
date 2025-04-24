@@ -182,7 +182,7 @@ func (v Database) createNotificationsTable() {
 			clientId INTEGER NOT NULL,               -- Foreign key referencing notifications.id
 			parent_stop TEXT NOT NULL DEFAULT '',
 			FOREIGN KEY (clientId) REFERENCES notifications(id) ON DELETE CASCADE
-			CONSTRAINT unique_stops UNIQUE (stop, clientId)  -- Composite unique constraint
+			CONSTRAINT unique_stops UNIQUE (parent_stop, clientId)  -- Composite unique constraint
 		);
 
 	`
