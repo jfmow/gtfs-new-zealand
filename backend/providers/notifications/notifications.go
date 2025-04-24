@@ -80,8 +80,6 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 
 					}
 				}
-			} else {
-				log.Printf("Unable to find stops for trip %s", tripId)
 			}
 		}
 	}
