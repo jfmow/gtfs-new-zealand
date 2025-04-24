@@ -9,7 +9,7 @@ self.addEventListener('push', (event) => {
         body: notification.body,
         icon: notification.icon,
         image: notification.image,
-        badge: `/vehicle_icons/bus.png`,
+        badge: notification.badge,
         vibrate: notification.vibrate,
         tag: notification.tag,
         data: notification.data,
@@ -28,8 +28,6 @@ self.addEventListener('push', (event) => {
             notificationOptions
         )
     );
-    navigator.setAppBadge(1)
-
 
 
 });
