@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select"
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
-import { Bounds, MapItem } from "@/components/map/map";
+import { MapItem } from "@/components/map/map";
 import { HeaderMeta } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 
@@ -26,12 +26,11 @@ export default function Vehicles() {
     const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
     const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
     const { location, loading, locationFound } = useUserLocation()
-    const [bounds, setBounds] = useState<Bounds>(null)
     const { currentUrl } = useUrl()
 
     useEffect(() => {
         async function getData() {
-            const data = await getVehicles(vehicleType, bounds)
+            const data = await getVehicles(vehicleType)
             if (data.error !== undefined) {
                 setError(data.error)
             }
@@ -41,29 +40,15 @@ export default function Vehicles() {
         }
 
         let intervalId: NodeJS.Timeout | null = null
-        if (bounds) {
-            getData()
-            if (!selectedVehicle) {
-                intervalId = setInterval(getData, REFRESH_INTERVAL * 1000);
-            }
+        getData()
+        if (!selectedVehicle) {
+            intervalId = setInterval(getData, REFRESH_INTERVAL * 1000);
         }
+
         if (intervalId) {
             return () => clearInterval(intervalId);
         }
-    }, [vehicleType, selectedVehicle, bounds])
-
-    useEffect(() => {
-        const handleMapBoundsUpdate = (event: Event) => {
-            const customEvent = event as CustomEvent<{ bounds: Bounds }>;
-            setBounds(customEvent.detail.bounds);
-        };
-
-        document.addEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
-
-        return () => {
-            document.removeEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
-        };
-    }, []);
+    }, [vehicleType, selectedVehicle])
 
     if (error !== "") {
         return <ErrorScreen errorTitle="An error occurred while loading the vehicles" errorText={error} />
@@ -127,10 +112,9 @@ type GetVehiclesResult =
     | { error: string; vehicles: null }
     | { error: undefined; vehicles: VehiclesResponse[] };
 
-async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | "", bounds: Bounds): Promise<GetVehiclesResult> {
+async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
     const form = new FormData()
     form.set("vehicle_type", vehicleType)
-    form.set("bounds", bounds === null ? "" : JSON.stringify(bounds))
     const req = await ApiFetch(`realtime/live`, {
         method: "POST",
         body: form

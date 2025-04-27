@@ -1,5 +1,5 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { Bounds, MapItem } from "@/components/map/map";
+import { MapItem } from "@/components/map/map";
 import { HeaderMeta } from "@/components/nav";
 import { TrainsApiResponse } from "@/components/services/types";
 import ErrorScreen from "@/components/ui/error-screen";
@@ -15,12 +15,11 @@ export default function Stops() {
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")
     const { location, loading, locationFound } = useUserLocation()
-    const [bounds, setBounds] = useState<Bounds>(null)
     const { currentUrl } = useUrl()
 
     useEffect(() => {
         async function getData() {
-            const data = await getStops(bounds)
+            const data = await getStops()
             if (data.error !== undefined) {
                 setError(data.error)
             }
@@ -28,25 +27,10 @@ export default function Stops() {
                 setStops(data.stops)
             }
         }
-        if (bounds) {
-            getData()
-        }
-    }, [bounds, loading])
+        getData()
 
+    }, [loading])
 
-
-    useEffect(() => {
-        const handleMapBoundsUpdate = (event: Event) => {
-            const customEvent = event as CustomEvent<{ bounds: Bounds }>;
-            setBounds(customEvent.detail.bounds);
-        };
-
-        document.addEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
-
-        return () => {
-            document.removeEventListener(`mapBoundsUpdate-${MAPID}`, handleMapBoundsUpdate);
-        };
-    }, []);
 
     if (error !== "") {
         return <ErrorScreen errorTitle="An error occurred while loading the stops" errorText={error} />
@@ -95,10 +79,9 @@ type GetStopsResult =
     | { error: string; stops: null }
     | { error: undefined; stops: Stop[] };
 
-async function getStops(bounds: Bounds): Promise<GetStopsResult> {
+async function getStops(): Promise<GetStopsResult> {
     const form = new FormData()
     form.set("children", "no")
-    form.set("bounds", bounds === null ? "" : JSON.stringify(bounds))
     const req = await ApiFetch(`stops`, { method: "POST", body: form })
     const data: TrainsApiResponse<Stop[]> = await req.json()
     if (!req.ok) {
