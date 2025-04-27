@@ -287,7 +287,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         <div className="grid grid-cols-2">
                                             <div className="grid">
                                                 <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
-                                                {!service.canceled ? (
+                                                {!service.canceled && !displayingSchedulePreview ? (
                                                     <>
                                                         <p>Stops away: {service.stops_away || 0}</p>
                                                         <p className="inline-flex gap-1 items-center">
