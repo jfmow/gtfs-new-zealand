@@ -1,11 +1,15 @@
-'use client'
-
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
-import ThemePicker, { useTheme } from './theme'
+import { Menu, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
+import { useTheme } from './theme'
 import { buttonVariants } from './ui/button'
-
+import {
+    Sheet,
+    SheetContent,
+    SheetHeader,
+    SheetTitle,
+    SheetTrigger,
+} from "@/components/ui/sheet"
 
 export default function NavBar() {
     const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -26,9 +30,11 @@ export default function NavBar() {
 
     return (
         <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
-            <div className="flex items-center">
-                <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
-            </div>
+            <a href='/'>
+                <div className="flex items-center">
+                    <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                </div>
+            </a>
 
 
             {/* Desktop menu */}
@@ -36,41 +42,21 @@ export default function NavBar() {
                 <ul className="hidden md:flex font-medium text-sm items-center gap-4">
                     <NavItems />
                 </ul>
-                <ThemePicker />
             </div>
 
 
             <div className='flex md:hidden items-center gap-4'>
-                <ThemePicker />
-                {/* Hamburger menu button (mobile only) */}
-                <button
-                    className="md:hidden z-50"
-                    onClick={toggleMenu}
-                    aria-label="Toggle menu"
-                >
-                    {isMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-                </button>
-            </div>
-
-            {/* Mobile menu */}
-            <div
-                className={`
-                fixed inset-0 
-                bg-white/10 
-                backdrop-blur-md 
-                z-40 
-                md:hidden 
-                transition-all 
-                duration-500 
-                ease-in-out 
-                ${isMenuOpen ? 'opacity-100 pointer-events-auto translate-x-0' : 'opacity-0 pointer-events-none translate-x-full'}
-              `}>
-                <div className="flex flex-col pt-20 px-6">
-                    <h1 className="scroll-m-20 text-4xl font-extrabold tracking-tight lg:text-5xl mb-4">Menu</h1>
-                </div>
-                <ul className="flex flex-col h-full px-6 overflow-y-auto list-none">
-                    <NavItems toggleMenu={toggleMenu} mobile />
-                </ul>
+                <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                    <SheetTrigger>
+                        <Menu className="w-6 h-6" />
+                    </SheetTrigger>
+                    <SheetContent>
+                        <SheetHeader>
+                            <SheetTitle>Menu</SheetTitle>
+                        </SheetHeader>
+                        <NavItems toggleMenu={toggleMenu} mobile />
+                    </SheetContent>
+                </Sheet>
             </div>
         </nav>
     )

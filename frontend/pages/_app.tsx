@@ -8,6 +8,7 @@ import type { AppProps } from "next/app";
 import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { GeistSans } from "geist/font/sans";
+import { cn } from "@/lib/utils";
 
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -18,12 +19,14 @@ export default function App({ Component, pageProps }: AppProps) {
 
   }, [])
   return <>
-    <main className={GeistSans.className}>
+    <main className={cn(GeistSans.className, "overflow-x-hidden flex flex-col min-h-[100svh] bg-background")}>
       <ThemeProvider>
         <UrlProvider>
           <NavBar />
           <Toaster richColors position={"top-center"} />
-          <Component {...pageProps} />
+          <div className="h-full w-full flex-grow">
+            <Component {...pageProps} />
+          </div>
           <Footer />
         </UrlProvider>
       </ThemeProvider>

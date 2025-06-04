@@ -52,7 +52,6 @@ export default function SearchForStop() {
                 setShowRecent(false)
             } else {
                 setResult([])
-                setIsOpen(searchTerm.length === 0 && recentSearches.length > 0)
                 setShowRecent(searchTerm.length === 0 && recentSearches.length > 0)
             }
         }, 300)
