@@ -30,11 +30,11 @@ export default function NavBar() {
 
     return (
         <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
-            <a href='/'>
+            <Link href='/'>
                 <div className="flex items-center">
                     <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
                 </div>
-            </a>
+            </Link>
 
 
             {/* Desktop menu */}
@@ -99,7 +99,7 @@ function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu
                         className={
                             mobile
                                 ? 'grid active:bg-gray-100 rounded-lg p-4 text-sm font-medium text-gray-900 hover:bg-gray-100'
-                                : buttonVariants({ variant: 'ghost', size: 'default' })
+                                : buttonVariants({ variant: 'link', size: 'default' })
                         }
                     >
                         <div className="flex items-center " >
