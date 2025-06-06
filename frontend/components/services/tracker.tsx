@@ -164,9 +164,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
                             </DialogTitle>
                             <DialogDescription>
                                 <Separator className="my-1" />
-                                <p className="text-gray-400 opacity-50">Current/Previous stop: {vehicle.trip.current_stop.name} (Platform {vehicle.trip.current_stop.platform})</p>
-                                <p className="text-green-400">Next stop: {vehicle.trip.next_stop.name} (Platform {vehicle.trip.next_stop.platform})</p>
-                                <p className="text-red-400">Final stop: {vehicle.trip.final_stop.name} (Platform {vehicle.trip.final_stop.platform})</p>
+                                <p className="text-orange-400">Previous stop: {vehicle.trip.current_stop.name} {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.current_stop.platform})` : ""}</p>
+                                <p className="text-green-400">Next stop: {vehicle.trip.next_stop.name} {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.next_stop.platform})` : ""}</p>
+                                <p className="text-red-400">Final stop: {vehicle.trip.final_stop.name} {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.final_stop.platform})` : ""}</p>
                                 <details>
                                     <summary>
                                         Departure/Arrival Info

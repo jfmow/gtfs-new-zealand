@@ -57,9 +57,9 @@ func main() {
 	}))
 
 	atApi := e.Group("/at")
-	mlApi := e.Group("/wel")
+	//mlApi := e.Group("/wel")
 	//seqAPI := e.Group("/seq")
-	christchurchApi := e.Group("/christ")
+	//christchurchApi := e.Group("/christ")
 
 	//Auckland Transport
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
@@ -79,7 +79,7 @@ func main() {
 
 	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
 
-	//MetLink
+	/*//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
 	if !found {
 		panic("metlink api key Env not found")
@@ -113,6 +113,7 @@ func main() {
 	}
 
 	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, localTimeZone)
+	*/
 	/*
 		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
 		if err != nil {

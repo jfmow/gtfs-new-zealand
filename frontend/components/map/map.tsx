@@ -52,6 +52,9 @@ type ItemsOnMap = {
         markers: { id: string, marker: leaflet.Marker }[]
         control: leaflet.Control | null
     }
+    zoom: {
+        controls: leaflet.Control[] | null
+    }
     user: {
         marker: leaflet.Marker | null
         control: leaflet.Control | null
@@ -78,7 +81,7 @@ export default function Map({
     defaultCenter
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
-    const itemsOnMap = useRef<ItemsOnMap>({ vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
+    const itemsOnMap = useRef<ItemsOnMap>({ zoom: { controls: [] }, vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
     //Stuff on the map, like markers  and the map itself
 
     useEffect(() => {
@@ -87,6 +90,7 @@ export default function Map({
         if (!map) {
             map = createNewMap(mapRef, map_id)
             setDefaultZoom(map, defaultCenter, userLocation, vehicles, stops, alwaysFitBoundsWithoutUser || false);
+            addZoomControls(map, itemsOnMap.current.zoom)
         }
 
     }, [alwaysFitBoundsWithoutUser, defaultCenter, map_id, stops, userLocation, vehicles])
@@ -251,7 +255,7 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: s
         if (map_id.length < 3) throw new Error("Map ID is too short, must be at least 3 characters")
         if (document.getElementById(map_id) === null) throw new Error("Element with Map ID does NOT exist in the DOM")
         //Create the map
-        map = leaflet.map(map_id);
+        map = leaflet.map(map_id, { zoomControl: false });
         ref.current = map;
         leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
             maxZoom: 19,
@@ -331,6 +335,64 @@ function addVehicleZoomControl(map: leaflet.Map, vehicleLocation: [number, numbe
     };
     activeMapItemsVehicle.control = vehicleLocationControl
     map.addControl(vehicleLocationControl)
+}
+function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoom"]) {
+    // Remove existing controls if present
+    if (activeMapItemsZoom.controls && activeMapItemsZoom.controls.length > 0) {
+        activeMapItemsZoom.controls.forEach((control) => map.removeControl(control));
+    }
+
+    // Helper to stop event propagation to the map
+    function stopMapEvents(e: Event) {
+        e.stopPropagation();
+        if ("preventDefault" in e) e.preventDefault();
+    }
+
+    // Create zoom in control
+    const zoomInControl = new leaflet.Control.Zoom({ position: 'topleft' });
+    zoomInControl.onAdd = () => {
+        const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
+        button.type = "button";
+        button.title = "Zoom in";
+        button.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+        `;
+        button.onclick = (e) => {
+            stopMapEvents(e);
+            map.zoomIn();
+        };
+        // Prevent map click/drag when interacting with the button
+        button.addEventListener("mousedown", stopMapEvents);
+        button.addEventListener("dblclick", stopMapEvents);
+        button.addEventListener("pointerdown", stopMapEvents);
+        button.addEventListener("touchstart", stopMapEvents);
+        return button;
+    };
+
+    // Create zoom out control
+    const zoomOutControl = new leaflet.Control({ position: 'topleft' });
+    zoomOutControl.onAdd = () => {
+        const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
+        button.type = "button";
+        button.title = "Zoom out";
+        button.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+        `;
+        button.onclick = (e) => {
+            stopMapEvents(e);
+            map.zoomOut();
+        };
+        button.addEventListener("mousedown", stopMapEvents);
+        button.addEventListener("dblclick", stopMapEvents);
+        button.addEventListener("pointerdown", stopMapEvents);
+        button.addEventListener("touchstart", stopMapEvents);
+        return button;
+    };
+
+    // Add controls to map and track them
+    map.addControl(zoomInControl);
+    map.addControl(zoomOutControl);
+    activeMapItemsZoom.controls = [zoomInControl, zoomOutControl];
 }
 
 function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: MapProps["userLocation"]) {

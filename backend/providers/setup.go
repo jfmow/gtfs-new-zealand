@@ -29,7 +29,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetParentStopsCache)
 	setupRoutesRoutes(primaryRouter, realtime, localTimeZone, caches.GetRouteCache)
 	setupStopsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
-	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache)
+	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
 
 	if val := os.Getenv("PRODUCTION"); val == "true" {

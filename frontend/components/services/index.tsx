@@ -197,14 +197,14 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     ))}
                 </ol>
             ) : null}
-            <ul aria-label="List of services for the stop" className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 overflow-hidden">
+            <ul aria-label="List of services for the stop" className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden">
                 {getService(services, platformFilter, displayingSchedulePreview)
                     .map((service) => (
                         <li
                             key={service.trip_id}
                             className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
                         >
-                            <Card>
+                            <Card className="shadow-none">
                                 <CardHeader>
                                     <CardTitle>
                                         <div className="flex items-center justify-between overflow-hidden">

@@ -22,7 +22,7 @@ type LatLng struct {
 	Lng float64
 }
 
-func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache) {
+func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache, getParentStopByChildCache caches.ParentStopsByChildCache) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
@@ -134,10 +134,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 					nextStopSequenceNumber, _, state := getNextStopSequence(stopUpdates, stopsForTripData.LowestSequence, localTimeZone)
 
-					tripData.FirstStop = getXStop(stopsForTrip, 0)
-					tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1))
-					tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1))
-					tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1)
+					tripData.FirstStop = getXStop(stopsForTrip, 0, getParentStopByChildCache)
+					tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1), getParentStopByChildCache)
+					tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1), getParentStopByChildCache)
+					tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1, getParentStopByChildCache)
 					responseData.State = state
 				}
 				responseData.Trip = &tripData
@@ -370,10 +370,14 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 	return nextStopSequenceNumber, &arrivalTimeLocal, state
 }
 
-func getXStop(stopsForTripId []gtfs.Stop, currentStop int) ServicesStop {
+func getXStop(stopsForTripId []gtfs.Stop, currentStop int, cachedStops caches.ParentStopsByChildCache) ServicesStop {
 	stopData := stopsForTripId[max(currentStop, 0)]
 	if stopData.ParentStation != "" {
-		stopData.StopId = stopData.ParentStation
+		parentStop, ok := cachedStops()[stopData.StopId]
+		if ok && parentStop.StopName != "" {
+			stopData.StopName = parentStop.StopName
+			stopData.StopId = stopData.ParentStation
+		}
 	}
 	result := ServicesStop{Id: stopData.StopId, Name: stopData.StopName, Lat: stopData.StopLat, Lon: stopData.StopLon, Platform: stopData.PlatformNumber, Sequence: stopData.Sequence}
 	return result
