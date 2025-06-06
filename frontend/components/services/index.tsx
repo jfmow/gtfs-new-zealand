@@ -25,7 +25,7 @@ interface Service {
     headsign: string
     arrival_time: string
     platform: string
-    stops_away?: number | undefined
+    stops_away: number
     occupancy: number
     canceled?: boolean
     bikes_allowed: number
@@ -389,7 +389,9 @@ function getService(serviceData: Service[], platformFilter: string | number | un
             seenTripIds.add(service.trip_id)
             const latest_realtime_update = realtimeUpdates.find((item) => item.trip_id === service.trip_id)
 
-            result.push({ ...service, ...latest_realtime_update, type: "service" })
+            if (latest_realtime_update) {
+                result.push({ ...service, ...latest_realtime_update, type: "service" })
+            }
         }
     })
 
