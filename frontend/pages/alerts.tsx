@@ -49,9 +49,50 @@ export default function Alerts() {
         })
     }
 
-    const isCurrentlyActive = (alert: AlertType) => {
+    const getAlertStatus = (alert: AlertType) => {
         const now = Date.now() / 1000
-        return alert.start_date <= now && alert.end_date >= now
+        const oneDayInSeconds = 24 * 60 * 60
+        const oneWeekInSeconds = 7 * oneDayInSeconds
+
+        // Currently active
+        if (alert.start_date <= now && alert.end_date >= now) {
+            return { status: "active", label: "Active" }
+        }
+
+        // Starting soon
+        if (alert.start_date > now) {
+            const timeUntilStart = alert.start_date - now
+
+            if (timeUntilStart <= oneDayInSeconds) {
+                const hoursUntil = Math.ceil(timeUntilStart / 3600)
+                return {
+                    status: "soon",
+                    label: hoursUntil <= 1 ? "Starting soon" : `In ${hoursUntil}h`,
+                }
+            } else if (timeUntilStart <= 2 * oneDayInSeconds) {
+                return { status: "soon", label: "Tomorrow" }
+            } else if (timeUntilStart <= 7 * oneDayInSeconds) {
+                const daysUntil = Math.ceil(timeUntilStart / oneDayInSeconds)
+                return { status: "soon", label: `In ${daysUntil} days` }
+            } else if (timeUntilStart <= oneWeekInSeconds) {
+                return { status: "soon", label: "Next week" }
+            }
+        }
+
+        // Inactive (past or far future)
+        return { status: "inactive", label: "Inactive" }
+    }
+
+    const getBadgeVariant = (status: string) => {
+        switch (status) {
+            case "active":
+                return "destructive"
+            case "soon":
+                return "default"
+            case "inactive":
+            default:
+                return "secondary"
+        }
     }
 
     const toggleDescription = (index: number) => {
@@ -120,9 +161,14 @@ export default function Alerts() {
                                         <CardHeader className="pb-3">
                                             <div className="flex items-start justify-between gap-2">
                                                 <CardTitle className="text-lg leading-tight">{alert.title}</CardTitle>
-                                                <Badge variant={isCurrentlyActive(alert) ? "destructive" : "secondary"} className="shrink-0">
-                                                    {isCurrentlyActive(alert) ? "Active" : "Inactive"}
-                                                </Badge>
+                                                {(() => {
+                                                    const alertStatus = getAlertStatus(alert)
+                                                    return (
+                                                        <Badge variant={getBadgeVariant(alertStatus.status)} className="shrink-0">
+                                                            {alertStatus.label}
+                                                        </Badge>
+                                                    )
+                                                })()}
                                             </div>
                                         </CardHeader>
 
@@ -135,6 +181,21 @@ export default function Alerts() {
                                                 <div className="pl-6 space-y-1 text-sm text-muted-foreground">
                                                     <div>From: {formatDate(alert.start_date)}</div>
                                                     <div>Until: {formatDate(alert.end_date)}</div>
+                                                    {(() => {
+                                                        const alertStatus = getAlertStatus(alert)
+                                                        if (alertStatus.status === "soon") {
+                                                            const now = Date.now() / 1000
+                                                            const timeUntilStart = alert.start_date - now
+                                                            const daysUntil = Math.ceil(timeUntilStart / (24 * 60 * 60))
+
+                                                            if (daysUntil === 1) {
+                                                                return <div className="text-amber-600 font-medium">Starts tomorrow</div>
+                                                            } else if (daysUntil <= 7) {
+                                                                return <div className="text-amber-600 font-medium">Starts in {daysUntil} days</div>
+                                                            }
+                                                        }
+                                                        return null
+                                                    })()}
                                                 </div>
                                             </div>
 
