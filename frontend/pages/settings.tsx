@@ -39,8 +39,8 @@ export default function Settings() {
                                 <CardTitle>Settings</CardTitle>
                                 <CardDescription>Select a different region, theme and more...</CardDescription>
                             </CardHeader>
-                            <CardContent className="grid gap-4">
-                                <Label>Region</Label>
+                            <CardContent className="grid">
+                                <Label className="mb-2">Region</Label>
                                 <Select value={currentUrl.url} onValueChange={(val) => {
                                     const item = urlOptions.find((item) => item.url === val)
                                     if (item) {
@@ -62,7 +62,7 @@ export default function Settings() {
                                         ))}
                                     </SelectContent>
                                 </Select>
-                                <Label>App Theme</Label>
+                                <Label className="mb-2 mt-4">App Theme</Label>
                                 <Select value={theme} defaultValue="system" onValueChange={(val) => setTheme(val)}>
                                     <SelectTrigger className="w-full">
                                         <SelectValue placeholder="Theme" />
