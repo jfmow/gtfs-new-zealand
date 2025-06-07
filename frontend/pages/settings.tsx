@@ -39,7 +39,7 @@ export default function Settings() {
                                 <CardTitle>Settings</CardTitle>
                                 <CardDescription>Select a different region, theme and more...</CardDescription>
                             </CardHeader>
-                            <CardContent className="grid gap-2">
+                            <CardContent className="grid gap-4">
                                 <Label>Region</Label>
                                 <Select value={currentUrl.url} onValueChange={(val) => {
                                     const item = urlOptions.find((item) => item.url === val)
