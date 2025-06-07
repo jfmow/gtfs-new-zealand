@@ -1,7 +1,6 @@
 import type React from "react"
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { UrlOption, urlOptions, urlStore } from "./url-store"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type UrlContextType = {
     currentUrl: UrlOption
@@ -41,38 +40,6 @@ export const UrlProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }>
             {children}
         </UrlContext.Provider>
-    )
-}
-
-
-
-export function UrlSelector() {
-    const { urlOptions, setCurrentUrl, currentUrl } = useUrl()
-    return (
-        <>
-            <Select value={currentUrl.url} onValueChange={(val) => {
-                const item = urlOptions.find((item) => item.url === val)
-                if (item) {
-                    setCurrentUrl(item)
-                    window.location.reload()
-                }
-            }}>
-                <SelectTrigger className="w-[120px]">
-                    <SelectValue placeholder="Provider" />
-                </SelectTrigger>
-                <SelectContent>
-                    {urlOptions.map((item) => (
-                        <SelectItem key={item.url} value={item.url}>
-                            <div className="flex items-center gap-2">
-                                <img className="w-4 h-4 object-contain" src={item.logoUrl} />
-                                <span style={{ color: item.textColor }}>{item.displayName}</span>
-                            </div>
-                        </SelectItem>
-                    ))}
-                </SelectContent>
-            </Select>
-
-        </>
     )
 }
 

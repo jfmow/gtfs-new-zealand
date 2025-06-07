@@ -1,6 +1,4 @@
-import Footer from "@/components/footer";
 import NavBar from "@/components/nav";
-import { ThemeProvider } from "@/components/theme";
 import { checkStopSubscription, register } from "@/lib/notifications";
 import { UrlProvider } from "@/lib/url-context";
 import "@/styles/globals.css";
@@ -9,6 +7,7 @@ import { useEffect } from "react";
 import { Toaster } from "sonner";
 import { GeistSans } from "geist/font/sans";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/components/ui/theme-provider";
 
 
 export default function App({ Component, pageProps }: AppProps) {
@@ -19,17 +18,21 @@ export default function App({ Component, pageProps }: AppProps) {
 
   }, [])
   return <>
-    <main className={cn(GeistSans.className, "overflow-x-hidden flex flex-col min-h-[100svh] bg-background")}>
-      <ThemeProvider>
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <main className={cn(GeistSans.className, " flex flex-col min-h-[100svh] bg-background")}>
         <UrlProvider>
           <NavBar />
           <Toaster richColors position={"top-center"} />
-          <div className="h-full w-full flex-grow">
+          <div className="flex flex-grow">
             <Component {...pageProps} />
           </div>
-          <Footer />
         </UrlProvider>
-      </ThemeProvider>
-    </main>
+      </main>
+    </ThemeProvider>
   </>;
 }

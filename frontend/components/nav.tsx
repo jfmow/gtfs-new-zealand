@@ -1,116 +1,99 @@
-import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, Train, MapPin, Map, MessageCircleWarningIcon } from 'lucide-react'
-import { useTheme } from './theme'
+import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon } from 'lucide-react'
 import { buttonVariants } from './ui/button'
-import {
-    Sheet,
-    SheetContent,
-    SheetHeader,
-    SheetTitle,
-    SheetTrigger,
-} from "@/components/ui/sheet"
+import { cn, useIsMobile } from '@/lib/utils'
+import { useTheme } from 'next-themes'
 
 export default function NavBar() {
-    const [isMenuOpen, setIsMenuOpen] = useState(false)
     const { theme } = useTheme()
-    useEffect(() => {
-        if (isMenuOpen) {
-            document.body.style.overflow = 'hidden'
-        } else {
-            document.body.style.overflow = 'unset'
-        }
-
-        return () => {
-            document.body.style.overflow = 'unset'
-        }
-    }, [isMenuOpen])
-
-    const toggleMenu = () => setIsMenuOpen(!isMenuOpen)
-
-    return (
-        <nav className="mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b relative z-50 h-[70px]">
-            <Link href='/'>
-                <div className="flex items-center">
-                    <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
-                </div>
-            </Link>
-
-
-            {/* Desktop menu */}
-            <div className='hidden md:flex items-center gap-2'>
-                <ul className="hidden md:flex font-medium text-sm items-center gap-4">
-                    <NavItems />
-                </ul>
-            </div>
-
-
-            <div className='flex md:hidden items-center gap-4'>
-                <Sheet open={isMenuOpen} onOpenChange={setIsMenuOpen}>
-                    <SheetTrigger>
-                        <Menu className="w-6 h-6" />
-                    </SheetTrigger>
-                    <SheetContent>
-                        <SheetHeader>
-                            <SheetTitle>Menu</SheetTitle>
-                        </SheetHeader>
-                        <NavItems toggleMenu={toggleMenu} mobile />
-                    </SheetContent>
-                </Sheet>
-            </div>
-        </nav>
-    )
-}
-
-function NavItems({ mobile = false, toggleMenu }: { mobile?: boolean, toggleMenu?: () => void }) {
-    const items = [
-        {
-            href: '/',
-            label: 'Train/Bus/Ferry',
-            description: 'Find transportation options',
-            icon: Train,
-        },
-        {
-            href: '/stops',
-            label: 'Find a stop',
-            description: 'Locate nearby stops',
-            icon: MapPin,
-        },
-        {
-            href: '/vehicles',
-            label: 'Vehicles',
-            description: 'View real-time vehicle locations',
-            icon: Map,
-        },
-        {
-            href: '/alerts',
-            label: 'Travel Alerts',
-            description: 'Travel advisories and alerts',
-            icon: MessageCircleWarningIcon,
-        },
-    ]
+    const isMobile = useIsMobile({ mobileWidth: 820 })
 
     return (
         <>
-            {items.map((item) => (
+            {isMobile ? (
+                <nav className='fixed bottom-0 left-0 right-0 z-[10]'>
+                    <div className='w-fit mb-2 mx-auto bg-background/80 backdrop-blur-sm shadow-sm border px-4 py-2 rounded-[9999px]'>
+                        <ul className='w-full grid grid-cols-5 gap-4 justify-items-center'>
+                            {NAV_ROUTES.map((item) => (
+                                <li key={item.label}>
+                                    <Link className='grid justify-items-center' href={item.href}>
+                                        <item.icon className="w-4 h-4 text-foreground" />
+                                        <p className='text-muted-foreground text-[10px]'>{item.description_short}</p>
+                                    </Link>
+                                </li>
+                            ))}
+                        </ul>
+                    </div>
+                </nav>
+            ) : (
+                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b  relative z-50 h-[70px]">
+                    <Link href='/'>
+                        <div className="flex items-center">
+                            <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                        </div>
+                    </Link>
+                    <div className='flex items-center gap-2'>
+                        <ul className="flex font-medium text-sm items-center gap-4">
+                            <NavItems />
+                        </ul>
+                    </div>
+                </nav>
+            )}
+        </>
+    )
+}
+
+const NAV_ROUTES = [
+    {
+        href: '/',
+        label: 'Train/Bus/Ferry',
+        description: 'Find transportation options',
+        icon: Train,
+        description_short: "Services"
+    },
+    {
+        href: '/stops',
+        label: 'Find a stop',
+        description: 'Locate nearby stops',
+        icon: MapPin,
+        description_short: "Stops"
+    },
+    {
+        href: '/vehicles',
+        label: 'Vehicles',
+        description: 'View real-time vehicle locations',
+        icon: Map,
+        description_short: "Vehicles"
+    },
+    {
+        href: '/alerts',
+        label: 'Travel Alerts',
+        description: 'Travel advisories and alerts',
+        icon: MessageCircleWarningIcon,
+        description_short: "Alerts"
+    },
+    {
+        href: '/settings',
+        label: 'App Settings',
+        description: 'Set app preferences and change region',
+        icon: Settings2Icon,
+        description_short: "Settings"
+    },
+]
+
+function NavItems({ toggleMenu }: { toggleMenu?: () => void }) {
+    return (
+        <>
+            {NAV_ROUTES.map((item) => (
                 <li key={item.href} className="block" onClick={() => typeof toggleMenu === "function" && toggleMenu()}>
                     <Link
                         href={item.href}
-                        className={
-                            mobile
-                                ? 'grid active:bg-gray-100 rounded-lg p-4 text-sm font-medium text-gray-900 hover:bg-gray-100'
-                                : buttonVariants({ variant: 'link', size: 'default' })
-                        }
+                        className={cn(buttonVariants({ variant: 'link', size: 'default' }), "text-foreground")}
                     >
                         <div className="flex items-center " >
-                            <item.icon className={mobile ? 'w-6 h-6 mr-4' : 'w-4 h-4 mr-2'} />
+                            <item.icon className={'w-4 h-4 mr-2'} />
                             <span >{item.label}</span>
                         </div>
-                        {mobile && (
-                            <p className="text-sm text-gray-500 mt-1 ml-10">
-                                {item.description}
-                            </p>
-                        )}
                     </Link>
                 </li>
             ))}

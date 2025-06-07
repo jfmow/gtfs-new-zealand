@@ -57,7 +57,7 @@ export default function Stops() {
                                 zIndex: 1,
                                 onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
                             } as MapItem))
-                        ) : [])]} height={"calc(100svh - 2rem - 70px)"} />
+                        ) : [])]} height={"calc(100svh - 2rem)"} />
                     </Suspense>
                 </div>
             </div>
