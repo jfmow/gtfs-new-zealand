@@ -49,7 +49,7 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 
 							// Prepare notification data
 							data := map[string]string{
-								"url": fmt.Sprintf("/?s=%s", stop.StopName+" "+stop.StopCode),
+								"url": fmt.Sprintf("/?s=%s", stop.StopName+" "+parentStop.StopCode),
 							}
 							title := stop.StopName + " " + stop.StopCode
 
@@ -91,8 +91,11 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, p
 	for alertId, alert := range alerts {
 		for _, period := range alert.GetActivePeriod() {
 			startTime := time.Unix(int64(period.GetStart()), 0)
-			if startTime.After(time.Now().Add(-24*time.Hour)) && startTime.Before(time.Now().Add(24*time.Hour)) {
-				stopsToInform := getStopsForAlert(alert, cachedStops)
+			// Only notify for alerts that start today or tomorrow (in local time)
+			alertDay := startTime.In(v.timeZone).YearDay()
+			nowDay := time.Now().In(v.timeZone).YearDay()
+			if alertDay == nowDay || alertDay == nowDay+3 {
+				stopsToInform := getStopsForAlert(alert, cachedStops, gtfsDB)
 				for _, stop := range stopsToInform {
 					offset := 0
 					limit := 500
@@ -866,7 +869,7 @@ func isBase64Url(s string) bool {
 	return err == nil
 }
 
-func getStopsForAlert(alert *proto.Alert, parentStops map[string]gtfs.Stop) []gtfs.Stop {
+func getStopsForAlert(alert *proto.Alert, parentStops map[string]gtfs.Stop, gtfsData gtfs.Database) []gtfs.Stop {
 	stopsSet := make(map[string]struct{})
 	var stopsToInform []gtfs.Stop
 
@@ -877,6 +880,19 @@ func getStopsForAlert(alert *proto.Alert, parentStops map[string]gtfs.Stop) []gt
 				if _, exists := stopsSet[parentStop.StopId]; !exists {
 					stopsSet[parentStop.StopId] = struct{}{}
 					stopsToInform = append(stopsToInform, parentStop)
+				}
+			}
+		} else if routeId := entity.GetRouteId(); routeId != "" {
+			stops, err := gtfsData.GetStopsByRouteId(routeId)
+			if err != nil {
+				continue
+			}
+			for _, stop := range stops {
+				if parentStop, found := parentStops[stop.StopId]; found {
+					if _, exists := stopsSet[parentStop.StopId]; !exists {
+						stopsSet[parentStop.StopId] = struct{}{}
+						stopsToInform = append(stopsToInform, parentStop)
+					}
 				}
 			}
 		}
