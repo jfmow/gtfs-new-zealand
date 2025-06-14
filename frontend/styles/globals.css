@@ -81,3 +81,7 @@
 .list-none::-webkit-details-marker {
   display: none;
 }
+
+.user-marker-arrow {
+  rotate: var(--user-arrow-rotation, 0);
+}

@@ -95,6 +95,23 @@ export default function Map({
 
     }, [alwaysFitBoundsWithoutUser, defaultCenter, map_id, stops, userLocation, vehicles])
 
+
+    useEffect(() => {
+        const handleOrientation = (e: DeviceOrientationEvent) => {
+            const heading = e.alpha; // 0 to 360
+            if (heading !== null && !isNaN(heading)) {
+                // Update the CSS variable on the document root
+                document.documentElement.style.setProperty('--user-arrow-rotation', `${heading * -1}deg`);
+            }
+        };
+
+        window.addEventListener('deviceorientation', handleOrientation);
+
+        return () => {
+            window.removeEventListener('deviceorientation', handleOrientation);
+        };
+    }, [])
+
     useEffect(() => {
         const map = mapRef.current
         if (map) {
@@ -405,19 +422,22 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         map.removeControl(userControl)
     }
     if (userLocation.found) {
-        const userMarker = createNewMarker({
-            lat: userLocation.lat,
-            lon: userLocation.lon,
-            icon: "user",
-            id: "user_location",
-            routeID: "",
-            zIndex: 1000,
-            onClick: () => { },
-            description: {
-                text: "Your location",
-                alwaysShow: false
-            }
-        })
+        const userMarker = leaflet.marker([userLocation.lat, userLocation.lon], {
+            icon:
+                leaflet.divIcon({
+                    className: "flex items-center justify-center",
+                    html: `
+            <div style="position: relative; width: 24px; height: 24px;">
+                <img
+                class="user-marker-arrow"
+                  src="${"/vehicle_icons/location.png"}"
+                  style="width: 24px; height: 24px;"
+                />
+            </div>
+        `,
+                    iconAnchor: [12, 30],
+                }), zIndexOffset: 1000
+        });
         activeMapItemsUser.marker = userMarker
         userMarker.addTo(map)
         const userLocationControl = new leaflet.Control({ position: 'topright' });
@@ -469,45 +489,51 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
     let customIcon
 
     if (alwaysShowDiscription) {
-
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-                  <div style="position: relative; width: max-content; height: 36px;">
-                    <span
-                      style="
-                        position: absolute;
-                        top: -12px; /* Adjust to control distance above icon */
-                        left: 50%;
-                        transform: translateX(-50%);
-                        color: white;
-                        font-size: 12px;
-                        font-weight: bold;
-                        text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-                          1px 1px 0 #000;
-                        white-space: nowrap; /* Prevent text wrapping */
-                        padding: 0 5px; /* Add padding to prevent text touching edges */
-                      "
-                    >
-                      ${description}
-                    </span>
-                    <img
-                      className="w-4 h-4"
-                      src="${iconUrl}"
-                      style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 24px; height: 24px;"
-                    />
-                  </div>
-                `,
+            <div style="position: relative; width: max-content; height: 36px;">
+                <span
+                  style="
+                    position: absolute;
+                    top: -12px;
+                    left: 50%;
+                    transform: translateX(-50%);
+                    color: white;
+                    font-size: 12px;
+                    font-weight: bold;
+                    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
+                      1px 1px 0 #000;
+                    white-space: nowrap;
+                    padding: 0 5px;
+                  "
+                >
+                  ${description}
+                </span>
+                <img
+                  src="${iconUrl}"
+                  style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 24px; height: 24px;"
+                />
+            </div>
+        `,
             iconAnchor: [12, 30],
         });
     } else {
-        customIcon = leaflet.icon({
-            iconUrl,
-            iconSize: [24, 24],
-            iconAnchor: [12, 24],
-            popupAnchor: [0, -24]
+        // 💡 Convert to DivIcon without description
+        customIcon = leaflet.divIcon({
+            className: "flex items-center justify-center",
+            html: `
+            <div style="position: relative; width: 24px; height: 24px;">
+                <img
+                  src="${iconUrl}"
+                  style="width: 24px; height: 24px;"
+                />
+            </div>
+        `,
+            iconAnchor: [12, 30],
         });
     }
+
 
     return customIcon
 }
