@@ -59,6 +59,9 @@ type ItemsOnMap = {
         marker: leaflet.Marker | null
         control: leaflet.Control | null
     }
+    compass: {
+        control: leaflet.Control | null
+    }
     routeLine: {
         line: leaflet.GeoJSON | null
         routeId: string
@@ -81,7 +84,7 @@ export default function Map({
     defaultCenter
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
-    const itemsOnMap = useRef<ItemsOnMap>({ zoom: { controls: [] }, vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
+    const itemsOnMap = useRef<ItemsOnMap>({ compass: { control: null }, zoom: { controls: [] }, vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
     //Stuff on the map, like markers  and the map itself
 
     useEffect(() => {
@@ -91,12 +94,10 @@ export default function Map({
             map = createNewMap(mapRef, map_id)
             setDefaultZoom(map, defaultCenter, userLocation, vehicles, stops, alwaysFitBoundsWithoutUser || false);
             addZoomControls(map, itemsOnMap.current.zoom)
+            addUserCompassControl(itemsOnMap.current.compass, map)
         }
 
-    }, [alwaysFitBoundsWithoutUser, defaultCenter, map_id, stops, userLocation, vehicles])
 
-
-    useEffect(() => {
         const handleOrientation = (e: DeviceOrientationEvent) => {
             const heading = e.alpha; // 0 to 360
             if (heading !== null && !isNaN(heading)) {
@@ -110,7 +111,8 @@ export default function Map({
         return () => {
             window.removeEventListener('deviceorientation', handleOrientation);
         };
-    }, [])
+
+    }, [alwaysFitBoundsWithoutUser, defaultCenter, map_id, stops, userLocation, vehicles])
 
     useEffect(() => {
         const map = mapRef.current
@@ -444,7 +446,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         userLocationControl.onAdd = () => {
             const button = leaflet.DomUtil.create('button', ` ${buttonVariants({ variant: "default", size: "icon" })}`);
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>'; // Example icon
-            button.onclick = () => {
+            button.onclick = async () => {
                 map.flyTo([userLocation.lat, userLocation.lon], 15);
             };
             return button;
@@ -453,6 +455,43 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         map.addControl(userLocationControl)
     }
 }
+function addUserCompassControl(activeMapItemsUser: ItemsOnMap["compass"], map: leaflet.Map) {
+    const oldCompassControl = activeMapItemsUser.control
+    if (oldCompassControl) {
+        map.removeControl(oldCompassControl)
+    }
+
+    // Only add the control if permission is required (iOS 13+ Safari)
+    // @ts-expect-error it's real
+    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+        const compassControl = new leaflet.Control({ position: 'topright' });
+        compassControl.onAdd = () => {
+            const button = leaflet.DomUtil.create('button', ` ${buttonVariants({ variant: "default", size: "icon" })}`);
+            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass-icon lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>'; // Example icon
+            button.onclick = async () => {
+                async function requestOrientationPermission(): Promise<void> {
+                    // Only needed for iOS 13+ Safari
+                    // @ts-expect-error it's real
+                    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
+                        // @ts-expect-error it does exist
+                        const result = await DeviceOrientationEvent.requestPermission();
+                        if (result !== "granted") {
+                            throw new Error("Device orientation permission denied");
+                        }
+                    }
+                }
+
+                await requestOrientationPermission()
+            };
+            return button;
+        };
+        activeMapItemsUser.control = compassControl
+        map.addControl(compassControl)
+    } else {
+        activeMapItemsUser.control = null
+    }
+}
+
 
 function createNewMarker(MapItem: MapItem): leaflet.Marker {
     const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.description.text, MapItem.description.alwaysShow);
