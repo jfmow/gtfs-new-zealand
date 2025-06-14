@@ -383,15 +383,16 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoom"
         button.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
         `;
-        button.onclick = (e) => {
+        button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
-            map.zoomIn();
-        };
-        // Prevent map click/drag when interacting with the button
-        button.addEventListener("mousedown", stopMapEvents);
-        button.addEventListener("dblclick", stopMapEvents);
-        button.addEventListener("pointerdown", stopMapEvents);
-        button.addEventListener("touchstart", stopMapEvents);
+            map.zoomIn(); // or zoomOut
+        });
+
+        // Optional: still block drag or map interactions
+        ["mousedown", "dblclick", "pointerdown"].forEach((event) =>
+            button.addEventListener(event, stopMapEvents)
+        );
+
         return button;
     };
 
@@ -404,14 +405,16 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoom"
         button.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
         `;
-        button.onclick = (e) => {
+        button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
-            map.zoomOut();
-        };
-        button.addEventListener("mousedown", stopMapEvents);
-        button.addEventListener("dblclick", stopMapEvents);
-        button.addEventListener("pointerdown", stopMapEvents);
-        button.addEventListener("touchstart", stopMapEvents);
+            map.zoomOut(); // or zoomOut
+        });
+
+        // Optional: still block drag or map interactions
+        ["mousedown", "dblclick", "pointerdown"].forEach((event) =>
+            button.addEventListener(event, stopMapEvents)
+        );
+
         return button;
     };
 
