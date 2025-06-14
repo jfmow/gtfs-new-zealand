@@ -3,7 +3,6 @@ import Favorites, { AddToFavorites } from "@/components/stops/favourites";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
-import HelpMenu from "@/components/ui/help-menu";
 import { useQueryParams } from "@/lib/url-params";
 import { MessageCircleWarningIcon, StarIcon } from "lucide-react";
 import Head from "next/head";
@@ -43,35 +42,10 @@ export default function Home() {
               </Button>
               <AddToFavorites stopName={selectedStop} />
             </div>
-            <div className="flex items-center flex-wrap gap-2 hidden">
-              <div className="flex items-center gap-2">
-                <Button disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
-                  <MessageCircleWarningIcon />
-                </Button>
-                <HelpMenu title="Services">
-                  The following color indicators represent the status of arrival times:
-                  <div className="p-2 flex flex-col items-center justify-start gap-4">
-                    <div className="flex items-center gap-1 text-orange-500">
-                      <div className="w-6 h-6 bg-orange-100 border border-orange-200 rounded-md" />
-                      Early
-                    </div>
-                    <div className="flex items-center gap-1 text-green-500">
-                      <div className="w-6 h-6 bg-green-100 border border-green-200 rounded-md" />
-                      On Time
-                    </div>
-                    <div className="flex items-center gap-1 text-red-500">
-                      <div className="w-6 h-6 bg-red-100 border border-red-200 rounded-md" />
-                      Delayed
-                    </div>
-                  </div>
-                </HelpMenu>
-
-              </div>
-            </div>
           </div>
           <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible>
             <AccordionItem value="item-1">
-              <AccordionTrigger>
+              <AccordionTrigger className="!no-underline">
                 <div className="flex items-center gap-1">
                   <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4" />
                   <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
