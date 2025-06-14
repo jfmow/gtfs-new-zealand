@@ -165,6 +165,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			})
 		}
 
+		var filterByToday = false
+		if today := c.QueryParam("today"); today == "true" {
+			filterByToday = true
+		}
+
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
@@ -226,6 +231,20 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				return c.String(404, "No alerts found for route")
 			}
 			for _, alert := range alertsForRoute {
+				if filterByToday {
+					var isToday = false
+					for _, period := range alert.GetActivePeriod() {
+						startTime := time.Unix(int64(period.GetStart()), 0)
+						nowDay := time.Now().In(localTimeZone).YearDay()
+						alertDay := startTime.In(localTimeZone).YearDay()
+						if nowDay == alertDay {
+							isToday = true
+						}
+					}
+					if !isToday {
+						continue
+					}
+				}
 				seenAffected := make(map[string]struct{})
 				var affected []string
 
@@ -292,6 +311,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 				foundAlerts = append(foundAlerts, parsedAlert)
 			}
+		}
+
+		if len(foundAlerts) == 0 {
+			return c.JSON(http.StatusNotFound, Response{
+				Code:    http.StatusNotFound,
+				Message: "no alerts found for today",
+				Data:    nil,
+			})
 		}
 		//Sort by start, smallest to biggest
 		sort.Slice(foundAlerts, func(i, j int) bool {

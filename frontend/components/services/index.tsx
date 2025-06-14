@@ -11,6 +11,7 @@ import { Button } from "../ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import ErrorScreen from "../ui/error-screen"
+import { DisplayTodaysAlerts } from "@/pages/alerts"
 
 interface ServicesProps {
     stopName: string
@@ -166,7 +167,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <>
-
+            <DisplayTodaysAlerts stopName={stopName} />
             {getUniquePlatforms(services).length > 0 ? (
                 <ol className="flex mb-2 gap-2 items-center" aria-label="Toggle platforms list">
                     <li className="w-full">
