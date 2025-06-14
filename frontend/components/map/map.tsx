@@ -99,7 +99,8 @@ export default function Map({
 
 
         const handleOrientation = (e: DeviceOrientationEvent) => {
-            const heading = e.alpha; // 0 to 360
+            //@ts-expect-error it does exist
+            const heading = e.webkitCompassHeading ?? e.alpha;
             if (heading !== null && !isNaN(heading)) {
                 // Update the CSS variable on the document root
                 document.documentElement.style.setProperty('--user-arrow-rotation', `${heading * -1}deg`);
