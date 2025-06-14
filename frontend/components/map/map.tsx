@@ -99,11 +99,17 @@ export default function Map({
 
 
         const handleOrientation = (e: DeviceOrientationEvent) => {
-            //@ts-expect-error it does exist
-            const heading = e.webkitCompassHeading ?? e.alpha;
-            if (heading !== null && !isNaN(heading)) {
+            let heading = null;
+
+            if ('webkitCompassHeading' in e) {
+                heading = e.webkitCompassHeading;  // Use this on iOS
+            } else if (e.alpha !== null) {
+                // fallback for other platforms (may not be true north)
+                heading = 360 - e.alpha;
+            }
+            if (typeof heading === "number" && !isNaN(heading)) {
                 // Update the CSS variable on the document root
-                document.documentElement.style.setProperty('--user-arrow-rotation', `${heading * -1}deg`);
+                document.documentElement.style.setProperty('--user-arrow-rotation', `${heading}deg`);
             }
         };
 
