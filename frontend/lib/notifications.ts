@@ -114,12 +114,12 @@ export async function checkStopSubscription(stopIdOrName: string) {
 
     // Send subscription to the backend
     try {
-        const response = await ApiFetch(`notifications/find-client`, {
+        const response = await ApiFetch<NotificationClient>(`notifications/find-client`, {
             method: 'POST',
             body: form, // Don't manually set Content-Type here
         });
         if (response.ok) {
-            const notificationClient: NotificationClient = await response.json()
+            const notificationClient = response.data
             const createdDate = new Date(notificationClient.Created * 1000);
             const currentDate = new Date();
 
