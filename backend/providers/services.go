@@ -108,7 +108,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			log.Printf("Client disconnected: %s", c.RealIP())
 		}()
 
-		ticker := time.NewTicker(15 * time.Second)
+		ticker := time.NewTicker(12 * time.Second)
 		defer ticker.Stop()
 
 		sendUpdates := func() {
