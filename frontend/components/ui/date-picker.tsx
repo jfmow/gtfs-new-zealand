@@ -28,7 +28,7 @@ export function DatePicker({ onChange, defaultValue }: { onChange: (date: Date |
                     <CalendarIcon className="h-4 w-4" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-auto p-0">
+            <PopoverContent className="w-auto p-2">
                 <Calendar
                     mode="single"
                     selected={date}
@@ -42,7 +42,7 @@ export function DatePicker({ onChange, defaultValue }: { onChange: (date: Date |
                             onChange(newDate)
                         }
                     }}
-                    initialFocus
+                    captionLayout="dropdown"
                 />
             </PopoverContent>
         </Popover>
