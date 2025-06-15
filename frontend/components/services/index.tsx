@@ -135,7 +135,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }
 
     if (isInitialLoading) {
-        return <div className="max-w-[1400px] w-full mx-auto"><ServicesLoadingSkeleton /></div>
+        return <div className="max-w-[1400px] w-full mx-auto p-4"><ServicesLoadingSkeleton /></div>
     }
 
     return (
