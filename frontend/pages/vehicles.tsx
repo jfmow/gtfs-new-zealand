@@ -59,49 +59,47 @@ export default function Vehicles() {
     return (
         <>
             <Header title="Vehicle tracker" />
-            <div className="w-full">
-                <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-                    <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Vehicle type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Vehicles</SelectItem>
-                            <SelectItem value="Bus">Bus</SelectItem>
-                            <SelectItem value="Train">Train</SelectItem>
-                            <SelectItem value="Ferry">Ferry</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <div className="mb-4" />
+            <div className="mx-auto w-full max-w-[1400px] flex flex-col p-4">
+                <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
+                    <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Vehicle type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Vehicles</SelectItem>
+                        <SelectItem value="Bus">Bus</SelectItem>
+                        <SelectItem value="Train">Train</SelectItem>
+                        <SelectItem value="Ferry">Ferry</SelectItem>
+                    </SelectContent>
+                </Select>
+                <div className="mb-4" />
 
-                    {selectedVehicle !== null ? (
-                        <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.trip_id} />
-                    ) : null}
+                {selectedVehicle !== null ? (
+                    <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.trip_id} />
+                ) : null}
 
-                    {error !== "" ? (
-                        "Err: " + error
-                    ) : (
-                        <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                            <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(vehicles ? (
-                                vehicles.map((vehicle) => ({
-                                    lat: vehicle.position.lat,
-                                    lon: vehicle.position.lon,
-                                    icon: vehicle.type,
-                                    id: vehicle.trip_id,
-                                    routeID: vehicle.route.id,
-                                    description: { text: `${vehicle.route.name}`, alwaysShow: true },
-                                    zIndex: 1,
-                                    onClick: () => {
-                                        setSelectedVehicle(vehicle)
-                                    },
-                                }) as MapItem)
-                            ) : [])]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px)"} />
-                        </Suspense>
-                    )}
+                {error !== "" ? (
+                    "Err: " + error
+                ) : (
+                    <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
+                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(vehicles ? (
+                            vehicles.map((vehicle) => ({
+                                lat: vehicle.position.lat,
+                                lon: vehicle.position.lon,
+                                icon: vehicle.type,
+                                id: vehicle.trip_id,
+                                routeID: vehicle.route.id,
+                                description: { text: `${vehicle.route.name}`, alwaysShow: true },
+                                zIndex: 1,
+                                onClick: () => {
+                                    setSelectedVehicle(vehicle)
+                                },
+                            }) as MapItem)
+                        ) : [])]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />
+                    </Suspense>
+                )}
 
 
-                </div>
-            </div >
+            </div>
         </>
     )
 }

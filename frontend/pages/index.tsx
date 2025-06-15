@@ -28,39 +28,36 @@ export default function Home() {
   return (
     <>
       <Header title="Train, Bus, Ferry - Find you next journey" />
-      <div className="w-full">
-        <div className="mx-auto max-w-[1400px] flex flex-col p-4">
-          <div className="grid items-center gap-2">
-            <div className="flex gap-2 items-center w-full">
-              <SearchForStop />
-              {selectedStop !== "" ? (
-                <DatePicker onChange={(date) => setSelectedDate(date)} />
-              ) : null}
-              <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
-                <MessageCircleWarningIcon />
-              </Button>
-              <AddToFavorites stopName={selectedStop} />
-            </div>
+      <div className="mx-auto w-full max-w-[1400px] flex flex-col p-4">
+        <div className="grid items-center gap-2">
+          <div className="flex gap-2 items-center w-full">
+            <SearchForStop />
+            {selectedStop !== "" ? (
+              <DatePicker onChange={(date) => setSelectedDate(date)} />
+            ) : null}
+            <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
+              <MessageCircleWarningIcon />
+            </Button>
+            <AddToFavorites stopName={selectedStop} />
           </div>
-          <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible>
-            <AccordionItem value="item-1">
-              <AccordionTrigger className="!no-underline">
-                <div className="flex items-center gap-1">
-                  <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4" />
-                  <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
-                    Favorites
-                  </h4>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <Favorites />
-              </AccordionContent>
-            </AccordionItem>
-          </Accordion>
-          <div className="my-2" />
-          <Services filterDate={selectedDate} stopName={selectedStop} />
         </div>
+        <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible>
+          <AccordionItem value="item-1">
+            <AccordionTrigger className="!no-underline">
+              <div className="flex items-center gap-1">
+                <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4" />
+                <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
+                  Favorites
+                </h4>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent>
+              <Favorites />
+            </AccordionContent>
+          </AccordionItem>
+        </Accordion>
       </div>
+      <Services filterDate={selectedDate} stopName={selectedStop} />
     </>
   );
 }

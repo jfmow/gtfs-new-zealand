@@ -28,7 +28,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <UrlProvider>
           <NavBar />
           <Toaster richColors position={"top-center"} />
-          <div className="flex flex-grow">
+          <div className="flex flex-col flex-grow">
             <Component {...pageProps} />
           </div>
         </UrlProvider>

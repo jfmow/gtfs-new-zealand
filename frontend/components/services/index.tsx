@@ -127,20 +127,19 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }, [stopName, filterDate])
 
     if (errorMessage !== "") {
-        return <ErrorScreen errorTitle="An error occurred loading services for this stop" errorText={errorMessage} />
+        return <ErrorScreen errorTitle="Uh Oh! An error has occurred..." errorText={errorMessage} />
     }
 
-    if (isInitialLoading) {
-        return <ServicesLoadingSkeleton />
-    }
-
-
-    if (services.length === 0) {
+    if (stopName === "") {
         return null
     }
 
+    if (isInitialLoading) {
+        return <div className="max-w-[1400px] w-full mx-auto"><ServicesLoadingSkeleton /></div>
+    }
+
     return (
-        <>
+        <div className="max-w-[1400px] w-full mx-auto p-4">
             <DisplayTodaysAlerts stopName={stopName} />
             {getUniquePlatforms(services).length > 0 ? (
                 <ol className="flex mb-2 gap-2 items-center" aria-label="Toggle platforms list">
@@ -343,7 +342,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     </div>
                 </div>
             </div>
-        </>
+        </div>
     )
 }
 
