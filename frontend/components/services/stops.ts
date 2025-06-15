@@ -1,5 +1,4 @@
 import { ServicesStop } from "./tracker";
-import { TrainsApiResponse } from "./types";
 import { ApiFetch } from "@/lib/url-context";
 
 export interface StopForTripsData {
@@ -110,17 +109,15 @@ async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResul
     }
 
     try {
-        const response = await ApiFetch(`stops/${tripId}`);
-        const data: TrainsApiResponse<ServicesStop[]> = await response.json()
+        const response = await ApiFetch<ServicesStop[]>(`stops/${tripId}`);
 
         // Check if the response is OK
         if (!response.ok) {
-            console.error(data.message)
-            return { error: data.message, stops: undefined };
+            return { error: response.error, stops: undefined };
         }
 
         // Parse the response JSON and return services
-        return { error: undefined, stops: data.data.map((item, index) => ({ ...item, index })) };
+        return { error: undefined, stops: response.data.map((item, index) => ({ ...item, index })) };
     } catch (error) {
         // Handle unexpected errors
         return { error: (error as Error).message, stops: undefined };

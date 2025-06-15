@@ -43,7 +43,21 @@ export const UrlProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     )
 }
 
-export function ApiFetch(path: string, options?: RequestInit) {
+interface TrainsApiResponse<DataType> {
+    code: number;
+    data: DataType;
+    message: string;
+}
+
+export type ApiResult<DataType> = {
+    ok: true
+    data: DataType
+} | {
+    ok: false
+    error: string
+}
+
+export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
     const { url } = urlStore.currentUrl;
 
     if (!url || url.trim() === "") {
@@ -60,6 +74,13 @@ export function ApiFetch(path: string, options?: RequestInit) {
     // Use URL constructor for proper URL joining
     const fullUrl = new URL(normalizedPath, `${url}/`).toString();
 
-    return fetch(fullUrl, options);
+    const req = await fetch(fullUrl, options)
+    const res_data = await req.json() as TrainsApiResponse<T>
+
+    if (req.ok) {
+        return { ok: true, data: res_data.data }
+    } else {
+        return { ok: false, error: res_data.message }
+    }
 }
 

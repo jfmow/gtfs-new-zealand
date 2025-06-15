@@ -1,7 +1,6 @@
 import { useUserLocation } from "@/lib/userLocation";
 const LeafletMap = lazy(() => import("../map/map"));
 import { lazy, memo, Suspense, useEffect, useState } from "react";
-import { TrainsApiResponse } from "./types";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, } from "@/components/ui/dialog"
 import { Button } from "../ui/button";
 import { ChevronDown, Loader2, MapIcon, Navigation } from "lucide-react";
@@ -69,17 +68,16 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({ loaded, tripId, 
             }
             const form = new FormData()
             form.set("tripId", tripId)
-            const res = await ApiFetch(`realtime/live`, {
+            const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
                 method: "POST",
                 body: form
             })
-            const data: TrainsApiResponse<VehiclesResponse[]> = await res.json()
             if (!res.ok) {
-                console.error(data.message)
+                console.error(res.error)
                 return
             } else {
-                if (data.data && data.data.length >= 1) {
-                    const vehicle = data.data[0]
+                if (res.data && res.data.length >= 1) {
+                    const vehicle = res.data[0]
                     setVehicle(vehicle)
                     const stopsData = await getStopsForTrip(tripId, vehicle.trip.current_stop.id, vehicle.trip.next_stop.id)
                     if (stopsData) {

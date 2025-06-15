@@ -1,4 +1,3 @@
-import Head from "next/head"
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -7,10 +6,9 @@ import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle } from "lucide-reac
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/services/notifications"
-import type { TrainsApiResponse } from "@/components/services/types"
 import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
-import { HeaderMeta } from "@/components/nav"
+import { Header } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
@@ -37,10 +35,9 @@ export default function Alerts() {
     useEffect(() => {
         if (selected_stop.found) {
             setLoading(true)
-            ApiFetch(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`).then(async (res) => {
+            ApiFetch<AlertType[]>(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`).then(async (res) => {
                 if (res.ok) {
-                    const data: TrainsApiResponse<AlertType[]> = await res.json()
-                    setAlerts(data.data)
+                    setAlerts(res.data)
                 } else {
                     setAlerts([])
                 }
@@ -51,7 +48,7 @@ export default function Alerts() {
 
     return (
         <>
-            <Header />
+            <Header title="Travel Alerts" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <div className="flex items-center gap-2 mb-4">
@@ -282,28 +279,6 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
     )
 }
 
-function Header() {
-    return (
-        <Head>
-            <title>Alerts</title>
-            <HeaderMeta />
-            <meta name="description" content="Track public transport vehicles live!" />
-            <meta
-                name="keywords"
-                content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"
-            />
-            <link rel="canonical" href="https://trains.suddsy.dev/" />
-            <meta property="og:title" content="Live travel alerts!" />
-            <meta property="og:url" content="https://trains.suddsy.dev/" />
-            <meta
-                property="og:description"
-                content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey."
-            />
-            <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
-        </Head>
-    )
-}
-
 export interface AlertType {
     start_date: number
     end_date: number
@@ -352,10 +327,9 @@ export function DisplayTodaysAlerts({ stopName }: { stopName: string }) {
         }
 
         if (stopName !== "") {
-            ApiFetch(`realtime/alerts/${fullyEncodeURIComponent(stopName)}?today=true`).then(async (res) => {
+            ApiFetch<AlertType[]>(`realtime/alerts/${fullyEncodeURIComponent(stopName)}?today=true`).then(async (res) => {
                 if (res.ok) {
-                    const data: TrainsApiResponse<AlertType[]> = await res.json()
-                    const alerts = data.data
+                    const alerts = res.data
                     const seenAlerts = getSeenAlerts()
                     // Use Promise.all to await all hashes
                     const filteredAlerts: AlertType[] = []

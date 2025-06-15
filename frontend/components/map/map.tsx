@@ -2,7 +2,6 @@ import leaflet, { MarkerClusterGroup } from "leaflet"
 import React, { useEffect, useRef } from "react"
 import 'leaflet/dist/leaflet.css';
 import "leaflet.markercluster";
-import { TrainsApiResponse } from "../services/types";
 import { ShapesResponse, GeoJSON } from "./geojson-types";
 import { ApiFetch } from "@/lib/url-context";
 import { buttonVariants } from "../ui/button";
@@ -215,24 +214,23 @@ export default function Map({
                 const form = new FormData()
                 form.set("tripId", tripId)
                 form.set("routeId", routeId)
-                const response = await ApiFetch(`map/geojson/shapes`, {
+                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes`, {
                     method: "POST",
                     body: form
                 });
-                const data: TrainsApiResponse<ShapesResponse> = await response.json();
 
                 if (!response.ok) {
-                    console.error(data.message)
+                    console.error(response.error)
                     return
                 }
 
-                const filteredData = data.data.geojson;
+                const filteredData = response.data.geojson;
                 // Add GeoJSON data to the map with a smooth line
                 const routeLine = leaflet.geoJSON(filteredData, {
                     //@ts-expect-error: is real config value
                     smoothFactor: 1.5, // Adjust the smoothness level
                     style: function () {
-                        return { color: data.data.color !== "" ? `#${data.data.color}` : '#393939', weight: 4 }; // Customize the line color and thickness
+                        return { color: response.data.color !== "" ? `#${response.data.color}` : '#393939', weight: 4 }; // Customize the line color and thickness
                     }
                 })
                 map.addLayer(routeLine)

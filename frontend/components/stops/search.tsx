@@ -3,7 +3,6 @@ import { SearchInput } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Clock, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
-import { TrainsApiResponse } from "../services/types"
 import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 
@@ -216,15 +215,13 @@ type searchData =
 async function searchForStop(search: string): Promise<searchData> {
     if (search.length <= 1) return { error: "Search too short", result: null }
     try {
-        const response = await ApiFetch(
+        const response = await ApiFetch<StopSearch[]>(
             `stops/find-stop/${encodeURIComponent(search)}`
         )
-        const data: TrainsApiResponse<StopSearch[]> = await response.json()
         if (!response.ok) {
-            console.error(data.message)
-            return { error: data.message, result: null }
+            return { error: response.error, result: null }
         }
-        return { error: undefined, result: data.data }
+        return { error: undefined, result: response.data }
     } catch {
         return { error: "An error occurred while fetching data", result: null }
     }

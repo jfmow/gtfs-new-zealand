@@ -3,6 +3,8 @@ import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon } from 'luc
 import { buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
+import { ReactNode } from 'react'
+import Head from 'next/head'
 
 export default function NavBar() {
     const { theme } = useTheme()
@@ -102,7 +104,29 @@ function NavItems({ toggleMenu }: { toggleMenu?: () => void }) {
 }
 
 
-export function HeaderMeta() {
+
+
+export function Header({ title, children }: { title: string, children?: ReactNode }) {
+    return (
+        <Head>
+            <title>{title}</title>
+
+            <HeaderMeta />
+
+            <meta name="description" content="Track public transport vehicles live!" />
+            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
+            <link rel="canonical" href="https://trains.suddsy.dev/"></link>
+            <meta property="og:title" content="Live vehicle locations!" />
+            <meta property="og:url" content="https://trains.suddsy.dev/" />
+            <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
+            <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
+
+            {children}
+        </Head>
+    )
+}
+
+function HeaderMeta() {
     return (
         <>
 

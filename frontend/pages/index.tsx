@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useQueryParams } from "@/lib/url-params";
 import { MessageCircleWarningIcon, StarIcon } from "lucide-react";
-import Head from "next/head";
 import { useEffect, useState } from "react";
 import {
   Accordion,
@@ -13,7 +12,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
-import { HeaderMeta } from "@/components/nav";
+import { Header } from "@/components/nav";
 
 export default function Home() {
   const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } }); // Get the 's' parameter and if it's found
@@ -28,7 +27,7 @@ export default function Home() {
 
   return (
     <>
-      <Header />
+      <Header title="Train, Bus, Ferry - Find you next journey" />
       <div className="w-full">
         <div className="mx-auto max-w-[1400px] flex flex-col p-4">
           <div className="grid items-center gap-2">
@@ -64,25 +63,4 @@ export default function Home() {
       </div>
     </>
   );
-}
-
-
-
-
-function Header() {
-  return (
-    <Head>
-      <title>Train, Bus, Ferry</title>
-
-      <HeaderMeta />
-
-      <meta name="description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
-      <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
-      <link rel="canonical" href="https://trains.suddsy.dev/"></link>
-      <meta property="og:title" content="Train Bus Ferry - Track, predict and follow Auckland's trains, buses and ferry's." />
-      <meta property="og:url" content="https://trains.suddsy.dev/" />
-      <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
-      <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
-    </Head>
-  )
 }

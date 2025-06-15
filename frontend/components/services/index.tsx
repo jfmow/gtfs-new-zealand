@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { AccessibilityIcon, BikeIcon } from "lucide-react"
-import type { TrainsApiResponse } from "./types"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
-import { urlStore } from "@/lib/url-store"
 import { ApiFetch } from "@/lib/url-context"
 import { Button } from "../ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -18,45 +16,41 @@ interface ServicesProps {
     filterDate: Date | undefined
 }
 
-interface Service {
-    time: number
-    type: "service" | "realtime" // "initial" or "update"
-
-    trip_id: string
-    headsign: string
-    arrival_time: string
-    platform: string
-    stops_away: number
-    occupancy: number
-    canceled?: boolean
-    bikes_allowed: number
-    wheelchairs_allowed: number
-
-    route: ServicesRoute
-
-    tracking: 0 | 1 | 2
-
-    stop: ServicesStop
-
-    departed?: boolean
-    time_till_arrival?: number
+export interface Service {
+    trip_id: string;
+    headsign: string;
+    arrival_time: string;
+    platform: string;
+    stops_away: number;
+    occupancy: number;
+    canceled: boolean;
+    bikes_allowed: number;
+    wheelchairs_allowed: number;
+    route: ServicesRoute;
+    stop: ServicesStop;
+    tracking: boolean;
+    departed: boolean;
+    time_till_arrival: number;
 }
 
-interface ServicesRoute {
-    id: string
-    name: string
-    color: string
+export interface ServicesRoute {
+    id: string;
+    name: string;
+    color: string;
 }
 
-interface ServicesStop {
-    id: string
-    lat: number
-    lon: number
-    name: string
+export interface ServicesStop {
+    lat: number;
+    lon: number;
+    id: string;
+    name: string;
+    platform: string;
+    sequence: number;
 }
+
+const REFRESH_INTERVAL = 10; // Refresh interval in seconds
 
 export default function Services({ stopName, filterDate }: ServicesProps) {
-    const { url } = urlStore.currentUrl
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
@@ -82,69 +76,34 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         setServices([])
         setPlatformFilter(undefined)
 
-        let eventSource: EventSource | null = null
-
-        const startEventSource = () => {
-            if (!filterDate) {
-                eventSource = new EventSource(encodeURI(`${url}/services/${fullyEncodeURIComponent(stopName)}`))
-
-                eventSource.onmessage = (event) => {
-                    try {
-                        const parsedData: Service = JSON.parse(event.data)
-
-                        if (Object.keys(parsedData).length > 0) {
-                            setServices((prev) => [...prev, parsedData])
-                            setErrorMessage("")
-                        }
-                    } catch (error) {
-                        console.error("Error parsing SSE data:", error)
-                    }
-                }
-
-                eventSource.onerror = () => {
-                    console.error("SSE connection error.")
-                    setErrorMessage("Failed to fetch data from the server.")
-                    if (eventSource) {
-                        eventSource.close()
-                    }
-                }
+        async function fetchServices(date?: Date) {
+            const req = await ApiFetch<Service[]>(encodeURI(`/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : ""}`))
+            if (req.ok) {
+                setServices(req.data)
             } else {
-                ApiFetch(`services/${fullyEncodeURIComponent(stopName)}/schedule?date=${Math.floor(filterDate.getTime() / 1000)}`)
-                    .then(async (res) => {
-                        if (res.ok) {
-                            const data: TrainsApiResponse<Service[]> = await res.json()
-                            setServices(data.data)
-                            setErrorMessage("")
-                        } else {
-                            res.text().then((text) => {
-                                console.error("Error fetching schedule:", text)
-                            })
-                            setErrorMessage("Failed to fetch data from the server.")
-                        }
-                    })
-                    .catch((error) => {
-                        console.error("Fetch error:", error)
-                        setErrorMessage("Failed to fetch data from the server.")
-                    })
+                setErrorMessage(req.error)
             }
         }
 
-        const stopEventSource = () => {
-            if (eventSource) {
-                eventSource.close()
+
+        let intervalId: NodeJS.Timeout | null = null
+
+        function startAutoRefresh() {
+            fetchServices(filterDate)
+            if (!filterDate) {
+                intervalId = setInterval(fetchServices, REFRESH_INTERVAL * 1000);
             }
-            eventSource = null
-            setErrorMessage("")
         }
 
-        startEventSource()
+        startAutoRefresh()
 
-        // Visibility change handling
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
-                startEventSource()
+                startAutoRefresh()
             } else if (document.visibilityState === "hidden") {
-                stopEventSource()
+                if (intervalId) {
+                    clearInterval(intervalId);
+                }
             }
         }
 
@@ -152,10 +111,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
         // Cleanup on unmount, visibility change, or dependencies update
         return () => {
-            stopEventSource()
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
             document.removeEventListener("visibilitychange", handleVisibilityChange)
         }
-    }, [stopName, filterDate, url])
+    }, [stopName, filterDate])
 
     if (errorMessage !== "") {
         return <ErrorScreen errorTitle="An error occurred loading services for this stop" errorText={errorMessage} />
@@ -199,7 +160,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 </ol>
             ) : null}
             <ul aria-label="List of services for the stop" className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden">
-                {getService(services, platformFilter, displayingSchedulePreview)
+                {sortServices(services, platformFilter, displayingSchedulePreview)
                     .map((service) => (
                         <li
                             key={service.trip_id}
@@ -318,8 +279,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     trip_id: service.trip_id,
                                                 }}
                                                 currentStop={service.stop}
-                                                loaded={service.tracking !== 2}
-                                                has={service.tracking === 1}
+                                                loaded={true}
+                                                has={service.tracking}
                                                 tripId={service.trip_id}
                                             />
                                             <span
@@ -372,32 +333,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     )
 }
-
-function getService(serviceData: Service[], platformFilter: string | number | undefined, displayingSchedulePreview: boolean): Service[] {
-    const services = serviceData.filter((item) => item.type === "service").sort((a, b) => b.time - a.time)
-    if (services.length === 0) {
-        return []
-    }
-
-    const realtimeUpdates = serviceData.filter((item) => item.type === "realtime").sort((a, b) => b.time - a.time)
-
-    const seenTripIds = new Set<string>() // Keep track of trip IDs already processed
-
-    const result: Service[] = []
-
-    services.map((service) => {
-        if (!seenTripIds.has(service.trip_id)) {
-            seenTripIds.add(service.trip_id)
-            const latest_realtime_update = realtimeUpdates.find((item) => item.trip_id === service.trip_id)
-
-            if (latest_realtime_update) {
-                result.push({ ...service, ...latest_realtime_update, type: "service" })
-            }
-        }
-    })
-
-    return result
-        .filter((item) => item.platform === platformFilter || platformFilter === undefined)
+function sortServices(services: Service[], platformFilter: string | number | undefined, displayingSchedulePreview: boolean) {
+    return services.filter((item) => item.platform === platformFilter || platformFilter === undefined)
         .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
         .filter((item) => !(!displayingSchedulePreview && item.departed))
 }

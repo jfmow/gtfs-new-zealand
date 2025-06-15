@@ -2,8 +2,6 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map/map"));
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
-import Head from "next/head";
-import { TrainsApiResponse } from "@/components/services/types";
 import {
     Select,
     SelectContent,
@@ -14,7 +12,7 @@ import {
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import { MapItem } from "@/components/map/map";
-import { HeaderMeta } from "@/components/nav";
+import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 
 const MAPID = "vehicles-amazing-map"
@@ -60,7 +58,7 @@ export default function Vehicles() {
 
     return (
         <>
-            <Header />
+            <Header title="Vehicle tracker" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
@@ -115,33 +113,14 @@ type GetVehiclesResult =
 async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
     const form = new FormData()
     form.set("vehicle_type", vehicleType)
-    const req = await ApiFetch(`realtime/live`, {
+    const req = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
         method: "POST",
         body: form
     })
-    const data: TrainsApiResponse<VehiclesResponse[]> = await req.json()
     if (!req.ok) {
-        console.log(data.message)
-        return { error: data.message, vehicles: null };
+        return { error: req.error, vehicles: null };
     }
-    return { error: undefined, vehicles: data.data }
+    return { error: undefined, vehicles: req.data }
 }
 
 
-function Header() {
-    return (
-        <Head>
-            <title>Vehicles</title>
-
-            <HeaderMeta />
-
-            <meta name="description" content="Track public transport vehicles live!" />
-            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
-            <link rel="canonical" href="https://trains.suddsy.dev/"></link>
-            <meta property="og:title" content="Live vehicle locations!" />
-            <meta property="og:url" content="https://trains.suddsy.dev/" />
-            <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
-            <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
-        </Head>
-    )
-}

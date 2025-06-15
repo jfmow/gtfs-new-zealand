@@ -8,7 +8,6 @@ import { Button } from "../ui/button"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
-import { TrainsApiResponse } from "../services/types";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 
@@ -37,16 +36,15 @@ export default function Navigate({ start, end }: NavigateProps) {
         form.set("method", "walking")
 
         try {
-            const response = await ApiFetch(`map/nav`, { method: "POST", body: form });
+            const response = await ApiFetch<OSRMResponse>(`map/nav`, { method: "POST", body: form });
             if (!response.ok) {
                 openNavigation(end.lat, end.lon)
                 return
             }
-            const data: TrainsApiResponse<OSRMResponse> = await response.json();
 
-            let filteredData = data.data;
+            let filteredData = response.data;
 
-            filteredData = { ...filteredData, travelTime: Math.floor(data.data.duration / 60) }
+            filteredData = { ...filteredData, travelTime: Math.floor(response.data.duration / 60) }
 
             setData(filteredData)
         } catch (e) {

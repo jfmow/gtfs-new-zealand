@@ -1,16 +1,11 @@
 package providers
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
@@ -23,13 +18,8 @@ import (
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getParentStopCache caches.ParentStopsCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
+	//TODO: change back to static no sse
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("Recovered from panic: %v", r)
-			}
-		}()
-
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
@@ -49,13 +39,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			})
 		}
 
-		now := time.Now().In(localTimeZone).Add(-10 * time.Minute)
-		currentTime := now.Format("15:04:05")
+		nowMinusTenMinutes := time.Now().In(localTimeZone).Add(-10 * time.Minute)
+		currentTimeMinusTenMinutes := nowMinusTenMinutes.Format("15:04:05")
 
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTime, now, 20)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTimeMinusTenMinutes, nowMinusTenMinutes, 20)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
@@ -86,159 +76,79 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 		}
 
-		services = filteredServices
+		var resultData []ServicesResponse2 = []ServicesResponse2{}
 
-		w := c.Response()
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.WriteHeader(http.StatusOK)
+		tripUpdatesData, _ := realtime.GetTripUpdates()
+		vehicleLocations, _ := realtime.GetVehicles()
+		now := time.Now().In(localTimeZone)
 
-		flusher, ok := w.Writer.(http.Flusher)
-		if !ok {
-			return fmt.Errorf("streaming unsupported by ResponseWriter")
-		}
+		for _, service := range filteredServices {
+			var response ServicesResponse2 = ServicesResponse2{
+				StopsAway:          int16(service.StopSequence),
+				ArrivalTime:        service.ArrivalTime,
+				Headsign:           service.StopHeadsign,
+				Platform:           service.Platform,
+				Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
+				Stop:               &ServicesStop{Id: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode},
+				Tracking:           false,
+				TripId:             service.TripID,
+				WheelchairsAllowed: service.StopData.WheelChairBoarding,
+				BikesAllowed:       service.TripData.BikesAllowed,
+			}
 
-		var mu sync.Mutex
-		ctx, cancel := context.WithCancel(c.Request().Context())
-		defer cancel()
+			if service.RouteColor != "" {
+				response.Route.RouteColor = service.RouteColor
+			} else {
+				response.Route.RouteColor = "000000"
+			}
 
-		go func() {
-			<-ctx.Done()
-			log.Printf("Client disconnected: %s", c.RealIP())
-		}()
-
-		ticker := time.NewTicker(12 * time.Second)
-		defer ticker.Stop()
-
-		sendUpdates := func() {
-			mu.Lock()
-			defer mu.Unlock()
-
-			now := time.Now().In(localTimeZone)
-			tripUpdatesData, _ := realtime.GetTripUpdates()
-			vehicleLocations, _ := realtime.GetVehicles()
-
-			for _, service := range services {
-				sendService := func(data ServicesResponse2) {
-					jsonData, err := json.Marshal(data)
-					if err != nil {
-						log.Printf("JSON marshal error: %v", err)
-						return
-					}
-
-					if _, err := fmt.Fprintf(w, "data: %s\n\n", jsonData); err != nil {
-						log.Printf("Write error: %v", err)
-						cancel()
-						return
-					}
-					flusher.Flush()
+			if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
+				response.Occupancy = int8(foundVehicle.GetOccupancyStatus())
+				response.Tracking = true
+				if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
+					response.Canceled = true
 				}
+			}
 
-				// Static service info
-				resp := ServicesResponse2{
-					Type:               "service",
-					StopsAway:          int16(service.StopSequence),
-					ArrivalTime:        service.ArrivalTime,
-					Headsign:           service.StopHeadsign,
-					Platform:           service.Platform,
-					Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
-					Stop:               &ServicesStop{Id: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode},
-					Tracking:           2,
-					TripId:             service.TripID,
-					Time:               now.Unix(),
-					WheelchairsAllowed: &service.StopData.WheelChairBoarding,
-					BikesAllowed:       &service.TripData.BikesAllowed,
-				}
-
-				if service.RouteColor != "" {
-					resp.Route.RouteColor = service.RouteColor
-				} else {
-					resp.Route.RouteColor = "000000"
-				}
-
+			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
 				defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
 				if err == nil {
 					defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
-					timeTillArrival := int(math.Round(defaultArrivalTime.Sub(now).Minutes()))
-					resp.TimeTillArrival = &timeTillArrival
+					arrivalTimePlusDelay := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
+
+					formattedArrivalTime := arrivalTimePlusDelay.Format("15:04:05")
+					response.ArrivalTime = formattedArrivalTime
+
+					timeTillArrival := int(math.Round(arrivalTimePlusDelay.Sub(now).Minutes()))
+					response.TimeTillArrival = timeTillArrival
 
 					if timeTillArrival <= -1 {
-						departed := true
-						resp.Departed = &departed
+						response.Departed = true
 					}
-				}
 
-				sendService(resp)
-
-				// Realtime info
-				rtResp := ServicesResponse2{
-					Type:   "realtime",
-					TripId: service.TripID,
-					Time:   now.Unix(),
-				}
-
-				if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
-					rtResp.Occupancy = int8(foundVehicle.GetOccupancyStatus())
-					rtResp.Tracking = 1
-					if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
-						cancelled := true
-						rtResp.Canceled = &cancelled
-					}
-				} else {
-					rtResp.Tracking = 0
-				}
-
-				if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-					defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
+					stopUpdates := tripUpdate.GetStopTimeUpdate()
+					_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 					if err == nil {
-						defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
-						newTime := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
+						nextStopSeq, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+						response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
+					}
 
-						formattedTime := newTime.Format("15:04:05")
-						rtResp.ArrivalTime = formattedTime
-
-						timeTillArrival := int(math.Round(newTime.Sub(now).Minutes()))
-						rtResp.TimeTillArrival = &timeTillArrival
-
-						if timeTillArrival <= -1 {
-							departed := true
-							rtResp.Departed = &departed
-						} else {
-							departed := false
-							rtResp.Departed = &departed
-						}
-
-						stopUpdates := tripUpdate.GetStopTimeUpdate()
-						_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
-						if err == nil {
-							nextStopSeq, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
-							stopsAway := int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
-							rtResp.StopsAway = stopsAway
-						}
-
-						if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
-							cancelled := true
-							rtResp.Canceled = &cancelled
-						}
+					if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
+						cancelled := true
+						response.Canceled = cancelled
 					}
 				}
-
-				sendService(rtResp)
 			}
+
+			resultData = append(resultData, response)
+
 		}
 
-		// initial push
-		sendUpdates()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return nil
-			case <-ticker.C:
-				sendUpdates()
-			}
-		}
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "ok",
+			Data:    resultData,
+		})
 	})
 
 	servicesRoute.GET("/:stationName/schedule", func(c echo.Context) error {
@@ -297,7 +207,6 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		for _, service := range services {
 			var response ServicesResponse2
-			response.Type = "service"
 			response.ArrivalTime = service.ArrivalTime
 			if service.StopHeadsign != "" {
 				response.Headsign = service.StopHeadsign
@@ -316,9 +225,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Lon:  service.StopData.StopLon,
 				Name: stop.StopName,
 			}
-			response.Tracking = 2
+			response.Tracking = false
 			response.TripId = service.TripID
-			response.Time = time.Now().In(localTimeZone).Unix()
 
 			result = append(result, response)
 		}
@@ -333,32 +241,29 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 // Services
 type ServicesResponse2 struct {
-	Time int64  `json:"time,omitempty"`
-	Type string `json:"type"` //service, trip update, vehicle
-
-	TripId             string `json:"trip_id,omitempty"`
-	Headsign           string `json:"headsign,omitempty"`
-	ArrivalTime        string `json:"arrival_time,omitempty"`
-	Platform           string `json:"platform,omitempty"`
+	TripId             string `json:"trip_id"`
+	Headsign           string `json:"headsign"`
+	ArrivalTime        string `json:"arrival_time"`
+	Platform           string `json:"platform"`
 	StopsAway          int16  `json:"stops_away"`
-	Occupancy          int8   `json:"occupancy,omitempty"`
-	Canceled           *bool  `json:"canceled,omitempty"`
-	BikesAllowed       *int   `json:"bikes_allowed,omitempty"`
-	WheelchairsAllowed *int   `json:"wheelchairs_allowed,omitempty"`
+	Occupancy          int8   `json:"occupancy"`
+	Canceled           bool   `json:"canceled"`
+	BikesAllowed       int    `json:"bikes_allowed"`
+	WheelchairsAllowed int    `json:"wheelchairs_allowed"`
 
-	Route *ServicesRoute `json:"route,omitempty"`
+	Route *ServicesRoute `json:"route"`
 
-	Stop *ServicesStop `json:"stop,omitempty"`
+	Stop *ServicesStop `json:"stop"`
 
-	Tracking        int8  `json:"tracking"` //0: no, 1: yes, 2: loading
-	Departed        *bool `json:"departed,omitempty"`
-	TimeTillArrival *int  `json:"time_till_arrival,omitempty"`
+	Tracking        bool `json:"tracking"`
+	Departed        bool `json:"departed"`
+	TimeTillArrival int  `json:"time_till_arrival"`
 }
 
 type ServicesRoute struct {
-	RouteId        string `json:"id,omitempty"`
-	RouteShortName string `json:"name,omitempty"`
-	RouteColor     string `json:"color,omitempty"`
+	RouteId        string `json:"id"`
+	RouteShortName string `json:"name"`
+	RouteColor     string `json:"color"`
 }
 
 type ServicesStop struct {

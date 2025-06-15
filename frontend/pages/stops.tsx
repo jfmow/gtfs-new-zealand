@@ -1,11 +1,9 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { MapItem } from "@/components/map/map";
-import { HeaderMeta } from "@/components/nav";
-import { TrainsApiResponse } from "@/components/services/types";
+import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
-import Head from "next/head";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map/map"));
 
@@ -42,7 +40,7 @@ export default function Stops() {
 
     return (
         <>
-            <Header />
+            <Header title="Stops map" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
@@ -82,30 +80,9 @@ type GetStopsResult =
 async function getStops(): Promise<GetStopsResult> {
     const form = new FormData()
     form.set("children", "no")
-    const req = await ApiFetch(`stops`, { method: "POST", body: form })
-    const data: TrainsApiResponse<Stop[]> = await req.json()
+    const req = await ApiFetch<Stop[]>(`stops`, { method: "POST", body: form })
     if (!req.ok) {
-        console.error(data.message)
-        return { error: data.message, stops: null };
+        return { error: req.error, stops: null };
     }
-    return { error: undefined, stops: data.data }
-}
-
-
-
-function Header() {
-    return (
-        <Head>
-            <title>Stops</title>
-            <HeaderMeta />
-
-            <meta name="description" content="Find your stop" />
-            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
-            <link rel="canonical" href="https://trains.suddsy.dev/"></link>
-            <meta property="og:title" content="Find your closest stop" />
-            <meta property="og:url" content="https://trains.suddsy.dev/" />
-            <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
-            <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
-        </Head>
-    )
+    return { error: undefined, stops: req.data }
 }
