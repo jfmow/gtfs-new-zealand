@@ -1,10 +1,13 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon } from 'lucide-react'
-import { buttonVariants } from './ui/button'
+import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon } from 'lucide-react'
+import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { ReactNode } from 'react'
 import Head from 'next/head'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import { PopoverClose } from '@radix-ui/react-popover'
+import Router from 'next/router'
 
 export default function NavBar() {
     const { theme } = useTheme()
@@ -13,19 +16,40 @@ export default function NavBar() {
     return (
         <>
             {isMobile ? (
-                <nav className='fixed bottom-0 left-0 right-0 z-[10]'>
-                    <div className='w-fit mb-4 mx-auto bg-background/80 backdrop-blur-sm shadow-sm border px-4 py-2 rounded-[9999px]'>
-                        <ul className='w-full grid grid-cols-5 gap-4 justify-items-center'>
-                            {NAV_ROUTES.map((item) => (
-                                <li key={item.label}>
-                                    <Link className='grid justify-items-center' href={item.href}>
-                                        <item.icon className="w-4 h-4 text-foreground" />
-                                        <p className='text-muted-foreground text-[10px]'>{item.description_short}</p>
-                                    </Link>
-                                </li>
-                            ))}
-                        </ul>
-                    </div>
+                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full py-4 px-2 flex items-center justify-between border-b  relative z-50 h-[70px]'>
+                    <Popover>
+                        <div className='flex items-center justify-between w-full'>
+                            <PopoverTrigger asChild>
+                                <Button variant={"ghost"}>
+                                    <MenuIcon />
+                                    Menu
+                                </Button>
+                            </PopoverTrigger>
+                            <Link href='/'>
+                                <div className="flex items-center">
+                                    <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                                </div>
+                            </Link>
+                        </div>
+                        <PopoverContent collisionPadding={5}>
+                            <span className='font-medium text-sm text-muted-foreground'>Menu</span>
+                            <ul className='w-full flex flex-col gap-4 mt-2'>
+                                {NAV_ROUTES.map((item) => (
+                                    <li key={item.label}>
+                                        <PopoverClose>
+                                            <button className='flex items-center gap-4' onClick={() => Router.push(item.href)}>
+                                                <item.icon className='w-8 h-8 text-primary border rounded-[100vw] p-2 shadow-sm bg-primary/5' />
+                                                <div className='flex flex-col text-left'>
+                                                    <p className='font-medium text-primary text-sm'>{item.label}</p>
+                                                    <p className='text-muted-foreground text-xs'>{item.description}</p>
+                                                </div>
+                                            </button>
+                                        </PopoverClose>
+                                    </li>
+                                ))}
+                            </ul>
+                        </PopoverContent>
+                    </Popover>
                 </nav>
             ) : (
                 <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b  relative z-50 h-[70px]">
