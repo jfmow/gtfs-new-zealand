@@ -30,30 +30,17 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 
 		shapes, err := gtfsData.GetShapeByTripID(tripId)
 		if err != nil {
-			fmt.Println(err)
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no route line found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil, ResponseDetails("tripId", tripId, "details", "No route line available for the given trip ID in the GTFS data", "error", err.Error()))
 		}
 		geoJson, err := shapes.ToGeoJSON()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "problem generating route line",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("tripId", tripId, "details", "Error generating GeoJSON for the route", "error", err.Error()))
 		}
 
 		//No cache because this route isn't used a lot (yet)
 		route, err := gtfsData.GetRouteByID(routeId)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid route id",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid route id", nil, ResponseDetails("routeId", routeId, "details", "No route found for the given route ID", "error", err.Error()))
 		}
 
 		type MapResponse struct {
@@ -61,13 +48,9 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 			GeoJson any    `json:"geojson"`
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data: MapResponse{
-				GeoJson: geoJson,
-				Color:   route.RouteColor,
-			},
+		return JsonApiResponse(c, http.StatusOK, "", MapResponse{
+			GeoJson: geoJson,
+			Color:   route.RouteColor,
 		})
 	})
 
@@ -83,63 +66,35 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 		method := c.FormValue("method")
 
 		if method == "" {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "missing method (walking/driving)",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "missing movement method", nil, ResponseDetails("method", method, "details", "Method is required to determine the type of navigation"))
 		}
 
 		// Convert lat and lon to float64
 		slat, err := strconv.ParseFloat(slatStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid start lat",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid start lat", nil, ResponseDetails("startLat", slatStr, "details", "Invalid start latitude format", "error", err.Error()))
 		}
 
 		slon, err := strconv.ParseFloat(slonStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid start lon",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid start lon", nil, ResponseDetails("startLon", slonStr, "details", "Invalid start longitude format", "error", err.Error()))
 		}
 
 		elat, err := strconv.ParseFloat(elatStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid end lat",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid end lat", nil, ResponseDetails("endLat", elatStr, "details", "Invalid end latitude format", "error", err.Error()))
 		}
 
 		elon, err := strconv.ParseFloat(elonStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid end lon",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid end lon", nil, ResponseDetails("endLon", elonStr, "details", "Invalid end longitude format", "error", err.Error()))
 		}
 
 		if slat == 0 || slon == 0 {
-			return c.JSON(http.StatusTeapot, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid start lat & lon",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid start lat & lon", nil, ResponseDetails("startLat", slatStr, "startLon", slonStr))
 		}
 		if elat == 0 || elon == 0 {
-			return c.JSON(http.StatusTeapot, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid end lat & lon",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid end lat & lon", nil, ResponseDetails("endLat", elatStr, "endLon", elonStr))
 		}
 
 		start := Coordinates{Lat: slat, Lon: slon} // Start point
@@ -154,11 +109,7 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 			case "walking":
 				result = GetWalkingDirections(start, end)
 			default:
-				c.JSON(http.StatusBadRequest, Response{
-					Code:    http.StatusBadRequest,
-					Message: "invalid method",
-					Data:    nil,
-				})
+				JsonApiResponse(c, http.StatusBadRequest, "invalid movement method", nil, ResponseDetails("method", method, "details", "Method is required to determine the type of navigation"))
 				return
 			}
 		}()
@@ -166,24 +117,12 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, rea
 		select {
 		case <-ctx.Done():
 			log.Println("Request timed out")
-			return c.JSON(http.StatusRequestTimeout, Response{
-				Code:    http.StatusRequestTimeout,
-				Message: "request took too long",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusRequestTimeout, "", nil, ResponseDetails("details", "Request timed out while fetching route data"))
 		case <-done:
 			if len(result.Features) == 0 {
-				return c.JSON(http.StatusNotFound, Response{
-					Code:    http.StatusNotFound,
-					Message: "no route found",
-					Data:    nil,
-				})
+				return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("details", "No route found for the given coordinates"))
 			}
-			return c.JSON(http.StatusOK, Response{
-				Code:    http.StatusOK,
-				Message: "",
-				Data:    result,
-			})
+			return JsonApiResponse(c, http.StatusOK, "", result)
 		}
 	})
 }

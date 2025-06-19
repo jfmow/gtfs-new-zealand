@@ -47,6 +47,7 @@ interface TrainsApiResponse<DataType> {
     code: number;
     data: DataType;
     message: string;
+    trace_id?: string;
 }
 
 export type ApiResult<DataType> = {
@@ -55,32 +56,55 @@ export type ApiResult<DataType> = {
 } | {
     ok: false
     error: string
+    status_code?: number
+    trace_id?: string
+}
+
+const TRACE_ID_KEY = "";
+
+function getOrCreateTraceId(): string {
+    let traceId = localStorage.getItem(TRACE_ID_KEY);
+    if (!traceId) {
+        traceId = crypto.randomUUID();
+        localStorage.setItem(TRACE_ID_KEY, traceId);
+    }
+    return traceId;
 }
 
 export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
     const { url } = urlStore.currentUrl;
 
-    if (!url || url.trim() === "") {
-        throw new Error("No valid URL provided");
-    }
+    if (!url || url.trim() === "") throw new Error("No valid URL provided");
+    if (!path || path.trim() === "") throw new Error("No valid path provided");
 
-    if (!path || path.trim() === "") {
-        throw new Error("No valid path provided");
-    }
-
-    // Normalize path (ensure no leading '/')
     const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
-
-    // Use URL constructor for proper URL joining
     const fullUrl = new URL(normalizedPath, `${url}/`).toString();
 
-    const req = await fetch(fullUrl, options)
-    const res_data = await req.json() as TrainsApiResponse<T>
+    const traceId = getOrCreateTraceId();
+
+    const headers: HeadersInit = {
+        ...(options?.headers || {}),
+        "X-Trace-ID": traceId,
+        "Content-Type": "application/json",
+    };
+
+    const req = await fetch(fullUrl, {
+        ...options,
+        headers,
+    });
+
+    const res_data = await req.json() as TrainsApiResponse<T>;
 
     if (req.ok) {
-        return { ok: true, data: res_data.data }
+        return { ok: true, data: res_data.data };
     } else {
-        return { ok: false, error: res_data.message }
+        return {
+            ok: false,
+            error: res_data.message,
+            status_code: req.status,
+            trace_id: res_data.trace_id,
+        };
     }
 }
+
 

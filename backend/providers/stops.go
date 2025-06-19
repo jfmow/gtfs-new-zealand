@@ -23,22 +23,14 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 		tripIdEncoded := c.PathParam("tripId")
 		tripId, err := url.PathUnescape(tripIdEncoded)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid trip id",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil, ResponseDetails("tripId", tripIdEncoded, "details", "Invalid trip ID format", "error", err.Error()))
 		}
 
 		stopsForTripCache := getStopsForTripCache()
 
 		stops, ok := stopsForTripCache[tripId]
 		if len(stops.Stops) == 0 || !ok {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no stops found for trip",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("tripId", tripId, "details", "No stops available for the given trip ID in the cache"))
 		}
 
 		var result []ServicesStop
@@ -46,11 +38,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			var responseData ServicesStop
 			stop, err := gtfsData.GetParentStopByChildStopID(i.StopId)
 			if err != nil {
-				return c.JSON(http.StatusNotFound, Response{
-					Code:    http.StatusNotFound,
-					Message: "no parent stop found for stop",
-					Data:    nil,
-				})
+				return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("stopId", i.StopId, "details", "No parent stop available for the given child stop ID in the gtfs data", "error", err.Error()))
 			}
 
 			responseData.Id = stop.StopId
@@ -63,11 +51,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			result = append(result, responseData)
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    result,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 
 	//Returns the closest stop to a given lat,lon
@@ -78,29 +62,17 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 		// Convert lat and lon to float64
 		lat, err := strconv.ParseFloat(latStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid lat",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid lat", nil, ResponseDetails("lat", latStr, "details", "Invalid latitude format", "error", err.Error()))
 		}
 
 		lon, err := strconv.ParseFloat(lonStr, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid lon",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid lon", nil, ResponseDetails("lon", lonStr, "details", "Invalid longitude format", "error", err.Error()))
 		}
 
 		stops := getAllStopsCache()
 		if len(stops) == 0 {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no stops found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", "No stops available in the cache"))
 		}
 
 		var sortedArray gtfs.Stops
@@ -114,11 +86,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 
 		closetStop := sortedArray.FindClosestStops(lat, lon)
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    closetStop,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", closetStop)
 	})
 
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
@@ -126,28 +94,16 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 		stopNameEncoded := c.PathParam("stopName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("stopName", stopNameEncoded, "details", "Invalid stop name format", "error", err.Error()))
 		}
 		children := c.QueryParam("children")
 
 		stops, err := gtfsData.SearchForStopsByNameOrCode(stopName, children == "true")
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "no stops matching found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("stopName", stopName, "details", "No stops matching the given name or code found", "error", err.Error()))
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    stops,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", stops)
 	})
 
 	//Returns a list of all stops from the AT api
@@ -160,11 +116,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			noChildren = true
 		} else {
 			if filterChildren != "" {
-				return c.JSON(http.StatusNotFound, Response{
-					Code:    http.StatusNotFound,
-					Message: "Invalid children filter",
-					Data:    nil,
-				})
+				return JsonApiResponse(c, http.StatusNotFound, "Invalid children filter", nil, ResponseDetails("children", filterChildren, "details", "Children filter must be 'yes' or 'no'"))
 			}
 		}
 		boundsStr := c.FormValue("bounds")
@@ -182,16 +134,12 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 		} else {
 			// Try to unmarshal JSON input
 			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{
-					"error": "Invalid bounds format",
-				})
+				return JsonApiResponse(c, http.StatusBadRequest, "Invalid bounds format", nil, ResponseDetails("bounds", boundsStr, "details", "Invalid bounds format", "error", err.Error()))
 			}
 
 			// Basic validation
 			if len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
-				return c.JSON(http.StatusBadRequest, map[string]string{
-					"error": "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]",
-				})
+				return JsonApiResponse(c, http.StatusBadRequest, "Invalid bounds format", nil, ResponseDetails("bounds", boundsStr, "details", "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]"))
 			}
 		}
 
@@ -205,11 +153,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			stops = getAllStopsCache()
 		}
 		if len(stops) == 0 {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no stops found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", "No stops available in the cache"))
 		}
 
 		var filteredStops []gtfs.Stop
@@ -222,11 +166,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime
 			}
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    filteredStops,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", filteredStops)
 
 	})
 }

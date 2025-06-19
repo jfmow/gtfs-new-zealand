@@ -8,7 +8,7 @@ import { ApiFetch } from "@/lib/url-context"
 import { Button } from "../ui/button"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { fullyEncodeURIComponent } from "@/lib/utils"
-import ErrorScreen from "../ui/error-screen"
+import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
 
@@ -54,6 +54,7 @@ const REFRESH_INTERVAL = 10 // Refresh interval in seconds
 export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
+    const [errorTrace, setErrorTrace] = useState("")
     const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
@@ -88,9 +89,15 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             if (req.ok) {
                 setServices(req.data)
                 setIsInitialLoading(false)
+                setErrorMessage("")
             } else {
-                setErrorMessage(req.error)
-                setIsInitialLoading(false)
+                setErrorTrace(req.trace_id || "")
+                if (req.status_code === 404) {
+                    setErrorMessage("no-services")
+                } else {
+                    setErrorMessage(req.error)
+                    setIsInitialLoading(false)
+                }
             }
         }
 
@@ -127,7 +134,15 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }, [stopName, filterDate])
 
     if (errorMessage !== "") {
-        return <ErrorScreen errorTitle="Uh Oh! An error has occurred..." errorText={errorMessage} />
+        if (errorMessage === "no-services") {
+            return (
+                <>
+                    <DisplayTodaysAlerts stopName={stopName} forceDisplay />
+                    <InfoScreen infoTitle="No Services Scheduled" infoText={`No services are scheduled for departure today at "${stopName}".`} />
+                </>
+            )
+        }
+        return <ErrorScreen traceId={errorTrace} errorTitle="Uh Oh! An error has occurred..." errorText={errorMessage} />
     }
 
     if (stopName === "") {

@@ -3,3 +3,4 @@ gtfs
 base
 .env
 _providers
+logs

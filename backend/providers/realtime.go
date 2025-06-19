@@ -45,16 +45,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		} else {
 			// Try to unmarshal JSON input
 			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil {
-				return c.JSON(http.StatusBadRequest, map[string]string{
-					"error": "Invalid bounds format",
-				})
+				return JsonApiResponse(c, http.StatusBadRequest, "Invalid bounds format", nil, ResponseDetails("bounds", boundsStr, "details", "Bounds must be a valid JSON array in the format [[lat1,lng1],[lat2,lng2]]", "error", err.Error()))
 			}
 
 			// Basic validation
 			if len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
-				return c.JSON(http.StatusBadRequest, map[string]string{
-					"error": "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]",
-				})
+				return JsonApiResponse(c, http.StatusBadRequest, "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]", nil, ResponseDetails("bounds", boundsStr, "details", "Bounds must be a valid JSON array in the format [[lat1,lng1],[lat2,lng2]]"))
 			}
 		}
 
@@ -63,20 +59,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		vehicles, err := realtime.GetVehicles()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no vehicles found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No vehicles found in the GTFS data", "error", err.Error()))
 		}
 
 		tripUpdates, err := realtime.GetTripUpdates()
 		if err != nil {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no trip updates found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No trip updates found in the GTFS data", "error", err.Error()))
 		}
 
 		var response []VehiclesResponse
@@ -146,11 +134,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			response = append(response, responseData)
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    response,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", response)
 	})
 
 	//Returns alerts from AT for a stop
@@ -158,11 +142,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		stopNameEncoded := c.PathParam("stopName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop name", nil, ResponseDetails("stopName", stopNameEncoded, "details", "Invalid stop name format", "error", err.Error()))
 		}
 
 		var filterByToday = false
@@ -172,30 +152,18 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop name/code",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop name/code", nil, ResponseDetails("stopName", stopName, "details", "Stop not found", "error", err.Error()))
 		}
 
 		//Get all the child stops of our parent stop, basically platforms, so we can then get all the routes that stop there
 		childStops, err := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		if err != nil {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no c stops found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "", nil, ResponseDetails("stopName", stopName, "details", "No child stops found for the given stop", "error", err.Error()))
 		}
 
 		alerts, err := realtime.GetAlerts()
 		if err != nil {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no alerts found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("stopName", stopName, "details", "No alerts found for the given stop", "error", err.Error()))
 		}
 
 		var foundRoutes map[string]gtfs.Route = make(map[string]gtfs.Route)
@@ -216,11 +184,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if len(foundRoutes) == 0 {
-			return c.JSON(http.StatusInternalServerError, Response{
-				Code:    http.StatusInternalServerError,
-				Message: "no routes found for stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "no routes found for stop: "+stopName))
 		}
 
 		var foundAlerts []AlertResponse
@@ -228,7 +192,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		for _, route := range foundRoutes {
 			alertsForRoute, err := alerts.FindAlertsByRouteId(route.RouteId)
 			if err != nil {
-				return c.String(404, "No alerts found for route")
+				continue // No alerts for this route
 			}
 			for _, alert := range alertsForRoute {
 				if filterByToday {
@@ -314,23 +278,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if len(foundAlerts) == 0 {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no alerts found for today",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusNotFound, "no alerts found", nil, ResponseDetails("stopName", stopName, "details", "No alerts found for the given stop"))
 		}
 		//Sort by start, smallest to biggest
 		sort.Slice(foundAlerts, func(i, j int) bool {
 			return foundAlerts[i].StartDate < foundAlerts[j].StartDate
 		})
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    foundAlerts,
-		})
-
+		return JsonApiResponse(c, http.StatusOK, "", foundAlerts)
 	})
 
 }

@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +16,8 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/sirupsen/logrus"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var rateLimiterConfig = middleware.RateLimiterConfig{
@@ -45,16 +48,29 @@ func main() {
 		fmt.Println("Error loading .env file")
 	}
 
+	logrus.SetOutput(&lumberjack.Logger{
+		Filename:   filepath.Join(getWorkDir(), "logs", "api.log"),
+		MaxSize:    100, // megabytes
+		MaxBackups: 10,
+		MaxAge:     7,    // days
+		Compress:   true, // gzip old logs
+	})
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+
 	e := echo.New()
 
 	//Enables rate limiter middleware for the following routes
 	e.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
+	e.Use(TraceIDMiddleware())
+	e.Use(RequestLoggerMiddleware())
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins: []string{"*"},
 		AllowMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-Trace-ID"},
 	}))
+
+	//e.GET("/logs", GetLogsHandler)
 
 	atApi := e.Group("/at")
 	//mlApi := e.Group("/wel")
@@ -154,4 +170,18 @@ func main() {
 	if err := s.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+func getWorkDir() string {
+	ex, err := os.Executable()
+	if err != nil {
+		panic(err)
+	}
+
+	dir := filepath.Dir(ex)
+
+	if strings.Contains(dir, "go-build") {
+		return "."
+	}
+	return filepath.Dir(ex)
 }

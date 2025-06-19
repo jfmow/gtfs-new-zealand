@@ -23,20 +23,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("stopName", stopNameEncoded, "details", "Invalid stop name format", "error", err.Error()))
 		}
 
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop id",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop id", nil, ResponseDetails("stopName", stopName, "details", "Stop not found", "error", err.Error()))
 		}
 
 		nowMinusTenMinutes := time.Now().In(localTimeZone).Add(-10 * time.Minute)
@@ -52,11 +44,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if len(services) == 0 {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no services found for stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusNotFound, "no services found for stop", nil, ResponseDetails("stopName", stopName, "details", "No services found for the given stop"))
 		}
 		var filteredServices []gtfs.StopTimes
 		stopsForTripCache := getStopsForTripCache()
@@ -153,39 +141,27 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		}
 
-		return c.JSON(200, Response{
-			Code:    200,
-			Message: "ok",
-			Data:    resultData,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", resultData)
 	})
 
 	servicesRoute.GET("/:stationName/schedule", func(c echo.Context) error {
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid stop",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("stopName", stopNameEncoded, "details", "Invalid stop name format", "error", err.Error()))
 		}
 
 		// Fetch stop data
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
-			return c.String(http.StatusNotFound, "No stop found with name")
+			return JsonApiResponse(c, http.StatusNotFound, "no stop found with name", nil, ResponseDetails("stopName", stopName, "details", "Stop not found", "error", err.Error()))
 		}
 
 		date := c.QueryParam("date")
 
 		dateInt, err := strconv.ParseInt(date, 10, 64)
 		if err != nil {
-			return c.JSON(http.StatusBadRequest, Response{
-				Code:    http.StatusBadRequest,
-				Message: "invalid date",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid date", nil, ResponseDetails("date", date, "details", "Invalid date format", "error", err.Error()))
 		}
 		now := time.Unix(dateInt, 0).In(localTimeZone)
 
@@ -200,11 +176,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if len(services) == 0 {
-			return c.JSON(http.StatusNotFound, Response{
-				Code:    http.StatusNotFound,
-				Message: "no services found",
-				Data:    nil,
-			})
+			return JsonApiResponse(c, http.StatusNotFound, "no services found", nil, ResponseDetails("stopName", stopName, "details", "No services found for the given stop"))
 		}
 
 		// Sort services by arrival time
@@ -240,11 +212,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			result = append(result, response)
 		}
 
-		return c.JSON(http.StatusOK, Response{
-			Code:    http.StatusOK,
-			Message: "",
-			Data:    result,
-		})
+		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 }
 

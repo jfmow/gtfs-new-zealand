@@ -289,7 +289,7 @@ export interface AlertType {
     affected: string[]
 }
 
-export function DisplayTodaysAlerts({ stopName }: { stopName: string }) {
+export function DisplayTodaysAlerts({ stopName, forceDisplay }: { stopName: string, forceDisplay?: boolean }) {
     const [alerts, setAlerts] = useState<AlertType[]>([])
     const [dialogOpen, setDialogOpen] = useState(false)
 
@@ -336,7 +336,7 @@ export function DisplayTodaysAlerts({ stopName }: { stopName: string }) {
                     await Promise.all(
                         alerts.map(async (alert) => {
                             const hash = await hashJsonObject(alert)
-                            if (!seenAlerts.find((a) => a.alert_hash === hash)) {
+                            if (!seenAlerts.find((a) => a.alert_hash === hash) || forceDisplay) {
                                 filteredAlerts.push(alert)
                                 markAlertSeen({ date_stored: Date.now(), alert_hash: hash })
                             }

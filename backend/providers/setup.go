@@ -17,16 +17,47 @@ var gzipConfig = middleware.GzipConfig{
 }
 
 type Response struct {
-	Code    int    `json:"code"`
-	Message string `json:"message"`
-	Data    any    `json:"data"`
+	Code    int         `json:"code"`
+	Message string      `json:"message"`
+	Data    interface{} `json:"data,omitempty"`
+	TraceID string      `json:"trace_id"`
+}
+
+func JsonApiResponse(c echo.Context, code int, message string, data interface{}, details ...interface{}) error {
+	traceID, _ := c.Get("trace_id").(string)
+
+	if len(details) > 0 {
+		// Store details in context for middleware to log later
+		c.Set("log_details", details[0])
+	}
+
+	return c.JSON(code, Response{
+		Code:    code,
+		Message: message,
+		Data:    data,
+		TraceID: traceID,
+	})
+}
+
+func ResponseDetails(pairs ...interface{}) map[string]interface{} {
+	m := make(map[string]interface{})
+	length := len(pairs)
+	for i := 0; i < length; i += 2 {
+		if i+1 < length {
+			key, ok := pairs[i].(string)
+			if ok {
+				m[key] = pairs[i+1]
+			}
+		}
+	}
+	return m
 }
 
 func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
 	caches := caches.CreateCaches(gtfsData)
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
 	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetParentStopsCache)
-	setupRoutesRoutes(primaryRouter, realtime, localTimeZone, caches.GetRouteCache)
+	setupRoutesRoutes(primaryRouter, caches.GetRouteCache)
 	setupStopsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
