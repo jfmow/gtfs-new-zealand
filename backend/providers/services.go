@@ -100,6 +100,14 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				BikesAllowed:       service.TripData.BikesAllowed,
 			}
 
+			defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
+			if err != nil {
+				continue
+			}
+			defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
+
+			response.TimeTillArrival = int(defaultArrivalTime.Sub(now).Minutes())
+
 			if service.RouteColor != "" {
 				response.Route.RouteColor = service.RouteColor
 			} else {
@@ -115,33 +123,30 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
-				defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
+				arrivalTimePlusDelay := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
+
+				formattedArrivalTime := arrivalTimePlusDelay.Format("15:04:05")
+				response.ArrivalTime = formattedArrivalTime
+
+				timeTillArrival := int(math.Round(arrivalTimePlusDelay.Sub(now).Minutes()))
+				response.TimeTillArrival = timeTillArrival
+
+				stopUpdates := tripUpdate.GetStopTimeUpdate()
+				_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 				if err == nil {
-					defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
-					arrivalTimePlusDelay := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
-
-					formattedArrivalTime := arrivalTimePlusDelay.Format("15:04:05")
-					response.ArrivalTime = formattedArrivalTime
-
-					timeTillArrival := int(math.Round(arrivalTimePlusDelay.Sub(now).Minutes()))
-					response.TimeTillArrival = timeTillArrival
-
-					stopUpdates := tripUpdate.GetStopTimeUpdate()
-					_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
-					if err == nil {
-						nextStopSeq, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
-						response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
-					}
-
-					if timeTillArrival <= -1 || response.StopsAway <= -1 {
-						response.Departed = true
-					}
-
-					if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
-						cancelled := true
-						response.Canceled = cancelled
-					}
+					nextStopSeq, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+					response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
 				}
+
+				if timeTillArrival <= -1 || response.StopsAway <= -1 {
+					response.Departed = true
+				}
+
+				if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
+					cancelled := true
+					response.Canceled = cancelled
+				}
+
 			}
 
 			resultData = append(resultData, response)
