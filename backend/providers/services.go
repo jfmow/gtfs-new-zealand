@@ -45,7 +45,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTimeMinusTenMinutes, nowMinusTenMinutes, 20)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTimeMinusTenMinutes, nowMinusTenMinutes, 200)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
@@ -58,22 +58,26 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Data:    nil,
 			})
 		}
-
 		var filteredServices []gtfs.StopTimes
 		stopsForTripCache := getStopsForTripCache()
 		for _, service := range services {
 			stopsForService, found := stopsForTripCache[service.TripID]
-			if found {
-				if service.TripData.TripHeadsign == "" && len(stopsForService.Stops) > 0 {
-					service.TripData.TripHeadsign = stopsForService.Stops[0].StopHeadsign
-				}
-				if stopsForService.LowestSequence == 1 {
-					service.StopSequence -= 1
-				}
-				if service.StopSequence != len(stopsForService.Stops)-1 {
-					filteredServices = append(filteredServices, service)
-				}
+			if !found {
+				continue
 			}
+			//Works sometimes
+			if service.TripData.TripHeadsign == "" && len(stopsForService.Stops) > 0 {
+				service.TripData.TripHeadsign = stopsForService.Stops[0].StopHeadsign
+			}
+			//The stop sequence in gtfs data sometimes goes to 0 for first or 1 for first, so make them == 0 for first because our array of stops will always start at 0 as the first, so selecting 1 for first would actually be the 2nd stop
+			if stopsForService.LowestSequence == 1 {
+				service.StopSequence -= 1
+			}
+			//Check it is not the last stop for the service because displaying that as a departure is pointless
+			if service.StopSequence != len(stopsForService.Stops)-1 {
+				filteredServices = append(filteredServices, service)
+			}
+
 		}
 
 		var resultData []ServicesResponse2 = []ServicesResponse2{}
@@ -122,15 +126,15 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					timeTillArrival := int(math.Round(arrivalTimePlusDelay.Sub(now).Minutes()))
 					response.TimeTillArrival = timeTillArrival
 
-					if timeTillArrival <= -1 {
-						response.Departed = true
-					}
-
 					stopUpdates := tripUpdate.GetStopTimeUpdate()
 					_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 					if err == nil {
 						nextStopSeq, _, _ := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 						response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
+					}
+
+					if timeTillArrival <= -1 || response.StopsAway <= -1 {
+						response.Departed = true
 					}
 
 					if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {
