@@ -175,7 +175,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 aria-label="List of services for the stop"
                 className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden"
             >
-                {sortServices(services, platformFilter, displayingSchedulePreview).map((service) => (
+                {sortServices(services, platformFilter).map((service) => (
                     <li
                         key={service.trip_id}
                         className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
@@ -300,7 +300,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             tripId={service.trip_id}
                                         />
                                         <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
-                                            {service.time_till_arrival}min
+                                            {service.departed ? "Departed" : service.stops_away === 0 ? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
                                         </span>
                                     </div>
                                 </CardContent>
@@ -349,10 +349,20 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 function sortServices(
     services: Service[],
     platformFilter: string | number | undefined,
-    displayingSchedulePreview: boolean,
 ) {
     return services
         .filter((item) => item.platform === platformFilter || platformFilter === undefined)
         .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
-        .filter((item) => !(!displayingSchedulePreview && item.departed))
+        .filter((item) => item.stops_away >= -1)
+}
+
+function formatArrivalTime(minutes: number): string {
+    if (minutes <= 0.5) return 'Arriving now';
+
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.round(minutes % 60);
+
+    if (hours > 0 && mins > 0) return `${hours}h ${mins}min`;
+    if (hours > 0) return `${hours}h`;
+    return `${mins}min`;
 }
