@@ -83,7 +83,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         async function fetchServices(date?: Date) {
             const req = await ApiFetch<Service[]>(
                 encodeURI(
-                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : ""}`,
+                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=20"}`,
                 ),
             )
             if (req.ok) {
@@ -368,7 +368,7 @@ function sortServices(
     return services
         .filter((item) => item.platform === platformFilter || platformFilter === undefined)
         .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
-        .filter((item) => item.stops_away >= -1)
+        .filter((item) => !item.departed)
 }
 
 function formatArrivalTime(minutes: number): string {

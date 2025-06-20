@@ -174,7 +174,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             {triggerButton && <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>}
             {open && (vehicle || (!has && previewData && stops)) && (
                 <DrawerContent className="max-h-[90vh]">
-                    <div className="mx-auto w-full max-w-sm p-4 overflow-y-auto">{content}</div>
+                    <div className="mx-auto w-full max-w-sm p-2 overflow-y-auto">{content}</div>
                 </DrawerContent>
             )}
         </Drawer>

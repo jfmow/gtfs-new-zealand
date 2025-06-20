@@ -18,8 +18,16 @@ import (
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
-	//TODO: change back to static no sse
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
+		limitStr := c.QueryParam("limit")
+		limit := 20
+		if limitStr != "" {
+			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
+				limit = l
+			} else {
+				return JsonApiResponse(c, http.StatusBadRequest, "invalid limit", nil, ResponseDetails("limit", limitStr, "details", "Limit must be a valid integer", "error", err.Error()))
+			}
+		}
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
@@ -37,7 +45,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		var services []gtfs.StopTimes
 		childStops, _ := gtfsData.GetChildStopsByParentStopID(stop.StopId)
 		for _, a := range childStops {
-			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTimeMinusTenMinutes, nowMinusTenMinutes, 200)
+			servicesAtStop, err := gtfsData.GetActiveTrips(a.StopId, currentTimeMinusTenMinutes, nowMinusTenMinutes, limit)
 			if err == nil {
 				services = append(services, servicesAtStop...)
 			}
