@@ -17,23 +17,30 @@ import ErrorScreen from "@/components/ui/error-screen";
 
 const MAPID = "vehicles-amazing-map"
 const REFRESH_INTERVAL = 10; // Refresh interval in seconds
+type VehicleFilters = "Train" | "Bus" | "Ferry" | "all"
 
 export default function Vehicles() {
-    const [vehicles, setVehicles] = useState<VehiclesResponse[]>()
+    const [vehicles, setVehicles] = useState<VehiclesResponse[]>([])
     const [error, setError] = useState("")
     const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
-    const [vehicleType, setVehicleType] = useState<"Train" | "Bus" | "Ferry" | "">("")
+    const [vehicleType, setVehicleType] = useState<VehicleFilters>("all")
     const { location, loading, locationFound } = useUserLocation()
     const { currentUrl } = useUrl()
 
     useEffect(() => {
         async function getData() {
-            const data = await getVehicles(vehicleType)
-            if (data.error !== undefined) {
-                setError(data.error)
-            }
-            if (data.vehicles !== null) {
-                setVehicles(data.vehicles)
+            const form = new FormData()
+            form.set("vehicle_type", vehicleType)
+            const req = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
+                method: "POST",
+                body: form
+            })
+            if (!req.ok) {
+                setError(req.error)
+                setVehicles([])
+            } else {
+                setVehicles(req.data)
+                setError("")
             }
         }
 
@@ -60,7 +67,7 @@ export default function Vehicles() {
         <>
             <Header title="Vehicle tracker" />
             <div className="mx-auto w-full max-w-[1400px] flex flex-col p-4">
-                <Select onValueChange={(newValue) => setVehicleType(newValue as "" | "Bus" | "Train" | "Ferry")}>
+                <Select onValueChange={(newValue) => setVehicleType(newValue as VehicleFilters)}>
                     <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Vehicle type" />
                     </SelectTrigger>
@@ -81,7 +88,7 @@ export default function Vehicles() {
                     "Err: " + error
                 ) : (
                     <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(vehicles ? (
+                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(
                             vehicles.map((vehicle) => ({
                                 lat: vehicle.position.lat,
                                 lon: vehicle.position.lon,
@@ -93,8 +100,8 @@ export default function Vehicles() {
                                 onClick: () => {
                                     setSelectedVehicle(vehicle)
                                 },
-                            }) as MapItem)
-                        ) : [])]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />
+                            }) as MapItem
+                            ))]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />
                     </Suspense>
                 )}
 
@@ -102,23 +109,6 @@ export default function Vehicles() {
             </div>
         </>
     )
-}
-
-type GetVehiclesResult =
-    | { error: string; vehicles: null }
-    | { error: undefined; vehicles: VehiclesResponse[] };
-
-async function getVehicles(vehicleType: "Train" | "Bus" | "Ferry" | ""): Promise<GetVehiclesResult> {
-    const form = new FormData()
-    form.set("vehicle_type", vehicleType)
-    const req = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
-        method: "POST",
-        body: form
-    })
-    if (!req.ok) {
-        return { error: req.error, vehicles: null };
-    }
-    return { error: undefined, vehicles: req.data }
 }
 
 

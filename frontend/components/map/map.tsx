@@ -129,16 +129,17 @@ export default function Map({
             const activeStops = activeMapItems.stops
             const activeVehicles = activeMapItems.vehicles
             const activeNavigation = activeMapItems.navigation
+
+            if (!activeStops.clusterGroup) {
+                activeStops.clusterGroup = createMapClusterGroup()
+            }
+            if (activeStops.clusterGroup) {
+                activeStops.clusterGroup.clearLayers()
+            }
+            activeStops.markers.forEach((item) => {
+                map.removeLayer(item.marker)
+            })
             if (stops.length > 0) {
-                if (!activeStops.clusterGroup) {
-                    activeStops.clusterGroup = createMapClusterGroup()
-                }
-                if (activeStops.clusterGroup) {
-                    activeStops.clusterGroup.clearLayers()
-                }
-                activeStops.markers.forEach((item) => {
-                    map.removeLayer(item.marker)
-                })
                 stops.forEach((stop) => {
                     //Add the stop to the map
                     const marker = createNewMarker(stop)
@@ -156,13 +157,13 @@ export default function Map({
                 itemsOnMap.current.stops = activeStops
             }
 
+            if (activeVehicles.clusterGroup) {
+                activeVehicles.clusterGroup.clearLayers()
+            }
+            activeVehicles.markers.forEach((item) => {
+                map.removeLayer(item.marker)
+            })
             if (vehicles.length > 0) {
-                if (activeVehicles.clusterGroup) {
-                    activeVehicles.clusterGroup.clearLayers()
-                }
-                activeVehicles.markers.forEach((item) => {
-                    map.removeLayer(item.marker)
-                })
                 vehicles.forEach((vehicle) => {
                     //Add the vehicle to the map
                     const marker = createNewMarker(vehicle)
@@ -178,6 +179,7 @@ export default function Map({
                 map.addLayer(activeVehicles.clusterGroup as leaflet.Layer)
                 itemsOnMap.current.vehicles = activeVehicles
             }
+
 
             if (line) {
                 if (activeNavigation.line) {

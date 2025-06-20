@@ -67,7 +67,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No trip updates found in the GTFS data", "error", err.Error()))
 		}
 
-		var response []VehiclesResponse
+		var response []VehiclesResponse = []VehiclesResponse{}
 
 		cachedRoutes := getRouteCache()
 		cachedStopsForTrips := getStopsForTripCache()

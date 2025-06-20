@@ -60,7 +60,7 @@ export type ApiResult<DataType> = {
     trace_id?: string
 }
 
-const TRACE_ID_KEY = "";
+const TRACE_ID_KEY = "trace-id";
 
 function getOrCreateTraceId(): string {
     let traceId = localStorage.getItem(TRACE_ID_KEY);
@@ -87,21 +87,30 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
         "X-Trace-ID": traceId,
     };
 
-    const req = await fetch(fullUrl, {
-        ...options,
-        headers,
-    });
+    try {
+        const req = await fetch(fullUrl, {
+            ...options,
+            headers,
+        });
 
-    const res_data = await req.json() as TrainsApiResponse<T>;
+        const res_data = await req.json() as TrainsApiResponse<T>;
 
-    if (req.ok) {
-        return { ok: true, data: res_data.data };
-    } else {
+        if (req.ok) {
+            return { ok: true, data: res_data.data };
+        } else {
+            return {
+                ok: false,
+                error: res_data.message,
+                status_code: req.status,
+                trace_id: res_data.trace_id,
+            };
+        }
+    } catch (error) {
         return {
             ok: false,
-            error: res_data.message,
-            status_code: req.status,
-            trace_id: res_data.trace_id,
+            error: error instanceof Error ? error.message : "Unknown error occurred",
+            status_code: 500,
+            trace_id: "",
         };
     }
 }
