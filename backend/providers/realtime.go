@@ -92,7 +92,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			if routeData, err := getVehicleRouteData(currentRouteId, cachedRoutes); err == nil {
 				responseData.Route = *routeData
 				responseData.VehicleType = responseData.Route.VehicleType
-				if vehicleTypeFilter != "" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
+				if vehicleTypeFilter != "" && vehicleTypeFilter != "all" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
 					continue
 				}
 			}
