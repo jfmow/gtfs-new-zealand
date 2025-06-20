@@ -170,7 +170,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     }
 
     return (
-        <Drawer open={open} onOpenChange={handleOpenChange}>
+        <Drawer handleOnly={true} open={open} onOpenChange={handleOpenChange}>
             {triggerButton && <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>}
             {open && (vehicle || (!has && previewData && stops)) && (
                 <DrawerContent className="max-h-[90vh]">
