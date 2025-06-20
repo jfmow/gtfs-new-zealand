@@ -14,12 +14,11 @@ import (
 	"time"
 
 	"github.com/jfmow/gtfs"
-	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
 )
 
-func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	navigationRoute := primaryRoute.Group("/map")
 	navigationRoute.Use(middleware.GzipWithConfig(gzipConfig))
 

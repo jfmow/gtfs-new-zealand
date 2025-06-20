@@ -5,26 +5,15 @@ import { Badge } from "@/components/ui/badge"
 import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
-import StopNotifications from "@/components/services/notifications"
+import StopNotifications from "@/components/notifications"
 import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 import { Header } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog"
-import {
-    Card,
-    CardContent,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
 
 export default function Alerts() {
@@ -351,7 +340,7 @@ export function DisplayTodaysAlerts({ stopName, forceDisplay }: { stopName: stri
                 }
             })
         }
-    }, [stopName])
+    }, [forceDisplay, stopName])
 
 
     return (

@@ -2,13 +2,7 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { lazy, Suspense, useEffect, useState } from "react";
 const LeafletMap = lazy(() => import("@/components/map/map"));
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useUserLocation } from "@/lib/userLocation";
 import { MapItem } from "@/components/map/map";

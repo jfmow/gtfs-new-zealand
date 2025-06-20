@@ -17,13 +17,13 @@ var gzipConfig = middleware.GzipConfig{
 }
 
 type Response struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
-	TraceID string      `json:"trace_id"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+	TraceID string `json:"trace_id"`
 }
 
-func JsonApiResponse(c echo.Context, code int, message string, data interface{}, details ...interface{}) error {
+func JsonApiResponse(c echo.Context, code int, message string, data any, details ...any) error {
 	traceID, _ := c.Get("trace_id").(string)
 
 	if len(details) > 0 {
@@ -39,8 +39,8 @@ func JsonApiResponse(c echo.Context, code int, message string, data interface{},
 	})
 }
 
-func ResponseDetails(pairs ...interface{}) map[string]interface{} {
-	m := make(map[string]interface{})
+func ResponseDetails(pairs ...any) map[string]any {
+	m := make(map[string]any)
 	length := len(pairs)
 	for i := 0; i < length; i += 2 {
 		if i+1 < length {
@@ -56,11 +56,11 @@ func ResponseDetails(pairs ...interface{}) map[string]interface{} {
 func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
 	caches := caches.CreateCaches(gtfsData)
 	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
-	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetParentStopsCache)
+	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache)
 	setupRoutesRoutes(primaryRouter, caches.GetRouteCache)
-	setupStopsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
+	setupStopsRoutes(primaryRouter, gtfsData, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
-	setupNavigationRoutes(primaryRouter, gtfsData, realtime, localTimeZone)
+	setupNavigationRoutes(primaryRouter, gtfsData)
 
 	if val := os.Getenv("PRODUCTION"); val == "true" {
 		notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache)

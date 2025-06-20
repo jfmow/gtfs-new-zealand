@@ -17,18 +17,17 @@ export default function Stops() {
 
     useEffect(() => {
         async function getData() {
-            const data = await getStops()
-            if (data.error !== undefined) {
-                setError(data.error)
-            }
-            if (data.stops !== null) {
-                setStops(data.stops)
+            const form = new FormData()
+            form.set("children", "no")
+            const req = await ApiFetch<Stop[]>(`stops`, { method: "POST", body: form })
+            if (req.ok) {
+                setStops(req.data)
+            } else {
+                setError(req.error)
             }
         }
         getData()
-
-    }, [loading])
-
+    }, [])
 
     if (error !== "") {
         return <ErrorScreen errorTitle="An error occurred while loading the stops" errorText={error} />
@@ -72,17 +71,3 @@ type Stop = {
     location_type: number;
     parent_id: string
 };
-
-type GetStopsResult =
-    | { error: string; stops: null }
-    | { error: undefined; stops: Stop[] };
-
-async function getStops(): Promise<GetStopsResult> {
-    const form = new FormData()
-    form.set("children", "no")
-    const req = await ApiFetch<Stop[]>(`stops`, { method: "POST", body: form })
-    if (!req.ok) {
-        return { error: req.error, stops: null };
-    }
-    return { error: undefined, stops: req.data }
-}

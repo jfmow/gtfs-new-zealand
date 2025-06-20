@@ -1,12 +1,6 @@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUrl } from "@/lib/url-context";
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes";
 import { Label } from "@/components/ui/label";
@@ -42,7 +36,8 @@ export default function Settings() {
                                         {urlOptions.map((item) => (
                                             <SelectItem key={item.url} value={item.url}>
                                                 <div className="flex items-center gap-2">
-                                                    <img className="w-4 h-4 object-contain" src={item.logoUrl} />
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img alt="provider logo" className="w-4 h-4 object-contain" src={item.logoUrl} />
                                                     <span style={{ color: item.textColor }}>{item.displayName}</span>
                                                 </div>
                                             </SelectItem>

@@ -15,7 +15,7 @@ import (
 )
 
 // TODO: rewrite the services sse
-func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getParentStopCache caches.ParentStopsCache) {
+func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
 	//TODO: change back to static no sse

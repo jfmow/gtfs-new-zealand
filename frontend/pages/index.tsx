@@ -6,12 +6,7 @@ import { DatePicker } from "@/components/ui/date-picker";
 import { useQueryParams } from "@/lib/url-params";
 import { MessageCircleWarningIcon, StarIcon } from "lucide-react";
 import { useEffect, useState } from "react";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion"
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Header } from "@/components/nav";
 
 export default function Home() {
