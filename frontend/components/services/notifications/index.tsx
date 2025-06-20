@@ -82,10 +82,10 @@ export default function StopNotifications({ stopName, children }: { stopName: st
                                             const subbed = await subscribeToStop(stopName)
                                             if (subbed) {
                                                 toast.success(`Notifications enabled for ${stopName} for 30 days`)
+                                                setAlreadySubbed(true)
                                             } else {
                                                 toast.error(`Failed to enable notifications for ${stopName}`)
                                             }
-                                            setAlreadySubbed(true)
                                         }}>
                                             Enable Alerts
                                         </Button>

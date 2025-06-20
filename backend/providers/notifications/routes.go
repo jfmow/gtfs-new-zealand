@@ -25,7 +25,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	var alertsCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
 
-	notificationDB, err := newDatabase(localTimeZone, "hi@suddsy.dev")
+	notificationDB, err := newDatabase(localTimeZone, "hi@suddsy.dev", "at")
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -125,7 +125,6 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, parentStop.StopId, gtfsData)
 		if err != nil {
-			fmt.Println(err)
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
 				Message: "invalid subscription data",

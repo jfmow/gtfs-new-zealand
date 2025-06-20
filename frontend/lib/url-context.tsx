@@ -85,7 +85,6 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
     const headers: HeadersInit = {
         ...(options?.headers || {}),
         "X-Trace-ID": traceId,
-        "Content-Type": "application/json",
     };
 
     const req = await fetch(fullUrl, {

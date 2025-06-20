@@ -125,12 +125,15 @@ func (v Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, p
 /*
 Create a new notification database
 */
-func newDatabase(tz *time.Location, mailToEmail string) (Database, error) {
+func newDatabase(tz *time.Location, mailToEmail string, gtfsName string) (Database, error) {
+	if len(gtfsName) < 2 {
+		return Database{}, errors.New("gtfsName must be at least 2 characters long")
+	}
 
-	os.Mkdir(filepath.Join(getWorkDir(), "_providers"), os.ModePerm)
-	os.Mkdir(filepath.Join(getWorkDir(), "_providers", "at"), os.ModePerm)
+	os.Mkdir(filepath.Join(getWorkDir(), "notifications"), os.ModePerm)
+	os.Mkdir(filepath.Join(getWorkDir(), "notifications", gtfsName), os.ModePerm)
 
-	db, err := sqlx.Open("sqlite", filepath.Join(getWorkDir(), "_providers", "at", "notifications.db"))
+	db, err := sqlx.Open("sqlite", filepath.Join(getWorkDir(), "notifications", gtfsName, "notifications.db"))
 	if err != nil {
 		fmt.Println(err)
 		panic("Failed to open the database")
