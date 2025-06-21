@@ -1,13 +1,13 @@
 import { useUserLocation } from "@/lib/userLocation"
 import { memo, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
-import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer"
 import { Button } from "../ui/button"
 import { Loader2, MapIcon, Navigation } from "lucide-react"
 import { getStopsForTrip } from "./stops"
 import { ApiFetch } from "@/lib/url-context"
 import ServiceTrackerContent from "./tracker-content"
 import { useIsMobile } from "@/lib/utils"
+import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet"
 
 interface ServiceTrackerModalProps {
     tripId: string
@@ -170,14 +170,14 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     }
 
     return (
-        <Drawer handleOnly={true} open={open} onOpenChange={handleOpenChange}>
-            {triggerButton && <DrawerTrigger asChild>{triggerButton}</DrawerTrigger>}
+        <Sheet open={open} onOpenChange={handleOpenChange}>
+            {triggerButton && <SheetTrigger asChild>{triggerButton}</SheetTrigger>}
             {open && (vehicle || (!has && previewData && stops)) && (
-                <DrawerContent className="max-h-[90vh]">
-                    <div className="mx-auto w-full max-w-sm p-2 overflow-y-auto">{content}</div>
-                </DrawerContent>
+                <SheetContent side={"bottom"} className="max-h-[90vh] rounded-t-lg">
+                    <div className="mx-auto w-full max-w-sm overflow-y-auto">{content}</div>
+                </SheetContent>
             )}
-        </Drawer>
+        </Sheet>
     )
 })
 

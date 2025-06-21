@@ -1,10 +1,9 @@
+"use client"
+
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { ChevronDown } from "lucide-react"
-import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Sheet, SheetClose, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import LoadingSpinner from "../loading-spinner"
 import Navigate from "../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
@@ -45,67 +44,23 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     const { currentUrl } = useUrl()
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
-    const [isSheetOpen, setIsSheetOpen] = useState(false)
-    const [userHasScrolled, setUserHasScrolled] = useState(false)
-    const [lastNextStopId, setLastNextStopId] = useState<string | null>(null)
-    const scrollTimeoutRef = useRef<NodeJS.Timeout>()
+    const [tabValue, setTabValue] = useState("track")
 
+    // Auto-scroll to next stop when it changes or when switching to stops tab
     useEffect(() => {
-        if (isSheetOpen && nextStopRef.current && vehicle && vehicle.trip.next_stop && !userHasScrolled) {
-            // Only auto-scroll if user hasn't manually scrolled and next stop has changed
-            const currentNextStopId = vehicle.trip.next_stop.id
-            if (currentNextStopId !== lastNextStopId) {
-                const timer = setTimeout(() => {
-                    nextStopRef.current?.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                        inline: "nearest",
-                    })
-                }, 300)
+        if (tabValue === "stops" && nextStopRef.current && scrollAreaRef.current) {
+            // Small delay to ensure the tab content is rendered
+            const timeoutId = setTimeout(() => {
+                nextStopRef.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                    inline: "nearest",
+                })
+            }, 100)
 
-                setLastNextStopId(currentNextStopId)
-                return () => clearTimeout(timer)
-            }
+            return () => clearTimeout(timeoutId)
         }
-    }, [isSheetOpen, vehicle, userHasScrolled, lastNextStopId])
-
-    // Handle scroll detection
-    useEffect(() => {
-        const scrollArea = scrollAreaRef.current
-        if (!scrollArea) return
-
-        const handleScroll = () => {
-            // User has manually scrolled
-            setUserHasScrolled(true)
-
-            // Clear any existing timeout
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current)
-            }
-
-            // Reset scroll flag after 5 seconds of no scrolling
-            scrollTimeoutRef.current = setTimeout(() => {
-                setUserHasScrolled(false)
-            }, 5000)
-        }
-
-        scrollArea.addEventListener("scroll", handleScroll, { passive: true })
-
-        return () => {
-            scrollArea.removeEventListener("scroll", handleScroll)
-            if (scrollTimeoutRef.current) {
-                clearTimeout(scrollTimeoutRef.current)
-            }
-        }
-    }, [isSheetOpen])
-
-    // Reset scroll state when sheet opens/closes
-    useEffect(() => {
-        if (isSheetOpen) {
-            setUserHasScrolled(false)
-            setLastNextStopId(null)
-        }
-    }, [isSheetOpen])
+    }, [tabValue, vehicle?.trip.next_stop.id, vehicle?.trip.next_stop.platform])
 
     // Vehicle tracking mode
     if (vehicle) {
@@ -134,13 +89,16 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </div>
                 </div>
 
-                <Tabs defaultValue="track" className="w-full">
+                <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
                     <TabsList className="w-full">
+                        <TabsTrigger disabled={stops?.length === 0} className="w-full" value="stops">
+                            Stops
+                        </TabsTrigger>
                         <TabsTrigger className="w-full" value="track">
                             Track
                         </TabsTrigger>
                         <TabsTrigger disabled={!currentStop || tripId === ""} className="w-full" value="navigate">
-                            Navigate
+                            Directions
                         </TabsTrigger>
                     </TabsList>
 
@@ -202,52 +160,43 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                 />
                             </Suspense>
                         )}
+                    </TabsContent>
 
-                        <Sheet onOpenChange={setIsSheetOpen}>
-                            <SheetTrigger asChild>
-                                <Button className="w-full mt-2">List of stops</Button>
-                            </SheetTrigger>
-                            <SheetContent side={"right"} className="flex flex-col">
-                                <SheetHeader>
-                                    <SheetTitle>
-                                        Stops for: {vehicle.route.name} - {vehicle.trip.headsign}
-                                    </SheetTitle>
-                                </SheetHeader>
-                                <ScrollArea ref={scrollAreaRef} className="flex-1 my-4">
-                                    <ol className="flex items-center justify-center flex-col gap-1 px-1">
-                                        {stops?.map((item, index) => {
-                                            const isCurrentStop = vehicle.trip.current_stop.id === item.id && item.platform === vehicle.trip.current_stop.platform
-                                            const isNextStop = vehicle.trip.next_stop.id === item.id && vehicle.trip.next_stop.platform === item.platform && !isCurrentStop
-                                            const passed = vehicle.trip.current_stop.sequence > item.sequence
-                                            return (
-                                                <li
-                                                    key={item.id}
-                                                    ref={isNextStop ? nextStopRef : null}
-                                                    className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm"
-                                                >
-                                                    <p
-                                                        className={`
+                    <TabsContent value="stops">
+                        <div ref={scrollAreaRef} className="my-4 max-h-[300px] overflow-y-auto">
+                            <ol className="flex items-center justify-center flex-col gap-1 px-1">
+                                {stops?.map((item, index) => {
+                                    const isCurrentStop =
+                                        vehicle.trip.current_stop.id === item.id && item.platform === vehicle.trip.current_stop.platform
+                                    const isNextStop =
+                                        vehicle.trip.next_stop.id === item.id &&
+                                        vehicle.trip.next_stop.platform === item.platform &&
+                                        !isCurrentStop
+                                    const passed = vehicle.trip.current_stop.sequence > item.sequence
+                                    return (
+                                        <li
+                                            key={item.id}
+                                            ref={isNextStop ? nextStopRef : null}
+                                            className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm"
+                                        >
+                                            <p
+                                                className={`
                                                             ${isNextStop ? "text-green-400 font-bold" : isCurrentStop ? "text-orange-400/90" : passed ? "text-zinc-400" : ""}
                                                         `}
-                                                    >
-                                                        {formatTextToNiceLookingWords(item.name, true)}{" "}
-                                                        {item.platform ? `| Platform ${item.platform}` : ""}
-                                                    </p>
-                                                    {index < stops.length - 1 && (
-                                                        <ChevronDown className={`${isCurrentStop ? "text-orange-400" : passed ? `text-zinc-400` : ``} w-4 h-4`} />
-                                                    )}
-                                                </li>
-                                            )
-                                        })}
-                                    </ol>
-                                </ScrollArea>
-                                <SheetClose asChild>
-                                    <Button className="w-full mt-auto" variant={"default"}>
-                                        Close
-                                    </Button>
-                                </SheetClose>
-                            </SheetContent>
-                        </Sheet>
+                                            >
+                                                {formatTextToNiceLookingWords(item.name, true)}{" "}
+                                                {item.platform ? `| Platform ${item.platform}` : ""}
+                                            </p>
+                                            {index < stops.length - 1 && (
+                                                <ChevronDown
+                                                    className={`${isCurrentStop ? "text-orange-400" : passed ? `text-zinc-400` : ``} w-4 h-4`}
+                                                />
+                                            )}
+                                        </li>
+                                    )
+                                })}
+                            </ol>
+                        </div>
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (
@@ -282,11 +231,14 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
                 <Tabs defaultValue="track" className="w-full">
                     <TabsList className="w-full">
+                        <TabsTrigger className="w-full" value="stops">
+                            Stops
+                        </TabsTrigger>
                         <TabsTrigger className="w-full" value="track">
                             Track
                         </TabsTrigger>
                         <TabsTrigger disabled={!currentStop || tripId === ""} className="w-full" value="navigate">
-                            Navigate
+                            Directions
                         </TabsTrigger>
                     </TabsList>
 
@@ -320,44 +272,24 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                 height={"300px"}
                             />
                         </Suspense>
+                    </TabsContent>
 
-                        <Sheet onOpenChange={setIsSheetOpen}>
-                            <SheetTrigger asChild>
-                                <Button className="w-full mt-2">List of stops</Button>
-                            </SheetTrigger>
-                            <SheetContent side={"right"} className="flex flex-col">
-                                <SheetHeader>
-                                    <SheetTitle>
-                                        Stops for: {previewData.route_name} - {previewData.tripHeadsign}
-                                    </SheetTitle>
-                                </SheetHeader>
-                                <ScrollArea ref={scrollAreaRef} className="flex-1 my-4">
-                                    <ol className="flex items-center justify-center flex-col gap-1 px-1">
-                                        {stops.map((item, index) => {
-                                            return (
-                                                <li
-                                                    key={item.id}
-                                                    className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm"
-                                                >
-                                                    <p>
-                                                        {formatTextToNiceLookingWords(item.name, true)}{" "}
-                                                        {item.platform ? `| Platform ${item.platform}` : ""}
-                                                    </p>
-                                                    {index < stops.length - 1 && (
-                                                        <ChevronDown className={`w-4 h-4`} />
-                                                    )}
-                                                </li>
-                                            )
-                                        })}
-                                    </ol>
-                                </ScrollArea>
-                                <SheetClose asChild>
-                                    <Button className="w-full mt-auto" variant={"default"}>
-                                        Close
-                                    </Button>
-                                </SheetClose>
-                            </SheetContent>
-                        </Sheet>
+                    <TabsContent value="stops">
+                        <div ref={scrollAreaRef} className="max-h-[300px] my-4 overflow-y-auto">
+                            <ol className="flex items-center justify-center flex-col gap-1 px-1">
+                                {stops.map((item, index) => {
+                                    return (
+                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm">
+                                            <p>
+                                                {formatTextToNiceLookingWords(item.name, true)}{" "}
+                                                {item.platform ? `| Platform ${item.platform}` : ""}
+                                            </p>
+                                            {index < stops.length - 1 && <ChevronDown className={`w-4 h-4`} />}
+                                        </li>
+                                    )
+                                })}
+                            </ol>
+                        </div>
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (
