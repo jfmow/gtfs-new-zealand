@@ -315,7 +315,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             tripId={service.trip_id}
                                         />
                                         <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
-                                            {service.departed ? "Departed" : service.stops_away === 0 ? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
+                                            {service.departed ? "Departed" : (service.stops_away === 0 && service.time_till_arrival <= 1 )? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
                                         </span>
                                     </div>
                                 </CardContent>
