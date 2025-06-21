@@ -55,7 +55,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [errorTrace, setErrorTrace] = useState("")
-    const [platformFilter, setPlatformFilter] = useState<string | number | undefined>(undefined)
+    const [platformFilter, setPlatformFilter] = useState<string | number | "all">("all")
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
 
@@ -77,7 +77,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
 
         setServices([])
-        setPlatformFilter(undefined)
+        setPlatformFilter("all")
         setIsInitialLoading(true)
 
         async function fetchServices(date?: Date) {
@@ -165,7 +165,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                             disabled={!platformFilter}
                             className="w-full"
                             size={"sm"}
-                            onClick={() => setPlatformFilter(undefined)}
+                            onClick={() => setPlatformFilter("all")}
                         >
                             All
                         </Button>
@@ -190,9 +190,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 aria-label="List of services for the stop"
                 className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden"
             >
-                {sortServices(services, platformFilter).map((service) => (
+                {sortServices(services, platformFilter).map((service, index) => (
                     <li
-                        key={service.trip_id}
+                        key={service.trip_id + index}
                         className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
                     >
                         <Card className="shadow-none">
@@ -366,9 +366,11 @@ function sortServices(
     platformFilter: string | number | undefined,
 ) {
     return services
-        .filter((item) => item.platform === platformFilter || platformFilter === undefined)
-        .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
+        .filter(item =>
+            platformFilter === "all" || item.platform === platformFilter
+        )
         .filter((item) => !item.departed)
+        .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
 }
 
 function formatArrivalTime(minutes: number): string {
