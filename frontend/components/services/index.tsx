@@ -192,7 +192,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             >
                 {sortServices(services, platformFilter).map((service) => (
                     <li
-                        key={service.trip_id}
+                        key={service.trip_id + service.route.id + service.platform}
                         className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
                     >
                         <Card className="shadow-none">
@@ -315,7 +315,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             tripId={service.trip_id}
                                         />
                                         <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
-                                            {service.departed ? "Departed" : (service.stops_away === 0 && service.time_till_arrival <= 1 )? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
+                                            {service.departed ? "Departed" : (service.stops_away === 0 && service.time_till_arrival <= 1) ? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
                                         </span>
                                     </div>
                                 </CardContent>
