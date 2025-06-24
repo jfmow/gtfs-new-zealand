@@ -1,10 +1,12 @@
 import leaflet, { MarkerClusterGroup } from "leaflet"
-import React, { useEffect, useRef } from "react"
+import React, { useEffect, useRef, useState } from "react"
 import 'leaflet/dist/leaflet.css';
 import "leaflet.markercluster";
 import { ShapesResponse, GeoJSON } from "./geojson-types";
 import { ApiFetch } from "@/lib/url-context";
-import { buttonVariants } from "../ui/button";
+import { Button, buttonVariants } from "../ui/button";
+import ReactDOM from "react-dom/client";
+import { Repeat, Globe, Satellite } from "lucide-react";
 
 export interface MapItem {
     lat: number;
@@ -58,6 +60,10 @@ type ItemsOnMap = {
         marker: leaflet.Marker | null
         control: leaflet.Control | null
     }
+    map_variant: {
+        marker: leaflet.Marker | null
+        control: leaflet.Control | null
+    }
     compass: {
         control: leaflet.Control | null
     }
@@ -83,7 +89,7 @@ export default function Map({
     defaultCenter
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null)
-    const itemsOnMap = useRef<ItemsOnMap>({ compass: { control: null }, zoom: { controls: [] }, vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
+    const itemsOnMap = useRef<ItemsOnMap>({ map_variant: { control: null, marker: null }, compass: { control: null }, zoom: { controls: [] }, vehicles: { clusterGroup: null, markers: [], control: null }, stops: { clusterGroup: null, markers: [] }, user: { marker: null, control: null }, routeLine: { line: null, tripId: "", routeId: "" }, navigation: { line: null } })
     //Stuff on the map, like markers  and the map itself
 
     useEffect(() => {
@@ -91,6 +97,7 @@ export default function Map({
         let map: leaflet.Map | null = mapRef.current
         if (!map) {
             map = createNewMap(mapRef, map_id)
+            addMapVariantControlControl(itemsOnMap.current.map_variant, map)
             setDefaultZoom(map, defaultCenter, userLocation, vehicles, stops, alwaysFitBoundsWithoutUser || false);
             addZoomControls(map, itemsOnMap.current.zoom)
             addUserCompassControl(itemsOnMap.current.compass, map)
@@ -283,11 +290,7 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: s
         //Create the map
         map = leaflet.map(map_id, { zoomControl: false });
         ref.current = map;
-        leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19,
-            minZoom: 8,
-            attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
-        }).addTo(map);
+        setTileLayer(getMapVariant(), map)
     }
     return map
 }
@@ -662,3 +665,157 @@ const routesWithIcons = [
     "STH-201",
     "WEST-201",
 ]
+
+type MapVariant = "satellite" | "default" | "auto"
+
+function setMapVariant(variant: MapVariant) {
+    window.localStorage.setItem("map:variant", variant)
+    return variant
+}
+function getMapVariant(): MapVariant {
+    const val = window.localStorage.getItem("map:variant")
+    const validVariants: MapVariant[] = ["satellite", "default", "auto"];
+    if (!val || val === "" || !validVariants.includes(val as MapVariant)) {
+        return "default"
+    } else {
+        return val as MapVariant
+    }
+}
+
+function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], map: leaflet.Map) {
+    const oldVariantControl = activeMapItem.control;
+    if (oldVariantControl) {
+        map.removeControl(oldVariantControl);
+    }
+
+    const variantControl = new leaflet.Control({ position: 'topright' });
+    variantControl.onAdd = () => {
+        const container = leaflet.DomUtil.create('div');
+        container.style.background = "none";
+        container.style.border = "none";
+        container.style.display = "flex";
+        container.style.alignItems = "center";
+
+        // Prevent map events when interacting with the select
+        container.addEventListener("mousedown", e => e.stopPropagation());
+        container.addEventListener("pointerdown", e => e.stopPropagation());
+        container.addEventListener("dblclick", e => e.stopPropagation());
+
+        // Render the shadcn select menu into the container
+        const root = ReactDOM.createRoot(container);
+        root.render(
+            <MapVariantToggle
+                value={getMapVariant()}
+                onChange={variant => {
+                    setMapVariant(variant);
+                    setTileLayer(variant, map)
+                    return variant
+                }}
+            />
+        );
+        return container;
+    };
+    activeMapItem.control = variantControl;
+    map.addControl(variantControl);
+
+    // Helper to get the current tile layer URL template
+    function getCurrentTileLayerTemplate(map: leaflet.Map): string | null {
+        let found: string | null = null;
+        map.eachLayer((layer) => {
+            type TileLayerWithUrl = leaflet.TileLayer & { _url: string };
+            if (layer instanceof leaflet.TileLayer && typeof (layer as TileLayerWithUrl)._url === "string") {
+                found = (layer as TileLayerWithUrl)._url;
+            }
+        });
+        return found;
+    }
+
+    const handler = () => {
+        if (getMapVariant() === "auto") {
+            const zoom = map.getZoom();
+            const currentTemplate = getCurrentTileLayerTemplate(map);
+            const defaultTemplate = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+            const satelliteTemplate = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+
+            if (zoom >= 17 && currentTemplate !== satelliteTemplate) {
+                setTileLayer("satellite", map);
+            } else if (zoom < 17 && currentTemplate !== defaultTemplate) {
+                setTileLayer("default", map);
+            }
+        }
+    };
+    map.on("zoomend", handler);
+    handler();
+}
+
+function setTileLayer(variant: MapVariant, map: leaflet.Map) {
+    // Remove all existing tile layers
+    map.eachLayer((layer) => {
+        // Only remove tile layers (not markers, overlays, etc.)
+        if (layer instanceof leaflet.TileLayer) {
+            try {
+                map.removeLayer(layer);
+            } catch { }
+        }
+    });
+
+    switch (variant) {
+        case "default":
+            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                minZoom: 8,
+                attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
+            }).addTo(map);
+            break;
+        case "satellite":
+            leaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                maxZoom: 19,
+                minZoom: 8,
+                attribution: '&copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+            }).addTo(map);
+            break;
+        case "auto":
+            // For "auto", you could implement logic to choose based on system preference or time of day.
+            // For now, fallback to default.
+            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                minZoom: 8,
+                attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
+            }).addTo(map);
+            break;
+        default:
+            break;
+    }
+}
+
+// Helper React component for the select menu
+const mapVariantIcons: Record<MapVariant, React.ReactNode> = {
+    default: <Globe className="w-4 h-4" />,
+    auto: <Repeat className="w-4 h-4" />, // Use Repeat as the "auto" icon
+    satellite: <Satellite className="w-4 h-4" />,
+};
+
+const mapVariantOrder: MapVariant[] = ["default", "auto", "satellite"];
+
+function MapVariantToggle({ value, onChange }: { value: MapVariant, onChange: (v: MapVariant) => MapVariant }) {
+    const [currentVariant, setCurrentVariant] = useState<MapVariant>(value);
+
+    // Determine the next variant in the cycle
+    const currentIndex = mapVariantOrder.indexOf(currentVariant);
+    const nextVariant = mapVariantOrder[(currentIndex + 1) % mapVariantOrder.length];
+
+    return (
+        <Button
+            size="icon"
+            variant="default"
+            title={`Switch map style (${nextVariant})`}
+            onClick={() => {
+                const newVal = onChange(nextVariant);
+                setCurrentVariant(newVal);
+            }}
+            className="border-none"
+        >
+            {mapVariantIcons[currentVariant]}
+        </Button>
+    );
+}
