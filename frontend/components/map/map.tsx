@@ -682,6 +682,8 @@ function getMapVariant(): MapVariant {
     }
 }
 
+const SATALITE_TILELAYER = "https://basemaps.linz.govt.nz/v1/tiles/aerial/WebMercatorQuad/{z}/{x}/{y}.webp?api=c01jyg7rh6fhsd5jqxe4y1zbr6v"
+
 function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], map: leaflet.Map) {
     const oldVariantControl = activeMapItem.control;
     if (oldVariantControl) {
@@ -735,7 +737,7 @@ function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], m
             const zoom = map.getZoom();
             const currentTemplate = getCurrentTileLayerTemplate(map);
             const defaultTemplate = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-            const satelliteTemplate = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+            const satelliteTemplate = SATALITE_TILELAYER;
 
             if (zoom >= 17 && currentTemplate !== satelliteTemplate) {
                 setTileLayer("satellite", map);
@@ -747,7 +749,6 @@ function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], m
     map.on("zoomend", handler);
     handler();
 }
-
 function setTileLayer(variant: MapVariant, map: leaflet.Map) {
     // Remove all existing tile layers
     map.eachLayer((layer) => {
@@ -768,10 +769,18 @@ function setTileLayer(variant: MapVariant, map: leaflet.Map) {
             }).addTo(map);
             break;
         case "satellite":
-            leaflet.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            // Add satellite imagery as base
+            leaflet.tileLayer(SATALITE_TILELAYER, {
                 maxZoom: 19,
                 minZoom: 8,
-                attribution: '&copy; <a href="https://www.esri.com/">Esri</a> &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+                attribution: `&copy; <a href="https://www.linz.govt.nz">Toitū Te Whenua Land Information New Zealand</a>, imagery © Maxar Technologies, Copernicus Sentinel, and GEBCO. Licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.`
+            }).addTo(map);
+            // Add Carto Voyager labels as an overlay (labels only, transparent background)
+            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
+                maxZoom: 19,
+                minZoom: 8,
+                attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>',
+                pane: 'overlayPane'
             }).addTo(map);
             break;
         case "auto":
