@@ -18,9 +18,9 @@ var BasemapRateLimiterConfig = middleware.RateLimiterConfig{
 
 	Store: middleware.NewRateLimiterMemoryStoreWithConfig(
 		middleware.RateLimiterMemoryStoreConfig{
-			Rate:      16.67,           // ~1000 req/min
-			Burst:     50,              // allow short spikes
-			ExpiresIn: 5 * time.Minute, // expiration time for client buckets
+			Rate:      200,
+			Burst:     350,
+			ExpiresIn: 5 * time.Minute,
 		},
 	),
 
