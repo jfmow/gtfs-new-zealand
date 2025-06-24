@@ -190,9 +190,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 aria-label="List of services for the stop"
                 className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden"
             >
-                {sortServices(services, platformFilter).map((service, index) => (
+                {sortServices(services, platformFilter).map((service) => (
                     <li
-                        key={service.trip_id + index}
+                        key={service.trip_id}
                         className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
                     >
                         <Card className="shadow-none">
