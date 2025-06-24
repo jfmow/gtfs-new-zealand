@@ -66,7 +66,6 @@ func main() {
 	nzApi.GET("/tiles/:z/:x/:y", basemap.LINZBasemapProxy)
 
 	//Enables rate limiter middleware for the following routes
-	e.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 	e.Use(TraceIDMiddleware())
 	e.Use(RequestLoggerMiddleware())
 
@@ -79,6 +78,7 @@ func main() {
 	//e.GET("/logs", GetLogsHandler)
 
 	atApi := e.Group("/at")
+	atApi.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 	//mlApi := e.Group("/wel")
 	//seqAPI := e.Group("/seq")
 	//christchurchApi := e.Group("/christ")

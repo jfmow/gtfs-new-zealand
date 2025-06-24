@@ -18,9 +18,9 @@ var BasemapRateLimiterConfig = middleware.RateLimiterConfig{
 
 	Store: middleware.NewRateLimiterMemoryStoreWithConfig(
 		middleware.RateLimiterMemoryStoreConfig{
-			Rate:      200,
-			Burst:     350,
-			ExpiresIn: 5 * time.Minute,
+			Rate:      300,
+			Burst:     600,
+			ExpiresIn: 2 * time.Minute,
 		},
 	),
 
