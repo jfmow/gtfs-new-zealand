@@ -672,6 +672,7 @@ function setMapVariant(variant: MapVariant) {
     window.localStorage.setItem("map:variant", variant)
     return variant
 }
+
 function getMapVariant(): MapVariant {
     const val = window.localStorage.getItem("map:variant")
     const validVariants: MapVariant[] = ["satellite", "default", "auto"];
@@ -682,7 +683,9 @@ function getMapVariant(): MapVariant {
     }
 }
 
-const SATALITE_TILELAYER = "https://trainapi.suddsy.dev/nz/tiles/{z}/{x}/{y}"
+const SATELLITE_TILELAYER = "https://trainapi.suddsy.dev/nz/tiles/{z}/{x}/{y}"
+const PLAIN_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
+const LABELS_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png"
 
 function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], map: leaflet.Map) {
     const oldVariantControl = activeMapItem.control;
@@ -725,8 +728,14 @@ function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], m
         let found: string | null = null;
         map.eachLayer((layer) => {
             type TileLayerWithUrl = leaflet.TileLayer & { _url: string };
-            if (layer instanceof leaflet.TileLayer && typeof (layer as TileLayerWithUrl)._url === "string") {
-                found = (layer as TileLayerWithUrl)._url;
+            if (
+                layer instanceof leaflet.TileLayer &&
+                typeof (layer as TileLayerWithUrl)._url === "string"
+            ) {
+                const url = (layer as TileLayerWithUrl)._url;
+                // Ignore the labels only layer
+                if (url === LABELS_TILELAYER) return;
+                found = url;
             }
         });
         return found;
@@ -736,8 +745,8 @@ function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], m
         if (getMapVariant() === "auto") {
             const zoom = map.getZoom();
             const currentTemplate = getCurrentTileLayerTemplate(map);
-            const defaultTemplate = 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-            const satelliteTemplate = SATALITE_TILELAYER;
+            const defaultTemplate = PLAIN_TILELAYER;
+            const satelliteTemplate = SATELLITE_TILELAYER;
 
             if (zoom >= 17 && currentTemplate !== satelliteTemplate) {
                 setTileLayer("satellite", map);
@@ -749,6 +758,7 @@ function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], m
     map.on("zoomend", handler);
     handler();
 }
+
 function setTileLayer(variant: MapVariant, map: leaflet.Map) {
     // Remove all existing tile layers
     map.eachLayer((layer) => {
@@ -762,52 +772,46 @@ function setTileLayer(variant: MapVariant, map: leaflet.Map) {
 
     switch (variant) {
         case "default":
-            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            leaflet.tileLayer(PLAIN_TILELAYER, {
                 maxZoom: 19,
                 minZoom: 8,
                 attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
             }).addTo(map);
             break;
         case "satellite":
-            // Add satellite imagery as base
-            leaflet.tileLayer(SATALITE_TILELAYER, {
+            leaflet.tileLayer(SATELLITE_TILELAYER, {
                 maxZoom: 19,
                 minZoom: 8,
                 attribution: `&copy; <a href="https://www.linz.govt.nz">Toitū Te Whenua Land Information New Zealand</a>, imagery © Maxar Technologies, Copernicus Sentinel, and GEBCO. Licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.`
             }).addTo(map);
-            // Add Carto Voyager labels as an overlay (labels only, transparent background)
-            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png', {
-                maxZoom: 19,
-                minZoom: 8,
-                attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>',
-                pane: 'overlayPane'
-            }).addTo(map);
             break;
-        case "auto":
-            // For "auto", you could implement logic to choose based on system preference or time of day.
-            // For now, fallback to default.
-            leaflet.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        default:
+            leaflet.tileLayer(PLAIN_TILELAYER, {
                 maxZoom: 19,
                 minZoom: 8,
                 attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>'
             }).addTo(map);
             break;
-        default:
-            break;
     }
+
+    //Labels only
+    leaflet.tileLayer(LABELS_TILELAYER, {
+        maxZoom: 19,
+        minZoom: 8,
+        attribution: '&copy; <a href="https://www.carto.com/attributions">CARTO</a>',
+        pane: 'overlayPane'
+    }).addTo(map);
 }
 
-// Helper React component for the select menu
-const mapVariantIcons: Record<MapVariant, React.ReactNode> = {
-    default: <Globe className="w-4 h-4" />,
-    auto: <Repeat className="w-4 h-4" />, // Use Repeat as the "auto" icon
-    satellite: <Satellite className="w-4 h-4" />,
-};
-
-const mapVariantOrder: MapVariant[] = ["default", "auto", "satellite"];
 
 function MapVariantToggle({ value, onChange }: { value: MapVariant, onChange: (v: MapVariant) => MapVariant }) {
     const [currentVariant, setCurrentVariant] = useState<MapVariant>(value);
+    const mapVariantIcons = {
+        default: <Globe className="w-4 h-4" />,
+        auto: <Repeat className="w-4 h-4" />,
+        satellite: <Satellite className="w-4 h-4" />,
+    };
+    const mapVariantOrder: MapVariant[] = ["default", "auto", "satellite"];
 
     // Determine the next variant in the cycle
     const currentIndex = mapVariantOrder.indexOf(currentVariant);
