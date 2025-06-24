@@ -682,7 +682,7 @@ function getMapVariant(): MapVariant {
     }
 }
 
-const SATALITE_TILELAYER = "https://basemaps.linz.govt.nz/v1/tiles/aerial/WebMercatorQuad/{z}/{x}/{y}.webp?api=c01jyg7rh6fhsd5jqxe4y1zbr6v"
+const SATALITE_TILELAYER = "https://trainapi.suddsy.dev/nz/tiles/{z}/{x}/{y}"
 
 function addMapVariantControlControl(activeMapItem: ItemsOnMap["map_variant"], map: leaflet.Map) {
     const oldVariantControl = activeMapItem.control;
