@@ -73,3 +73,7 @@
     @apply bg-background text-foreground;
   }
 }
+
+.lucide {
+  stroke-width: 2.5px;
+}
