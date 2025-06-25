@@ -6,7 +6,6 @@ import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
 import { Button } from "../ui/button"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
@@ -193,24 +192,24 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 {sortServices(services, platformFilter).map((service) => (
                     <li
                         key={service.trip_id + service.route.id + service.platform}
-                        className={`overflow-hidden ${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "opacity-50" : ""}`}
+                        className={`${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "" : ""}`}
                     >
-                        <Card className="shadow-none">
+                        <Card className={`${service.departed ? "bg-gradient-to-br from-red-200 via-orange-100 to-orange-400" : ""} ${service.canceled ? "bg-gradient-to-br from-red-700 via-red-400 to-red-600" : ""}`}>
                             <CardHeader>
                                 <CardTitle>
                                     <div className="flex items-center justify-between overflow-hidden">
                                         <div className="shrink flex-1 truncate overflow-hidden">
                                             {service.canceled ? (
                                                 <>
-                                                    <span className="text-red-500">Canceled | </span>
-                                                    <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                    <span className="text-red-900">Canceled | </span>
+                                                    <span className="text-red-900">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                 </>
                                             ) : (
                                                 <>
                                                     {!displayingSchedulePreview && service.departed ? (
                                                         <>
-                                                            <span className="text-orange-500">Departed | </span>
-                                                            <span className="opacity-50">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                            <span className="text-orange-900">Departed | </span>
+                                                            <span className="text-orange-900">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                         </>
                                                     ) : (
                                                         <span className="">{formatTextToNiceLookingWords(service.headsign)}</span>
@@ -219,57 +218,31 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             )}
                                         </div>
                                         <div className="flex gap-1 items-center mr-2">
-                                            <TooltipProvider>
-                                                <Tooltip delayDuration={0}>
-                                                    <TooltipTrigger>
-                                                        <BikeIcon
-                                                            aria-label={
-                                                                service.bikes_allowed === 0
-                                                                    ? "Bikes might/might not be allowed"
-                                                                    : service.bikes_allowed === 1
-                                                                        ? "Bikes are allowed"
-                                                                        : "Bikes are not allowed"
-                                                            }
-                                                            className={`w-4 h-4 ${service.bikes_allowed === 0 ? "text-yellow-500" : service.bikes_allowed === 1 ? "text-green-500" : "text-red-500"}`}
-                                                        />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {service.bikes_allowed === 0
-                                                            ? "Bikes might/might not be allowed"
-                                                            : service.bikes_allowed === 1
-                                                                ? "Bikes are allowed"
-                                                                : "Bikes are not allowed"}
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
-                                            <TooltipProvider>
-                                                <Tooltip delayDuration={0}>
-                                                    <TooltipTrigger>
-                                                        <AccessibilityIcon
-                                                            aria-label={
-                                                                service.wheelchairs_allowed === 0
-                                                                    ? "Might/Might not be wheelchair accessible"
-                                                                    : service.wheelchairs_allowed === 1
-                                                                        ? "Is wheelchair accessible"
-                                                                        : "Not Wheelchair accessible"
-                                                            }
-                                                            className={`w-4 h-4 ${service.wheelchairs_allowed === 0 ? "text-yellow-500" : service.wheelchairs_allowed === 1 ? "text-green-500" : "text-red-500"}`}
-                                                        />
-                                                    </TooltipTrigger>
-                                                    <TooltipContent>
-                                                        {service.wheelchairs_allowed === 0
-                                                            ? "Might/Might not be wheelchair accessible"
-                                                            : service.wheelchairs_allowed === 1
-                                                                ? "Is wheelchair accessible"
-                                                                : "Not Wheelchair accessible"}
-                                                    </TooltipContent>
-                                                </Tooltip>
-                                            </TooltipProvider>
+                                            <BikeIcon
+                                                aria-label={
+                                                    service.bikes_allowed === 0
+                                                        ? "Bikes might be allowed"
+                                                        : service.bikes_allowed === 1
+                                                            ? "Bikes are allowed"
+                                                            : "Bikes are not allowed"
+                                                }
+                                                className={`w-4 h-4 ${service.bikes_allowed === 0 ? "text-yellow-500" : service.bikes_allowed === 1 ? "text-green-500" : "text-red-500"}`}
+                                            />
+                                            <AccessibilityIcon
+                                                aria-label={
+                                                    service.wheelchairs_allowed === 0
+                                                        ? "Might not be wheelchair accessible"
+                                                        : service.wheelchairs_allowed === 1
+                                                            ? "Is wheelchair accessible"
+                                                            : "Not Wheelchair accessible"
+                                                }
+                                                className={`w-4 h-4 ${service.wheelchairs_allowed === 0 ? "text-yellow-500" : service.wheelchairs_allowed === 1 ? "text-green-500" : "text-red-500"}`}
+                                            />
                                         </div>
                                         <span
                                             aria-label="Service route name"
                                             className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
-                                            style={{ background: "#" + service.route.color }}
+                                            style={{ background: "#" + (service.route.color !== "" ? service.route.color : "000000") }}
                                         >
                                             {service.route.name}
                                         </span>
@@ -279,8 +252,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                 <CardDescription>
                                     <div className="grid grid-cols-2">
                                         <div className="grid">
-                                            <p className="">Arriving: {convert24hTo12h(service.arrival_time)}</p>
-                                            {!service.canceled && !displayingSchedulePreview ? (
+                                            <p>Arriving: {convert24hTo12h(service.arrival_time)}</p>
+                                            {!service.canceled && !displayingSchedulePreview && !service.departed ? (
                                                 <>
                                                     <p>Stops away: {service.stops_away || 0}</p>
                                                     <p className="inline-flex gap-1 items-center">
@@ -299,7 +272,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     </div>
                                 </CardDescription>
                             </CardHeader>
-                            {!displayingSchedulePreview && !service.canceled ? (
+                            {!displayingSchedulePreview && !service.canceled && !service.departed ? (
                                 <CardContent>
                                     <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                         <ServiceTrackerModal
@@ -365,11 +338,12 @@ function sortServices(
     services: Service[],
     platformFilter: string | number | undefined,
 ) {
+
     return services
         .filter(item =>
             platformFilter === "all" || item.platform === platformFilter
         )
-        .filter((item) => !item.departed)
+        .filter((item) => item.time_till_arrival >= -2)
         .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
 }
 
