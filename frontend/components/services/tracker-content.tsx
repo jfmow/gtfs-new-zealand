@@ -82,10 +82,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                             Final stop: {vehicle.trip.final_stop.name}{" "}
                             {vehicle.trip.final_stop.platform !== "" ? `(Platform ${vehicle.trip.final_stop.platform})` : ""}
                         </p>
-                        <details>
-                            <summary>Departure/Arrival Info</summary>
-                            <p>{vehicle.state}</p>
-                        </details>
                     </div>
                 </div>
 
