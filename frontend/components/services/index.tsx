@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AccessibilityIcon, BikeIcon } from "lucide-react"
+import { AccessibilityIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
-import { Button } from "../ui/button"
-import { fullyEncodeURIComponent } from "@/lib/utils"
+import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
 import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
@@ -57,6 +56,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [platformFilter, setPlatformFilter] = useState<string | number | "all">("all")
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
+    const [showAllPlatforms, setShowAllPlatforms] = useState(false)
+    const isMobile = useIsMobile()
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map((service) => service.platform)
@@ -152,53 +153,106 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         return <div className="max-w-[1400px] w-full mx-auto p-4"><ServicesLoadingSkeleton /></div>
     }
 
+    const uniquePlatforms = getUniquePlatforms(services)
+    const shouldShowExpandButton = uniquePlatforms.length > 3 && isMobile
+    const platformsToShow = shouldShowExpandButton && !showAllPlatforms ? uniquePlatforms.slice(0, 3) : uniquePlatforms
+
     return (
         <div className="max-w-[1400px] w-full mx-auto p-4">
             <DisplayTodaysAlerts stopName={stopName} />
-            {getUniquePlatforms(services).length > 0 ? (
-                <ol className="flex mb-2 gap-2 items-center" aria-label="Toggle platforms list">
-                    <li className="w-full">
-                        <Button
-                            aria-label="toggle all platforms"
-                            variant={"outline"}
-                            disabled={!platformFilter}
-                            className="w-full"
-                            size={"sm"}
-                            onClick={() => setPlatformFilter("all")}
-                        >
-                            All
-                        </Button>
-                    </li>
-                    {getUniquePlatforms(services).map((platform) => (
-                        <li key={platform} className="w-full">
-                            <Button
-                                aria-label="toggle platform button"
-                                className="w-full disabled:border-green-300 disabled:bg-green-200"
-                                size={"sm"}
-                                variant={"outline"}
-                                disabled={platformFilter === platform}
-                                onClick={() => setPlatformFilter(platform)}
+            {uniquePlatforms.length > 0 ? (
+                <div className="mb-4">
+                    <h3 className="text-sm font-medium text-gray-700 mb-2">Filter by Platform</h3>
+                    <div
+                        role="tablist"
+                        aria-label="Filter services by platform"
+                        className="bg-gray-50/80 backdrop-blur-sm rounded-lg border border-gray-200 shadow-md p-4"
+                    >
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-4">
+                            <button
+                                role="tab"
+                                aria-selected={platformFilter === "all"}
+                                aria-controls="services-list"
+                                className={`
+                  w-full px-4 py-2 rounded-md font-medium text-sm transition-all duration-200
+                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                  ${platformFilter === "all"
+                                        ? "bg-blue-600 text-white shadow-md border-2 border-blue-700 transform scale-105"
+                                        : "bg-white/90 text-gray-700 border-2 border-gray-200 hover:bg-white hover:border-gray-300 hover:shadow-md"
+                                    }
+                `}
+                                onClick={() => setPlatformFilter("all")}
                             >
-                                {platform}
-                            </Button>
-                        </li>
-                    ))}
-                </ol>
+                                All Platforms
+                            </button>
+
+                            {platformsToShow.map((platform) => (
+                                <button
+                                    key={platform}
+                                    role="tab"
+                                    aria-selected={platformFilter === platform}
+                                    aria-controls="services-list"
+                                    className={`
+                    w-full px-4 py-2 rounded-md font-medium text-sm transition-all duration-200
+                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
+                    ${platformFilter === platform
+                                            ? "bg-green-600 text-white shadow-md border-2 border-green-700 transform scale-105"
+                                            : "bg-white/90 text-gray-700 border-2 border-gray-200 hover:bg-white hover:border-gray-300 hover:shadow-md"
+                                        }
+                  `}
+                                    onClick={() => setPlatformFilter(platform)}
+                                >
+                                    Platform {platform}
+                                </button>
+                            ))}
+                        </div>
+
+                        {shouldShowExpandButton && (
+                            <div className="flex justify-center">
+                                <button
+                                    onClick={() => setShowAllPlatforms(!showAllPlatforms)}
+                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                                >
+                                    {showAllPlatforms ? (
+                                        <>
+                                            <ChevronUp className="w-4 h-4" />
+                                            Show Less
+                                        </>
+                                    ) : (
+                                        <>
+                                            <ChevronDown className="w-4 h-4" />
+                                            Show More ({uniquePlatforms.length - 3} more)
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
             ) : null}
+
             <ul
                 aria-label="List of services for the stop"
-                className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 p-2 bg-secondary rounded-md overflow-hidden"
+                className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 bg-gray-50/60 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg"
             >
                 {sortServices(services, platformFilter).map((service) => (
                     <li
                         key={service.trip_id + service.route.id + service.platform}
                         className={`${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "" : ""}`}
                     >
-                        <Card className={`${service.departed ? "bg-gradient-to-br from-red-200 via-orange-100 to-orange-400" : ""} ${service.canceled ? "bg-gradient-to-br from-red-700 via-red-400 to-red-600" : ""}`}>
+                        <Card
+                            className={`
+                                backdrop-blur-sm bg-white/80 border border-gray-200 shadow-lg
+                                ${service.departed ? "bg-gradient-to-br from-orange-100/80 via-red-50/80 to-pink-100/80 border-orange-200" : ""} 
+                                ${service.canceled ? "bg-gradient-to-br from-red-100/90 via-red-50/90 to-red-100/90 border-red-200" : ""}
+                                hover:bg-white/95 hover:border-gray-300 hover:shadow-xl transition-all duration-300
+                                relative
+                            `}
+                        >
                             <CardHeader>
                                 <CardTitle>
                                     <div className="flex items-center justify-between overflow-hidden">
-                                        <div className="shrink flex-1 truncate overflow-hidden">
+                                        <div className="line-clamp-2 text-ellipsis overflow-hidden">
                                             {service.canceled ? (
                                                 <>
                                                     <span className="text-red-900">Canceled | </span>
@@ -217,7 +271,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                 </>
                                             )}
                                         </div>
-                                        <div className="flex gap-1 items-center mr-2">
+                                        <div className="ml-auto flex gap-1 items-center mr-2">
                                             <BikeIcon
                                                 aria-label={
                                                     service.bikes_allowed === 0
