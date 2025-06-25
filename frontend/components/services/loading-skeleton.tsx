@@ -20,7 +20,7 @@ export default function ServicesLoadingSkeleton() {
             {/* Services grid skeleton */}
             <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 bg-secondary rounded-md">
                 {Array.from({ length: 8 }).map((_, index) => (
-                    <Card key={index} className="hover:bg-white/95 hover:border-gray-300 hover:shadow-xl transition-all duration-300 relative">
+                    <Card key={index} className="transition-all duration-300 relative">
                         <CardHeader>
                             <CardTitle>
                                 <div className="flex items-center justify-between">

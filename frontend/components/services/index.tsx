@@ -9,6 +9,7 @@ import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
 import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
+import { Button } from "../ui/button"
 
 interface ServicesProps {
     stopName: string
@@ -161,112 +162,101 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         <div className="max-w-[1400px] w-full mx-auto p-4">
             <DisplayTodaysAlerts stopName={stopName} />
             {uniquePlatforms.length > 0 ? (
-                <div className="mb-4">
-                    <h3 className="text-sm font-medium text-gray-700 mb-2">Filter by Platform</h3>
+                <div className="mb-3">
                     <div
                         role="tablist"
                         aria-label="Filter services by platform"
-                        className="bg-gray-50/80 backdrop-blur-sm rounded-lg border border-gray-200 shadow-md p-4"
+                        className="bg-card/50 backdrop-blur-sm rounded-md border shadow-sm p-3"
                     >
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mb-4">
-                            <button
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+                            <Button
+                                variant={platformFilter === "all" ? "default" : "outline"}
+                                size="sm"
                                 role="tab"
                                 aria-selected={platformFilter === "all"}
                                 aria-controls="services-list"
-                                className={`
-                  w-full px-4 py-2 rounded-md font-medium text-sm transition-all duration-200
-                  focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                  ${platformFilter === "all"
-                                        ? "bg-blue-600 text-white shadow-md border-2 border-blue-700 transform scale-105"
-                                        : "bg-white/90 text-gray-700 border-2 border-gray-200 hover:bg-white hover:border-gray-300 hover:shadow-md"
-                                    }
-                `}
                                 onClick={() => setPlatformFilter("all")}
                             >
                                 All Platforms
-                            </button>
+                            </Button>
 
                             {platformsToShow.map((platform) => (
-                                <button
+                                <Button
                                     key={platform}
+                                    variant={platformFilter === platform ? "default" : "outline"}
+                                    size="sm"
                                     role="tab"
                                     aria-selected={platformFilter === platform}
                                     aria-controls="services-list"
-                                    className={`
-                    w-full px-4 py-2 rounded-md font-medium text-sm transition-all duration-200
-                    focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2
-                    ${platformFilter === platform
-                                            ? "bg-green-600 text-white shadow-md border-2 border-green-700 transform scale-105"
-                                            : "bg-white/90 text-gray-700 border-2 border-gray-200 hover:bg-white hover:border-gray-300 hover:shadow-md"
-                                        }
-                  `}
                                     onClick={() => setPlatformFilter(platform)}
                                 >
                                     Platform {platform}
-                                </button>
+                                </Button>
                             ))}
                         </div>
 
                         {shouldShowExpandButton && (
-                            <div className="flex justify-center">
-                                <button
+                            <div className="flex justify-center mt-3">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
                                     onClick={() => setShowAllPlatforms(!showAllPlatforms)}
-                                    className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-md transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
                                 >
                                     {showAllPlatforms ? (
                                         <>
-                                            <ChevronUp className="w-4 h-4" />
+                                            <ChevronUp className="w-3 h-3 mr-1" />
                                             Show Less
                                         </>
                                     ) : (
                                         <>
-                                            <ChevronDown className="w-4 h-4" />
+                                            <ChevronDown className="w-3 h-3 mr-1" />
                                             Show More ({uniquePlatforms.length - 3} more)
                                         </>
                                     )}
-                                </button>
+                                </Button>
                             </div>
                         )}
                     </div>
                 </div>
             ) : null}
-
             <ul
                 aria-label="List of services for the stop"
-                className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 bg-gray-50/60 backdrop-blur-sm rounded-xl border border-gray-200 shadow-lg"
+                className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 bg-secondary rounded-md"
             >
                 {sortServices(services, platformFilter).map((service) => (
-                    <li
-                        key={service.trip_id + service.route.id + service.platform}
-                        className={`${!displayingSchedulePreview && service.departed ? "" : ""} ${service.canceled ? "" : ""}`}
-                    >
+                    <li key={service.trip_id + service.platform}>
                         <Card
                             className={`
-                                backdrop-blur-sm bg-white/80 border border-gray-200 shadow-lg
-                                ${service.departed ? "bg-gradient-to-br from-orange-100/80 via-red-50/80 to-pink-100/80 border-orange-200" : ""} 
-                                ${service.canceled ? "bg-gradient-to-br from-red-100/90 via-red-50/90 to-red-100/90 border-red-200" : ""}
-                                hover:bg-white/95 hover:border-gray-300 hover:shadow-xl transition-all duration-300
-                                relative
+                            backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300
+                            ${service.departed
+                                    ? "bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/50 dark:via-amber-950/50 dark:to-yellow-950/50 border-orange-200 dark:border-orange-800"
+                                    : ""
+                                } 
+                            ${service.canceled
+                                    ? "bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 dark:from-red-950/50 dark:via-rose-950/50 dark:to-pink-950/50 border-red-200 dark:border-red-800"
+                                    : ""
+                                }
                             `}
                         >
+
                             <CardHeader>
                                 <CardTitle>
                                     <div className="flex items-center justify-between overflow-hidden">
                                         <div className="line-clamp-2 text-ellipsis overflow-hidden">
                                             {service.canceled ? (
                                                 <>
-                                                    <span className="text-red-900">Canceled | </span>
-                                                    <span className="text-red-900">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                    <span className="text-red-600 dark:text-red-400">Canceled | </span>
+                                                    <span className="text-red-600 dark:text-red-400">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                 </>
                                             ) : (
                                                 <>
                                                     {!displayingSchedulePreview && service.departed ? (
                                                         <>
-                                                            <span className="text-orange-900">Departed | </span>
-                                                            <span className="text-orange-900">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                            <span className="text-orange-600 dark:text-orange-400">Departed | </span>
+                                                            <span className="text-orange-600 dark:text-orange-400">{formatTextToNiceLookingWords(service.headsign)} </span>
                                                         </>
                                                     ) : (
-                                                        <span className="">{formatTextToNiceLookingWords(service.headsign)}</span>
+                                                        <span className="text-foreground">{formatTextToNiceLookingWords(service.headsign)}</span>
                                                     )}
                                                 </>
                                             )}
@@ -280,7 +270,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                             ? "Bikes are allowed"
                                                             : "Bikes are not allowed"
                                                 }
-                                                className={`w-4 h-4 ${service.bikes_allowed === 0 ? "text-yellow-500" : service.bikes_allowed === 1 ? "text-green-500" : "text-red-500"}`}
+                                                className={`w-4 h-4 ${service.bikes_allowed === 0
+                                                    ? "text-yellow-500 dark:text-yellow-400"
+                                                    : service.bikes_allowed === 1
+                                                        ? "text-green-500 dark:text-green-400"
+                                                        : "text-red-500 dark:text-red-400"
+                                                    }`}
                                             />
                                             <AccessibilityIcon
                                                 aria-label={
@@ -290,13 +285,21 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                             ? "Is wheelchair accessible"
                                                             : "Not Wheelchair accessible"
                                                 }
-                                                className={`w-4 h-4 ${service.wheelchairs_allowed === 0 ? "text-yellow-500" : service.wheelchairs_allowed === 1 ? "text-green-500" : "text-red-500"}`}
+                                                className={`w-4 h-4 ${service.wheelchairs_allowed === 0
+                                                    ? "text-yellow-500 dark:text-yellow-400"
+                                                    : service.wheelchairs_allowed === 1
+                                                        ? "text-green-500 dark:text-green-400"
+                                                        : "text-red-500 dark:text-red-400"
+                                                    }`}
                                             />
                                         </div>
                                         <span
                                             aria-label="Service route name"
-                                            className="shrink-0 px-2 py-1 rounded text-zinc-100 text-xs"
-                                            style={{ background: "#" + (service.route.color !== "" ? service.route.color : "000000") }}
+                                            className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
+                                            style={{
+                                                background: "#" + (service.route.color !== "" ? service.route.color : "000000"),
+                                                filter: "brightness(0.9) contrast(1.1)"
+                                            }}
                                         >
                                             {service.route.name}
                                         </span>
@@ -398,7 +401,12 @@ function sortServices(
             platformFilter === "all" || item.platform === platformFilter
         )
         .filter((item) => item.time_till_arrival >= -2)
-        .sort((a, b) => timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time))
+        .sort((a, b) => {
+            // Departed services first, still ordered by arrival time within each group
+            if (a.departed && !b.departed) return -1;
+            if (!a.departed && b.departed) return 1;
+            return timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time);
+        })
 }
 
 function formatArrivalTime(minutes: number): string {
