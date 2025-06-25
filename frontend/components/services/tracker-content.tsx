@@ -71,7 +71,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     <div className="space-y-1 text-sm">
                         <Separator className="my-1" />
                         <p className="text-orange-400">
-                            Previous stop: {vehicle.trip.current_stop.name}{" "}
+                            {vehicle.state === "Arrived" ? "Current" : "Previous"} stop: {vehicle.trip.current_stop.name}{" "}
                             {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.current_stop.platform})` : ""}
                         </p>
                         <p className="text-green-400">

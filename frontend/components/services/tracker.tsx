@@ -191,7 +191,7 @@ export interface VehiclesResponse {
     license_plate: string
     position: Position
     type: string
-    state: string
+    state: "Arrived" | "Departed"
 }
 
 export interface Position {
