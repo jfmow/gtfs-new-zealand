@@ -31,7 +31,7 @@ export interface Service {
     tracking: boolean
     departed: boolean
     time_till_arrival: number
-    stop_state: "Arrived" | "Departed"
+    stop_state: "Arrived" | "Departed" | "Arriving" | "Boarding"
 }
 
 export interface ServicesRoute {
