@@ -196,7 +196,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
                                                 </div>
                                             )}
                                             {delay ? (
-                                                <Badge variant={"secondary"} className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5">
+                                                <Badge variant={"secondary"} className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5 w-fit">
                                                     {delayLabel}
                                                 </Badge>
                                             ) : null}
