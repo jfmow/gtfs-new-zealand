@@ -1,5 +1,5 @@
 import { useRef, useEffect } from "react"
-import { MapPin, Clock, AlertTriangle, Train } from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { ServicesStop, StopTimes, VehiclesResponse } from "../tracker"
@@ -184,7 +184,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
                                             )}
 
                                             <p className="text-xs text-gray-600 flex items-center gap-1">
-                                                <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                                <Waypoints className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                                                 Distance {formatDistance(distance)}
                                             </p>
 
