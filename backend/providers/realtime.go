@@ -315,29 +315,52 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			DepartureTime int64  `json:"departure_time"`
 			ScheduledTime int64  `json:"scheduled_time"`
 			Skipped       bool   `json:"skipped"`
+			Passed        bool   `json:"passed"`
 		}
 		var result []StopTimes
 
 		now := time.Now().In(localTimeZone)
 
-		for childStopId, update := range stopTimesForStops {
-			var data = StopTimes{
-				StopId:        childStopId,
-				ArrivalTime:   update.ArrivalTime.UnixMilli(),
-				DepartureTime: update.DepartureTime.UnixMilli(),
-				Skipped:       update.Skipped,
+		_, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		}
+
+		nextStopSequenceNumber, _, _, _ := getNextStopSequence(updatesForTrip.StopTimeUpdate, lowestSequence, localTimeZone)
+
+		for _, stop := range stopsForTrip {
+			var data StopTimes
+
+			if stop.ParentStation != "" {
+				data.StopId = stop.ParentStation
+			} else {
+				data.StopId = stop.StopId
 			}
-			scheduledStop := stopsForTrip[childStopId]
-			if scheduledStop.ParentStation != "" {
-				data.StopId = scheduledStop.ParentStation
+
+			if nextStopSequenceNumber > (stop.Sequence - lowestSequence) {
+				data.Passed = true
 			}
-			defaultArrivalTime, err := time.ParseInLocation("15:04:05", scheduledStop.ArrivalTime, localTimeZone)
+
+			defaultArrivalTime, err := time.ParseInLocation("15:04:05", stop.ArrivalTime, localTimeZone)
 			if err != nil {
 				continue
 			}
 			defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
-
 			data.ScheduledTime = defaultArrivalTime.UnixMilli()
+
+			update, found := stopTimesForStops[stop.StopId]
+			if found {
+				data.Skipped = update.Skipped
+			}
+
+			if !data.Passed {
+				data.ArrivalTime = data.ScheduledTime + int64(updatesForTrip.GetDelay())*1000
+				data.DepartureTime = data.ScheduledTime + int64(updatesForTrip.GetDelay())*1000
+			} else {
+				data.ArrivalTime = data.ScheduledTime
+				data.DepartureTime = data.ScheduledTime
+			}
+
 			result = append(result, data)
 		}
 

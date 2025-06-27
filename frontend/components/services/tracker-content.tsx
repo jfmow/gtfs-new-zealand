@@ -8,6 +8,7 @@ import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { useUrl } from "@/lib/url-context"
 import type { MapItem } from "../map/map"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "./tracker"
+import StopsList from "./tracker/stops-list"
 
 const LeafletMap = lazy(() => import("../map/map"))
 
@@ -159,51 +160,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </TabsContent>
 
                     <TabsContent value="stops">
-                        <div ref={scrollAreaRef} className="my-4 max-h-[300px] overflow-y-auto">
-                            <ol className="flex items-center justify-center flex-col gap-1 px-1">
-                                {stops?.map((item, index) => {
-                                    const isCurrentStop =
-                                        vehicle.trip.current_stop.id === item.id && item.platform === vehicle.trip.current_stop.platform
-                                    const isNextStop =
-                                        vehicle.trip.next_stop.id === item.id &&
-                                        vehicle.trip.next_stop.platform === item.platform &&
-                                        !isCurrentStop
-                                    const passed = vehicle.trip.current_stop.sequence > item.sequence
-                                    return (
-                                        <li
-                                            key={item.id}
-                                            ref={isNextStop ? nextStopRef : null}
-                                            className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm"
-                                        >
-                                            <p
-                                                className={`
-                                                            ${isNextStop ? "text-blue-400 font-bold" : isCurrentStop ? "text-orange-400/90" : passed ? "text-zinc-400" : ""}
-                                                        `}
-                                            >
-                                                {formatTextToNiceLookingWords(item.name, true)}{" "}
-                                                {item.platform ? `| Platform ${item.platform}` : ""}
-                                                {stopTimes && !passed &&
-                                                    (() => {
-                                                        const stopTime = stopTimes.find((i) => i.stop_id === item.id)
-                                                        if (!stopTime) return null
-
-                                                        if (stopTime.skipped) {
-                                                            return <span className="text-yellow-400 ml-2">(Skipped)</span>
-                                                        }
-
-                                                        return null
-                                                    })()}
-                                            </p>
-                                            {index < stops.length - 1 && (
-                                                <ChevronDown
-                                                    className={`${isCurrentStop ? "text-orange-400" : passed ? `text-zinc-400` : ``} w-4 h-4`}
-                                                />
-                                            )}
-                                        </li>
-                                    )
-                                })}
-                            </ol>
-                        </div>
+                        <StopsList stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (

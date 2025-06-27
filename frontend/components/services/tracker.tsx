@@ -38,6 +38,7 @@ export interface StopTimes {
     scheduled_time: number;
     stop: ServicesStop;
     skipped: boolean;
+    passed: boolean;
 }
 
 
