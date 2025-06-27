@@ -31,6 +31,16 @@ export interface PreviewData {
     trip_id: string
 }
 
+export interface StopTimes {
+    stop_id: string;
+    arrival_time: number;
+    departure_time: number;
+    scheduled_time: number;
+    stop: ServicesStop;
+    skipped: boolean;
+}
+
+
 const REFRESH_INTERVAL = 10 // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({
@@ -44,6 +54,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
 }: ServiceTrackerModalProps) {
     const { location, locationFound, loading } = useUserLocation()
     const [stops, setStops] = useState<ServicesStop[] | null>(null)
+    const [stopTimes, setStopTimes] = useState<StopTimes[]>([])
     const [open, setOpen] = useState(defaultOpen)
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
     const [initialLoading, setInitialLoading] = useState(false)
@@ -74,6 +85,12 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                     const stopsData = await getStopsForTrip(tripId)
                     if (stopsData) {
                         setStops(stopsData)
+                        const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
+                            method: "GET",
+                        })
+                        if (stopTimesRes.ok) {
+                            setStopTimes(stopTimesRes.data)
+                        }
                     }
                 } else {
                     const stopsData = await getStopsForTrip(tripId)
@@ -155,6 +172,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             location={location}
             locationFound={locationFound}
             loading={loading}
+            stopTimes={stopTimes}
         />
     )
 

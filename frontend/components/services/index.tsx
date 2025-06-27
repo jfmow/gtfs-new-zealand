@@ -24,6 +24,7 @@ export interface Service {
     stops_away: number
     occupancy: number
     canceled: boolean
+    skipped: boolean
     bikes_allowed: number
     wheelchairs_allowed: number
     route: ServicesRoute
@@ -228,18 +229,21 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     <li key={service.trip_id + service.platform}>
                         <Card
                             className={`
-                            backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300
-                            ${service.departed
+            backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300
+            ${service.departed
                                     ? "bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/50 dark:via-amber-950/50 dark:to-yellow-950/50 border-orange-200 dark:border-orange-800"
                                     : ""
                                 } 
-                            ${service.canceled
+            ${service.canceled
                                     ? "bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 dark:from-red-950/50 dark:via-rose-950/50 dark:to-pink-950/50 border-red-200 dark:border-red-800"
                                     : ""
                                 }
-                            `}
+            ${service.skipped
+                                    ? "bg-gradient-to-br from-blue-50 via-cyan-50 to-sky-50 dark:from-blue-950/50 dark:via-cyan-950/50 dark:to-sky-950/50 border-blue-200 dark:border-blue-800"
+                                    : ""
+                                }
+            `}
                         >
-
                             <CardHeader>
                                 <CardTitle>
                                     <div className="flex items-center justify-between overflow-hidden">
@@ -247,14 +251,25 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             {service.canceled ? (
                                                 <>
                                                     <span className="text-red-600 dark:text-red-400">Canceled | </span>
-                                                    <span className="text-red-600 dark:text-red-400">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                    <span className="text-red-600 dark:text-red-400">
+                                                        {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                    </span>
+                                                </>
+                                            ) : service.skipped ? (
+                                                <>
+                                                    <span className="text-blue-600 dark:text-blue-400">Skipped | </span>
+                                                    <span className="text-blue-600 dark:text-blue-400">
+                                                        {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                    </span>
                                                 </>
                                             ) : (
                                                 <>
                                                     {!displayingSchedulePreview && service.departed ? (
                                                         <>
                                                             <span className="text-orange-600 dark:text-orange-400">Departed | </span>
-                                                            <span className="text-orange-600 dark:text-orange-400">{formatTextToNiceLookingWords(service.headsign)} </span>
+                                                            <span className="text-orange-600 dark:text-orange-400">
+                                                                {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                            </span>
                                                         </>
                                                     ) : (
                                                         <span className="text-foreground">{formatTextToNiceLookingWords(service.headsign)}</span>
@@ -299,7 +314,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                             className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
                                             style={{
                                                 background: "#" + (service.route.color !== "" ? service.route.color : "000000"),
-                                                filter: "brightness(0.9) contrast(1.1)"
+                                                filter: "brightness(0.9) contrast(1.1)",
                                             }}
                                         >
                                             {service.route.name}
@@ -311,7 +326,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     <div className="grid grid-cols-2">
                                         <div className="grid">
                                             <p>Arriving: {convert24hTo12h(service.arrival_time)}</p>
-                                            {!service.canceled && !displayingSchedulePreview && !service.departed ? (
+                                            {!service.canceled && !service.skipped && !displayingSchedulePreview && !service.departed ? (
                                                 <>
                                                     <p>Stops away: {service.stops_away || 0}</p>
                                                     <p className="inline-flex gap-1 items-center">
@@ -330,7 +345,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     </div>
                                 </CardDescription>
                             </CardHeader>
-                            {!displayingSchedulePreview && !service.canceled && !service.departed ? (
+                            {!displayingSchedulePreview && !service.canceled && !service.departed && !service.skipped ? (
                                 <CardContent>
                                     <div className="grid grid-cols-2 items-center justify-items-center gap-2">
                                         <ServiceTrackerModal

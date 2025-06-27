@@ -1,5 +1,3 @@
-"use client"
-
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
@@ -9,13 +7,14 @@ import Navigate from "../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { useUrl } from "@/lib/url-context"
 import type { MapItem } from "../map/map"
-import type { VehiclesResponse, PreviewData, ServicesStop } from "./tracker"
+import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "./tracker"
 
 const LeafletMap = lazy(() => import("../map/map"))
 
 interface ServiceTrackerContentProps {
     vehicle?: VehiclesResponse
     stops: ServicesStop[] | null
+    stopTimes: StopTimes[] | null
     previewData?: PreviewData
     has: boolean
     tripId: string
@@ -40,6 +39,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     location,
     locationFound,
     loading,
+    stopTimes,
 }: ServiceTrackerContentProps) {
     const { currentUrl } = useUrl()
     const nextStopRef = useRef<HTMLLIElement>(null)
@@ -74,7 +74,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                             {vehicle.state === "Arrived" ? "Current" : "Previous"} stop: {vehicle.trip.current_stop.name}{" "}
                             {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.current_stop.platform})` : ""}
                         </p>
-                        <p className="text-green-400">
+                        <p className="text-blue-400">
                             Next stop: {vehicle.trip.next_stop.name}{" "}
                             {vehicle.trip.next_stop.platform !== "" ? `(Platform ${vehicle.trip.next_stop.platform})` : ""}
                         </p>
@@ -177,11 +177,42 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                         >
                                             <p
                                                 className={`
-                                                            ${isNextStop ? "text-green-400 font-bold" : isCurrentStop ? "text-orange-400/90" : passed ? "text-zinc-400" : ""}
+                                                            ${isNextStop ? "text-blue-400 font-bold" : isCurrentStop ? "text-orange-400/90" : passed ? "text-zinc-400" : ""}
                                                         `}
                                             >
                                                 {formatTextToNiceLookingWords(item.name, true)}{" "}
                                                 {item.platform ? `| Platform ${item.platform}` : ""}
+                                                {stopTimes && !passed &&
+                                                    (() => {
+                                                        const stopTime = stopTimes.find((i) => i.stop_id === item.id)
+                                                        if (!stopTime) return null
+
+                                                        if (stopTime.skipped) {
+                                                            return <span className="text-yellow-400 ml-2">(Skipped)</span>
+                                                        }
+
+                                                        if (stopTime.arrival_time && stopTime.scheduled_time) {
+                                                            const delayMinutes = Math.round(
+                                                                (stopTime.arrival_time - stopTime.scheduled_time) / (1000 * 60),
+                                                            )
+                                                            const delayText =
+                                                                delayMinutes > 0
+                                                                    ? `${delayMinutes}min late`
+                                                                    : delayMinutes < 0
+                                                                        ? `${Math.abs(delayMinutes)}min early`
+                                                                        : "On time"
+                                                            const delayColor =
+                                                                delayMinutes > 0
+                                                                    ? "text-red-400"
+                                                                    : delayMinutes < 0
+                                                                        ? "text-green-400"
+                                                                        : "text-blue-400"
+
+                                                            return <span className={`ml-2 ${delayColor}`}>({delayText})</span>
+                                                        }
+
+                                                        return null
+                                                    })()}
                                             </p>
                                             {index < stops.length - 1 && (
                                                 <ChevronDown

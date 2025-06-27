@@ -116,6 +116,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
 					response.Canceled = true
 				}
+
+				if foundVehicle.GetVehicle().GetWheelchairAccessible().Number() == 2 {
+					response.WheelchairsAllowed = 1
+				}
+				if foundVehicle.GetVehicle().GetWheelchairAccessible().Number() == 3 {
+					response.WheelchairsAllowed = 2
+				}
 			}
 
 			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
@@ -144,10 +151,18 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					response.Canceled = cancelled
 				}
 
+				for _, update := range tripUpdate.GetStopTimeUpdate() {
+					if update.GetStopId() != service.StopId {
+						continue
+					}
+					if update.GetScheduleRelationship().Enum().String() == "SKIPPED" {
+						response.Skipped = true
+					}
+				}
+
 			}
 
 			resultData = append(resultData, response)
-
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", resultData)
@@ -234,8 +249,9 @@ type ServicesResponse2 struct {
 	StopsAway          int16  `json:"stops_away"`
 	Occupancy          int8   `json:"occupancy"`
 	Canceled           bool   `json:"canceled"`
+	Skipped            bool   `json:"skipped"`
 	BikesAllowed       int    `json:"bikes_allowed"`
-	WheelchairsAllowed int    `json:"wheelchairs_allowed"`
+	WheelchairsAllowed int    `json:"wheelchairs_allowed"` //0 = unknown 1 = yes 2= no
 
 	Route *ServicesRoute `json:"route"`
 

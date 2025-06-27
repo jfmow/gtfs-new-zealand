@@ -288,6 +288,62 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		return JsonApiResponse(c, http.StatusOK, "", foundAlerts)
 	})
 
+	realtimeRoute.GET("/stop-times", func(c echo.Context) error {
+		filterTripId := c.QueryParam("tripId")
+		if filterTripId == "" {
+			return JsonApiResponse(c, http.StatusBadRequest, "Missing trip id", ResponseDetails("details", "no trip id provided"))
+		}
+
+		stopsForTrip, err := gtfsData.GetStopTimesForTripID(filterTripId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", ResponseDetails("details", "no stops found for trip", "error", err.Error()))
+		}
+
+		tripUpdates, err := realtime.GetTripUpdates()
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No trip updates found in the GTFS data", "error", err.Error()))
+		}
+		updatesForTrip, err := tripUpdates.ByTripID(filterTripId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid trip id", nil, ResponseDetails("details", "No trip update found for the trip id", "error", err.Error()))
+		}
+		stopTimesForStops := getPredictedStopArrivalTimesForTrip(updatesForTrip.GetStopTimeUpdate(), localTimeZone)
+		//get stops for trip id
+		type StopTimes struct {
+			StopId        string `json:"stop_id"` //child stop id
+			ArrivalTime   int64  `json:"arrival_time"`
+			DepartureTime int64  `json:"departure_time"`
+			ScheduledTime int64  `json:"scheduled_time"`
+			Skipped       bool   `json:"skipped"`
+		}
+		var result []StopTimes
+
+		now := time.Now().In(localTimeZone)
+
+		for childStopId, update := range stopTimesForStops {
+			var data = StopTimes{
+				StopId:        childStopId,
+				ArrivalTime:   update.ArrivalTime.UnixMilli(),
+				DepartureTime: update.DepartureTime.UnixMilli(),
+				Skipped:       update.Skipped,
+			}
+			scheduledStop := stopsForTrip[childStopId]
+			if scheduledStop.ParentStation != "" {
+				data.StopId = scheduledStop.ParentStation
+			}
+			defaultArrivalTime, err := time.ParseInLocation("15:04:05", scheduledStop.ArrivalTime, localTimeZone)
+			if err != nil {
+				continue
+			}
+			defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
+
+			data.ScheduledTime = defaultArrivalTime.UnixMilli()
+			result = append(result, data)
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", result)
+	})
+
 }
 
 func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
@@ -384,6 +440,60 @@ func getVehicleRouteData(currentRouteId string, routeCache map[string]gtfs.Route
 	routeData.RouteId = currentRoute.RouteId
 	routeData.RouteShortName = currentRoute.RouteShortName
 	return &routeData, nil
+}
+
+type DelayTimes struct {
+	ArrivalTime   time.Time
+	DepartureTime time.Time
+	Skipped       bool
+	ScheduledTime time.Time
+}
+
+func getPredictedStopArrivalTimesForTrip(stopUpdates []*proto.TripUpdate_StopTimeUpdate, localTimeZone *time.Location) map[string]DelayTimes {
+	results := make(map[string]DelayTimes)
+
+	for _, update := range stopUpdates {
+		stopId := update.GetStopId()
+
+		var arrivalTime, departureTime time.Time
+
+		// GTFS-RT: If time is 0, it means no update is available for that field.
+		if update.Arrival != nil && update.Arrival.Time != nil && update.GetArrival().GetTime() > 0 {
+			arrivalTime = time.Unix(update.GetArrival().GetTime(), 0).In(localTimeZone)
+		}
+		if update.Departure != nil && update.Departure.Time != nil && update.GetDeparture().GetTime() > 0 {
+			departureTime = time.Unix(update.GetDeparture().GetTime(), 0).In(localTimeZone)
+		}
+
+		// If only one of arrival/departure is set, use that for both (fallback)
+		if arrivalTime.IsZero() && !departureTime.IsZero() {
+			arrivalTime = departureTime
+		}
+		if departureTime.IsZero() && !arrivalTime.IsZero() {
+			departureTime = arrivalTime
+		}
+
+		var stopSkipped = false
+
+		switch update.GetScheduleRelationship().Enum().String() {
+		case "SKIPPED":
+			stopSkipped = true
+		case "NO_DATA":
+		case "UNSCHEDULED":
+			//skip
+			continue
+		}
+
+		if stopId != "" {
+			results[stopId] = DelayTimes{
+				ArrivalTime:   arrivalTime,
+				DepartureTime: departureTime,
+				Skipped:       stopSkipped,
+			}
+		}
+	}
+
+	return results
 }
 
 // Vehicles
