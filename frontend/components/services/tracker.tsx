@@ -39,6 +39,7 @@ export interface StopTimes {
     stop: ServicesStop;
     skipped: boolean;
     passed: boolean;
+    dist: number;
 }
 
 

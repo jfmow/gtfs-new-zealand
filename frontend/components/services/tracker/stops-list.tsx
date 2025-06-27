@@ -3,6 +3,7 @@ import { MapPin, Clock, AlertTriangle, Train } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
 import { ServicesStop, StopTimes, VehiclesResponse } from "../tracker"
+import { formatDistance } from "@/lib/utils"
 
 
 
@@ -73,6 +74,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
             {stops?.map((stop, index) => {
                 const { isCurrentStop, isNextStop, passed } = getStopStatus(stop)
                 const stopTime = getStopTime(stop.id)
+                const distance = stopTime?.dist || 0
                 const isLast = index === stops.length - 1
                 const arrivalTime = formatUnixTime(stopTime?.arrival_time)
                 const departureTime = formatUnixTime(stopTime?.departure_time)
@@ -180,6 +182,11 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
                                                     Platform {stop.platform}
                                                 </p>
                                             )}
+
+                                            <p className="text-xs text-gray-600 flex items-center gap-1">
+                                                <MapPin className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                                                Distance {formatDistance(distance)}
+                                            </p>
 
                                             {/* Time Information - Mobile Optimized */}
                                             {(arrivalTime || departureTime) && (
