@@ -317,6 +317,7 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 			// Approaching the stop
 			nextStopSequenceNumber = sequence
 			state = "Approaching stop (arrival pending): " + arrivalTimeLocal.String()
+			simpleState = "Arriving"
 		} else if now.Before(departureTimeLocal) {
 			// At the stop, not yet departed
 			nextStopSequenceNumber = sequence
@@ -333,6 +334,7 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 			// Approaching stop
 			nextStopSequenceNumber = sequence
 			state = "Approaching stop (arrival only): " + arrivalTimeLocal.String()
+			simpleState = "Arriving"
 		} else {
 			// Already arrived → next stop must be next
 			nextStopSequenceNumber = sequence + 1
@@ -344,6 +346,7 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 			// Still at stop → haven't left yet
 			nextStopSequenceNumber = sequence
 			state = "Waiting to depart (departure only): " + departureTimeLocal.String()
+			simpleState = "Boarding"
 		} else {
 			// Already departed
 			nextStopSequenceNumber = sequence + 1
