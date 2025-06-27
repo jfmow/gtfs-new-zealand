@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"strconv"
@@ -16,6 +17,9 @@ import (
 	"github.com/jfmow/gtfs"
 	"github.com/labstack/echo/v5"
 	"github.com/labstack/echo/v5/middleware"
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/geo"
+	"github.com/paulmach/orb/geojson"
 )
 
 func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
@@ -124,6 +128,139 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 			return JsonApiResponse(c, http.StatusOK, "", result)
 		}
 	})
+
+}
+
+type VehicleDistanceResult struct {
+	TripID          string  `json:"tripId"`
+	VehicleDistance float64 `json:"vehicleDistanceM"`
+	StopDistance    float64 `json:"stopDistanceM"`
+	DistanceToStop  float64 `json:"distanceToStopM"`
+}
+
+type TripShapeDistance struct {
+	TripID string
+	Line   orb.LineString
+}
+
+func NewTripShapeDistance(tripId string, gtfsData gtfs.Database) (*TripShapeDistance, error) {
+	shapes, err := gtfsData.GetShapeByTripID(tripId)
+	if err != nil {
+		return nil, fmt.Errorf("invalid trip id %q: %w", tripId, err)
+	}
+
+	shapeGeoJSONMap, err := shapes.ToGeoJSON()
+	if err != nil {
+		return nil, fmt.Errorf("error generating GeoJSON for trip %q: %w", tripId, err)
+	}
+
+	geojsonBytes, err := json.Marshal(shapeGeoJSONMap)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal shape GeoJSON: %w", err)
+	}
+
+	feature, err := geojson.UnmarshalFeature(geojsonBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse shape GeoJSON: %w", err)
+	}
+
+	line, ok := feature.Geometry.(orb.LineString)
+	if !ok {
+		return nil, fmt.Errorf("GeoJSON geometry is not a LineString")
+	}
+
+	return &TripShapeDistance{
+		TripID: tripId,
+		Line:   line,
+	}, nil
+}
+
+func (t *TripShapeDistance) Dist(vehicleLat, vehicleLon, stopLat, stopLon float64) (*VehicleDistanceResult, error) {
+	vehiclePoint := orb.Point{vehicleLon, vehicleLat}
+	stopPoint := orb.Point{stopLon, stopLat}
+
+	vehicleDist, err := computeShapeDistance(t.Line, vehiclePoint)
+	if err != nil {
+		return nil, fmt.Errorf("error computing vehicle distance: %w", err)
+	}
+
+	stopDist, err := computeShapeDistance(t.Line, stopPoint)
+	if err != nil {
+		return nil, fmt.Errorf("error computing stop distance: %w", err)
+	}
+
+	distanceRemaining := stopDist - vehicleDist
+	if distanceRemaining < 0 {
+		distanceRemaining = 0
+	}
+
+	return &VehicleDistanceResult{
+		TripID:          t.TripID,
+		VehicleDistance: vehicleDist,
+		StopDistance:    stopDist,
+		DistanceToStop:  distanceRemaining,
+	}, nil
+}
+
+func projectPointOntoSegment(p, a, b orb.Point) (orb.Point, float64) {
+	// Vector from a to b
+	ax, ay := a[0], a[1]
+	bx, by := b[0], b[1]
+	px, py := p[0], p[1]
+
+	dx, dy := bx-ax, by-ay
+	if dx == 0 && dy == 0 {
+		// a == b segment
+		return a, 0
+	}
+
+	t := ((px-ax)*dx + (py-ay)*dy) / (dx*dx + dy*dy)
+
+	// Clamp t to [0,1]
+	t = math.Max(0, math.Min(1, t))
+
+	proj := orb.Point{ax + t*dx, ay + t*dy}
+	return proj, t
+}
+
+// NearestPointOnLineString projects p onto the line string, returns projected point, index of segment start, and distance along line to projection.
+func nearestPointOnLineString(line orb.LineString, p orb.Point) (proj orb.Point, segmentIndex int, distAlong float64) {
+	minDist := math.MaxFloat64
+	var closestProj orb.Point
+	var closestIndex int
+	distAtClosest := 0.0
+
+	for i := 0; i < len(line)-1; i++ {
+		a := line[i]
+		b := line[i+1]
+
+		projPoint, t := projectPointOntoSegment(p, a, b)
+
+		d := geo.Distance(p, projPoint)
+		if d < minDist {
+			minDist = d
+			closestProj = projPoint
+			closestIndex = i
+
+			// distance along line up to segment start
+			distToSegmentStart := 0.0
+			for j := 0; j < i; j++ {
+				distToSegmentStart += geo.Distance(line[j], line[j+1])
+			}
+
+			// add projected partial segment distance
+			segmentLen := geo.Distance(a, b)
+			distAtClosest = distToSegmentStart + t*segmentLen
+		}
+	}
+
+	return closestProj, closestIndex, distAtClosest
+}
+
+// computeShapeDistance computes distance along shape line from start to projected point.
+func computeShapeDistance(shape orb.LineString, point orb.Point) (float64, error) {
+	_, _, distAlong := nearestPointOnLineString(shape, point)
+	return distAlong, nil
 }
 
 type Coordinates struct {

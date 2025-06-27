@@ -1,5 +1,3 @@
-"use client"
-
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { ChevronDown } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
@@ -9,13 +7,15 @@ import Navigate from "../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { useUrl } from "@/lib/url-context"
 import type { MapItem } from "../map/map"
-import type { VehiclesResponse, PreviewData, ServicesStop } from "./tracker"
+import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "./tracker"
+import StopsList from "./tracker/stops-list"
 
 const LeafletMap = lazy(() => import("../map/map"))
 
 interface ServiceTrackerContentProps {
     vehicle?: VehiclesResponse
     stops: ServicesStop[] | null
+    stopTimes: StopTimes[] | null
     previewData?: PreviewData
     has: boolean
     tripId: string
@@ -40,6 +40,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     location,
     locationFound,
     loading,
+    stopTimes,
 }: ServiceTrackerContentProps) {
     const { currentUrl } = useUrl()
     const nextStopRef = useRef<HTMLLIElement>(null)
@@ -74,7 +75,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                             {vehicle.state === "Arrived" ? "Current" : "Previous"} stop: {vehicle.trip.current_stop.name}{" "}
                             {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.current_stop.platform})` : ""}
                         </p>
-                        <p className="text-green-400">
+                        <p className="text-blue-400">
                             Next stop: {vehicle.trip.next_stop.name}{" "}
                             {vehicle.trip.next_stop.platform !== "" ? `(Platform ${vehicle.trip.next_stop.platform})` : ""}
                         </p>
@@ -159,40 +160,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </TabsContent>
 
                     <TabsContent value="stops">
-                        <div ref={scrollAreaRef} className="my-4 max-h-[300px] overflow-y-auto">
-                            <ol className="flex items-center justify-center flex-col gap-1 px-1">
-                                {stops?.map((item, index) => {
-                                    const isCurrentStop =
-                                        vehicle.trip.current_stop.id === item.id && item.platform === vehicle.trip.current_stop.platform
-                                    const isNextStop =
-                                        vehicle.trip.next_stop.id === item.id &&
-                                        vehicle.trip.next_stop.platform === item.platform &&
-                                        !isCurrentStop
-                                    const passed = vehicle.trip.current_stop.sequence > item.sequence
-                                    return (
-                                        <li
-                                            key={item.id}
-                                            ref={isNextStop ? nextStopRef : null}
-                                            className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm"
-                                        >
-                                            <p
-                                                className={`
-                                                            ${isNextStop ? "text-green-400 font-bold" : isCurrentStop ? "text-orange-400/90" : passed ? "text-zinc-400" : ""}
-                                                        `}
-                                            >
-                                                {formatTextToNiceLookingWords(item.name, true)}{" "}
-                                                {item.platform ? `| Platform ${item.platform}` : ""}
-                                            </p>
-                                            {index < stops.length - 1 && (
-                                                <ChevronDown
-                                                    className={`${isCurrentStop ? "text-orange-400" : passed ? `text-zinc-400` : ``} w-4 h-4`}
-                                                />
-                                            )}
-                                        </li>
-                                    )
-                                })}
-                            </ol>
-                        </div>
+                        <StopsList stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (
