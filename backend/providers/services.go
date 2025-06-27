@@ -142,7 +142,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					response.StopState = simpleState
 				}
 
-				if timeTillArrival <= -1 || response.StopsAway <= -1 {
+				if response.StopsAway <= -1 {
 					response.Departed = true
 				}
 
@@ -160,6 +160,10 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					}
 				}
 
+			} else {
+				if response.TimeTillArrival <= -2 {
+					response.Departed = true
+				}
 			}
 
 			resultData = append(resultData, response)

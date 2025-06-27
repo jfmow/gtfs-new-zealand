@@ -191,26 +191,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                             return <span className="text-yellow-400 ml-2">(Skipped)</span>
                                                         }
 
-                                                        if (stopTime.arrival_time && stopTime.scheduled_time) {
-                                                            const delayMinutes = Math.round(
-                                                                (stopTime.arrival_time - stopTime.scheduled_time) / (1000 * 60),
-                                                            )
-                                                            const delayText =
-                                                                delayMinutes > 0
-                                                                    ? `${delayMinutes}min late`
-                                                                    : delayMinutes < 0
-                                                                        ? `${Math.abs(delayMinutes)}min early`
-                                                                        : "On time"
-                                                            const delayColor =
-                                                                delayMinutes > 0
-                                                                    ? "text-red-400"
-                                                                    : delayMinutes < 0
-                                                                        ? "text-green-400"
-                                                                        : "text-blue-400"
-
-                                                            return <span className={`ml-2 ${delayColor}`}>({delayText})</span>
-                                                        }
-
                                                         return null
                                                     })()}
                                             </p>
