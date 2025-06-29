@@ -2,15 +2,15 @@ import { useRef, useEffect } from "react"
 import { MapPin, Clock, AlertTriangle, Train, Waypoints } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { format } from "date-fns"
-import { ServicesStop, StopTimes, VehiclesResponse } from "../tracker"
+import { ServicesStop, StopTimes, VehiclesResponse } from "."
 import { formatDistance } from "@/lib/utils"
 
 
 
 interface StopsListProps {
     stops: ServicesStop[] | null
-    vehicle: VehiclesResponse
-    stopTimes: StopTimes[] | null
+    vehicle?: VehiclesResponse
+    stopTimes?: StopTimes[] | null
 }
 
 export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps) {
@@ -18,13 +18,13 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
     const nextStopRef = useRef<HTMLDivElement>(null)
 
     useEffect(() => {
-        if (nextStopRef.current && scrollAreaRef.current) {
+        if (nextStopRef.current && scrollAreaRef.current && vehicle && vehicle.trip.next_stop.id) {
             nextStopRef.current.scrollIntoView({
                 behavior: "smooth",
                 block: "center",
             })
         }
-    }, [vehicle.trip.next_stop.id])
+    }, [vehicle])
 
     const formatUnixTime = (unixTime: number | null | undefined) => {
         if (!unixTime) return null
@@ -36,6 +36,9 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
     }
 
     const getStopStatus = (stop: ServicesStop) => {
+        if (!vehicle) {
+            return { isCurrentStop: false, isNextStop: false, passed: false }
+        }
         const isCurrentStop =
             vehicle.trip.current_stop.id === stop.id && stop.platform === vehicle.trip.current_stop.platform
 
@@ -52,7 +55,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
     }
 
     const getVehiclePosition = () => {
-        if (!stops) return null
+        if (!stops || !vehicle) return null
 
         const currentStopIndex = stops.findIndex(
             (stop) => stop.id === vehicle.trip.current_stop.id && stop.platform === vehicle.trip.current_stop.platform,
@@ -146,7 +149,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
                                     <div
                                         className={`
                             w-0.5 h-6 sm:h-8 mt-1 transition-colors relative
-                            ${isCurrentStop || (passed && index < vehicle.trip.current_stop.sequence)
+                            ${isCurrentStop || (passed && vehicle && index < vehicle.trip.current_stop.sequence)
                                                 ? "bg-gray-300"
                                                 : "bg-gray-200"
                                             }
@@ -212,7 +215,7 @@ export default function StopsList({ stops, vehicle, stopTimes }: StopsListProps)
 
                                     {/* Status Badges - Mobile Optimized */}
                                     <div className="flex flex-col gap-1 items-end flex-shrink-0">
-                                        {isCurrentStop && (
+                                        {isCurrentStop && vehicle && (
                                             <Badge variant="secondary" className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5">
                                                 {vehicle.state === "Arrived" ? "Now" : "Prev"}
                                             </Badge>

@@ -1,16 +1,15 @@
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
-import { ChevronDown } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import LoadingSpinner from "../loading-spinner"
-import Navigate from "../map/navigate"
+import LoadingSpinner from "../../loading-spinner"
+import Navigate from "../../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { useUrl } from "@/lib/url-context"
-import type { MapItem } from "../map/map"
-import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "./tracker"
-import StopsList from "./tracker/stops-list"
+import type { MapItem } from "../../map/map"
+import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
+import StopsList from "./stops-list"
 
-const LeafletMap = lazy(() => import("../map/map"))
+const LeafletMap = lazy(() => import("../../map/map"))
 
 interface ServiceTrackerContentProps {
     vehicle?: VehiclesResponse
@@ -239,21 +238,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </TabsContent>
 
                     <TabsContent value="stops">
-                        <div ref={scrollAreaRef} className="max-h-[300px] my-4 overflow-y-auto">
-                            <ol className="flex items-center justify-center flex-col gap-1 px-1">
-                                {stops.map((item, index) => {
-                                    return (
-                                        <li key={item.id} className="flex items-center justify-center flex-col gap-1 text-xs sm:text-sm">
-                                            <p>
-                                                {formatTextToNiceLookingWords(item.name, true)}{" "}
-                                                {item.platform ? `| Platform ${item.platform}` : ""}
-                                            </p>
-                                            {index < stops.length - 1 && <ChevronDown className={`w-4 h-4`} />}
-                                        </li>
-                                    )
-                                })}
-                            </ol>
-                        </div>
+                        <StopsList stops={stops} stopTimes={stopTimes} />
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (

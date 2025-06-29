@@ -1,13 +1,13 @@
 import { useUserLocation } from "@/lib/userLocation"
 import { memo, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
-import { Button } from "../ui/button"
+import { Button } from "../../ui/button"
 import { Loader2, MapIcon, Navigation } from "lucide-react"
-import { getStopsForTrip } from "./stops"
+import { getStopsForTrip } from "../stops"
 import { ApiFetch } from "@/lib/url-context"
-import ServiceTrackerContent from "./tracker-content"
+import ServiceTrackerContent from "./body"
 import { useIsMobile } from "@/lib/utils"
-import { Sheet, SheetContent, SheetTrigger } from "../ui/sheet"
+import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet"
 
 interface ServiceTrackerModalProps {
     tripId: string
@@ -69,37 +69,40 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                 if (stopsData) {
                     setStops(stopsData)
                 }
-                return
-            }
-            const form = new FormData()
-            form.set("tripId", tripId)
-            const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
-                method: "POST",
-                body: form,
-            })
-            if (!res.ok) {
-                console.error(res.error)
-                return
+
             } else {
-                if (res.data && res.data.length >= 1) {
-                    const vehicle = res.data[0]
-                    setVehicle(vehicle)
-                    const stopsData = await getStopsForTrip(tripId)
-                    if (stopsData) {
-                        setStops(stopsData)
-                        const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
-                            method: "GET",
-                        })
-                        if (stopTimesRes.ok) {
-                            setStopTimes(stopTimesRes.data)
+                const form = new FormData()
+                form.set("tripId", tripId)
+                const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
+                    method: "POST",
+                    body: form,
+                })
+                if (!res.ok) {
+                    console.error(res.error)
+                    return
+                } else {
+                    if (res.data && res.data.length >= 1) {
+                        const vehicle = res.data[0]
+                        setVehicle(vehicle)
+                        const stopsData = await getStopsForTrip(tripId)
+                        if (stopsData) {
+                            setStops(stopsData)
+
+                        }
+                    } else {
+                        const stopsData = await getStopsForTrip(tripId)
+                        if (stopsData) {
+                            setStops(stopsData)
                         }
                     }
-                } else {
-                    const stopsData = await getStopsForTrip(tripId)
-                    if (stopsData) {
-                        setStops(stopsData)
-                    }
+
                 }
+            }
+            const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
+                method: "GET",
+            })
+            if (stopTimesRes.ok) {
+                setStopTimes(stopTimesRes.data)
             }
         }
 
