@@ -40,7 +40,7 @@ var rateLimiterConfig = middleware.RateLimiterConfig{
 
 var localTimeZone, _ = time.LoadLocation("Pacific/Auckland")
 
-//var aestZone, _ = time.LoadLocation("Australia/Sydney") // or Brisbane, etc.
+//var aestZone, _ = time.LoadLocation("Australia/Brisbane")
 
 func main() {
 	//Loads a .env file in the current dir
@@ -79,9 +79,9 @@ func main() {
 
 	atApi := e.Group("/at")
 	atApi.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
-	//mlApi := e.Group("/wel")
+	mlApi := e.Group("/wel")
 	//seqAPI := e.Group("/seq")
-	//christchurchApi := e.Group("/christ")
+	christchurchApi := e.Group("/christ")
 
 	//Auckland Transport
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
@@ -101,7 +101,7 @@ func main() {
 
 	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
 
-	/*//MetLink
+	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
 	if !found {
 		panic("metlink api key Env not found")
@@ -135,14 +135,13 @@ func main() {
 	}
 
 	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, localTimeZone)
-	*/
 	/*
 		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
 		if err != nil {
 			fmt.Println("Error loading at gtfs db")
 		}
 
-		SEQRealtimeData, err := rt.NewClient("", "", 20*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
+		SEQRealtimeData, err := rt.NewClient("", "", 10*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
 		if err != nil {
 			panic(err)
 		}
