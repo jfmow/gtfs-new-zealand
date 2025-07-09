@@ -8,6 +8,7 @@ import { useUserLocation } from "@/lib/userLocation";
 import { MapItem } from "@/components/map/map";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
+import { useQueryParams } from "@/lib/url-params";
 
 const MAPID = "vehicles-amazing-map"
 const REFRESH_INTERVAL = 10; // Refresh interval in seconds
@@ -16,10 +17,10 @@ type VehicleFilters = "Train" | "Bus" | "Ferry" | "all"
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>([])
     const [error, setError] = useState("")
-    const [selectedVehicle, setSelectedVehicle] = useState<VehiclesResponse | null>(null)
     const [vehicleType, setVehicleType] = useState<VehicleFilters>("all")
     const { location, loading, locationFound } = useUserLocation()
     const { currentUrl } = useUrl()
+    const { selectedVehicle } = useQueryParams({ selectedVehicle: { keys: ["tripId"], type: "string", default: "" } })
 
     useEffect(() => {
         async function getData() {
@@ -40,14 +41,14 @@ export default function Vehicles() {
 
         let intervalId: NodeJS.Timeout | null = null
         getData()
-        if (!selectedVehicle) {
+        if (selectedVehicle.value === "") {
             intervalId = setInterval(getData, REFRESH_INTERVAL * 1000);
         }
 
         if (intervalId) {
             return () => clearInterval(intervalId);
         }
-    }, [vehicleType, selectedVehicle])
+    }, [vehicleType, selectedVehicle.value])
 
     if (error !== "") {
         return <ErrorScreen errorTitle="An error occurred while loading the vehicles" errorText={error} />
@@ -74,8 +75,8 @@ export default function Vehicles() {
                 </Select>
                 <div className="mb-4" />
 
-                {selectedVehicle !== null ? (
-                    <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? setSelectedVehicle(null) : null} has={true} tripId={selectedVehicle.trip_id} />
+                {selectedVehicle.found && selectedVehicle.value !== "" ? (
+                    <ServiceTrackerModal loaded defaultOpen onOpenChange={(v) => !v ? selectedVehicle.set("") : null} has={true} tripId={selectedVehicle.value} />
                 ) : null}
 
                 {error !== "" ? (
@@ -92,7 +93,7 @@ export default function Vehicles() {
                                 description: { text: `${vehicle.route.name}`, alwaysShow: true },
                                 zIndex: 1,
                                 onClick: () => {
-                                    setSelectedVehicle(vehicle)
+                                    selectedVehicle.set(vehicle.trip_id)
                                 },
                             }) as MapItem
                             ))]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />

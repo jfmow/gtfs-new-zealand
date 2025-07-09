@@ -161,7 +161,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const platformsToShow = shouldShowExpandButton && !showAllPlatforms ? uniquePlatforms.slice(0, 3) : uniquePlatforms
 
     return (
-        <div className="max-w-[1400px] w-full mx-auto p-4">
+        <div className="max-w-[1400px] w-full mx-auto px-4 pb-4">
             <DisplayTodaysAlerts stopName={stopName} />
             {uniquePlatforms.length > 0 ? (
                 <div className="mb-3">

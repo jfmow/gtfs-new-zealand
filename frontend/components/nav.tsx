@@ -8,6 +8,7 @@ import Head from 'next/head'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import { PopoverClose } from '@radix-ui/react-popover'
 import Router from 'next/router'
+import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 
 export default function NavBar() {
     const { theme } = useTheme()
@@ -47,6 +48,7 @@ export default function NavBar() {
                                         </PopoverClose>
                                     </li>
                                 ))}
+                                <FindCurrentVehicle />
                             </ul>
                         </PopoverContent>
                     </Popover>

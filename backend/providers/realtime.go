@@ -3,9 +3,11 @@ package providers
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -399,6 +401,88 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 
+	realtimeRoute.GET("/find-my-vehicle/:lat/:lon", func(c echo.Context) error {
+		latStr := c.PathParam("lat")
+		lonStr := c.PathParam("lon")
+
+		lat, err := strconv.ParseFloat(latStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid latitude", nil, ResponseDetails("lat", latStr, "error", err.Error()))
+		}
+		lon, err := strconv.ParseFloat(lonStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid longitude", nil, ResponseDetails("lon", lonStr, "error", err.Error()))
+		}
+
+		vehicles, err := realtime.GetVehicles()
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		}
+
+		type vehicleDistance struct {
+			Vehicle  *proto.VehiclePosition
+			Distance float64
+		}
+
+		var distances []vehicleDistance
+
+		for _, vehicle := range vehicles {
+			pos := vehicle.GetPosition()
+			dist := haversine(lat, lon, float64(pos.GetLatitude()), float64(pos.GetLongitude()))
+			distances = append(distances, vehicleDistance{
+				Vehicle:  vehicle,
+				Distance: dist,
+			})
+		}
+
+		// Sort by distance (always get closest vehicles first)
+		sort.Slice(distances, func(i, j int) bool {
+			return distances[i].Distance < distances[j].Distance
+		})
+
+		// Build result list of up to 3 closest
+		var results []map[string]interface{}
+		count := 0
+
+		for _, vd := range distances {
+			if vd.Distance <= 50 || count == 0 {
+				tripData, err := gtfsData.GetTripByID(vd.Vehicle.GetTrip().GetTripId())
+				if err != nil {
+					continue
+				}
+
+				results = append(results, map[string]interface{}{
+					"tripHeadsign":          tripData.TripHeadsign,
+					"routeId":               tripData.RouteID,
+					"distance_from_vehicle": vd.Distance,
+					"tripId":                vd.Vehicle.GetTrip().GetTripId(),
+				})
+
+				count++
+				if count >= 3 {
+					break
+				}
+			}
+		}
+
+		// Ensure at least one result (fallback to closest if none matched 50m rule)
+		if len(results) == 0 && len(distances) > 0 {
+			vd := distances[0]
+			tripData, err := gtfsData.GetTripByID(vd.Vehicle.GetTrip().GetTripId())
+			if err == nil {
+				results = append(results, map[string]interface{}{
+					"tripHeadsign":          tripData.TripHeadsign,
+					"routeId":               tripData.RouteID,
+					"distance_from_vehicle": vd.Distance,
+					"tripId":                vd.Vehicle.GetTrip().GetTripId(),
+				})
+			}
+		}
+
+		// Always return an array
+		return JsonApiResponse(c, http.StatusOK, "Closest vehicles", results)
+	})
+
 }
 
 func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
@@ -549,6 +633,23 @@ func getPredictedStopArrivalTimesForTrip(stopUpdates []*proto.TripUpdate_StopTim
 	}
 
 	return results
+}
+
+// haversine returns the distance in meters between two lat/lon points
+func haversine(lat1, lon1, lat2, lon2 float64) float64 {
+	const R = 6371000 // Earth radius in meters
+
+	dLat := (lat2 - lat1) * math.Pi / 180
+	dLon := (lon2 - lon1) * math.Pi / 180
+
+	lat1 = lat1 * math.Pi / 180
+	lat2 = lat2 * math.Pi / 180
+
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
+		math.Sin(dLon/2)*math.Sin(dLon/2)*math.Cos(lat1)*math.Cos(lat2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+
+	return R * c
 }
 
 // Vehicles
