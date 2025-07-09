@@ -305,7 +305,7 @@ function setDefaultZoom(map: leaflet.Map, defaultZoomCenter: LatLng, userLocatio
         map.fitBounds(bounds);
         //User and multiple vehicles/stops - vehicle map/stops map
     } else if (userLocation.found) {
-        map.setView([userLocation.lat, userLocation.lon], 13);
+        map.setView([userLocation.lat, userLocation.lon], 17);
     } else {
         if (vehicles.length > 0) {
             if (alwaysFitBoundsWithoutUser) {
