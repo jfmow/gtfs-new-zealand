@@ -21,7 +21,7 @@ export function getUserLocation(): Promise<UserLocation> {
             {
                 enableHighAccuracy: true,
                 timeout: 10000,
-                maximumAge: 60000,
+                maximumAge: 5000,
             }
         );
     });
