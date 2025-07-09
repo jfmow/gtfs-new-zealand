@@ -17,6 +17,11 @@ export function getUserLocation(): Promise<UserLocation> {
             },
             (error) => {
                 reject(error); // Pass the error object
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 60000,
             }
         );
     });
