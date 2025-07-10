@@ -94,7 +94,7 @@ func main() {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	AucklandTransportRealtimeData, err := rt.NewClient(atApiKey, "Ocp-Apim-Subscription-Key", 10*time.Second, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts")
+	AucklandTransportRealtimeData, err := rt.NewClient(atApiKey, "Ocp-Apim-Subscription-Key", 10*time.Second, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts", *localTimeZone)
 	if err != nil {
 		panic(err)
 	}
@@ -112,7 +112,7 @@ func main() {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 10*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts")
+	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 10*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts", *localTimeZone)
 	if err != nil {
 		panic(err)
 	}
@@ -129,7 +129,7 @@ func main() {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	ChristChurchRealtimeData, err := rt.NewClient(christchurchApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb")
+	ChristChurchRealtimeData, err := rt.NewClient(christchurchApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb", *localTimeZone)
 	if err != nil {
 		panic(err)
 	}
