@@ -159,7 +159,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </TabsContent>
 
                     <TabsContent value="stops">
-                        <StopsList stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
+                        <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (
@@ -238,7 +238,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </TabsContent>
 
                     <TabsContent value="stops">
-                        <StopsList stops={stops} stopTimes={stopTimes} />
+                        <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} />
                     </TabsContent>
 
                     {currentStop && tripId !== "" && (

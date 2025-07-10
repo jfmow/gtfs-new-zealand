@@ -156,24 +156,34 @@ Create the default tables for notifications
 */
 func (v Database) createNotificationsTable() {
 	query := `
-		-- Table: notifications
 		CREATE TABLE IF NOT EXISTS notifications (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,    -- Auto-incrementing primary key
-			endpoint TEXT NOT NULL,                  -- Make endpoint NOT NULL if required
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			endpoint TEXT NOT NULL,
 			p256dh TEXT NOT NULL DEFAULT '',
 			auth TEXT NOT NULL DEFAULT '',
 			recent_notifications TEXT DEFAULT '[]',
 			created INTEGER NOT NULL DEFAULT '[]',
 			expiry_warning_sent BOOLEAN NOT NULL DEFAULT 0,
-			CONSTRAINT unique_notification UNIQUE (endpoint, p256dh, auth)  -- Composite unique constraint
+			CONSTRAINT unique_notification UNIQUE (endpoint, p256dh, auth)
 		);
 
 		CREATE TABLE IF NOT EXISTS stops (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,    -- Auto-incrementing primary key
-			clientId INTEGER NOT NULL,               -- Foreign key referencing notifications.id
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			clientId INTEGER NOT NULL,
 			parent_stop TEXT NOT NULL DEFAULT '',
-			FOREIGN KEY (clientId) REFERENCES notifications(id) ON DELETE CASCADE
-			CONSTRAINT unique_stops UNIQUE (parent_stop, clientId)  -- Composite unique constraint
+			FOREIGN KEY (clientId) REFERENCES notifications(id) ON DELETE CASCADE,
+			CONSTRAINT unique_stops UNIQUE (parent_stop, clientId)
+		);
+
+		CREATE TABLE IF NOT EXISTS reminders (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			client_id INTEGER NOT NULL,
+			trip_id TEXT NOT NULL,
+			stop_sequence INTEGER NOT NULL,
+			type TEXT NOT NULL CHECK (type IN ('arrival', 'get_off')),
+			created_at INTEGER NOT NULL,
+			FOREIGN KEY (client_id) REFERENCES notifications(id) ON DELETE CASCADE,
+			CONSTRAINT unique_reminder UNIQUE (client_id, type)
 		);
 
 	`
@@ -182,24 +192,25 @@ func (v Database) createNotificationsTable() {
 	if err != nil {
 		log.Panicf("%s", err.Error())
 	}
-
 }
 
 /*
 Create a new notification client, MUST be unique.
 
 stops can be parents or child's
+
+parentStopId can be blank to just create a client
 */
-func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, parentStopId string, gtfsDB gtfs.Database) (Notification, error) {
+func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, parentStopId string, gtfsDB gtfs.Database) (*NotificationClient, error) {
 	// Validate input parameters
 	if len(endpoint) < 2 || !isValidURL(endpoint) {
-		return Notification{}, errors.New("invalid endpoint url")
+		return nil, errors.New("invalid endpoint url")
 	}
 	if len(p256dh) < 10 || !isBase64Url(p256dh) {
-		return Notification{}, errors.New("invalid p256dh")
+		return nil, errors.New("invalid p256dh")
 	}
 	if len(auth) < 8 || !isBase64Url(auth) {
-		return Notification{}, errors.New("invalid auth")
+		return nil, errors.New("invalid auth")
 	}
 
 	// Insert the new notification client into the `notifications` table
@@ -223,13 +234,13 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, parent
 		result, err := v.db.Exec(query, notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, notificationClient.Created)
 		if err != nil {
 			fmt.Println(err)
-			return Notification{}, errors.New("failed to create new client")
+			return nil, errors.New("failed to create new client")
 		}
 
 		// Get the ID of the newly created notification
 		newRecordId, err := result.LastInsertId()
 		if err != nil {
-			return Notification{}, errors.New("failed to retrieve client ID")
+			return nil, errors.New("failed to retrieve client ID")
 		}
 		notificationClient.Id = int(newRecordId)
 	}
@@ -240,11 +251,23 @@ func (v Database) CreateNotificationClient(endpoint, p256dh, auth string, parent
 		VALUES (?, ?);
 	`
 
-	if _, err := v.db.Exec(stopQuery, notificationClient.Id, parentStopId); err != nil {
-		return Notification{}, errors.New("failed to create stop entry")
+	if parentStopId != "" {
+		if _, err := v.db.Exec(stopQuery, notificationClient.Id, parentStopId); err != nil {
+			return nil, errors.New("failed to create stop entry")
+		}
 	}
 
-	return notificationClient, nil
+	return &NotificationClient{
+		Id: notificationClient.Id,
+		Notification: webpush.Subscription{
+			Endpoint: notificationClient.Endpoint,
+			Keys: webpush.Keys{
+				P256dh: notificationClient.P256dh,
+				Auth:   notificationClient.Auth,
+			},
+		},
+		Created: notificationClient.Created,
+	}, nil
 }
 
 /*
@@ -677,7 +700,7 @@ func (v Database) SendNotificationToAllClients(body string, title string, url st
 /*
 Find a notification client by its subscription
 
-stopId MUST be a PARENT stop
+stopId MUST be a PARENT stop (can be "" for broad query)
 */
 func (v Database) FindNotificationClient(endpoint, p256dh, auth string, parentStopId string) (*NotificationClient, error) {
 	// Query to find notification clients by stop
@@ -765,6 +788,67 @@ func (v Database) FindNotificationClient(endpoint, p256dh, auth string, parentSt
 }
 
 /*
+Find a client by their id (only found in the db)
+*/
+func (v Database) FindNotificationClientById(id int) (*NotificationClient, error) {
+	query := `
+		SELECT 
+			endpoint,
+			p256dh,
+			auth,
+			recent_notifications,
+			created,
+			expiry_warning_sent
+		FROM 
+			notifications
+		WHERE 
+			id = ?
+	`
+
+	var notification Notification
+	var recent string
+
+	err := v.db.QueryRow(query, id).Scan(
+		&notification.Endpoint,
+		&notification.P256dh,
+		&notification.Auth,
+		&recent,
+		&notification.Created,
+		&notification.ExpiryWarningSent,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, errors.New("client not found")
+		}
+		return nil, errors.New("failed to query notification client by ID")
+	}
+
+	if recent != "[]" {
+		err = json.Unmarshal([]byte(recent), &notification.RecentNotifications)
+		if err != nil {
+			return nil, errors.New("failed to parse recent notifications")
+		}
+	}
+
+	client := &NotificationClient{
+		Id: id,
+		Notification: webpush.Subscription{
+			Endpoint: notification.Endpoint,
+			Keys: webpush.Keys{
+				Auth:   notification.Auth,
+				P256dh: notification.P256dh,
+			},
+		},
+		RecentNotifications: notification.RecentNotifications,
+		Created:             notification.Created,
+		ExpiryWarningSent:   notification.ExpiryWarningSent,
+	}
+
+	return client, nil
+}
+
+/*
 Update a already existing subscription to a new one
 
 Basically just retains the client (is the point of this)
@@ -816,6 +900,101 @@ func (v Database) SetClientExpiryWarningSent(client NotificationClient) error {
 		return errors.New("problem updating client")
 	}
 	return nil
+}
+
+//Reminders
+
+func (v Database) AddReminder(clientId int, tripId string, stopSequence int, reminderType string) error {
+	if reminderType != "arrival" && reminderType != "get_off" {
+		return errors.New("invalid reminder type")
+	}
+
+	// Remove existing reminder of this type for this client
+	deleteQuery := `DELETE FROM reminders WHERE client_id = ? AND type = ?`
+	_, err := v.db.Exec(deleteQuery, clientId, reminderType)
+	if err != nil {
+		return errors.New("failed to delete existing reminder")
+	}
+
+	// Insert new reminder
+	insertQuery := `
+		INSERT INTO reminders (client_id, trip_id, stop_sequence, type, created_at)
+		VALUES (?, ?, ?, ?, ?)
+	`
+	_, err = v.db.Exec(insertQuery, clientId, tripId, stopSequence, reminderType, time.Now().Unix())
+	if err != nil {
+		return errors.New("failed to insert new reminder")
+	}
+
+	return nil
+}
+
+func (v Database) DeleteReminder(clientId int, reminderType string) error {
+	query := `DELETE FROM reminders WHERE client_id = ? AND type = ?`
+	_, err := v.db.Exec(query, clientId, reminderType)
+	if err != nil {
+		return errors.New("failed to delete reminder")
+	}
+	return nil
+}
+
+type Reminder struct {
+	ClientId     int    `json:"client_id"`
+	TripId       string `json:"trip_id"`
+	StopSequence int    `json:"stop_sequence"`
+	Type         string `json:"type"` // "arrival" or "get_off"
+	CreatedAt    int64  `json:"created_at"`
+}
+
+func (v Database) GetAllReminders() ([]Reminder, error) {
+	query := `SELECT client_id, trip_id, stop_sequence, type, created_at FROM reminders`
+
+	rows, err := v.db.Query(query)
+	if err != nil {
+		return nil, errors.New("failed to query reminders")
+	}
+	defer rows.Close()
+
+	var reminders []Reminder
+	for rows.Next() {
+		var r Reminder
+		if err := rows.Scan(&r.ClientId, &r.TripId, &r.StopSequence, &r.Type, &r.CreatedAt); err != nil {
+			return nil, errors.New("failed to scan reminder row")
+		}
+		reminders = append(reminders, r)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, errors.New("error during reminder rows iteration")
+	}
+
+	return reminders, nil
+}
+
+func (v Database) GetReminderByType(clientId int, reminderType string) (*Reminder, error) {
+	query := `SELECT client_id, trip_id, stop_sequence, type, created_at FROM reminders WHERE client_id = ? AND type = ?`
+
+	var r Reminder
+	err := v.db.QueryRow(query, clientId, reminderType).Scan(
+		&r.ClientId, &r.TripId, &r.StopSequence, &r.Type, &r.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, errors.New("failed to query reminder by type")
+	}
+	return &r, nil
+}
+
+func (v Database) HasReminder(clientId int) (bool, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM reminders WHERE client_id = ?`
+	err := v.db.QueryRow(query, clientId).Scan(&count)
+	if err != nil {
+		return false, errors.New("failed to query reminder existence")
+	}
+	return count > 0, nil
 }
 
 // Notification database

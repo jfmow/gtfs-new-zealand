@@ -148,6 +148,68 @@ export async function checkStopSubscription(stopIdOrName: string) {
     }
 }
 
+export async function getCurrentPushSubscription(): Promise<{
+    endpoint: string;
+    auth: string;
+    p256dh: string;
+} | null> {
+    const sw = await getSwRegistration()
+    if (!sw) return null;
+
+    const subscription = await sw.pushManager.getSubscription();
+    if (!subscription) return null;
+
+    const sub = JSON.parse(JSON.stringify(subscription));
+    return {
+        endpoint: sub.endpoint,
+        auth: sub.keys.auth,
+        p256dh: sub.keys.p256dh
+    };
+}
+
+export async function addReminder(stopIdOrName: string, tripId: string, type: "arrival" | "get_off") {
+    // eslint-disable-next-line prefer-const
+    let subscription = await getCurrentPushSubscription();
+
+    if (!subscription) {
+        const hasNotificationPermission = getNotificationPermissionState()
+        if (!hasNotificationPermission) {
+            return false
+        }
+        const newSub = await createNewSubscription();
+        const subObj = JSON.parse(JSON.stringify(newSub));
+        subscription = {
+            endpoint: subObj.endpoint,
+            auth: subObj.keys.auth,
+            p256dh: subObj.keys.p256dh
+        };
+    }
+
+    const form = new FormData();
+    form.set("endpoint", subscription.endpoint);
+    form.set("p256dh", subscription.p256dh);
+    form.set("auth", subscription.auth);
+    form.set("stopIdOrName", stopIdOrName);
+    form.set("tripId", tripId)
+    form.set("type", type)
+
+    // Send subscription to the backend
+    try {
+        const response = await ApiFetch(`notifications/reminder`, {
+            method: 'POST',
+            body: form,
+        });
+
+        if (response.ok) {
+            return true
+        }
+        return false
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
 export async function subscribeToStop(stopIdOrName: string) {
     // eslint-disable-next-line prefer-const
     let { has, subscription } = await checkStopSubscription(stopIdOrName)
@@ -245,3 +307,18 @@ export interface Keys {
     auth: string;
     p256dh: string;
 }
+
+//TODO: remove function exports and make them all use this
+
+const notification = {
+    removeSubscription,
+    unregister,
+    register,
+    getCurrentPushSubscription,
+    checkStopSubscription,
+    addReminder,
+    subscribeToStop,
+    refreshSubscription,
+};
+
+export default notification;
