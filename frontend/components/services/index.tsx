@@ -372,6 +372,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             </ul>
             <div className="py-4 mt-2 flex flex-col gap-2 sm:gap-1">
                 <div className="flex items-center gap-2">
+                    <small className="text-xs font-medium leading-none text-muted-foreground">Displaying the next 20 services for each platform.</small>
+                </div>
+                <div className="flex items-center gap-2">
                     <div className="flex gap-1 items-center justify-center">
                         <BikeIcon aria-label="Bikes might be allowed icon" className={`w-4 h-4 text-yellow-500`} />
                         <small className="text-xs font-medium leading-none">Bikes might be allowed (ask)</small>

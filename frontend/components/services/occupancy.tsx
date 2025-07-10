@@ -99,5 +99,7 @@ export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: O
                     <Circle fill="red" className="w-2 h-2" />
                 </div>
             )
+        default:
+            return "Unknown"
     }
 }
