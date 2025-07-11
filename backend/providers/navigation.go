@@ -267,6 +267,29 @@ func computeShapeDistance(shape orb.LineString, point orb.Point) (float64, error
 	return distAlong, nil
 }
 
+func (t *TripShapeDistance) DistanceFromLine(lat, lon float64) (float64, error) {
+	point := orb.Point{lon, lat}
+	return DistanceFromLine(t.Line, point)
+}
+
+func DistanceFromLine(shape orb.LineString, point orb.Point) (float64, error) {
+	minDist := math.MaxFloat64
+
+	for i := 0; i < len(shape)-1; i++ {
+		a := shape[i]
+		b := shape[i+1]
+
+		proj, _ := projectPointOntoSegment(point, a, b)
+		d := geo.Distance(point, proj)
+
+		if d < minDist {
+			minDist = d
+		}
+	}
+
+	return minDist, nil
+}
+
 type Coordinates struct {
 	Lat, Lon float64
 }

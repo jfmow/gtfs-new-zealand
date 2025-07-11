@@ -215,6 +215,7 @@ export interface VehiclesResponse {
     position: Position
     type: string
     state: "Arrived" | "Departed" | "Arriving" | "Boarding"
+    off_course: boolean
 }
 
 export interface Position {

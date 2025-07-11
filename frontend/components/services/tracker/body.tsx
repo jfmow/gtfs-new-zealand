@@ -10,6 +10,7 @@ import { MapItem } from "@/components/map/markers/create"
 import { LatLng } from "../../map/map"
 import { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
+import { TriangleAlertIcon } from "lucide-react"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
@@ -97,6 +98,12 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         return (
             <div className="space-y-4">
                 <div>
+                    {vehicle.off_course ? (<>
+                        <div className="flex items-center gap-1 text-destructive">
+                            <TriangleAlertIcon className="w-4 h-4" />
+                            <p className="text-sm font-medium">Location issue</p>
+                        </div>
+                    </>) : null}
                     <h2 className="text-lg font-semibold">{vehicle.trip.headsign}</h2>
                     <div className="space-y-1 text-sm">
                         <Separator className="my-1" />

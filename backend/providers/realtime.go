@@ -130,6 +130,20 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1, getParentStopByChildCache)
 					responseData.State = simpleState
 				}
+
+				if filterTripId != "" {
+					line, err := NewTripShapeDistance(currentTripId, gtfsData)
+					if err == nil {
+						distanceFromLine, err := line.DistanceFromLine(
+							float64(vehicle.GetPosition().GetLatitude()),
+							float64(vehicle.GetPosition().GetLongitude()),
+						)
+						if err == nil && distanceFromLine > 500.0 {
+							responseData.OffCourse = true
+						}
+					}
+				}
+
 				responseData.Trip = &tripData
 			}
 
@@ -662,6 +676,7 @@ type VehiclesResponse struct {
 	Position     VehiclesPosition `json:"position"`
 	VehicleType  string           `json:"type"` // bus, tram, metro
 	State        string           `json:"state,omitempty"`
+	OffCourse    bool             `json:"off_course"`
 }
 
 type VehiclesRoute struct {
