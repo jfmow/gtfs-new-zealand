@@ -22,10 +22,11 @@ interface MapProps {
 
 type ItemsOnMap = {
     mapItems: {
-        clusters: Record<string, MarkerClusterGroup>,
+        clusters: Record<string, MarkerClusterGroup>
         markers: { id: string, marker: leaflet.Marker }[]
+        zoomButtons: Record<string, leaflet.Control>
     }
-    zoom: {
+    zoomButtons: {
         controls: leaflet.Control[] | null
     }
     user: {
@@ -50,10 +51,10 @@ export default function Map({
     const mapRef = useRef<leaflet.Map | null>(null)
     const itemsOnMap = useRef<ItemsOnMap>({
         compass: { control: null },
-        zoom: { controls: [] },
+        zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
-        mapItems: { clusters: {}, markers: [] }
+        mapItems: { clusters: {}, markers: [], zoomButtons: {} }
     });
 
     useEffect(() => {
@@ -66,7 +67,7 @@ export default function Map({
             map = createNewMap(mapRef, map_id)
             addMapVariantControlControl(map)
             setDefaultZoom(map, defaultZoom);
-            addZoomControls(map, itemsOnMap.current.zoom)
+            addZoomControls(map, itemsOnMap.current.zoomButtons)
             addUserCompassControl(itemsOnMap.current.compass, map)
         }
 
@@ -99,13 +100,17 @@ export default function Map({
 
         const activeMapItems = itemsOnMap.current;
 
-        // Reset markers and clusters
+        // Initialize clusters and zoomButtons if undefined (defensive)
         if (!activeMapItems.mapItems.clusters) {
             activeMapItems.mapItems.clusters = {};
+        }
+        if (!activeMapItems.mapItems.zoomButtons) {
+            activeMapItems.mapItems.zoomButtons = {};
         }
 
         const oldMarkers = activeMapItems.mapItems.markers;
         const oldClusters = activeMapItems.mapItems.clusters;
+        const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
         // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
@@ -115,8 +120,14 @@ export default function Map({
             map.removeLayer(cluster);
         });
 
+        // Clean up old zoom controls
+        Object.values(oldZoomControls).forEach((control) => {
+            map.removeControl(control);
+        });
+
         activeMapItems.mapItems.markers = [];
         activeMapItems.mapItems.clusters = {};
+        activeMapItems.mapItems.zoomButtons = {};
 
         // Group items by type
         const groupedByType: Record<string, MapItem[]> = {};
@@ -154,14 +165,43 @@ export default function Map({
                 }
 
                 updatedMarkers.push({ id: item.id, marker });
+
+                // Handle zoom button for this item
+                // Remove old zoom control if it exists
+                if (oldZoomControls[item.id]) {
+                    map.removeControl(oldZoomControls[item.id]);
+                    delete oldZoomControls[item.id];
+                }
+
+                if (item.zoomButton) {
+                    const zoomControl = new leaflet.Control({ position: "topright" });
+                    zoomControl.onAdd = () => {
+                        const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
+                        button.innerHTML = item.zoomButton ?? "Zoom"
+                        button.onclick = () => {
+                            map.flyTo(marker.getLatLng(), 17);
+                        };
+                        return button;
+                    };
+                    zoomControl.addTo(map);
+                    activeMapItems.mapItems.zoomButtons[item.id] = zoomControl;
+                }
             });
 
-            // Add the cluster to the map (if used)
+            // Add cluster group to map if used
             if (useCluster && clusterGroup) {
                 map.addLayer(clusterGroup);
             }
 
             activeMapItems.mapItems.markers.push(...updatedMarkers);
+        });
+
+        // Remove any zoom buttons for items no longer present
+        Object.keys(oldZoomControls).forEach(itemId => {
+            if (!mapItems.find(i => i.id === itemId && i.zoomButton)) {
+                map.removeControl(oldZoomControls[itemId]);
+                delete oldZoomControls[itemId];
+            }
         });
 
         // Store updated mapItems state
@@ -176,6 +216,7 @@ export default function Map({
 
         return () => clearInterval(intervalId);
     }, [mapItems]);
+
 
 
 
@@ -233,7 +274,7 @@ function setDefaultZoom(map: leaflet.Map, defaultZoom: [LatLng] | [LatLng, LatLn
     }
 }
 
-function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoom"]) {
+function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomButtons"]) {
     if (activeMapItemsZoom.controls && activeMapItemsZoom.controls.length > 0) {
         activeMapItemsZoom.controls.forEach((control) => map.removeControl(control));
     }
@@ -304,7 +345,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
             const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
             button.onclick = () => {
-                map.flyTo(userLocation, 15);
+                map.flyTo(userMarker.getLatLng(), 15);
             };
             return button;
         };

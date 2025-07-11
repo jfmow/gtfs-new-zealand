@@ -14,6 +14,7 @@ export interface MapItem {
         alwaysShow: boolean;
     }
     type: 'stop' | 'vehicle'
+    zoomButton?: string
 }
 
 export function createNewMarker(MapItem: MapItem): leaflet.Marker {
