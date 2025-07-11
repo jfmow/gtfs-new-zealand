@@ -98,6 +98,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					continue
 				}
 			}
+
+			tripUpdate, err := tripUpdates.ByTripID(currentTripId)
+			if err != nil {
+				continue //skip because it's probably not in service
+			}
 			if filterTripId != "" {
 				var tripData VehiclesTrip
 				//If they are selecting a single vehicle, we can give stop info, otherwise its a waste of time because we don't even show it
@@ -118,18 +123,15 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					return stopsForTrip[i].Sequence < stopsForTrip[j].Sequence
 				})
 
-				tripUpdate, err := tripUpdates.ByTripID(currentTripId)
-				if err == nil {
-					stopUpdates := tripUpdate.GetStopTimeUpdate()
+				stopUpdates := tripUpdate.GetStopTimeUpdate()
 
-					nextStopSequenceNumber, _, _, simpleState := getNextStopSequence(stopUpdates, stopsForTripData.LowestSequence, localTimeZone)
+				nextStopSequenceNumber, _, _, simpleState := getNextStopSequence(stopUpdates, stopsForTripData.LowestSequence, localTimeZone)
 
-					tripData.FirstStop = getXStop(stopsForTrip, 0, getParentStopByChildCache)
-					tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1), getParentStopByChildCache)
-					tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1), getParentStopByChildCache)
-					tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1, getParentStopByChildCache)
-					responseData.State = simpleState
-				}
+				tripData.FirstStop = getXStop(stopsForTrip, 0, getParentStopByChildCache)
+				tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1), getParentStopByChildCache)
+				tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1), getParentStopByChildCache)
+				tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1, getParentStopByChildCache)
+				responseData.State = simpleState
 
 				if filterTripId != "" {
 					line, err := NewTripShapeDistance(currentTripId, gtfsData)
