@@ -1,14 +1,16 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { lazy, Suspense, useEffect, useState } from "react";
-const LeafletMap = lazy(() => import("@/components/map/map"));
+import { Suspense, useEffect, useState } from "react";
+const LeafletMap = dynamic(() => import("../components/map/map"), {
+    ssr: false,
+});
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ApiFetch, useUrl } from "@/lib/url-context";
-import { useUserLocation } from "@/lib/userLocation";
-import { MapItem } from "@/components/map/map";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { useQueryParams } from "@/lib/url-params";
+import dynamic from "next/dynamic";
+import { MapItem } from "@/components/map/markers/create";
 
 const MAPID = "vehicles-amazing-map"
 const REFRESH_INTERVAL = 10; // Refresh interval in seconds
@@ -18,7 +20,6 @@ export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>([])
     const [error, setError] = useState("")
     const [vehicleType, setVehicleType] = useState<VehicleFilters>("all")
-    const { location, loading, locationFound } = useUserLocation()
     const { currentUrl } = useUrl()
     const { selectedVehicle } = useQueryParams({ selectedVehicle: { keys: ["tripId"], type: "string", default: "" } })
 
@@ -54,10 +55,6 @@ export default function Vehicles() {
         return <ErrorScreen errorTitle="An error occurred while loading the vehicles" errorText={error} />
     }
 
-    if (loading) {
-        return <LoadingSpinner height="100svh" />
-    }
-
     return (
         <>
             <Header title="Vehicle tracker" />
@@ -83,7 +80,7 @@ export default function Vehicles() {
                     "Err: " + error
                 ) : (
                     <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} vehicles={[...(
+                        <LeafletMap defaultZoom={["user", currentUrl.defaultMapCenter]} mapItems={[...(
                             vehicles.map((vehicle) => ({
                                 lat: vehicle.position.lat,
                                 lon: vehicle.position.lon,
@@ -92,11 +89,12 @@ export default function Vehicles() {
                                 routeID: vehicle.route.id,
                                 description: { text: `${vehicle.route.name}`, alwaysShow: true },
                                 zIndex: 1,
+                                type: "vehicle",
                                 onClick: () => {
                                     selectedVehicle.set(vehicle.trip_id)
                                 },
                             }) as MapItem
-                            ))]} map_id={MAPID} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />
+                            ))]} map_id={MAPID} height={"calc(100svh - 2rem - 70px - 36px - 1rem)"} />
                     </Suspense>
                 )}
 

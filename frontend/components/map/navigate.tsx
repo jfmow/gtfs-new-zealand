@@ -8,8 +8,7 @@ import { Button } from "../ui/button"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { GeoJSON } from "./geojson-types";
 import { convertSecondsToTimeNoDecimal, formatDistance } from "@/lib/utils";
-import { ApiFetch, useUrl } from "@/lib/url-context";
-import { useUserLocation } from "@/lib/userLocation";
+import { ApiFetch } from "@/lib/url-context";
 
 interface NavigateProps {
     start: { lat: number, lon: number, name: string },
@@ -17,9 +16,7 @@ interface NavigateProps {
 }
 
 export default function Navigate({ start, end }: NavigateProps) {
-    const { loading, error, location } = useUserLocation()
     const [data, setData] = useState<OSRMResponse | null>(null)
-    const { currentUrl } = useUrl()
 
     async function getPoints() {
 
@@ -81,15 +78,15 @@ export default function Navigate({ start, end }: NavigateProps) {
                 {data && Object.keys(data).length >= 3 ? (
                     <>
                         <div className="w-full rounded-xl overflow-hidden">
-
                             <Suspense>
-                                <LeafletMap defaultCenter={currentUrl.defaultMapCenter} userLocation={{ found: !error && !loading ? true : false, lat: location[0], lon: location[1] }} map_id={"nav-map"} height={"400px"} line={data as unknown as GeoJSON} stops={[{
+                                <LeafletMap defaultZoom={[[start.lat, start.lon], [end.lat, end.lon]]} map_id={"nav-map"} height={"400px"} line={{ GeoJson: data as unknown as GeoJSON, color: "" }} mapItems={[{
                                     lat: end.lat, lon: end.lon, icon: "stop marker",
                                     id: "",
                                     routeID: "",
                                     zIndex: 0,
                                     description: { text: end.name, alwaysShow: true },
-                                    onClick: () => { }
+                                    onClick: () => { },
+                                    type: "stop"
                                 }]} />
                             </Suspense>
                         </div>

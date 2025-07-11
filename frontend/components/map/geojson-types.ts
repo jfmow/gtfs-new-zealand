@@ -3,7 +3,6 @@ export interface ShapesResponse {
     geojson: GeoJSON
 }
 
-
 export interface GeoJSON {
     type: "FeatureCollection"; // Specify this as a fixed value
     features: Feature[];

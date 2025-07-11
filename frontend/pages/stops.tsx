@@ -1,18 +1,19 @@
 import LoadingSpinner from "@/components/loading-spinner";
-import { MapItem } from "@/components/map/map";
+import { MapItem } from "@/components/map/markers/create";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { ApiFetch, useUrl } from "@/lib/url-context";
-import { useUserLocation } from "@/lib/userLocation";
-import { lazy, Suspense, useEffect, useState } from "react";
-const LeafletMap = lazy(() => import("@/components/map/map"));
+import dynamic from "next/dynamic";
+import { Suspense, useEffect, useState } from "react";
+const LeafletMap = dynamic(() => import("../components/map/map"), {
+    ssr: false,
+});
 
 const MAPID = "stops-amazing-map"
 
 export default function Stops() {
     const [stops, setStops] = useState<Stop[]>()
     const [error, setError] = useState("")
-    const { location, loading, locationFound } = useUserLocation()
     const { currentUrl } = useUrl()
 
     useEffect(() => {
@@ -33,17 +34,13 @@ export default function Stops() {
         return <ErrorScreen errorTitle="An error occurred while loading the stops" errorText={error} />
     }
 
-    if (loading) {
-        return <LoadingSpinner height="100svh" />
-    }
-
     return (
         <>
             <Header title="Stops map" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4">
                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
-                        <LeafletMap defaultCenter={currentUrl.defaultMapCenter} userLocation={{ found: locationFound, lat: location[0], lon: location[1] }} map_id={MAPID} stops={[...(stops ? (
+                        <LeafletMap defaultZoom={["user", currentUrl.defaultMapCenter]} map_id={MAPID} mapItems={[...(stops ? (
                             stops.map((item) => ({
                                 lat: item.stop_lat,
                                 lon: item.stop_lon,
@@ -52,6 +49,7 @@ export default function Stops() {
                                 routeID: "",
                                 description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
                                 zIndex: 1,
+                                type: "stop",
                                 onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
                             } as MapItem))
                         ) : [])]} height={"calc(100svh - 2rem - 70px)"} />

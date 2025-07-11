@@ -41,9 +41,13 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		}
 
 		//No cache because this route isn't used a lot (yet)
-		route, err := gtfsData.GetRouteByID(routeId)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid route id", nil, ResponseDetails("routeId", routeId, "details", "No route found for the given route ID", "error", err.Error()))
+		var routeColor = ""
+		if routeId != "" {
+			route, err := gtfsData.GetRouteByID(routeId)
+			if err != nil {
+				return JsonApiResponse(c, http.StatusBadRequest, "invalid route id", nil, ResponseDetails("routeId", routeId, "details", "No route found for the given route ID", "error", err.Error()))
+			}
+			routeColor = route.RouteColor
 		}
 
 		type MapResponse struct {
@@ -53,7 +57,7 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 
 		return JsonApiResponse(c, http.StatusOK, "", MapResponse{
 			GeoJson: geoJson,
-			Color:   route.RouteColor,
+			Color:   routeColor,
 		})
 	})
 

@@ -4,10 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import LoadingSpinner from "../../loading-spinner"
 import Navigate from "../../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
-import { useUrl } from "@/lib/url-context"
-import type { MapItem } from "../../map/map"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 import StopsList from "./stops-list"
+import { MapItem } from "@/components/map/markers/create"
+import { LatLng } from "../../map/map"
+import { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
+import { ApiFetch } from "@/lib/url-context"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
@@ -37,14 +39,13 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     tripId,
     currentStop,
     location,
-    locationFound,
     loading,
     stopTimes,
 }: ServiceTrackerContentProps) {
-    const { currentUrl } = useUrl()
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [tabValue, setTabValue] = useState("track")
+    const [routeLine, setRouteLine] = useState<{ color: string; line: GeoJSON } | null>(null)
 
     // Auto-scroll to next stop when it changes or when switching to stops tab
     useEffect(() => {
@@ -61,6 +62,35 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
             return () => clearTimeout(timeoutId)
         }
     }, [tabValue, vehicle?.trip.next_stop.id, vehicle?.trip.next_stop.platform])
+
+    useEffect(() => {
+        const getRouteLine = async () => {
+            try {
+                const form = new FormData()
+                form.set("tripId", tripId)
+                if (vehicle) {
+                    form.set("routeId", vehicle.route.id)
+                }
+                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes`, {
+                    method: "POST",
+                    body: form
+                });
+
+                if (!response.ok) {
+                    console.error(response.error)
+                    return
+                }
+                return { color: response.data.color ? `#${response.data.color}` : '#393939', line: response.data.geojson }
+            } catch (error) {
+                console.error(error)
+            }
+        }
+        getRouteLine().then((res) => {
+            if (res) {
+                setRouteLine(res)
+            }
+        })
+    }, [tripId, vehicle])
 
     // Vehicle tracking mode
     if (vehicle) {
@@ -102,55 +132,66 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         {!loading && (
                             <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                                 <LeafletMap
-                                    defaultCenter={currentUrl.defaultMapCenter}
-                                    userLocation={{ found: locationFound, lat: location[0], lon: location[1] }}
-                                    trip={{
-                                        routeId: vehicle.route.id,
-                                        tripId: vehicle.trip_id,
-                                    }}
-                                    vehicles={[
-                                        {
-                                            lat: vehicle.position.lat,
-                                            lon: vehicle.position.lon,
-                                            icon: vehicle.type || "bus",
-                                            id: vehicle.trip_id,
-                                            routeID: vehicle.route.id,
-                                            description: { text: "Vehicle you're tracking", alwaysShow: false },
-                                            zIndex: 1,
-                                            onClick: () => { },
-                                        },
-                                    ]}
-                                    stops={
+                                    defaultZoom={currentStop ? [[vehicle.position.lat, vehicle.position.lon], [currentStop.lat, currentStop.lon]] : [[vehicle.position.lat, vehicle.position.lon]]}
+                                    line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
+                                    mapItems={
                                         stops
-                                            ? stops.map(
-                                                (item) =>
-                                                    ({
-                                                        lat: item.lat,
-                                                        lon: item.lon,
-                                                        icon:
-                                                            currentStop?.name === item.name
-                                                                ? "marked stop marker"
-                                                                : vehicle.trip.final_stop.id === item.id
-                                                                    ? "end marker"
-                                                                    : vehicle.trip.next_stop.id === item.id
-                                                                        ? "stop marker"
-                                                                        : item.id === vehicle.trip.current_stop.id
-                                                                            ? "current stop marker"
-                                                                            : vehicle.trip.current_stop.sequence > item.sequence
-                                                                                ? "dot gray"
-                                                                                : "dot",
-                                                        id: item.name,
-                                                        routeID: "",
-                                                        description: {
-                                                            text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
-                                                            alwaysShow: false,
-                                                        },
-                                                        zIndex: 1,
-                                                        onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
-                                                    }) as MapItem,
-                                            )
-                                            : []
+                                            ? [
+                                                ...stops.map(
+                                                    (item) =>
+                                                        ({
+                                                            lat: item.lat,
+                                                            lon: item.lon,
+                                                            icon:
+                                                                currentStop?.name === item.name
+                                                                    ? "marked stop marker"
+                                                                    : vehicle.trip.final_stop.id === item.id
+                                                                        ? "end marker"
+                                                                        : vehicle.trip.next_stop.id === item.id
+                                                                            ? "stop marker"
+                                                                            : item.id === vehicle.trip.current_stop.id
+                                                                                ? "current stop marker"
+                                                                                : vehicle.trip.current_stop.sequence > item.sequence
+                                                                                    ? "dot gray"
+                                                                                    : "dot",
+                                                            id: item.name,
+                                                            routeID: "",
+                                                            description: {
+                                                                text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                                alwaysShow: false,
+                                                            },
+                                                            type: "stop", // ✅ This makes it a valid MapItem
+                                                            zIndex: 1,
+                                                            onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
+                                                        }) as MapItem
+                                                ),
+                                                {
+                                                    lat: vehicle.position.lat,
+                                                    lon: vehicle.position.lon,
+                                                    icon: vehicle.type || "bus",
+                                                    id: vehicle.trip_id,
+                                                    routeID: vehicle.route.id,
+                                                    description: { text: "Vehicle you're tracking", alwaysShow: false },
+                                                    zIndex: 1,
+                                                    type: "vehicle", // ✅ Add this line
+                                                    onClick: () => { },
+                                                },
+                                            ]
+                                            : [
+                                                {
+                                                    lat: vehicle.position.lat,
+                                                    lon: vehicle.position.lon,
+                                                    icon: vehicle.type || "bus",
+                                                    id: vehicle.trip_id,
+                                                    routeID: vehicle.route.id,
+                                                    description: { text: "Vehicle you're tracking", alwaysShow: false },
+                                                    zIndex: 1,
+                                                    type: "vehicle", // ✅ Add this line
+                                                    onClick: () => { },
+                                                },
+                                            ]
                                     }
+
                                     map_id={"tracker" + Math.random()}
                                     height={"300px"}
                                 />
@@ -185,6 +226,11 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
     // Preview mode
     if (!has && previewData && stops) {
+        const sortedStops = stops.sort((a, b) => a.sequence - b.sequence)
+        const mapBounds: [LatLng, LatLng] = [
+            [sortedStops[0].lat, sortedStops[0].lon],
+            [sortedStops[sortedStops.length - 1].lat, sortedStops[sortedStops.length - 1].lon]
+        ]
         return (
             <div className="space-y-4">
                 <div>
@@ -208,14 +254,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     <TabsContent value="track">
                         <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                             <LeafletMap
-                                defaultCenter={currentUrl.defaultMapCenter}
-                                alwaysFitBoundsWithoutUser={true}
-                                userLocation={{ found: false, lat: 0, lon: 0 }}
-                                trip={{
-                                    routeId: previewData.route_id,
-                                    tripId: previewData.trip_id,
-                                }}
-                                stops={stops.map(
+                                defaultZoom={mapBounds}
+                                line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
+                                mapItems={stops.map(
                                     (item, index) =>
                                         ({
                                             lat: item.lat,
@@ -228,6 +269,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                 alwaysShow: false,
                                             },
                                             zIndex: 1,
+                                            type: "stop",
                                             onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
                                         }) as MapItem,
                                 )}
