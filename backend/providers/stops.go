@@ -9,12 +9,10 @@ import (
 	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 )
 
 func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParentStopsCache caches.ParentStopsCache, getAllStopsCache caches.AllStopsCache, getStopsForTripCache caches.StopsForTripCache) {
 	stopsRoute := primaryRoute.Group("/stops")
-	stopsRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
 	//Returns stops for a trip by tripId
 	stopsRoute.GET("/:tripId", func(c echo.Context) error {

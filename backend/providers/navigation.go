@@ -16,7 +16,6 @@ import (
 
 	"github.com/jfmow/gtfs"
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/geo"
 	"github.com/paulmach/orb/geojson"
@@ -24,7 +23,6 @@ import (
 
 func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	navigationRoute := primaryRoute.Group("/map")
-	navigationRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
 	//Returns the route of a route as geo json
 	navigationRoute.POST("/geojson/shapes", func(c echo.Context) error {

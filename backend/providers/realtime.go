@@ -16,7 +16,6 @@ import (
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 )
 
 type LatLng struct {
@@ -26,7 +25,6 @@ type LatLng struct {
 
 func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache, getParentStopByChildCache caches.ParentStopsByChildCache) {
 	realtimeRoute := primaryRoute.Group("/realtime")
-	realtimeRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.POST("/live", func(c echo.Context) error {

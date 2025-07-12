@@ -6,12 +6,10 @@ import (
 
 	"github.com/jfmow/gtfs"
 	"github.com/labstack/echo/v5"
-	"github.com/labstack/echo/v5/middleware"
 )
 
 func setupRoutesRoutes(primaryRoute *echo.Group, getRouteCache func() map[string]gtfs.Route) {
 	routesRoute := primaryRoute.Group("/routes")
-	routesRoute.Use(middleware.GzipWithConfig(gzipConfig))
 
 	routesRoute.GET("/:routeId", func(c echo.Context) error {
 		routeIdEncoded := c.PathParam("routeId")

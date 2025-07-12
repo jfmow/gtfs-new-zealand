@@ -54,8 +54,10 @@ func ResponseDetails(pairs ...any) map[string]any {
 }
 
 func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location) {
+	primaryRouter.Use(middleware.GzipWithConfig(gzipConfig))
+
 	caches := caches.CreateCaches(gtfsData)
-	//Services stopping at a given stop, by name. e.g Baldwin Ave Train Station
+
 	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache)
 	setupRoutesRoutes(primaryRouter, caches.GetRouteCache)
 	setupStopsRoutes(primaryRouter, gtfsData, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
