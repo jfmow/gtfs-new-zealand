@@ -4,7 +4,13 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: false,
   devIndicators: false,
-  webpack: (config, { dev, isServer }) => {
+};
+
+export default nextConfig;
+
+/**
+ * 
+ * webpack: (config, { dev, isServer }) => {
     if (!dev && !isServer) {
       Object.assign(config.resolve.alias, {
         "react/jsx-runtime.js": "preact/compat/jsx-runtime",
@@ -15,6 +21,4 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
-};
-
-export default nextConfig;
+ */
