@@ -40,6 +40,50 @@ export function createNewMarker(MapItem: MapItem): leaflet.Marker {
     return marker
 }
 
+export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): leaflet.Marker {
+    const customIcon = createMarkerIcon(
+        MapItem.routeID,
+        MapItem.icon || "bus",
+        MapItem.description.text,
+        MapItem.description.alwaysShow
+    );
+
+
+    // Update icon
+    marker.setIcon(customIcon);
+
+    // Update zIndex
+    marker.setZIndexOffset(MapItem.zIndex ?? 0);
+
+    // Remove all existing event listeners before reattaching
+    marker.off();
+
+    // Update click handler
+    if (typeof MapItem.onClick === 'function' && MapItem.id !== "") {
+        marker.on('click', () => MapItem.onClick(MapItem.id));
+    }
+
+    // Remove existing tooltip if any
+    marker.unbindTooltip();
+
+    // Re-bind tooltip if necessary
+    if (MapItem.description.text !== "" && !MapItem.description.alwaysShow) {
+        marker.bindTooltip(MapItem.description.text, {
+            direction: 'top',
+            offset: [0, -24],
+            permanent: false,
+            opacity: 0.9,
+            className: 'custom-tooltip',
+        });
+    }
+
+    // Update position
+    animateMarkerTo(marker, MapItem.lat, MapItem.lon)
+
+    return marker;
+}
+
+
 function createMarkerIcon(routeId: string, icon: string, description: string, alwaysShowDiscription: boolean): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
     if (!icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
@@ -164,3 +208,21 @@ const routesWithIcons = [
     "STH-201",
     "WEST-201",
 ]
+
+
+function animateMarkerTo(marker: L.Marker, newLat: number, newLng: number, duration = 500) {
+    const start = marker.getLatLng();
+    const end = leaflet.latLng(newLat, newLng);
+    const startTime = performance.now();
+
+    function animate(time: number) {
+        const t = Math.min(1, (time - startTime) / duration);
+        const lat = start.lat + (end.lat - start.lat) * t;
+        const lng = start.lng + (end.lng - start.lng) * t;
+        marker.setLatLng([lat, lng]);
+
+        if (t < 1) requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
+}

@@ -4,7 +4,7 @@ import 'leaflet/dist/leaflet.css';
 import { GeoJSON } from "./geojson-types";
 import { buttonVariants } from "../ui/button";
 import addMapVariantControlControl from "./tile-layer";
-import { createMapClusterGroup, createNewMarker, MapItem } from "./markers/create";
+import { createMapClusterGroup, createNewMarker, MapItem, updateExistingMarker } from "./markers/create";
 
 export type LatLng = [number, number];
 type BackupLatLng = LatLng
@@ -56,6 +56,7 @@ export default function Map({
         line: { line: null },
         mapItems: { clusters: {}, markers: [], zoomButtons: {} }
     });
+    const oldMapItems = useRef<MapItem[]>([])
 
     useEffect(() => {
         if (!defaultZoom || !Array.isArray(defaultZoom) || defaultZoom.length < 1 || (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))) {
@@ -112,6 +113,9 @@ export default function Map({
         const oldClusters = activeMapItems.mapItems.clusters;
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
+
+        const previousMapItems = oldMapItems.current
+
         // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
             map.removeLayer(marker);
@@ -136,6 +140,7 @@ export default function Map({
             groupedByType[item.type].push(item);
         });
 
+
         // Process each group
         Object.entries(groupedByType).forEach(([type, items]) => {
             const useCluster = items.length >= 100;
@@ -153,7 +158,12 @@ export default function Map({
 
                 if (existing) {
                     marker = existing.marker;
-                    animateMarkerTo(marker, item.lat, item.lon);
+                    const oldItemData = previousMapItems.find((i) => i.id === item.id)
+                    if (oldItemData && !mapItemsAreEqual(item, oldItemData)) {
+                        updateExistingMarker(item, marker)
+                    } else {
+                        animateMarkerTo(marker, item.lat, item.lon);
+                    }
                 } else {
                     marker = createNewMarker(item);
                 }
@@ -195,6 +205,8 @@ export default function Map({
 
             activeMapItems.mapItems.markers.push(...updatedMarkers);
         });
+
+        oldMapItems.current = mapItems
 
         // Remove any zoom buttons for items no longer present
         Object.keys(oldZoomControls).forEach(itemId => {
@@ -455,4 +467,12 @@ function animateMarkerTo(marker: L.Marker, newLat: number, newLng: number, durat
     }
 
     requestAnimationFrame(animate);
+}
+
+function mapItemsAreEqual(a: MapItem, b: MapItem): boolean {
+    return (
+        a.icon === b.icon &&
+        a.zoomButton === b.zoomButton &&
+        a.onClick?.toString() === b.onClick?.toString()
+    );
 }
