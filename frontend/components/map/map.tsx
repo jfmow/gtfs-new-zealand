@@ -56,7 +56,6 @@ export default function Map({
         line: { line: null },
         mapItems: { clusters: {}, markers: [], zoomButtons: {} }
     });
-    const oldMapItems = useRef<MapItem[]>([])
 
     useEffect(() => {
         if (!defaultZoom || !Array.isArray(defaultZoom) || defaultZoom.length < 1 || (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))) {
@@ -114,7 +113,6 @@ export default function Map({
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
 
-        const previousMapItems = oldMapItems.current
 
         // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
@@ -157,13 +155,7 @@ export default function Map({
                 let marker: leaflet.Marker;
 
                 if (existing) {
-                    marker = existing.marker;
-                    const oldItemData = previousMapItems.find((i) => i.id === item.id)
-                    if (oldItemData && !mapItemsAreEqual(item, oldItemData)) {
-                        updateExistingMarker(item, marker)
-                    } else {
-                        animateMarkerTo(marker, item.lat, item.lon);
-                    }
+                    marker = updateExistingMarker(item, existing.marker);
                 } else {
                     marker = createNewMarker(item);
                 }
@@ -206,7 +198,6 @@ export default function Map({
             activeMapItems.mapItems.markers.push(...updatedMarkers);
         });
 
-        oldMapItems.current = mapItems
 
         // Remove any zoom buttons for items no longer present
         Object.keys(oldZoomControls).forEach(itemId => {
@@ -388,7 +379,6 @@ function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map
     }
 }
 
-
 async function checkPermission(): Promise<boolean> {
     if (!navigator.permissions) {
         // Permissions API not supported, fallback to trying getCurrentPosition
@@ -452,27 +442,4 @@ async function getUserLocation(): Promise<LatLng> {
 }
 
 
-function animateMarkerTo(marker: L.Marker, newLat: number, newLng: number, duration = 500) {
-    const start = marker.getLatLng();
-    const end = leaflet.latLng(newLat, newLng);
-    const startTime = performance.now();
 
-    function animate(time: number) {
-        const t = Math.min(1, (time - startTime) / duration);
-        const lat = start.lat + (end.lat - start.lat) * t;
-        const lng = start.lng + (end.lng - start.lng) * t;
-        marker.setLatLng([lat, lng]);
-
-        if (t < 1) requestAnimationFrame(animate);
-    }
-
-    requestAnimationFrame(animate);
-}
-
-function mapItemsAreEqual(a: MapItem, b: MapItem): boolean {
-    return (
-        a.icon === b.icon &&
-        a.zoomButton === b.zoomButton &&
-        a.onClick?.toString() === b.onClick?.toString()
-    );
-}
