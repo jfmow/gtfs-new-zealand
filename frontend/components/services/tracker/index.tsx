@@ -1,3 +1,5 @@
+"use client"
+
 import { useUserLocation } from "@/lib/userLocation"
 import { memo, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
@@ -32,16 +34,15 @@ export interface PreviewData {
 }
 
 export interface StopTimes {
-    stop_id: string;
-    arrival_time: number;
-    departure_time: number;
-    scheduled_time: number;
-    stop: ServicesStop;
-    skipped: boolean;
-    passed: boolean;
-    dist: number;
+    stop_id: string
+    arrival_time: number
+    departure_time: number
+    scheduled_time: number
+    stop: ServicesStop
+    skipped: boolean
+    passed: boolean
+    dist: number
 }
-
 
 const REFRESH_INTERVAL = 10 // Refresh interval in seconds
 
@@ -60,49 +61,58 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     const [open, setOpen] = useState(defaultOpen)
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
     const [initialLoading, setInitialLoading] = useState(false)
+    const [refreshing, setRefreshing] = useState(false)
     const isMobile = useIsMobile()
 
     useEffect(() => {
-        async function getData() {
-            if (!has) {
-                const stopsData = await getStopsForTrip(tripId)
-                if (stopsData) {
-                    setStops(stopsData)
-                }
+        async function getData(isRefresh = false) {
+            if (isRefresh) {
+                setRefreshing(true)
+            }
 
-            } else {
-                const form = new FormData()
-                form.set("tripId", tripId)
-                const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
-                    method: "POST",
-                    body: form,
-                })
-                if (!res.ok) {
-                    console.error(res.error)
-                    return
+            try {
+                if (!has) {
+                    const stopsData = await getStopsForTrip(tripId)
+                    if (stopsData) {
+                        setStops(stopsData)
+                    }
                 } else {
-                    if (res.data && res.data.length >= 1) {
-                        const vehicle = res.data[0]
-                        setVehicle(vehicle)
-                        const stopsData = await getStopsForTrip(tripId)
-                        if (stopsData) {
-                            setStops(stopsData)
-
-                        }
+                    const form = new FormData()
+                    form.set("tripId", tripId)
+                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
+                        method: "POST",
+                        body: form,
+                    })
+                    if (!res.ok) {
+                        console.error(res.error)
+                        return
                     } else {
-                        const stopsData = await getStopsForTrip(tripId)
-                        if (stopsData) {
-                            setStops(stopsData)
+                        if (res.data && res.data.length >= 1) {
+                            const vehicle = res.data[0]
+                            setVehicle(vehicle)
+                            const stopsData = await getStopsForTrip(tripId)
+                            if (stopsData) {
+                                setStops(stopsData)
+                            }
+                        } else {
+                            const stopsData = await getStopsForTrip(tripId)
+                            if (stopsData) {
+                                setStops(stopsData)
+                            }
                         }
                     }
-
                 }
-            }
-            const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
-                method: "GET",
-            })
-            if (stopTimesRes.ok) {
-                setStopTimes(stopTimesRes.data)
+
+                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
+                    method: "GET",
+                })
+                if (stopTimesRes.ok) {
+                    setStopTimes(stopTimesRes.data)
+                }
+            } finally {
+                if (isRefresh) {
+                    setRefreshing(false)
+                }
             }
         }
 
@@ -110,8 +120,8 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
-                getData()
-                intervalId = setInterval(getData, REFRESH_INTERVAL * 1000)
+                getData(true) // Mark as refresh when visibility changes
+                intervalId = setInterval(() => getData(true), REFRESH_INTERVAL * 1000)
             } else if (document.visibilityState === "hidden") {
                 if (intervalId) {
                     clearInterval(intervalId)
@@ -178,6 +188,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             locationFound={locationFound}
             loading={loading}
             stopTimes={stopTimes}
+            refreshing={refreshing}
         />
     )
 
@@ -245,4 +256,3 @@ export interface ServicesStop {
     platform: string
     sequence: number
 }
-

@@ -1,3 +1,5 @@
+"use client"
+
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -6,15 +8,15 @@ import Navigate from "../../map/navigate"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 import StopsList from "./stops-list"
-import { MapItem } from "@/components/map/markers/create"
-import { LatLng } from "../../map/map"
-import { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
+import type { MapItem } from "@/components/map/markers/create"
+import type { LatLng } from "../../map/map"
+import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon } from "lucide-react"
+import { TriangleAlertIcon, Loader2 } from "lucide-react"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
-const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>`
+const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>`
 
 interface ServiceTrackerContentProps {
     vehicle?: VehiclesResponse
@@ -32,6 +34,7 @@ interface ServiceTrackerContentProps {
     location: [number, number]
     locationFound: boolean
     loading: boolean
+    refreshing: boolean
 }
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent({
@@ -44,6 +47,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     location,
     loading,
     stopTimes,
+    refreshing,
 }: ServiceTrackerContentProps) {
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
@@ -61,7 +65,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     inline: "nearest",
                 })
             }, 100)
-
             return () => clearTimeout(timeoutId)
         }
     }, [tabValue, vehicle?.trip.next_stop.id, vehicle?.trip.next_stop.platform])
@@ -76,18 +79,18 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                 }
                 const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes`, {
                     method: "POST",
-                    body: form
-                });
-
+                    body: form,
+                })
                 if (!response.ok) {
                     console.error(response.error)
                     return
                 }
-                return { color: response.data.color ? `#${response.data.color}` : '#393939', line: response.data.geojson }
+                return { color: response.data.color ? `#${response.data.color}` : "#393939", line: response.data.geojson }
             } catch (error) {
                 console.error(error)
             }
         }
+
         getRouteLine().then((res) => {
             if (res) {
                 setRouteLine(res)
@@ -100,13 +103,18 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         return (
             <div className="space-y-4">
                 <div>
-                    {vehicle.off_course ? (<>
-                        <div className="flex items-center gap-1 text-destructive">
-                            <TriangleAlertIcon className="w-4 h-4" />
-                            <p className="text-sm font-medium">Location issue</p>
-                        </div>
-                    </>) : null}
-                    <h2 className="text-lg font-semibold">{vehicle.trip.headsign}</h2>
+                    {vehicle.off_course ? (
+                        <>
+                            <div className="flex items-center gap-1 text-destructive">
+                                <TriangleAlertIcon className="w-4 h-4" />
+                                <p className="text-sm font-medium">Location issue</p>
+                            </div>
+                        </>
+                    ) : null}
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold">{vehicle.trip.headsign}</h2>
+                        {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    </div>
                     <div className="space-y-1 text-sm">
                         <Separator className="my-1" />
                         <p className="text-orange-400">
@@ -141,7 +149,14 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         {!loading && (
                             <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
                                 <LeafletMap
-                                    defaultZoom={currentStop ? [[vehicle.position.lat, vehicle.position.lon], [currentStop.lat, currentStop.lon]] : [[vehicle.position.lat, vehicle.position.lon]]}
+                                    defaultZoom={
+                                        currentStop
+                                            ? [
+                                                [vehicle.position.lat, vehicle.position.lon],
+                                                [currentStop.lat, currentStop.lon],
+                                            ]
+                                            : [[vehicle.position.lat, vehicle.position.lon]]
+                                    }
                                     line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
                                     mapItems={
                                         stops
@@ -169,10 +184,10 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                                 text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
                                                                 alwaysShow: false,
                                                             },
-                                                            type: "stop", // ✅ This makes it a valid MapItem
+                                                            type: "stop",
                                                             zIndex: 1,
                                                             onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
-                                                        }) as MapItem
+                                                        }) as MapItem,
                                                 ),
                                                 {
                                                     lat: vehicle.position.lat,
@@ -182,7 +197,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                     routeID: vehicle.route.id,
                                                     description: { text: "Vehicle you're tracking", alwaysShow: false },
                                                     zIndex: 1,
-                                                    type: "vehicle", // ✅ Add this line
+                                                    type: "vehicle",
                                                     onClick: () => { },
                                                     zoomButton: VehicleIcon,
                                                 },
@@ -196,13 +211,12 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                     routeID: vehicle.route.id,
                                                     description: { text: "Vehicle you're tracking", alwaysShow: false },
                                                     zIndex: 1,
-                                                    type: "vehicle", // ✅ Add this line
+                                                    type: "vehicle",
                                                     onClick: () => { },
                                                     zoomButton: VehicleIcon,
                                                 },
                                             ]
                                     }
-
                                     map_id={"tracker" + Math.random()}
                                     height={"300px"}
                                 />
@@ -240,12 +254,16 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         const sortedStops = stops.sort((a, b) => a.sequence - b.sequence)
         const mapBounds: [LatLng, LatLng] = [
             [sortedStops[0].lat, sortedStops[0].lon],
-            [sortedStops[sortedStops.length - 1].lat, sortedStops[sortedStops.length - 1].lon]
+            [sortedStops[sortedStops.length - 1].lat, sortedStops[sortedStops.length - 1].lon],
         ]
+
         return (
             <div className="space-y-4">
                 <div>
-                    <h2 className="text-lg font-semibold">{formatTextToNiceLookingWords(previewData.tripHeadsign)}</h2>
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold">{formatTextToNiceLookingWords(previewData.tripHeadsign)}</h2>
+                        {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    </div>
                     <p className="text-sm text-muted-foreground">Preview the stops for this service</p>
                 </div>
 
