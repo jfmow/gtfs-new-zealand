@@ -1,6 +1,3 @@
-"use client"
-
-import { useUserLocation } from "@/lib/userLocation"
 import { memo, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "../../ui/button"
@@ -55,7 +52,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     onOpenChange,
     previewData,
 }: ServiceTrackerModalProps) {
-    const { location, locationFound, loading } = useUserLocation()
     const [stops, setStops] = useState<ServicesStop[] | null>(null)
     const [stopTimes, setStopTimes] = useState<StopTimes[]>([])
     const [open, setOpen] = useState(defaultOpen)
@@ -184,9 +180,6 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             has={has}
             tripId={tripId}
             currentStop={currentStop}
-            location={location}
-            locationFound={locationFound}
-            loading={loading}
             stopTimes={stopTimes}
             refreshing={refreshing}
         />
@@ -225,7 +218,7 @@ export interface VehiclesResponse {
     license_plate: string
     position: Position
     type: string
-    state: "Arrived" | "Departed" | "Arriving" | "Boarding"
+    state: "Arrived" | "Departed" | "Arriving" | "Boarding" | "Unknown"
     off_course: boolean
 }
 
