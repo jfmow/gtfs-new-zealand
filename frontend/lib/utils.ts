@@ -77,7 +77,7 @@ export function useIsMobile({ mobileWidth = 768 }: UseMobileOptions = {}): boole
       const isMobileByWidth = window.innerWidth < mobileWidth
 
       // Check user agent for mobile devices
-      const isMobileByUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      const isMobileByUserAgent = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent,
       )
 
