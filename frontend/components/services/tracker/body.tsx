@@ -12,7 +12,8 @@ import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2 } from "lucide-react"
+import { TriangleAlertIcon, Loader2, BusIcon } from "lucide-react"
+import { Card, CardContent } from "@/components/ui/card"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
@@ -103,31 +104,52 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         return (
             <div className="space-y-4">
                 <div>
-                    {vehicle.off_course ? (
-                        <>
-                            <div className="flex items-center gap-1 text-destructive">
-                                <TriangleAlertIcon className="w-4 h-4" />
-                                <p className="text-sm font-medium">Location issue</p>
+                    {vehicle.off_course && (
+                        <Card className="border-destructive bg-destructive/5 mb-4">
+                            <CardContent className="flex items-center gap-2 p-3 sm:p-4">
+                                <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5 text-destructive flex-shrink-0" />
+                                <p className="text-sm font-medium text-destructive">Vehicle location issue detected</p>
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Header */}
+                    <div className="space-y-3 sm:space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                                <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight mb-2">
+                                    {vehicle.trip.headsign}
+                                </h1>
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <BusIcon className="h-4 w-4" />
+                                    <span>Route {vehicle.route.id}</span>
+                                    {stops && (
+                                        <>
+                                            <span>•</span>
+                                            <span>{stops.length} stops</span>
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                        </>
-                    ) : null}
-                    <div className="flex items-center gap-2">
-                        <h2 className="text-lg font-semibold">{vehicle.trip.headsign}</h2>
-                        {refreshing && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                            {refreshing && (
+                                <div className="flex items-center gap-2 text-muted-foreground flex-shrink-0">
+                                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                                    <span className="text-sm font-medium hidden sm:inline">Updating</span>
+                                </div>
+                            )}
+                        </div>
                     </div>
+                    <Separator className="my-2" />
+
                     <div className="space-y-1 text-sm">
-                        <Separator className="my-1" />
                         <p className="text-orange-400">
-                            {vehicle.state === "Arrived" ? "Current" : "Previous"} stop: {vehicle.trip.current_stop.name}{" "}
-                            {vehicle.trip.current_stop.platform !== "" ? `(Platform ${vehicle.trip.current_stop.platform})` : ""}
+                            {vehicle.state === "Arrived" ? "Current" : "Previous"} stop: {vehicle.trip.current_stop.name}
                         </p>
                         <p className="text-blue-400">
-                            Next stop: {vehicle.trip.next_stop.name}{" "}
-                            {vehicle.trip.next_stop.platform !== "" ? `(Platform ${vehicle.trip.next_stop.platform})` : ""}
+                            Next stop: {vehicle.trip.next_stop.name}
                         </p>
                         <p className="text-red-400">
-                            Final stop: {vehicle.trip.final_stop.name}{" "}
-                            {vehicle.trip.final_stop.platform !== "" ? `(Platform ${vehicle.trip.final_stop.platform})` : ""}
+                            Final stop: {vehicle.trip.final_stop.name}
                         </p>
                     </div>
                 </div>
@@ -172,7 +194,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                                     : vehicle.trip.final_stop.id === item.id
                                                                         ? "end marker"
                                                                         : vehicle.trip.next_stop.id === item.id
-                                                                            ? "stop marker"
+                                                                            ? "next stop marker"
                                                                             : item.id === vehicle.trip.current_stop.id
                                                                                 ? "current stop marker"
                                                                                 : vehicle.trip.current_stop.sequence > item.sequence
