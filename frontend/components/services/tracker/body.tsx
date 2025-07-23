@@ -348,13 +348,36 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         )
     }
 
+    function getBoundsFromStops(stops: { lat: number; lon: number; sequence: number }[]): [LatLng, LatLng] {
+        if (!Array.isArray(stops) || stops.length === 0) {
+            throw new Error("Stops array is empty or invalid.");
+        }
+
+
+        let minLat = stops[0].lat;
+        let maxLat = stops[0].lat;
+        let minLng = stops[0].lon;
+        let maxLng = stops[0].lon;
+
+        for (const stop of stops) {
+            if (stop.lat < minLat) minLat = stop.lat;
+            if (stop.lat > maxLat) maxLat = stop.lat;
+            if (stop.lon < minLng) minLng = stop.lon;
+            if (stop.lon > maxLng) maxLng = stop.lon;
+        }
+
+        const mapBounds: [LatLng, LatLng] = [
+            [minLat, minLng], // southwest corner
+            [maxLat, maxLng], // northeast corner
+        ];
+
+        return mapBounds;
+    }
+
     // Preview mode
     if (!has && previewData && stops) {
         const sortedStops = stops.sort((a, b) => a.sequence - b.sequence)
-        const mapBounds: [LatLng, LatLng] = [
-            [sortedStops[0].lat, sortedStops[0].lon],
-            [sortedStops[sortedStops.length - 1].lat, sortedStops[sortedStops.length - 1].lon],
-        ]
+        const mapBounds = getBoundsFromStops(sortedStops);
 
         return (
             <div className="space-y-4 sm:space-y-6">
