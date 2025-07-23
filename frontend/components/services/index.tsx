@@ -168,7 +168,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     <div
                         role="tablist"
                         aria-label="Filter services by platform"
-                        className="bg-card/50 backdrop-blur-sm rounded-md border shadow-sm p-3"
                     >
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                             <Button
