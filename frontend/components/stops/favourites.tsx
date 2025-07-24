@@ -2,98 +2,53 @@ import type React from "react"
 import { Star, TriangleAlert } from "lucide-react"
 import { Button } from "../ui/button"
 import { toast } from "sonner"
-import { useEffect, useState, useRef } from "react"
-import Router from "next/router"
+import { useEffect, useState } from "react"
+import Link from "next/link"
 
 
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
-
 export default function Favorites() {
-    const [favorites, setFavorites] = useState<{ stop: string, displayName: string }[]>([])
-    const dragItem = useRef<number | null>(null)
-    const dragOverItem = useRef<number | null>(null)
+    const [favorites, setFavorites] = useState<{ stop: string; displayName: string }[]>([])
 
     useEffect(() => {
-        setFavorites(getFavorites())
+        const storedFavorites = getFavorites()
+        setFavorites(storedFavorites)
 
-        const handleFavoritesUpdated = () => {
+        // Optional: Listen for updates across components
+        const updateFavorites = () => {
             setFavorites(getFavorites())
         }
-
-        window.addEventListener(FAVORITES_UPDATED_EVENT, handleFavoritesUpdated)
+        window.addEventListener(FAVORITES_UPDATED_EVENT, updateFavorites)
 
         return () => {
-            window.removeEventListener(FAVORITES_UPDATED_EVENT, handleFavoritesUpdated)
+            window.removeEventListener(FAVORITES_UPDATED_EVENT, updateFavorites)
         }
     }, [])
 
-    const handleDragStart = (index: number) => {
-        dragItem.current = index
-    }
-
-    const handleDragOver = (e: React.DragEvent) => {
-        e.preventDefault()
-    }
-
-    const handleDragEnter = (index: number) => {
-        dragOverItem.current = index
-    }
-
-    const handleDrop = () => {
-        if (dragItem.current === null || dragOverItem.current === null) return
-
-        // Create a copy of the favorites array
-        const newFavorites = [...favorites]
-
-        // Remove the dragged item
-        const draggedItem = newFavorites[dragItem.current]
-        newFavorites.splice(dragItem.current, 1)
-
-        // Insert the dragged item at the new position
-        newFavorites.splice(dragOverItem.current, 0, draggedItem)
-
-        // Update state and localStorage
-        setFavorites(newFavorites)
-        window.localStorage.setItem(localStorageKey, JSON.stringify(newFavorites))
-
-        // Reset refs
-        dragItem.current = null
-        dragOverItem.current = null
-
-        // Dispatch event to notify other components
-        const event = new CustomEvent(FAVORITES_UPDATED_EVENT)
-        window.dispatchEvent(event)
-    }
-
     return (
-        <div className="flex flex-wrap gap-2 items-center w-full">
-            {favorites.length > 0 ? (
-                <>
-                    {favorites.map((favorite, index) => (
-                        <Button
-                            size={"sm"}
-                            variant={"outline"}
-                            key={index}
-                            className="w-full sm:w-auto active:cursor-grabbing min-w-[200px]"
-                            onClick={() => Router.push(`/?s=${favorite.stop}`)}
-                            draggable
-                            onDragStart={() => handleDragStart(index)}
-                            onDragOver={handleDragOver}
-                            onDragEnter={() => handleDragEnter(index)}
-                            onDrop={handleDrop}
-                            onDragEnd={handleDrop}
+        <div role="tablist" aria-label="Favorite stops" className="flex flex-nowrap gap-2 items-center w-full overflow-x-auto p-1">
+            {
+                favorites.length > 0 ? (
+                    favorites.map((favorite) => (
+                        <Link
+                            key={favorite.stop}
+                            role="tab"
+                            aria-selected="false"
+                            tabIndex={0}
+                            href={`/?s=${favorite.stop}`}
+                            className="text-xs text-nowrap text-center p-2 rounded dark:bg-gray-800 bg-gray-200 text-gray-700 dark:text-gray-300 w-full sm:w-auto cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-700 transition-all"
                         >
                             {favorite.displayName}
-                        </Button>
-                    ))}
-                </>
-            ) : (
-                <div className="flex flex-col w-full text-gray-500 items-center gap-1 justify-center">
-                    <TriangleAlert className="w-4 h-4 !rotate-0" />
-                    <p className="text-sm">No favorites added yet.</p>
-                </div>
-            )}
+                        </Link>
+                    ))
+                ) : (
+                    <div className="flex flex-col w-full text-gray-500 items-center gap-1 justify-center">
+                        <TriangleAlert className="w-4 h-4 !rotate-0" />
+                        <p className="text-sm">No favorites added yet.</p>
+                    </div>
+                )
+            }
         </div>
     )
 }
@@ -125,8 +80,18 @@ export function AddToFavorites({ stopName }: { stopName: string }) {
         const favorites = getFavorites()
 
         if (!favorites.some(fav => fav.stop === stopName)) {
-            const customName = prompt("Enter a name for the stop:", stopName) || ""
-            favorites.push({ stop: stopName, displayName: customName !== "" ? customName : stopName }) // Initialize with the same name
+            let customName = ""
+            while (true) {
+                const input = prompt("Enter a name for the stop (max 10 characters):", stopName)
+                if (input === null) {
+                    // User cancelled prompt, do nothing
+                    return
+                }
+                customName = input
+                if (customName.length <= 10) break
+                alert("Name too long. Please enter a name with 10 characters or fewer.")
+            }
+            favorites.push({ stop: stopName, displayName: customName !== "" ? customName : stopName })
             window.localStorage.setItem(localStorageKey, JSON.stringify(favorites))
             toast.success(`${stopName} added to favorites`)
             setIsFavorited(true)

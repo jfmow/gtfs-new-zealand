@@ -1,57 +1,107 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon } from 'lucide-react'
+import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
-import { ReactNode } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
 import Head from 'next/head'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import { PopoverClose } from '@radix-ui/react-popover'
 import Router from 'next/router'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
+import { motion, AnimatePresence } from 'framer-motion'
 
 export default function NavBar() {
     const { theme } = useTheme()
-    const isMobile = useIsMobile({ mobileWidth: 820 })
+    const isMobile = useIsMobile()
+    const [menuOpen, setMenuOpen] = useState(false)
+
+    useEffect(() => {
+        if (menuOpen) {
+            document.body.style.overflow = 'hidden'
+        } else {
+            document.body.style.overflow = ''
+        }
+        return () => {
+            document.body.style.overflow = ''
+        }
+    }, [menuOpen])
 
     return (
         <>
             {isMobile ? (
-                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full py-4 px-2 flex items-center justify-between border-b  relative z-50 h-[70px]'>
-                    <Popover>
-                        <div className='flex items-center justify-between w-full'>
-                            <PopoverTrigger asChild>
-                                <Button variant={"ghost"}>
-                                    <MenuIcon />
-                                    Menu
-                                </Button>
-                            </PopoverTrigger>
-                            <Link href='/'>
-                                <div className="flex items-center">
-                                    <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full py-4 px-2 flex items-center justify-between border-b relative z-50 h-[70px]'>
+                    <div className='flex items-center justify-between w-full'>
+                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
+                            <MenuIcon />
+                            Menu
+                        </Button>
+                        <Link href='/'>
+                            <div className="flex items-center">
+                                <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                            </div>
+                        </Link>
+                    </div>
+                    <AnimatePresence>
+                        {menuOpen && (
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black"
+                            >
+                                <div className="flex justify-between items-center mt-4 mx-2">
+                                    <Button variant="ghost" onClick={() => setMenuOpen(false)}>
+                                        <X className="w-6 h-6" />
+                                        Menu
+                                    </Button>
                                 </div>
-                            </Link>
-                        </div>
-                        <PopoverContent collisionPadding={5}>
-                            <span className='font-medium text-sm text-muted-foreground'>Menu</span>
-                            <ul className='w-full flex flex-col gap-4 mt-2'>
-                                {NAV_ROUTES.map((item) => (
-                                    <li key={item.label}>
-                                        <PopoverClose>
-                                            <button className='flex items-center gap-4' onClick={() => Router.push(item.href)}>
-                                                <item.icon className='w-8 h-8 text-primary border rounded-[100vw] p-2 shadow-sm bg-primary/5' />
-                                                <div className='flex flex-col text-left'>
-                                                    <p className='font-medium text-primary text-sm'>{item.label}</p>
-                                                    <p className='text-muted-foreground text-xs'>{item.description}</p>
-                                                </div>
-                                            </button>
-                                        </PopoverClose>
-                                    </li>
-                                ))}
-                                <FindCurrentVehicle />
-                            </ul>
-                        </PopoverContent>
-                    </Popover>
+                                <div className='px-4 pb-4 flex flex-col h-full flex-grow'>
+                                    <div className='flex items-center justify-start mb-4 mt-8'>
+                                        <p className='text-muted-foreground text-sm'>Menu</p>
+                                    </div>
+                                    <motion.ul
+                                        className="flex flex-col gap-3"
+                                        initial="hidden"
+                                        animate="show"
+                                        variants={{
+                                            hidden: {},
+                                            show: {
+                                                transition: {
+                                                    staggerChildren: 0.1,
+                                                },
+                                            },
+                                        }}
+                                    >
+                                        {NAV_ROUTES.map((item) => (
+                                            <motion.li
+                                                key={item.label}
+                                                variants={{
+                                                    hidden: { opacity: 0, x: -20 },
+                                                    show: { opacity: 1, x: 0 },
+                                                }}
+                                            >
+                                                <button
+                                                    className="flex items-center gap-4 w-full text-left"
+                                                    onClick={() => {
+                                                        Router.push(item.href)
+                                                        setMenuOpen(false)
+                                                    }}
+                                                >
+                                                    <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
+                                                    <div className='flex flex-col'>
+                                                        <p className='font-medium text-primary'>{item.label}</p>
+                                                        <p className='text-muted-foreground text-sm'>{item.description}</p>
+                                                    </div>
+                                                </button>
+                                            </motion.li>
+                                        ))}
+                                    </motion.ul>
+                                    <div className='mt-auto grid gap-2'>
+                                        <FindCurrentVehicle />
+                                    </div>
+                                </div>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
                 </nav>
             ) : (
                 <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b  relative z-50 h-[70px]">
