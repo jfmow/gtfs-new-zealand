@@ -15,9 +15,7 @@ export default function Home() {
   const [selectedDate, setSelectedDate] = useState<Date | undefined>()
 
   useEffect(() => {
-    if (selected_stop.found) {
-      setSelectedStop(selected_stop.value);
-    }
+    setSelectedStop(selected_stop.value);
   }, [selected_stop]);
 
   return (
