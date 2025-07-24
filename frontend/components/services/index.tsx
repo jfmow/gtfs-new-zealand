@@ -10,6 +10,7 @@ import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
 import { Button } from "../ui/button"
+import { motion, AnimatePresence } from "framer-motion"
 
 interface ServicesProps {
     stopName: string
@@ -224,150 +225,158 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 aria-label="List of services for the stop"
                 className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 p-4 bg-secondary rounded-md"
             >
-                {sortServices(services, platformFilter).map((service) => (
-                    <li key={service.trip_id + service.platform}>
-                        <Card
-                            className={`
+                <AnimatePresence>
+                    {sortServices(services, platformFilter).map((service, index) => (
+                        <motion.li
+                            key={service.trip_id + service.platform}
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -20 }}
+                            transition={{ duration: 0.3, delay: index * 0.05 }}
+                        >
+                            <Card
+                                className={`
             backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-300
             ${service.departed
-                                    ? "bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/50 dark:via-amber-950/50 dark:to-yellow-950/50 border-orange-200 dark:border-orange-800"
-                                    : ""
-                                } 
+                                        ? "bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/50 dark:via-amber-950/50 dark:to-yellow-950/50 border-orange-200 dark:border-orange-800"
+                                        : ""
+                                    } 
             ${service.canceled
-                                    ? "bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 dark:from-red-950/50 dark:via-rose-950/50 dark:to-pink-950/50 border-red-200 dark:border-red-800"
-                                    : ""
-                                }
+                                        ? "bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 dark:from-red-950/50 dark:via-rose-950/50 dark:to-pink-950/50 border-red-200 dark:border-red-800"
+                                        : ""
+                                    }
             ${service.skipped
-                                    ? "bg-gradient-to-br from-blue-50 via-cyan-50 to-sky-50 dark:from-blue-950/50 dark:via-cyan-950/50 dark:to-sky-950/50 border-blue-200 dark:border-blue-800"
-                                    : ""
-                                }
+                                        ? "bg-gradient-to-br from-blue-50 via-cyan-50 to-sky-50 dark:from-blue-950/50 dark:via-cyan-950/50 dark:to-sky-950/50 border-blue-200 dark:border-blue-800"
+                                        : ""
+                                    }
             `}
-                        >
-                            <CardHeader>
-                                <CardTitle>
-                                    <div className="flex items-center justify-between overflow-hidden">
-                                        <div className="line-clamp-2 text-ellipsis overflow-hidden">
-                                            {service.canceled ? (
-                                                <>
-                                                    <span className="text-red-600 dark:text-red-400">Canceled | </span>
-                                                    <span className="text-red-600 dark:text-red-400">
-                                                        {formatTextToNiceLookingWords(service.headsign)}{" "}
-                                                    </span>
-                                                </>
-                                            ) : service.skipped ? (
-                                                <>
-                                                    <span className="text-blue-600 dark:text-blue-400">Skipped | </span>
-                                                    <span className="text-blue-600 dark:text-blue-400">
-                                                        {formatTextToNiceLookingWords(service.headsign)}{" "}
-                                                    </span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    {!displayingSchedulePreview && service.departed ? (
-                                                        <>
-                                                            <span className="text-orange-600 dark:text-orange-400">Departed | </span>
-                                                            <span className="text-orange-600 dark:text-orange-400">
-                                                                {formatTextToNiceLookingWords(service.headsign)}{" "}
-                                                            </span>
-                                                        </>
-                                                    ) : (
-                                                        <span className="text-foreground">{formatTextToNiceLookingWords(service.headsign)}</span>
-                                                    )}
-                                                </>
-                                            )}
-                                        </div>
-                                        <div className="ml-auto flex gap-1 items-center mr-2">
-                                            <BikeIcon
-                                                aria-label={
-                                                    service.bikes_allowed === 0
-                                                        ? "Bikes might be allowed"
+                            >
+                                <CardHeader>
+                                    <CardTitle>
+                                        <div className="flex items-center justify-between overflow-hidden">
+                                            <div className="line-clamp-2 text-ellipsis overflow-hidden">
+                                                {service.canceled ? (
+                                                    <>
+                                                        <span className="text-red-600 dark:text-red-400">Canceled | </span>
+                                                        <span className="text-red-600 dark:text-red-400">
+                                                            {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                        </span>
+                                                    </>
+                                                ) : service.skipped ? (
+                                                    <>
+                                                        <span className="text-blue-600 dark:text-blue-400">Skipped | </span>
+                                                        <span className="text-blue-600 dark:text-blue-400">
+                                                            {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        {!displayingSchedulePreview && service.departed ? (
+                                                            <>
+                                                                <span className="text-orange-600 dark:text-orange-400">Departed | </span>
+                                                                <span className="text-orange-600 dark:text-orange-400">
+                                                                    {formatTextToNiceLookingWords(service.headsign)}{" "}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-foreground">{formatTextToNiceLookingWords(service.headsign)}</span>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                            <div className="ml-auto flex gap-1 items-center mr-2">
+                                                <BikeIcon
+                                                    aria-label={
+                                                        service.bikes_allowed === 0
+                                                            ? "Bikes might be allowed"
+                                                            : service.bikes_allowed === 1
+                                                                ? "Bikes are allowed"
+                                                                : "Bikes are not allowed"
+                                                    }
+                                                    className={`w-4 h-4 ${service.bikes_allowed === 0
+                                                        ? "text-yellow-500 dark:text-yellow-400"
                                                         : service.bikes_allowed === 1
-                                                            ? "Bikes are allowed"
-                                                            : "Bikes are not allowed"
-                                                }
-                                                className={`w-4 h-4 ${service.bikes_allowed === 0
-                                                    ? "text-yellow-500 dark:text-yellow-400"
-                                                    : service.bikes_allowed === 1
-                                                        ? "text-green-500 dark:text-green-400"
-                                                        : "text-red-500 dark:text-red-400"
-                                                    }`}
-                                            />
-                                            <AccessibilityIcon
-                                                aria-label={
-                                                    service.wheelchairs_allowed === 0
-                                                        ? "Might not be wheelchair accessible"
+                                                            ? "text-green-500 dark:text-green-400"
+                                                            : "text-red-500 dark:text-red-400"
+                                                        }`}
+                                                />
+                                                <AccessibilityIcon
+                                                    aria-label={
+                                                        service.wheelchairs_allowed === 0
+                                                            ? "Might not be wheelchair accessible"
+                                                            : service.wheelchairs_allowed === 1
+                                                                ? "Is wheelchair accessible"
+                                                                : "Not Wheelchair accessible"
+                                                    }
+                                                    className={`w-4 h-4 ${service.wheelchairs_allowed === 0
+                                                        ? "text-yellow-500 dark:text-yellow-400"
                                                         : service.wheelchairs_allowed === 1
-                                                            ? "Is wheelchair accessible"
-                                                            : "Not Wheelchair accessible"
-                                                }
-                                                className={`w-4 h-4 ${service.wheelchairs_allowed === 0
-                                                    ? "text-yellow-500 dark:text-yellow-400"
-                                                    : service.wheelchairs_allowed === 1
-                                                        ? "text-green-500 dark:text-green-400"
-                                                        : "text-red-500 dark:text-red-400"
-                                                    }`}
-                                            />
+                                                            ? "text-green-500 dark:text-green-400"
+                                                            : "text-red-500 dark:text-red-400"
+                                                        }`}
+                                                />
+                                            </div>
+                                            <span
+                                                aria-label="Service route name"
+                                                className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
+                                                style={{
+                                                    background: "#" + (service.route.color !== "" ? service.route.color : "000000"),
+                                                    filter: "brightness(0.9) contrast(1.1)",
+                                                }}
+                                            >
+                                                {service.route.name}
+                                            </span>
                                         </div>
-                                        <span
-                                            aria-label="Service route name"
-                                            className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
-                                            style={{
-                                                background: "#" + (service.route.color !== "" ? service.route.color : "000000"),
-                                                filter: "brightness(0.9) contrast(1.1)",
-                                            }}
-                                        >
-                                            {service.route.name}
-                                        </span>
-                                    </div>
-                                </CardTitle>
+                                    </CardTitle>
 
-                                <CardDescription>
-                                    <div className="grid grid-cols-2">
-                                        <div className="grid">
-                                            <p>Arriving: {convert24hTo12h(service.arrival_time)}</p>
-                                            {!service.canceled && !service.skipped && !displayingSchedulePreview && !service.departed ? (
-                                                <>
-                                                    <p>Stops away: {service.stops_away || 0}</p>
-                                                    <p className="inline-flex gap-1 items-center">
-                                                        Occupancy: <OccupancyStatusIndicator type="people" value={service.occupancy} />
+                                    <CardDescription>
+                                        <div className="grid grid-cols-2">
+                                            <div className="grid">
+                                                <p>Arriving: {convert24hTo12h(service.arrival_time)}</p>
+                                                {!service.canceled && !service.skipped && !displayingSchedulePreview && !service.departed ? (
+                                                    <>
+                                                        <p>Stops away: {service.stops_away || 0}</p>
+                                                        <p className="inline-flex gap-1 items-center">
+                                                            Occupancy: <OccupancyStatusIndicator type="people" value={service.occupancy} />
+                                                        </p>
+                                                    </>
+                                                ) : null}
+                                            </div>
+                                            <div>
+                                                {service.platform !== "" && service.platform !== "no platform" ? (
+                                                    <p className="text-blue-400 text-right">
+                                                        Platform: <span className="font-medium">{service.platform}</span>
                                                     </p>
-                                                </>
-                                            ) : null}
+                                                ) : null}
+                                            </div>
                                         </div>
-                                        <div>
-                                            {service.platform !== "" && service.platform !== "no platform" ? (
-                                                <p className="text-blue-400 text-right">
-                                                    Platform: <span className="font-medium">{service.platform}</span>
-                                                </p>
-                                            ) : null}
+                                    </CardDescription>
+                                </CardHeader>
+                                {!displayingSchedulePreview && !service.canceled && !service.departed && !service.skipped ? (
+                                    <CardContent>
+                                        <div className="grid grid-cols-2 items-center justify-items-center gap-2">
+                                            <ServiceTrackerModal
+                                                previewData={{
+                                                    tripHeadsign: service.headsign,
+                                                    route_id: service.route.id,
+                                                    route_name: service.route.name,
+                                                    trip_id: service.trip_id,
+                                                }}
+                                                currentStop={service.stop}
+                                                loaded={true}
+                                                has={service.tracking}
+                                                tripId={service.trip_id}
+                                            />
+                                            <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
+                                                {service.departed ? "Departed" : (service.stops_away === 0 && service.time_till_arrival <= 1) ? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
+                                            </span>
                                         </div>
-                                    </div>
-                                </CardDescription>
-                            </CardHeader>
-                            {!displayingSchedulePreview && !service.canceled && !service.departed && !service.skipped ? (
-                                <CardContent>
-                                    <div className="grid grid-cols-2 items-center justify-items-center gap-2">
-                                        <ServiceTrackerModal
-                                            previewData={{
-                                                tripHeadsign: service.headsign,
-                                                route_id: service.route.id,
-                                                route_name: service.route.name,
-                                                trip_id: service.trip_id,
-                                            }}
-                                            currentStop={service.stop}
-                                            loaded={true}
-                                            has={service.tracking}
-                                            tripId={service.trip_id}
-                                        />
-                                        <span aria-label="Arriving in" className={`text-center rounded-md font-medium p-1 h-full w-full`}>
-                                            {service.departed ? "Departed" : (service.stops_away === 0 && service.time_till_arrival <= 1) ? "Arriving now" : `${formatArrivalTime(service.time_till_arrival)}`}
-                                        </span>
-                                    </div>
-                                </CardContent>
-                            ) : null}
-                        </Card>
-                    </li>
-                ))}
+                                    </CardContent>
+                                ) : null}
+                            </Card>
+                        </motion.li>
+                    ))}
+                </AnimatePresence>
             </ul>
             <div className="py-4 mt-2 flex flex-col gap-2 sm:gap-1">
                 <div className="flex items-center gap-2">
