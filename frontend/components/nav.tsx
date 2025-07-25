@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X } from 'lucide-react'
+import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X, StarIcon } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -8,6 +8,7 @@ import Head from 'next/head'
 import Router from 'next/router'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
+import Favorites from './stops/favourites'
 
 export default function NavBar() {
     const { theme } = useTheme()
@@ -54,14 +55,23 @@ export default function NavBar() {
                                         Menu
                                     </Button>
                                 </div>
-                                <div className='px-4 pb-4 flex flex-col h-full flex-grow'>
+                                <motion.div
+                                    variants={{
+                                        hidden: {},
+                                        show: {
+                                            transition: {
+                                                staggerChildren: 0.1,
+                                            },
+                                        },
+                                    }}
+                                    initial="hidden"
+                                    animate="show"
+                                    className='px-4 flex flex-col h-full flex-grow overflow-y-auto'>
                                     <div className='flex items-center justify-start mb-4 mt-8'>
                                         <p className='text-muted-foreground text-sm'>Menu</p>
                                     </div>
                                     <motion.ul
                                         className="flex flex-col gap-3"
-                                        initial="hidden"
-                                        animate="show"
                                         variants={{
                                             hidden: {},
                                             show: {
@@ -95,9 +105,29 @@ export default function NavBar() {
                                             </motion.li>
                                         ))}
                                     </motion.ul>
-                                    <div className='mt-auto grid gap-2'>
-                                        <FindCurrentVehicle />
-                                    </div>
+                                    <motion.div
+                                        className='flex items-center justify-start mb-4 mt-8'
+                                        variants={{
+                                            hidden: { opacity: 0, x: -20 },
+                                            show: { opacity: 1, x: 0 },
+                                        }}
+                                    >
+                                        <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4 mr-2 hidden" />
+                                        <p className='text-muted-foreground text-sm'>Favourites</p>
+                                    </motion.div>
+                                    <motion.div
+                                        variants={{
+                                            hidden: { opacity: 0, x: -20 },
+                                            show: { opacity: 1, x: 0 },
+                                        }}
+                                    >
+                                        <Favorites grid onClick={() => setMenuOpen(false)} />
+                                    </motion.div>
+                                </motion.div>
+                                <div
+                                    className='mt-auto grid gap-2 p-4'
+                                >
+                                    <FindCurrentVehicle />
                                 </div>
                             </motion.div>
                         )}

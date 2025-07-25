@@ -8,7 +8,7 @@ import Link from "next/link"
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
 
-export default function Favorites() {
+export default function Favorites({ grid, onClick }: { grid?: boolean, onClick?: (stop: string) => void }) {
     const [favorites, setFavorites] = useState<{ stop: string; displayName: string }[]>([])
 
     useEffect(() => {
@@ -27,7 +27,7 @@ export default function Favorites() {
     }, [])
 
     return (
-        <div role="tablist" aria-label="Favorite stops" className="flex flex-nowrap gap-2 items-center w-full overflow-x-auto p-1">
+        <div role="tablist" aria-label="Favorite stops" className={`flex flex-nowrap gap-2 items-center w-full overflow-x-auto p-1 ${grid ? 'grid grid-cols-2 gap-2' : ''}`}>
             {
                 favorites.length > 0 ? (
                     favorites.map((favorite) => (
@@ -37,6 +37,11 @@ export default function Favorites() {
                             aria-selected="false"
                             tabIndex={0}
                             href={`/?s=${favorite.stop}`}
+                            onClick={() => {
+                                if (onClick) {
+                                    onClick(favorite.stop)
+                                }
+                            }}
                             className="text-xs text-nowrap text-center p-2 rounded bg-muted text-muted-foreground w-full sm:w-auto cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all"
                         >
                             {favorite.displayName}
