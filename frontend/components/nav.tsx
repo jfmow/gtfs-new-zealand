@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X, StarIcon } from 'lucide-react'
+import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -66,7 +66,7 @@ export default function NavBar() {
                                     }}
                                     initial="hidden"
                                     animate="show"
-                                    className='px-4 flex flex-col h-full flex-grow overflow-y-auto'>
+                                    className='px-6 flex flex-col h-full flex-grow overflow-y-auto'>
                                     <div className='flex items-center justify-start mb-4 mt-8'>
                                         <p className='text-muted-foreground text-sm'>Menu</p>
                                     </div>
@@ -98,7 +98,7 @@ export default function NavBar() {
                                                 >
                                                     <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
                                                     <div className='flex flex-col'>
-                                                        <p className='font-medium text-primary'>{item.label}</p>
+                                                        <p className='font-medium text-primary font-semibold'>{item.label}</p>
                                                         <p className='text-muted-foreground text-sm'>{item.description}</p>
                                                     </div>
                                                 </button>
@@ -106,13 +106,12 @@ export default function NavBar() {
                                         ))}
                                     </motion.ul>
                                     <motion.div
-                                        className='flex items-center justify-start mb-4 mt-8'
+                                        className='flex items-center justify-start mb-2 mt-8'
                                         variants={{
                                             hidden: { opacity: 0, x: -20 },
                                             show: { opacity: 1, x: 0 },
                                         }}
                                     >
-                                        <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4 mr-2 hidden" />
                                         <p className='text-muted-foreground text-sm'>Favourites</p>
                                     </motion.div>
                                     <motion.div
@@ -120,6 +119,7 @@ export default function NavBar() {
                                             hidden: { opacity: 0, x: -20 },
                                             show: { opacity: 1, x: 0 },
                                         }}
+                                        className='-m-1'
                                     >
                                         <Favorites grid onClick={() => setMenuOpen(false)} />
                                     </motion.div>
