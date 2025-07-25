@@ -5,9 +5,9 @@ import { toast } from "sonner"
 import { useEffect, useState } from "react"
 import Link from "next/link"
 
-
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
+
 export default function Favorites() {
     const [favorites, setFavorites] = useState<{ stop: string; displayName: string }[]>([])
 
@@ -37,7 +37,7 @@ export default function Favorites() {
                             aria-selected="false"
                             tabIndex={0}
                             href={`/?s=${favorite.stop}`}
-                            className="text-xs text-nowrap text-center p-2 rounded dark:bg-gray-800 bg-gray-200 text-gray-700 dark:text-gray-300 w-full sm:w-auto cursor-pointer hover:bg-gray-300 dark:hover:bg-gray-700 transition-all"
+                            className="text-xs text-nowrap text-center p-2 rounded bg-muted text-muted-foreground w-full sm:w-auto cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all"
                         >
                             {favorite.displayName}
                         </Link>
