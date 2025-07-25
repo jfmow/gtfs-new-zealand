@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Header } from "@/components/nav";
 
+
 export default function Home() {
   const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } }); // Get the 's' parameter and if it's found
   const [selectedStop, setSelectedStop] = useState<string>("");
