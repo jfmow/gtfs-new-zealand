@@ -9,8 +9,30 @@ import Router from 'next/router'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import Favorites from './stops/favourites'
+import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
+import SettingsList from './settings'
 
-const NAV_ROUTES = [
+
+interface BaseNavRoute {
+    label: string;
+    description: string;
+    icon: React.ComponentType<{ className?: string }>;
+    description_short: string;
+}
+
+interface HrefNavRoute extends BaseNavRoute {
+    href: string;
+    component?: never;
+}
+
+interface ComponentNavRoute extends BaseNavRoute {
+    href?: never;
+    component: React.ComponentType<{ children?: ReactNode }>;
+}
+
+type NavRoute = HrefNavRoute | ComponentNavRoute;
+
+const NAV_ROUTES: NavRoute[] = [
     {
         href: '/',
         label: 'Train/Bus/Ferry',
@@ -40,8 +62,8 @@ const NAV_ROUTES = [
         description_short: "Alerts"
     },
     {
-        href: '/settings',
-        label: 'App Settings',
+        component: SettingsPopover,
+        label: 'Settings',
         description: 'Set app preferences and change region',
         icon: Settings2Icon,
         description_short: "Settings"
@@ -127,19 +149,30 @@ export default function NavBar() {
                                                     show: { opacity: 1, x: 0 },
                                                 }}
                                             >
-                                                <button
-                                                    className="flex items-center gap-4 w-full text-left"
-                                                    onClick={() => {
-                                                        Router.push(item.href)
-                                                        setMenuOpen(false)
-                                                    }}
-                                                >
-                                                    <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
-                                                    <div className='flex flex-col'>
-                                                        <p className='font-medium text-primary font-semibold'>{item.label}</p>
-                                                        <p className='text-muted-foreground text-sm'>{item.description}</p>
-                                                    </div>
-                                                </button>
+                                                {item.component ? (
+                                                    <item.component>
+                                                        <button
+                                                            className="flex items-center gap-4 w-full text-left"
+                                                        >
+                                                            <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
+                                                            <div className='flex flex-col'>
+                                                                <p className='font-medium text-primary font-semibold'>{item.label}</p>
+                                                                <p className='text-muted-foreground text-sm'>{item.description}</p>
+                                                            </div>
+                                                        </button>
+                                                    </item.component>
+                                                ) : (
+                                                    <Link
+                                                        className="flex items-center gap-4 w-full text-left"
+                                                        href={item.href}
+                                                    >
+                                                        <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
+                                                        <div className='flex flex-col'>
+                                                            <p className='font-medium text-primary font-semibold'>{item.label}</p>
+                                                            <p className='text-muted-foreground text-sm'>{item.description}</p>
+                                                        </div>
+                                                    </Link>
+                                                )}
                                             </motion.li>
                                         ))}
                                     </motion.ul>
@@ -182,13 +215,22 @@ export default function NavBar() {
                         <ul className="flex font-medium text-sm items-center gap-0">
                             {NAV_ROUTES.map((item) => (
                                 <li key={item.label}>
-                                    <Link
-                                        href={item.href}
-                                        className={cn(buttonVariants({ variant: 'ghost', }), 'flex items-center gap-2')}
-                                    >
-                                        <item.icon className='w-6 h-6' />
-                                        <span>{item.description_short}</span>
-                                    </Link>
+                                    {item.component ? (
+                                        <item.component>
+                                            <button className={cn(buttonVariants({ variant: 'ghost' }), 'flex items-center gap-2')}>
+                                                <item.icon className='w-6 h-6' />
+                                                <span>{item.description_short}</span>
+                                            </button>
+                                        </item.component>
+                                    ) : (
+                                        <Link
+                                            href={item.href}
+                                            className={cn(buttonVariants({ variant: 'ghost', }), 'flex items-center gap-2')}
+                                        >
+                                            <item.icon className='w-6 h-6' />
+                                            <span>{item.description_short}</span>
+                                        </Link>
+                                    )}
                                 </li>
                             ))}
                         </ul>
@@ -239,5 +281,18 @@ function HeaderMeta() {
             <link rel="apple-touch-icon" href={`/branding/Favicon.png`} />
             <link rel="shortcut icon" href={`/branding/Favicon.png`} />
         </>
+    )
+}
+
+function SettingsPopover({ children }: { children?: ReactNode }) {
+    return (
+        <Popover>
+            <PopoverTrigger asChild>
+                {children}
+            </PopoverTrigger>
+            <PopoverContent>
+                <SettingsList />
+            </PopoverContent>
+        </Popover>
     )
 }
