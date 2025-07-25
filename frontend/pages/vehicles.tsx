@@ -58,7 +58,7 @@ export default function Vehicles() {
     return (
         <>
             <Header title="Vehicle tracker" />
-            <div className="mx-auto w-full max-w-[1400px] flex flex-col p-4">
+            <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4">
                 <Select onValueChange={(newValue) => setVehicleType(newValue as VehicleFilters)}>
                     <SelectTrigger className="w-[180px]">
                         <SelectValue placeholder="Vehicle type" />

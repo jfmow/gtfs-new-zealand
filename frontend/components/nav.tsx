@@ -10,6 +10,44 @@ import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import Favorites from './stops/favourites'
 
+const NAV_ROUTES = [
+    {
+        href: '/',
+        label: 'Train/Bus/Ferry',
+        description: 'Find transportation options',
+        icon: Train,
+        description_short: "Services"
+    },
+    {
+        href: '/stops',
+        label: 'Find a stop',
+        description: 'Locate nearby stops',
+        icon: MapPin,
+        description_short: "Stops"
+    },
+    {
+        href: '/vehicles',
+        label: 'Vehicles',
+        description: 'View real-time vehicle locations',
+        icon: Map,
+        description_short: "Vehicles"
+    },
+    {
+        href: '/alerts',
+        label: 'Travel Alerts',
+        description: 'Travel advisories and alerts',
+        icon: MessageCircleWarningIcon,
+        description_short: "Alerts"
+    },
+    {
+        href: '/settings',
+        label: 'App Settings',
+        description: 'Set app preferences and change region',
+        icon: Settings2Icon,
+        description_short: "Settings"
+    },
+]
+
 export default function NavBar() {
     const { theme } = useTheme()
     const isMobile = useIsMobile()
@@ -29,7 +67,7 @@ export default function NavBar() {
     return (
         <>
             {isMobile ? (
-                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full py-4 px-2 flex items-center justify-between border-b relative z-50 h-[70px]'>
+                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm w-full py-4 px-2 flex items-center justify-between z-50'>
                     <div className='flex items-center justify-between w-full'>
                         <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
                             <MenuIcon />
@@ -134,15 +172,25 @@ export default function NavBar() {
                     </AnimatePresence>
                 </nav>
             ) : (
-                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between border-b  relative z-50 h-[70px]">
+                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between z-50">
                     <Link href='/'>
                         <div className="flex items-center">
                             <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
                         </div>
                     </Link>
                     <div className='flex items-center gap-2'>
-                        <ul className="flex font-medium text-sm items-center gap-4">
-                            <NavItems />
+                        <ul className="flex font-medium text-sm items-center gap-0">
+                            {NAV_ROUTES.map((item) => (
+                                <li key={item.label}>
+                                    <Link
+                                        href={item.href}
+                                        className={cn(buttonVariants({ variant: 'ghost', }), 'flex items-center gap-2')}
+                                    >
+                                        <item.icon className='w-6 h-6' />
+                                        <span>{item.description_short}</span>
+                                    </Link>
+                                </li>
+                            ))}
                         </ul>
                     </div>
                 </nav>
@@ -150,65 +198,6 @@ export default function NavBar() {
         </>
     )
 }
-
-const NAV_ROUTES = [
-    {
-        href: '/',
-        label: 'Train/Bus/Ferry',
-        description: 'Find transportation options',
-        icon: Train,
-        description_short: "Services"
-    },
-    {
-        href: '/stops',
-        label: 'Find a stop',
-        description: 'Locate nearby stops',
-        icon: MapPin,
-        description_short: "Stops"
-    },
-    {
-        href: '/vehicles',
-        label: 'Vehicles',
-        description: 'View real-time vehicle locations',
-        icon: Map,
-        description_short: "Vehicles"
-    },
-    {
-        href: '/alerts',
-        label: 'Travel Alerts',
-        description: 'Travel advisories and alerts',
-        icon: MessageCircleWarningIcon,
-        description_short: "Alerts"
-    },
-    {
-        href: '/settings',
-        label: 'App Settings',
-        description: 'Set app preferences and change region',
-        icon: Settings2Icon,
-        description_short: "Settings"
-    },
-]
-
-function NavItems({ toggleMenu }: { toggleMenu?: () => void }) {
-    return (
-        <>
-            {NAV_ROUTES.map((item) => (
-                <li key={item.href} className="block" onClick={() => typeof toggleMenu === "function" && toggleMenu()}>
-                    <Link
-                        href={item.href}
-                        className={cn(buttonVariants({ variant: 'link', size: 'default' }), "text-foreground")}
-                    >
-                        <div className="flex items-center " >
-                            <item.icon className={'w-4 h-4 mr-2'} />
-                            <span >{item.label}</span>
-                        </div>
-                    </Link>
-                </li>
-            ))}
-        </>
-    )
-}
-
 
 
 

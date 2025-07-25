@@ -23,7 +23,7 @@ export default function Home() {
   return (
     <>
       <Header title="Train, Bus, Ferry - Find you next journey" />
-      <div className="mx-auto w-full max-w-[1400px] flex flex-col p-4">
+      <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4">
         <div className="grid items-center gap-2">
           <div className="flex gap-2 items-center w-full">
             <SearchForStop />

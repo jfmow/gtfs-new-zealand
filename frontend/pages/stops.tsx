@@ -38,7 +38,7 @@ export default function Stops() {
         <>
             <Header title="Stops map" />
             <div className="w-full">
-                <div className="mx-auto max-w-[1400px] flex flex-col p-4">
+                <div className="mx-auto max-w-[1400px] flex flex-col px-4 pb-4">
                     <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
                         <LeafletMap defaultZoom={["user", currentUrl.defaultMapCenter]} map_id={MAPID} mapItems={[...(stops ? (
                             stops.map((item) => ({
