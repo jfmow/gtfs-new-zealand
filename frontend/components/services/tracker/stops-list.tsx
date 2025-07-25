@@ -143,8 +143,8 @@ export default function StopsList({
                     <div className="sticky top-0 z-20 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3">
                         <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                             {reminderType === "get_off"
-                                ? "Select a stop to be reminded when it's time to get off"
-                                : "Select a stop to be reminded when the vehicle is arriving"}
+                                ? "Click a green stop to be reminded when it's time to get off"
+                                : "Click a green stop to be reminded when the vehicle is arriving"}
                         </p>
                     </div>
                 )}
@@ -200,7 +200,7 @@ export default function StopsList({
                                 {/* --- Stop Card --- */}
                                 <div
                                     ref={isNextStop ? nextStopRef : null}
-                                    onClick={() => handleStopSelection(stop)}
+                                    onClick={() => canSelect && handleStopSelection(stop)}
                                     className={`relative flex items-start gap-3 p-3 rounded-lg border transition-all duration-200 min-h-[60px] ${isCurrentStop
                                         ? "bg-orange-50 dark:bg-orange-900 border-orange-200 dark:border-orange-700 shadow-sm"
                                         : isNextStop
@@ -246,11 +246,6 @@ export default function StopsList({
                                                         }`}
                                                 >
                                                     {stop.name}
-                                                    {canSelect && (
-                                                        <span className="ml-2 text-xs text-green-600 font-normal">
-                                                            (Click to select)
-                                                        </span>
-                                                    )}
                                                 </h3>
 
                                                 <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-gray-600 dark:text-gray-400">
@@ -321,7 +316,7 @@ export default function StopsList({
             <div className="flex flex-col sm:flex-row gap-2 mt-4">
                 <Button
                     onClick={() => toggleReminder("get_off")}
-                    className="flex-1"
+                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
                     variant={isSelectingReminder && reminderType === "get_off" ? "outline" : "default"}
                 >
                     {isSelectingReminder && reminderType === "get_off" ? (
@@ -339,7 +334,7 @@ export default function StopsList({
 
                 <Button
                     onClick={() => toggleReminder("arrival")}
-                    className="flex-1"
+                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
                     variant={isSelectingReminder && reminderType === "arrival" ? "outline" : "secondary"}
                 >
                     {isSelectingReminder && reminderType === "arrival" ? (
