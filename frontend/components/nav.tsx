@@ -164,6 +164,7 @@ export default function NavBar() {
                                                     <Link
                                                         className="flex items-center gap-4 w-full text-left"
                                                         href={item.href}
+                                                        onClick={() => setMenuOpen(false)}
                                                     >
                                                         <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
                                                         <div className='flex flex-col'>
