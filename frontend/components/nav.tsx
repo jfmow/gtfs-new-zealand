@@ -205,7 +205,7 @@ export default function NavBar() {
                     </AnimatePresence>
                 </nav>
             ) : (
-                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-between z-50">
+                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-start z-50">
                     <Link href='/'>
                         <div className="flex items-center">
                             <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
