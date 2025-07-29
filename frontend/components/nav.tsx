@@ -106,7 +106,7 @@ export default function NavBar() {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black"
+                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black overflow-x-hidden"
                             >
                                 <div className="flex justify-between items-center mt-4 mx-2">
                                     <Button variant="ghost" onClick={() => setMenuOpen(false)}>
@@ -125,7 +125,7 @@ export default function NavBar() {
                                     }}
                                     initial="hidden"
                                     animate="show"
-                                    className='px-6 flex flex-col h-full flex-grow overflow-y-auto'>
+                                    className='px-6 flex flex-col h-full flex-grow overflow-y-auto overflow-x-hidden'>
                                     <div className='flex items-center justify-start mb-4 mt-8'>
                                         <p className='text-muted-foreground text-sm'>Menu</p>
                                     </div>
