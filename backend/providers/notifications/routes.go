@@ -47,7 +47,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	//Check realtime alerts
-	c.AddFunc("@every 00h02m15s", func() {
+	c.AddFunc("@every 00h02m00s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if alertsCronMutex.TryLock() {
@@ -100,11 +100,14 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	//check reminders
-	c.AddFunc("@every 00h00m10s", func() {
+	c.AddFunc("@every 00h00m30s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if tripUpdatesCronMutex.TryLock() {
 				defer tripUpdatesCronMutex.Unlock()
+				if hasReminders, err := notificationDB.HasAnyReminders(); err != nil || !hasReminders {
+					return
+				}
 				updates, err := realtime.GetTripUpdates()
 				if err != nil {
 					return

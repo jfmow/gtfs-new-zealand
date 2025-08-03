@@ -997,6 +997,16 @@ func (v Database) HasReminder(clientId int) (bool, error) {
 	return count > 0, nil
 }
 
+func (v Database) HasAnyReminders() (bool, error) {
+	query := `SELECT 1 FROM reminders LIMIT 1`
+	rows, err := v.db.Query(query)
+	if err != nil {
+		return false, errors.New("failed to query reminders existence")
+	}
+	defer rows.Close()
+	return rows.Next(), nil
+}
+
 // Notification database
 type Database struct {
 	db          *sqlx.DB
