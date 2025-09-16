@@ -112,7 +112,7 @@ func main() {
 		fmt.Println("Error loading at gtfs db")
 	}
 
-	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 10*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts", *localTimeZone)
+	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 5*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts", *localTimeZone)
 	if err != nil {
 		panic(err)
 	}
