@@ -94,7 +94,7 @@ export default function StopsList({
 
         return {
             currentStopIndex,
-            showAtStop: vehicle.state === "Arrived",
+            showAtStop: vehicle.state === "AtStop" || vehicle.state === "Boarding",
             showBetweenStops:
                 vehicle.state === "Departed" && currentStopIndex < stopsToUse.length - 1,
         }
@@ -288,7 +288,7 @@ export default function StopsList({
                                             <div className="flex flex-col gap-1 items-end flex-shrink-0">
                                                 {isCurrentStop && vehicle && (
                                                     <Badge variant="secondary" className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
-                                                        {vehicle.state === "Arrived" ? "Now" : "Prev"}
+                                                        {vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "Now" : "Prev"}
                                                     </Badge>
                                                 )}
                                                 {isNextStop && (
