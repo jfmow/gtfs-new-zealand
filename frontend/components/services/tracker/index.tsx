@@ -218,7 +218,7 @@ export interface VehiclesResponse {
     license_plate: string
     position: Position
     type: string
-    state: "Arrived" | "Departed" | "Arriving" | "Boarding" | "Unknown"
+    state: "Approaching" | "AtStop" | "Departed" | "InTransit" | "Boarding" | "NoData" | "Unknown" | "Layover" | "Skipped"
     off_course: boolean
 }
 

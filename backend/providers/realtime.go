@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"net/http"
 	"net/url"
@@ -500,73 +501,67 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 }
 
 func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
-	return lat >= sw.Lat && lat <= ne.Lat && lng >= sw.Lng && lng <= ne.Lng
-}
+	// Allow sw/ne to be provided in any order: normalize bounds
+	minLat := math.Min(sw.Lat, ne.Lat)
+	maxLat := math.Max(sw.Lat, ne.Lat)
+	minLng := math.Min(sw.Lng, ne.Lng)
+	maxLng := math.Max(sw.Lng, ne.Lng)
 
-func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string, string) {
+	return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng
+}
+func getNextStopSequence(
+	stopUpdates []*proto.TripUpdate_StopTimeUpdate,
+	lowestSequence int,
+	localTimeZone *time.Location,
+) (int, *time.Time, string, string) {
 	if len(stopUpdates) == 0 {
 		return 0, nil, "Unknown", ""
 	}
 
 	now := time.Now().In(localTimeZone)
 
-	update := stopUpdates[0] //Latest one
+	update := stopUpdates[0] // First stop update (should correspond to the current/next stop)
 	arrivalTimestamp := update.GetArrival().GetTime()
 	departureTimestamp := update.GetDeparture().GetTime()
 	sequence := int(update.GetStopSequence())
 
-	arrivalTimeLocal := time.Unix(arrivalTimestamp, 0).In(localTimeZone)
-	departureTimeLocal := time.Unix(departureTimestamp, 0).In(localTimeZone)
-	var nextStopSequenceNumber int = sequence
+	var nextStopSequenceNumber = sequence
+	var state, simpleState string
+	var eventTime time.Time
 
-	var state = "Unknown"
-	var simpleState = "Unknown"
-	if arrivalTimestamp != 0 && departureTimestamp != 0 {
-		if now.Before(arrivalTimeLocal) {
-			// Approaching the stop
-			nextStopSequenceNumber = sequence
-			state = "Approaching stop (arrival pending): " + arrivalTimeLocal.String()
-			simpleState = "Arriving"
-		} else if now.Before(departureTimeLocal) {
-			// At the stop, not yet departed
-			nextStopSequenceNumber = sequence
-			state = "At stop (awaiting departure): " + departureTimeLocal.String()
-			simpleState = "Arrived"
-		} else {
-			// Already departed → next stop is the next one
-			nextStopSequenceNumber = sequence + 1
-			state = "Departed stop: " + departureTimeLocal.String()
-			simpleState = "Departed"
-		}
-	} else if arrivalTimestamp != 0 {
-		if now.Before(arrivalTimeLocal) {
-			// Approaching stop
-			nextStopSequenceNumber = sequence
-			state = "Approaching stop (arrival only): " + arrivalTimeLocal.String()
-			simpleState = "Arriving"
-		} else {
-			// Already arrived → next stop must be next
-			nextStopSequenceNumber = sequence + 1
-			state = "Arrived at stop (arrival only): " + arrivalTimeLocal.String()
-			simpleState = "Arrived"
-		}
-	} else if departureTimestamp != 0 {
-		if now.Before(departureTimeLocal) {
-			// Still at stop → haven't left yet
-			nextStopSequenceNumber = sequence
-			state = "Waiting to depart (departure only): " + departureTimeLocal.String()
-			simpleState = "Boarding"
-		} else {
-			// Already departed
-			nextStopSequenceNumber = sequence + 1
-			state = "Departed stop (departure only): " + departureTimeLocal.String()
-			simpleState = "Departed"
-		}
+	switch {
+	case arrivalTimestamp == 0 && departureTimestamp == 0:
+		state = "No time data"
+		simpleState = "Unknown"
+
+	case arrivalTimestamp > 0 && now.Before(time.Unix(arrivalTimestamp, 0).In(localTimeZone)):
+		// Before arrival → approaching
+		eventTime = time.Unix(arrivalTimestamp, 0).In(localTimeZone)
+		state = fmt.Sprintf("Approaching stop (arrives at %s)", eventTime.Format(time.Kitchen))
+		simpleState = "Approaching"
+
+	case departureTimestamp > 0 && now.Before(time.Unix(departureTimestamp, 0).In(localTimeZone)):
+		// After arrival but before departure → dwelling
+		eventTime = time.Unix(departureTimestamp, 0).In(localTimeZone)
+		state = fmt.Sprintf("At stop (departs at %s)", eventTime.Format(time.Kitchen))
+		simpleState = "AtStop"
+
+	case departureTimestamp > 0 && now.After(time.Unix(departureTimestamp, 0).In(localTimeZone)):
+		// After departure → heading to next stop
+		nextStopSequenceNumber = sequence + 1
+		eventTime = time.Unix(departureTimestamp, 0).In(localTimeZone)
+		state = fmt.Sprintf("Departed stop (left at %s)", eventTime.Format(time.Kitchen))
+		simpleState = "Departed"
+
+	default:
+		// Fallback
+		nextStopSequenceNumber = sequence + 1
+		state = "In transit"
+		simpleState = "InTransit"
 	}
+	nextStopSequenceNumber -= lowestSequence
 
-	nextStopSequenceNumber = nextStopSequenceNumber - lowestSequence
-
-	return nextStopSequenceNumber, &arrivalTimeLocal, state, simpleState
+	return nextStopSequenceNumber, &eventTime, state, simpleState
 }
 
 func getXStop(stopsForTripId []gtfs.Stop, currentStop int, cachedStops caches.ParentStopsByChildCache) ServicesStop {

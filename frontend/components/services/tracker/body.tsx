@@ -212,12 +212,13 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </div>
 
                     <div className="grid gap-3 sm:gap-4 mt-4">
+                        {vehicle.state}
                         <StopStatusCard
-                            title={vehicle.state === "Arrived" ? "Current Stop" : "Next Stop"}
-                            stopName={vehicle.state === "Arrived" || vehicle.state === "Arriving" ? vehicle.trip.current_stop.name : vehicle.trip.next_stop.name}
-                            platform={vehicle.trip.current_stop.platform}
+                            title={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "Current Stop" : vehicle.state === "Unknown" || vehicle.state === "NoData" || vehicle.state === "Layover" ? "Stop Info" : "Next Stop"}
+                            stopName={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? vehicle.trip.current_stop.name : vehicle.trip.next_stop.name}
+                            platform={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? vehicle.trip.current_stop.platform : vehicle.trip.next_stop.platform}
                             icon={MapPinIcon}
-                            variant={vehicle.state === "Unknown" ? "default" : vehicle.state === "Arrived" || vehicle.state === "Arriving" ? "current" : "next"}
+                            variant={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "current" : vehicle.state === "Unknown" || vehicle.state === "NoData" || vehicle.state === "Layover" ? "default" : "next"}
                         />
 
                     </div>
@@ -239,7 +240,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     <TabsContent value="info">
                         <div className="grid gap-3 sm:gap-4 mt-6">
                             <StopStatusCard
-                                title={vehicle.state === "Arrived" ? "Current Stop" : "Previous Stop"}
+                                title={"Previous Stop"}
                                 stopName={vehicle.trip.current_stop.name}
                                 icon={MapPinIcon}
                                 variant="current"
