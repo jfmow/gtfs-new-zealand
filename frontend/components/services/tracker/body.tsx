@@ -8,7 +8,7 @@ import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, NavigationIcon, FlagIcon, ClockIcon, BusIcon } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, ClockIcon, BusIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 
 const LeafletMap = lazy(() => import("../../map/map"))
@@ -232,37 +232,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         <TabsTrigger className="w-full" value="track">
                             Track
                         </TabsTrigger>
-                        <TabsTrigger className="w-full" value="info">
-                            Summary
-                        </TabsTrigger>
                     </TabsList>
-
-                    <TabsContent value="info">
-                        <div className="grid gap-3 sm:gap-4 mt-6">
-                            <StopStatusCard
-                                title={"Previous Stop"}
-                                stopName={vehicle.trip.current_stop.name}
-                                icon={MapPinIcon}
-                                variant="current"
-                            />
-
-                            <StopStatusCard
-                                title="Next Stop"
-                                stopName={vehicle.trip.next_stop.name}
-                                icon={NavigationIcon}
-                                variant="next"
-                            />
-
-                            <StopStatusCard
-                                title="Final Destination"
-                                stopName={vehicle.trip.final_stop.name}
-                                icon={FlagIcon}
-                                variant="final"
-                            />
-
-
-                        </div>
-                    </TabsContent>
 
                     <TabsContent value="track">
                         <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
