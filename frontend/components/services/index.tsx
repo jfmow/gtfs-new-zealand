@@ -34,6 +34,7 @@ export interface Service {
     departed: boolean
     time_till_arrival: number
     stop_state: "Arrived" | "Departed" | "Arriving" | "Boarding"
+    platform_changed: boolean
 }
 
 export interface ServicesRoute {
@@ -87,7 +88,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         async function fetchServices(date?: Date) {
             const req = await ApiFetch<Service[]>(
                 encodeURI(
-                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=20"}`,
+                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=100"}`,
                 ),
             )
             if (req.ok) {
@@ -332,6 +333,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     <CardDescription>
                                         <div className="grid grid-cols-2">
                                             <div className="grid">
+                                                {service.platform_changed ? <span className="font-medium text-red-500 text-xs">PLATFORM CHANGED</span> : ""}
                                                 <p>Arriving: {convert24hTo12h(service.arrival_time)}</p>
                                                 {!service.canceled && !service.skipped && !displayingSchedulePreview && !service.departed ? (
                                                     <>
