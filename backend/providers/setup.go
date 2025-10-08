@@ -24,7 +24,12 @@ type Response struct {
 }
 
 func JsonApiResponse(c echo.Context, code int, message string, data any, details ...any) error {
-	traceID, _ := c.Get("trace_id").(string)
+	traceID := ""
+	if v := c.Get("trace_id"); v != nil {
+		if s, ok := v.(string); ok {
+			traceID = s
+		}
+	}
 
 	if len(details) > 0 {
 		// Store details in context for middleware to log later
