@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"net/url"
@@ -21,13 +22,25 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
 		limit := 20
+
 		if limitStr != "" {
-			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-				limit = l
-			} else {
-				return JsonApiResponse(c, http.StatusBadRequest, "invalid limit", nil, ResponseDetails("limit", limitStr, "details", "Limit must be a valid integer", "error", err.Error()))
+			l, err := strconv.Atoi(limitStr)
+			if err != nil || l <= 0 || l > 200 {
+				return JsonApiResponse(
+					c,
+					http.StatusBadRequest,
+					"invalid limit",
+					nil,
+					ResponseDetails(
+						"limit", limitStr,
+						"details", "Limit must be a valid integer between 1 and 200",
+						"error", fmt.Sprintf("%v", err),
+					),
+				)
 			}
+			limit = l
 		}
+
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
