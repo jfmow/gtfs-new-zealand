@@ -212,7 +212,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     </div>
 
                     <div className="grid gap-3 sm:gap-4 mt-4">
-                        {vehicle.state}
                         <StopStatusCard
                             title={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "Current Stop" : vehicle.state === "Unknown" || vehicle.state === "NoData" || vehicle.state === "Layover" ? "Stop Info" : "Next Stop"}
                             stopName={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? vehicle.trip.current_stop.name : vehicle.trip.next_stop.name}
