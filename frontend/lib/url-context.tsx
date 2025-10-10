@@ -84,16 +84,14 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
     const normalizedPath = basePath.startsWith("/") ? basePath.substring(1) : basePath;
     const baseUrl = new URL(normalizedPath, `${url}/`);
 
-    // Encode query params if provided
+    // Add query params if provided — but don't double encode
     if (queryString) {
-        const params = new URLSearchParams();
         const rawParams = new URLSearchParams(queryString);
+        const params = new URLSearchParams();
 
         for (const [key, value] of rawParams.entries()) {
-            // Re-encode only if value isn't already safe
-            const encodedKey = encodeURIComponent(key);
-            const encodedValue = encodeURIComponent(value);
-            params.append(encodedKey, encodedValue);
+            // Do NOT manually encode — URLSearchParams does it safely once
+            params.append(key, value);
         }
 
         baseUrl.search = params.toString();
