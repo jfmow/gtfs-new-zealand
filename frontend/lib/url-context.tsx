@@ -77,40 +77,9 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
     if (!url || url.trim() === "") throw new Error("No valid URL provided");
     if (!path || path.trim() === "") throw new Error("No valid path provided");
 
-    // Separate the base path and query string (if present)
-    const [basePath, queryString] = path.split("?", 2);
+    const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
+    const fullUrl = new URL(normalizedPath, `${url}/`).toString();
 
-    // Safely build the full URL
-    const normalizedPath = basePath.startsWith("/") ? basePath.substring(1) : basePath;
-    const baseUrl = new URL(normalizedPath, `${url}/`);
-
-    // Handle query params if provided
-    if (queryString) {
-        const rawParams = new URLSearchParams(queryString);
-        const params = new URLSearchParams();
-
-        for (const [key, value] of rawParams.entries()) {
-            // Helper: detect if value is already encoded
-            const isEncoded = (str: string) => {
-                try {
-                    return decodeURIComponent(str) !== str;
-                } catch {
-                    // invalid URI sequence, so it's already encoded
-                    return true;
-                }
-            };
-
-            // Only encode keys/values if they're not already encoded
-            const safeKey = isEncoded(key) ? key : encodeURIComponent(key);
-            const safeValue = isEncoded(value) ? value : encodeURIComponent(value);
-
-            params.append(safeKey, safeValue);
-        }
-
-        baseUrl.search = params.toString();
-    }
-
-    const fullUrl = baseUrl.toString();
     const traceId = getOrCreateTraceId();
 
     const headers: HeadersInit = {
@@ -124,7 +93,7 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
             headers,
         });
 
-        const res_data = (await req.json()) as TrainsApiResponse<T>;
+        const res_data = await req.json() as TrainsApiResponse<T>;
 
         if (req.ok) {
             return { ok: true, data: res_data.data };
