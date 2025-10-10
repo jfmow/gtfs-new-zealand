@@ -77,9 +77,29 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
     if (!url || url.trim() === "") throw new Error("No valid URL provided");
     if (!path || path.trim() === "") throw new Error("No valid path provided");
 
-    const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
-    const fullUrl = new URL(normalizedPath, `${url}/`).toString();
+    // Separate the base path and query string (if present)
+    const [basePath, queryString] = path.split("?", 2);
 
+    // Safely build the full URL
+    const normalizedPath = basePath.startsWith("/") ? basePath.substring(1) : basePath;
+    const baseUrl = new URL(normalizedPath, `${url}/`);
+
+    // Encode query params if provided
+    if (queryString) {
+        const params = new URLSearchParams();
+        const rawParams = new URLSearchParams(queryString);
+
+        for (const [key, value] of rawParams.entries()) {
+            // Re-encode only if value isn't already safe
+            const encodedKey = encodeURIComponent(key);
+            const encodedValue = encodeURIComponent(value);
+            params.append(encodedKey, encodedValue);
+        }
+
+        baseUrl.search = params.toString();
+    }
+
+    const fullUrl = baseUrl.toString();
     const traceId = getOrCreateTraceId();
 
     const headers: HeadersInit = {
@@ -114,5 +134,3 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
         };
     }
 }
-
-
