@@ -25,9 +25,7 @@ export function addSecondsToTime(timeStr: string, secondsToAdd: number): string 
 export const formatUnixTime = (unixTime: number | null | undefined) => {
     if (!unixTime) return "00:00 AM";
 
-    const dateObj = new Date(unixTime);
-    const timeString = dateObj
-        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+    const timeString = new Date(unixTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', ':') + ':00';
     const arrivalTime = convert24hTo12h(timeString);
 
     const minutesTillArrival = timeTillArrival(timeString);
@@ -45,6 +43,8 @@ export function convert24hTo12h(time24: string): string {
     const hours12 = hours % 12 || 12;
     const formattedMinutes = minutes.toString().padStart(2, '0');
     //const formattedSeconds = seconds.toString().padStart(2, '0');
+
+    console.log(`Converted ${time24} to ${hours12}:${formattedMinutes} ${period}`);
 
     return `${hours12}:${formattedMinutes} ${period}`;
 }
