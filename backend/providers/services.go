@@ -149,7 +149,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				stopUpdates := tripUpdate.GetStopTimeUpdate()
 				_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 				if err == nil {
-					nextStopSeq, _, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+					nextStopSeq, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 					response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
 					response.StopState = simpleState
 				}

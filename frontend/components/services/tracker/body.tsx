@@ -1,14 +1,14 @@
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import LoadingSpinner from "../../loading-spinner"
-import { formatTextToNiceLookingWords } from "@/lib/formating"
+import { formatTextToNiceLookingWords, formatUnixTime } from "@/lib/formating"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 import StopsList from "./stops-list"
 import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, ClockIcon, BusIcon } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, ClockIcon, Navigation2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 
 const LeafletMap = lazy(() => import("../../map/map"))
@@ -31,77 +31,7 @@ interface ServiceTrackerContentProps {
     refreshing: boolean
 }
 
-const StopStatusCard = memo(function StopStatusCard({
-    title,
-    stopName,
-    icon: Icon,
-    variant = "default",
-}: {
-    title: string
-    stopName: string
-    platform?: string
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    icon: any
-    variant?: "current" | "next" | "final" | "default"
-    isArrived?: boolean
-}) {
-    const getVariantStyles = () => {
-        switch (variant) {
-            case "current":
-                return "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950"
-            case "next":
-                return "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
-            case "final":
-                return "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
-            default:
-                return "border-border bg-card"
-        }
-    }
 
-    const getIconColor = () => {
-        switch (variant) {
-            case "current":
-                return "text-orange-600 dark:text-orange-400"
-            case "next":
-                return "text-blue-600 dark:text-blue-400"
-            case "final":
-                return "text-red-600 dark:text-red-400"
-            default:
-                return "text-muted-foreground"
-        }
-    }
-
-    const getTitleColor = () => {
-        switch (variant) {
-            case "current":
-                return "text-orange-700 dark:text-orange-300"
-            case "next":
-                return "text-blue-700 dark:text-blue-300"
-            case "final":
-                return "text-red-700 dark:text-red-300"
-            default:
-                return "text-foreground"
-        }
-    }
-
-    return (
-        <Card className={`${getVariantStyles()} transition-colors`}>
-            <CardContent className="p-2">
-                <div className="flex items-start gap-3">
-                    <div className={`${getIconColor()} mt-0.5 flex-shrink-0`}>
-                        <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                            <p className={`text-xs sm:text-sm font-medium ${getTitleColor()}`}>{title}</p>
-                        </div>
-                        <p className="text-xs sm:text-base font-semibold text-foreground truncate">{stopName}</p>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-    )
-})
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent({
     vehicle,
@@ -170,9 +100,43 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
     // Vehicle tracking mode
     if (vehicle) {
+        const isAtStop = vehicle.state === "AtStop" || vehicle.state === "Boarding";
+        const isUnknown =
+            vehicle.state === "Unknown" ||
+            vehicle.state === "NoData" ||
+            vehicle.state === "Layover";
 
+        const stopStatusTitle = isAtStop
+            ? "Current Stop"
+            : isUnknown
+                ? "Upcoming/Previous"
+                : "Next";
+
+        const stopStatusName = isAtStop
+            ? vehicle.trip.current_stop.name
+            : vehicle.trip.next_stop.name;
+
+        const stopStatusPlatform = isAtStop
+            ? vehicle.trip.current_stop.platform
+            : vehicle.trip.next_stop.platform;
+
+
+        const stopStatusVariant = isAtStop
+            ? "current"
+            : isUnknown
+                ? "default"
+                : "next";
+
+        const stopStatusArrivalTime =
+            tripId && stopTimes
+                ? formatUnixTime(
+                    stopTimes.find(
+                        (stop) => isAtStop ? stop.stop_id === vehicle.trip.current_stop.id : stop.stop_id === vehicle.trip.next_stop.id
+                    )?.arrival_time || 0
+                )
+                : "";
         return (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-4">
                 <div>
                     {/* Alert Banner */}
                     {vehicle.off_course && (
@@ -184,42 +148,39 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         </Card>
                     )}
 
-                    {/* Header */}
-                    <div className="space-y-3 sm:space-y-4">
-                        <div className="flex items-start justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                                <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight mb-2">
-                                    {vehicle.trip.headsign}
-                                </h1>
-                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                    <BusIcon className="h-4 w-4" />
-                                    <span>Route {vehicle.route.id}</span>
-                                    {stops && (
-                                        <>
-                                            <span>•</span>
-                                            <span>{stops.length} stops</span>
-                                        </>
-                                    )}
-                                </div>
+                    <div className="flex items-center justify-between gap-3 overflow-hidden">
+                        <div className="flex items-center justify-between w-full flex-wrap gap-4">
+                            <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
+                                {vehicle.trip.headsign}
+                            </h1>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <span
+                                    aria-label="Service route name"
+                                    className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
+                                    style={{
+                                        background: "#" + (vehicle.route.color !== "" ? vehicle.route.color : "000000"),
+                                        filter: "brightness(0.9) contrast(1.1)",
+                                    }}
+                                >
+                                    {vehicle.route.name}
+                                </span>
                             </div>
-                            {refreshing && (
-                                <div className="flex items-center gap-2 text-muted-foreground flex-shrink-0">
-                                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
-                                    <span className="text-sm font-medium hidden sm:inline">Updating</span>
-                                </div>
-                            )}
                         </div>
+                        {refreshing && (
+                            <div className="flex items-center gap-2 text-muted-foreground flex-shrink-0">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                            </div>
+                        )}
                     </div>
 
                     <div className="grid gap-3 sm:gap-4 mt-4">
                         <StopStatusCard
-                            title={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "Current Stop" : vehicle.state === "Unknown" || vehicle.state === "NoData" || vehicle.state === "Layover" ? "Stop Info" : "Next Stop"}
-                            stopName={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? vehicle.trip.current_stop.name : vehicle.trip.next_stop.name}
-                            platform={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? vehicle.trip.current_stop.platform : vehicle.trip.next_stop.platform}
-                            icon={MapPinIcon}
-                            variant={vehicle.state === "AtStop" || vehicle.state === "Boarding" ? "current" : vehicle.state === "Unknown" || vehicle.state === "NoData" || vehicle.state === "Layover" ? "default" : "next"}
+                            title={stopStatusTitle}
+                            stopName={stopStatusName}
+                            platform={stopStatusPlatform}
+                            variant={stopStatusVariant}
+                            arrivalTime={stopStatusArrivalTime}
                         />
-
                     </div>
                 </div>
 
@@ -440,3 +401,76 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 })
 
 export default ServiceTrackerContent
+
+
+const StopStatusCard = memo(function StopStatusCard({
+    title,
+    stopName,
+    arrivalTime,
+    variant = "default",
+}: {
+    title: string
+    stopName: string
+    platform?: string
+    arrivalTime?: string
+    variant?: "current" | "next" | "final" | "default"
+    isArrived?: boolean
+}) {
+    const getVariantStyles = () => {
+        switch (variant) {
+            case "current":
+                return "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950"
+            case "next":
+                return "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950"
+            case "final":
+                return "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950"
+            default:
+                return "border-border bg-card"
+        }
+    }
+
+    const getIconColor = () => {
+        switch (variant) {
+            case "current":
+                return "text-orange-600 dark:text-orange-400"
+            case "next":
+                return "text-blue-600 dark:text-blue-400"
+            case "final":
+                return "text-red-600 dark:text-red-400"
+            default:
+                return "text-muted-foreground"
+        }
+    }
+
+    const getTitleColor = () => {
+        switch (variant) {
+            case "current":
+                return "text-orange-700 dark:text-orange-300"
+            case "next":
+                return "text-blue-700 dark:text-blue-300"
+            case "final":
+                return "text-red-700 dark:text-red-300"
+            default:
+                return "text-foreground"
+        }
+    }
+
+    return (
+        <Card className={`${getVariantStyles()} transition-colors overflow-hidden`}>
+            <CardContent className="p-3 overflow-hidden">
+                <div className="flex items-center gap-1">
+                    <div className={`${getIconColor()} flex-shrink-0`}>
+                        {variant === "final" ? <FlagIcon className="h-4 w-4" /> : variant === "current" ? <MapPinIcon className="h-4 w-4" /> : <Navigation2 className="h-4 w-4" />}
+                    </div>
+                    <div className="flex flex-nowrap gap-1 w-full items-center overflow-hidden">
+                        <p className={`text-xs text-nowrap font-medium ${getTitleColor()}`}>{title.replace(":", "")}:</p>
+                        <p className="text-xs font-semibold text-foreground truncate">{stopName}</p>
+                        {arrivalTime && (
+                            <p className="text-xs font-semibold text-foreground text-nowrap">@ {arrivalTime}</p>
+                        )}
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
+    )
+})

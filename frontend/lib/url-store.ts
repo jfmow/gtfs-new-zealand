@@ -12,6 +12,7 @@ export const urlOptions: UrlOption[] = [
     { url: "https://trainapi.suddsy.dev/wel", displayName: "Wellington - Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
     { url: "https://trainapi.suddsy.dev/christ", displayName: "Christchurch - Metro", logoUrl: "/provider logos/metro.png", textColor: "#2a286b", defaultMapCenter: [-43.530792707375035, 172.6366263226067] },
     { url: "http://localhost:8090/at", displayName: "Dev", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342] },
+    { url: "http://localhost:8090/wel", displayName: "Dev", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
 ]
 
 class UrlStore {

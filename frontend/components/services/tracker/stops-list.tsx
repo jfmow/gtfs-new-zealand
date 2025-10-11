@@ -1,21 +1,12 @@
 import { useRef, useEffect, useState } from "react"
-import {
-    MapPin,
-    Clock,
-    AlertTriangle,
-    Train,
-    Waypoints,
-    Bell,
-    X,
-    Navigation,
-} from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, Navigation } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { format } from "date-fns"
 import notification from "@/lib/notifications"
 import { formatDistance } from "@/lib/utils"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
+import { formatUnixTime } from "@/lib/formating"
 
 interface StopsListProps {
     stops: ServicesStop[] | null
@@ -53,9 +44,6 @@ export default function StopsList({
             }
         }
     }, [vehicle, isSelectingReminder])
-
-    const formatUnixTime = (unixTime: number | null | undefined) =>
-        unixTime ? format(new Date(unixTime), "h:mm a") : null
 
     const getStopStatus = (stop: ServicesStop) => {
         if (!vehicle) return { isCurrentStop: false, isNextStop: false, passed: false }
@@ -255,11 +243,12 @@ export default function StopsList({
                                                             Platform {stop.platform}
                                                         </span>
                                                     )}
-
-                                                    <span className="flex items-center gap-1">
-                                                        <Waypoints className="w-3 h-3" />
-                                                        Distance {formatDistance(distance)}
-                                                    </span>
+                                                    {!passed && !isCurrentStop && (
+                                                        <span className="flex items-center gap-1">
+                                                            <Waypoints className="w-3 h-3" />
+                                                            Distance {formatDistance(distance)}
+                                                        </span>
+                                                    )}
 
                                                     {(arrivalTime || departureTime) && (
                                                         <span className="flex items-center gap-1">
