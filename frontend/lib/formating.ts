@@ -25,7 +25,9 @@ export function addSecondsToTime(timeStr: string, secondsToAdd: number): string 
 export const formatUnixTime = (unixTime: number | null | undefined) => {
     if (!unixTime) return "00:00 AM";
 
-    const timeString = new Date(unixTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const dateObj = new Date(unixTime);
+    const timeString = dateObj
+        .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
     const arrivalTime = convert24hTo12h(timeString);
 
     const minutesTillArrival = timeTillArrival(timeString);
