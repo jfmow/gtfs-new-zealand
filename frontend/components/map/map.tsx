@@ -112,8 +112,6 @@ export default function Map({
         const oldClusters = activeMapItems.mapItems.clusters;
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
-
-
         // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
             map.removeLayer(marker);

@@ -99,34 +99,34 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: max-content; height: 36px;">
-                <span
-                  style="
-                    position: absolute;
-                    top: -12px;
-                    left: 50%;
-                    transform: translateX(-50%);
-                    color: white;
-                    font-size: 12px;
-                    font-weight: bold;
-                    text-shadow: -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000,
-                      1px 1px 0 #000;
-                    white-space: nowrap;
-                    padding: 0 5px;
-                  "
-                >
-                  ${description}
-                </span>
-                <img
-                  src="${iconUrl}"
-                  style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 24px; height: 24px;"
-                />
+            <div style="position: relative; width: max-content; height: 40px;">
+            <span
+              style="
+                position: absolute;
+                top: -15px;
+                left: 50%;
+                transform: translateX(-50%);
+                color: white;
+                font-size: 14px;
+                font-weight: bold;
+                text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+                white-space: nowrap;
+                padding: 0 8px;
+                background-color: rgba(0, 0, 0, 0.6);
+                border-radius: 4px;
+              "
+            >
+              ${description}
+            </span>
+            <img
+              src="${iconUrl}"
+              style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 50%; border: 2px solid white;"
+            />
             </div>
         `,
-            iconAnchor: [12, 30],
+            iconAnchor: [14, 40],
         });
     } else {
-        // 💡 Convert to DivIcon without description
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `

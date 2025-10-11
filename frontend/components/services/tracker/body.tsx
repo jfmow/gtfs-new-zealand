@@ -136,9 +136,8 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                 )
                 : "";
         return (
-            <div className="space-y-4">
+            <div className="space-y-3">
                 <div>
-                    {/* Alert Banner */}
                     {vehicle.off_course && (
                         <Card className="border-destructive bg-destructive/5 mb-4">
                             <CardContent className="flex items-center gap-2 p-3 sm:p-4">
@@ -149,10 +148,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     )}
 
                     <div className="flex items-center justify-between gap-3 overflow-hidden">
-                        <div className="flex items-center justify-between w-full flex-wrap gap-4">
-                            <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
-                                {vehicle.trip.headsign}
-                            </h1>
+                        <div className="flex items-center w-full flex-nowrap gap-3">
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <span
                                     aria-label="Service route name"
@@ -165,6 +161,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                     {vehicle.route.name}
                                 </span>
                             </div>
+                            <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
+                                {vehicle.trip.headsign}
+                            </h1>
                         </div>
                         {refreshing && (
                             <div className="flex items-center gap-2 text-muted-foreground flex-shrink-0">
