@@ -100,11 +100,8 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
     // Vehicle tracking mode
     if (vehicle) {
-        const isAtStop = vehicle.state === "AtStop" || vehicle.state === "Boarding";
-        const isUnknown =
-            vehicle.state === "Unknown" ||
-            vehicle.state === "NoData" ||
-            vehicle.state === "Layover";
+        const isAtStop = vehicle.state === "AtStop";
+        const isUnknown = vehicle.state === "Unknown"
 
         const stopStatusTitle = isAtStop
             ? "Current Stop"
@@ -213,8 +210,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                     ({
                                                         lat: item.lat,
                                                         lon: item.lon,
-                                                        icon:
-                                                            currentStop?.name === item.name
+                                                        icon: vehicle.trip.next_stop.id === item.id
+                                                            ? "next stop marker"
+                                                            : currentStop?.name === item.name
                                                                 ? "marked stop marker"
                                                                 : vehicle.trip.final_stop.id === item.id
                                                                     ? "end marker"

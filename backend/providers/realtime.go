@@ -527,11 +527,7 @@ func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
 // state string. It does not assume the first item is the current stop; instead
 // it uses timestamps to find the first upcoming event. If no future event is
 // found it returns the sequence after the most recently departed stop.
-func getNextStopSequence(
-	stopUpdates []*proto.TripUpdate_StopTimeUpdate,
-	lowestSequence int,
-	localTimeZone *time.Location,
-) (int, *time.Time, string) {
+func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string) {
 	if len(stopUpdates) == 0 {
 		return 0, nil, "Unknown"
 	}
@@ -539,10 +535,19 @@ func getNextStopSequence(
 	now := time.Now().In(localTimeZone)
 
 	// First pass: find the earliest stop whose arrival or departure is in the future.
+	// Sort stopUpdates by sequence number for consistent processing
+	sort.Slice(stopUpdates, func(i, j int) bool {
+		if stopUpdates[i] == nil || stopUpdates[j] == nil {
+			return false
+		}
+		return stopUpdates[i].GetStopSequence() < stopUpdates[j].GetStopSequence()
+	})
+
 	for _, update := range stopUpdates {
-		if update == nil {
+		if update == nil || update.GetStopTimeProperties().GetHistoric() {
 			continue
 		}
+
 		var arrivalTs, departureTs int64
 		if a := update.GetArrival(); a != nil {
 			arrivalTs = a.GetTime()
@@ -557,6 +562,9 @@ func getNextStopSequence(
 			if now.Before(at) {
 				seq := int(update.GetStopSequence())
 				return seq - lowestSequence, &at, "Approaching"
+			} else if now.After(at) {
+				seq := int(update.GetStopSequence()) + 1
+				return seq - lowestSequence, &at, "AtStop"
 			}
 		}
 
@@ -564,8 +572,11 @@ func getNextStopSequence(
 		if departureTs > 0 {
 			dt := time.Unix(departureTs, 0).In(localTimeZone)
 			if now.Before(dt) {
-				seq := int(update.GetStopSequence())
+				seq := int(update.GetStopSequence()) + 1
 				return seq - lowestSequence, &dt, "AtStop"
+			} else if now.After(dt) {
+				seq := int(update.GetStopSequence()) + 1
+				return seq - lowestSequence, &dt, "Departed"
 			}
 		}
 	}

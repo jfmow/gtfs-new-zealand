@@ -383,8 +383,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         </CardDescription>
                                     </CardHeader>
 
-                                    {!displayingSchedulePreview && !service.canceled && !service.departed && !service.skipped && (
-                                        <CardContent className="pt-0">
+                                    {!displayingSchedulePreview && (
+                                        <CardContent className={`pt-0 ${service.canceled || service.departed || service.skipped ? "hidden" : ""}`}>
                                             <div className="grid grid-cols-2 items-stretch gap-2">
                                                 <ServiceTrackerModal
                                                     previewData={{
