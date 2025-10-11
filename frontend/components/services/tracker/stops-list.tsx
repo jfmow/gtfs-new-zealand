@@ -156,9 +156,9 @@ export default function StopsList({
                                 : 0
 
                         const delayLabel =
-                            delay > 0
+                            delay > 1
                                 ? `Late: ${delay}min`
-                                : delay < 0
+                                : delay < 1
                                     ? `Early: ${Math.abs(delay)}min`
                                     : ""
 
