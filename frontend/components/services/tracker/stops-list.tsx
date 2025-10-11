@@ -158,7 +158,7 @@ export default function StopsList({
                         const delayLabel =
                             delay > 1
                                 ? `Late: ${delay}min`
-                                : delay < 1
+                                : delay < -1
                                     ? `Early: ${Math.abs(delay)}min`
                                     : ""
 
@@ -263,7 +263,7 @@ export default function StopsList({
                                                         </span>
                                                     )}
 
-                                                    {delayLabel !== "" && (
+                                                    {delay > 1 || delay < -1 && (
                                                         <Badge
                                                             variant="secondary"
                                                             className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5"
