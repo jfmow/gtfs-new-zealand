@@ -263,7 +263,7 @@ export default function StopsList({
                                                         </span>
                                                     )}
 
-                                                    {delay !== 0 && (
+                                                    {delayLabel !== "" && (
                                                         <Badge
                                                             variant="secondary"
                                                             className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5"
