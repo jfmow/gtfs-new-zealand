@@ -40,58 +40,76 @@ type ItemsOnMap = {
         line: leaflet.GeoJSON | null
     }
 }
-
 export default function Map({
     mapItems = [],
     map_id,
     height,
     defaultZoom,
-    line
+    line,
 }: MapProps) {
-    const mapRef = useRef<leaflet.Map | null>(null)
+    const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
         compass: { control: null },
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
-        mapItems: { clusters: {}, markers: [], zoomButtons: {} }
+        mapItems: { clusters: {}, markers: [], zoomButtons: {} },
     });
 
     useEffect(() => {
-        if (!defaultZoom || !Array.isArray(defaultZoom) || defaultZoom.length < 1 || (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))) {
+        if (
+            !defaultZoom ||
+            !Array.isArray(defaultZoom) ||
+            defaultZoom.length < 1 ||
+            (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))
+        ) {
             throw new Error("Missing or invalid defaultZoom");
         }
 
-        let map: leaflet.Map | null = mapRef.current
+        let map: leaflet.Map | null = mapRef.current;
         if (!map) {
-            map = createNewMap(mapRef, map_id)
-            addMapVariantControlControl(map)
+            map = createNewMap(mapRef, map_id);
+            addMapVariantControlControl(map);
             setDefaultZoom(map, defaultZoom);
-            addZoomControls(map, itemsOnMap.current.zoomButtons)
-            addUserCompassControl(itemsOnMap.current.compass, map)
+            addZoomControls(map, itemsOnMap.current.zoomButtons);
+            addUserCompassControl(itemsOnMap.current.compass, map);
         }
 
+        // ⬇️ NEW: Resize observer to detect map container size changes
+        const container = document.getElementById(map_id);
+        const resizeObserver = new ResizeObserver(() => {
+            if (map) {
+                map.invalidateSize(); // Force Leaflet to recalculate map dimensions
+            }
+        });
+        if (container) resizeObserver.observe(container);
+
+        // Orientation tracking
         const handleOrientation = (e: DeviceOrientationEvent) => {
             let heading = null;
 
-            if ('webkitCompassHeading' in e) {
-                heading = e.webkitCompassHeading;
+            if ("webkitCompassHeading" in e) {
+                //eslint-disable-next-line @typescript-eslint/no-explicit-any
+                heading = (e as any).webkitCompassHeading;
             } else if (e.alpha !== null) {
                 heading = 360 - e.alpha;
             }
 
             if (typeof heading === "number" && !isNaN(heading)) {
-                document.documentElement.style.setProperty('--user-arrow-rotation', `${heading}deg`);
+                document.documentElement.style.setProperty(
+                    "--user-arrow-rotation",
+                    `${heading}deg`
+                );
             }
         };
 
-        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener("deviceorientation", handleOrientation);
 
         return () => {
-            window.removeEventListener('deviceorientation', handleOrientation);
+            window.removeEventListener("deviceorientation", handleOrientation);
+            resizeObserver.disconnect(); // ⬅️ NEW cleanup
         };
-
-    }, [defaultZoom, map_id])
+    }, [defaultZoom, map_id]);
 
     useEffect(() => {
         let intervalId: NodeJS.Timeout | undefined;
@@ -100,7 +118,6 @@ export default function Map({
 
         const activeMapItems = itemsOnMap.current;
 
-        // Initialize clusters and zoomButtons if undefined (defensive)
         if (!activeMapItems.mapItems.clusters) {
             activeMapItems.mapItems.clusters = {};
         }
@@ -112,7 +129,6 @@ export default function Map({
         const oldClusters = activeMapItems.mapItems.clusters;
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
-        // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
             map.removeLayer(marker);
         });
@@ -120,7 +136,6 @@ export default function Map({
             map.removeLayer(cluster);
         });
 
-        // Clean up old zoom controls
         Object.values(oldZoomControls).forEach((control) => {
             map.removeControl(control);
         });
@@ -129,15 +144,12 @@ export default function Map({
         activeMapItems.mapItems.clusters = {};
         activeMapItems.mapItems.zoomButtons = {};
 
-        // Group items by type
         const groupedByType: Record<string, MapItem[]> = {};
-        mapItems.forEach(item => {
+        mapItems.forEach((item) => {
             if (!groupedByType[item.type]) groupedByType[item.type] = [];
             groupedByType[item.type].push(item);
         });
 
-
-        // Process each group
         Object.entries(groupedByType).forEach(([type, items]) => {
             const useCluster = items.length >= 100;
             const updatedMarkers: typeof activeMapItems.mapItems.markers = [];
@@ -148,8 +160,8 @@ export default function Map({
                 activeMapItems.mapItems.clusters[type] = clusterGroup;
             }
 
-            items.forEach(item => {
-                const existing = oldMarkers.find(m => m.id === item.id);
+            items.forEach((item) => {
+                const existing = oldMarkers.find((m) => m.id === item.id);
                 let marker: leaflet.Marker;
 
                 if (existing) {
@@ -166,8 +178,6 @@ export default function Map({
 
                 updatedMarkers.push({ id: item.id, marker });
 
-                // Handle zoom button for this item
-                // Remove old zoom control if it exists
                 if (oldZoomControls[item.id]) {
                     map.removeControl(oldZoomControls[item.id]);
                     delete oldZoomControls[item.id];
@@ -176,8 +186,11 @@ export default function Map({
                 if (item.zoomButton) {
                     const zoomControl = new leaflet.Control({ position: "topright" });
                     zoomControl.onAdd = () => {
-                        const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
-                        button.innerHTML = item.zoomButton ?? "Zoom"
+                        const button = leaflet.DomUtil.create(
+                            "button",
+                            buttonVariants({ variant: "default", size: "icon" })
+                        );
+                        button.innerHTML = item.zoomButton ?? "Zoom";
                         button.onclick = () => {
                             map.flyTo(marker.getLatLng(), 17);
                         };
@@ -188,7 +201,6 @@ export default function Map({
                 }
             });
 
-            // Add cluster group to map if used
             if (useCluster && clusterGroup) {
                 map.addLayer(clusterGroup);
             }
@@ -196,19 +208,15 @@ export default function Map({
             activeMapItems.mapItems.markers.push(...updatedMarkers);
         });
 
-
-        // Remove any zoom buttons for items no longer present
-        Object.keys(oldZoomControls).forEach(itemId => {
-            if (!mapItems.find(i => i.id === itemId && i.zoomButton)) {
+        Object.keys(oldZoomControls).forEach((itemId) => {
+            if (!mapItems.find((i) => i.id === itemId && i.zoomButton)) {
                 map.removeControl(oldZoomControls[itemId]);
                 delete oldZoomControls[itemId];
             }
         });
 
-        // Store updated mapItems state
         itemsOnMap.current.mapItems = activeMapItems.mapItems;
 
-        // Start user location updates
         startLocationUpdates((latLng) => {
             addUserMarker(activeMapItems.user, map, latLng);
         }).then((res) => {
@@ -218,36 +226,43 @@ export default function Map({
         return () => clearInterval(intervalId);
     }, [mapItems]);
 
-
-
-
     useEffect(() => {
-        const activeMapItems = itemsOnMap.current
-        const map = mapRef.current
+        const activeMapItems = itemsOnMap.current;
+        const map = mapRef.current;
         if (line && activeMapItems && map) {
-            const activeNavigation = activeMapItems.line
+            const activeNavigation = activeMapItems.line;
             if (activeNavigation.line) {
-                map.removeLayer(activeNavigation.line)
+                map.removeLayer(activeNavigation.line);
             }
             const leafletLine = leaflet.geoJSON(line.GeoJson, {
                 //@ts-expect-error: is real config value
-                smoothFactor: 1.5, // Adjust the smoothness level
+                smoothFactor: 1.5,
                 style: function () {
-                    return { color: line.color !== "" ? line.color : '#db6ecb', weight: 4 }; // Customize the line color and thickness
-                }
-            })
-            activeMapItems.line.line = leafletLine
-            leafletLine.addTo(map)
-
+                    return {
+                        color: line.color !== "" ? line.color : "#db6ecb",
+                        weight: 4,
+                    };
+                },
+            });
+            activeMapItems.line.line = leafletLine;
+            leafletLine.addTo(map);
         }
-    }, [line])
+    }, [line]);
 
     return (
-        <>
-            <div id={map_id} style={{ height: height, width: '100%', maxHeight: height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }} />
-        </>
-    )
+        <div
+            id={map_id}
+            style={{
+                height: height,
+                width: "100%",
+                maxHeight: height ? "" : "50vh",
+                zIndex: 1,
+                borderRadius: "10px",
+            }}
+        />
+    );
 }
+
 
 function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: string): leaflet.Map {
     let map: leaflet.Map | null = ref.current

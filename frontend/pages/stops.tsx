@@ -61,7 +61,7 @@ export default function Stops() {
     )
 }
 
-type Stop = {
+export type Stop = {
     stop_name: string;
     stop_code: string;
     stop_lat: number;

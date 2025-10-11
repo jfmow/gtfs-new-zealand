@@ -171,8 +171,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
-            <DisplayTodaysAlerts stopName={stopName} />
-
             {uniquePlatforms.length > 0 && (
                 <section className="mb-6" aria-labelledby="platform-filter-heading">
                     <h2 id="platform-filter-heading" className="sr-only">
