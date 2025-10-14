@@ -471,38 +471,23 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		count := 0
 
 		for _, vd := range distances {
-			if vd.Distance <= 50 || count == 0 {
-				tripData, err := gtfsData.GetTripByID(vd.Vehicle.GetTrip().GetTripId())
-				if err != nil {
-					continue
-				}
-
-				results = append(results, map[string]interface{}{
-					"tripHeadsign":          tripData.TripHeadsign,
-					"routeId":               tripData.RouteID,
-					"distance_from_vehicle": vd.Distance,
-					"tripId":                vd.Vehicle.GetTrip().GetTripId(),
-				})
-
-				count++
-				if count >= 3 {
-					break
-				}
+			if count >= 3 {
+				break
 			}
-		}
 
-		// Ensure at least one result (fallback to closest if none matched 50m rule)
-		if len(results) == 0 && len(distances) > 0 {
-			vd := distances[0]
 			tripData, err := gtfsData.GetTripByID(vd.Vehicle.GetTrip().GetTripId())
-			if err == nil {
-				results = append(results, map[string]interface{}{
-					"tripHeadsign":          tripData.TripHeadsign,
-					"routeId":               tripData.RouteID,
-					"distance_from_vehicle": vd.Distance,
-					"tripId":                vd.Vehicle.GetTrip().GetTripId(),
-				})
+			if err != nil {
+				continue
 			}
+
+			results = append(results, map[string]interface{}{
+				"tripHeadsign":          tripData.TripHeadsign,
+				"routeId":               tripData.RouteID,
+				"distance_from_vehicle": vd.Distance,
+				"tripId":                vd.Vehicle.GetTrip().GetTripId(),
+			})
+
+			count++
 		}
 
 		// Always return an array
