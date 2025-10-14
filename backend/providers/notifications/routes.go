@@ -137,6 +137,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 							title = "Your stop is next!"
 							body = "Get ready to get off. Make sure to take everything with you."
 						default:
+							notificationDB.DeleteReminder(reminder.ClientId, reminder.Type)
 							continue // unknown type
 						}
 
