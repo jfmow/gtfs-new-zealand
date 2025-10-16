@@ -44,8 +44,6 @@ export function convert24hTo12h(time24: string): string {
     const formattedMinutes = minutes.toString().padStart(2, '0');
     //const formattedSeconds = seconds.toString().padStart(2, '0');
 
-    console.log(`Converted ${time24} to ${hours12}:${formattedMinutes} ${period}`);
-
     return `${hours12}:${formattedMinutes} ${period}`;
 }
 
