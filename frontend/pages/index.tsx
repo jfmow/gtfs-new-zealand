@@ -64,9 +64,9 @@ export default function Home() {
           <div className="w-full px-2 pb-4">
             <Favorites grid />
           </div>
-          <div className="flex flex-col flex-grow px-0 h-full">
+          <div className="flex flex-col flex-grow px-2 pb-4 h-full">
             <Suspense fallback=" ">
-              <StopsMap />
+              <StopsMap buttonPosition="bottom" />
             </Suspense>
           </div>
         </>

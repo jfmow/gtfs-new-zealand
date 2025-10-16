@@ -50,7 +50,8 @@ export default function Map({
     map_id,
     height,
     defaultZoom,
-    line
+    line,
+    options
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
@@ -74,10 +75,10 @@ export default function Map({
         let map: leaflet.Map | null = mapRef.current;
         if (!map) {
             map = createNewMap(mapRef, map_id);
-            addMapVariantControlControl(map);
+            addMapVariantControlControl(map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
             setDefaultZoom(map, defaultZoom);
-            addZoomControls(map, itemsOnMap.current.zoomButtons);
-            addUserCompassControl(itemsOnMap.current.compass, map);
+            addZoomControls(map, itemsOnMap.current.zoomButtons, options?.buttonPosition === "bottom" ? "bottomleft" : "topleft");
+            addUserCompassControl(itemsOnMap.current.compass, map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
         }
 
         // ⬇️ NEW: Resize observer to detect map container size changes
@@ -114,7 +115,7 @@ export default function Map({
             window.removeEventListener("deviceorientation", handleOrientation);
             resizeObserver.disconnect(); // ⬅️ NEW cleanup
         };
-    }, [defaultZoom, map_id]);
+    }, [defaultZoom, map_id, options?.buttonPosition]);
 
     useEffect(() => {
         let intervalId: NodeJS.Timeout | undefined;
@@ -223,13 +224,13 @@ export default function Map({
         itemsOnMap.current.mapItems = activeMapItems.mapItems;
 
         startLocationUpdates((latLng) => {
-            addUserMarker(activeMapItems.user, map, latLng);
+            addUserMarker(activeMapItems.user, map, latLng, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
         }).then((res) => {
             if (res) intervalId = res;
         });
 
         return () => clearInterval(intervalId);
-    }, [mapItems]);
+    }, [mapItems, options?.buttonPosition]);
 
     useEffect(() => {
         const activeMapItems = itemsOnMap.current;
@@ -263,6 +264,7 @@ export default function Map({
                 maxHeight: height ? "" : "50vh",
                 zIndex: 1,
                 borderRadius: "10px",
+                flexGrow: 1,
             }}
         />
     );
@@ -295,7 +297,7 @@ function setDefaultZoom(map: leaflet.Map, defaultZoom: [LatLng] | [LatLng, LatLn
     }
 }
 
-function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomButtons"]) {
+function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomButtons"], position: leaflet.ControlPosition = "topleft") {
     if (activeMapItemsZoom.controls && activeMapItemsZoom.controls.length > 0) {
         activeMapItemsZoom.controls.forEach((control) => map.removeControl(control));
     }
@@ -305,7 +307,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         if ("preventDefault" in e) e.preventDefault();
     }
 
-    const zoomInControl = new leaflet.Control.Zoom({ position: 'topleft' });
+    const zoomInControl = new leaflet.Control.Zoom({ position });
     zoomInControl.onAdd = () => {
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
@@ -319,7 +321,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         return button;
     };
 
-    const zoomOutControl = new leaflet.Control({ position: 'topleft' });
+    const zoomOutControl = new leaflet.Control({ position });
     zoomOutControl.onAdd = () => {
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
@@ -338,7 +340,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
     activeMapItemsZoom.controls = [zoomInControl, zoomOutControl];
 }
 
-function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: [number, number]) {
+function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: [number, number], position: leaflet.ControlPosition = "topright") {
     let userMarker = activeMapItemsUser.marker;
     const userControl = activeMapItemsUser.control;
 
@@ -361,7 +363,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
     }
 
     if (!userControl) {
-        const userLocationControl = new leaflet.Control({ position: "topright" });
+        const userLocationControl = new leaflet.Control({ position });
         userLocationControl.onAdd = () => {
             const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
@@ -375,14 +377,14 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
     }
 }
 
-function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map: leaflet.Map) {
+function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map: leaflet.Map, position: leaflet.ControlPosition = "topright") {
     const oldCompassControl = activeMapItemsCompass.control
     if (oldCompassControl) {
         map.removeControl(oldCompassControl)
     }
     //@ts-expect-error it does infant exist
     if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const compassControl = new leaflet.Control({ position: 'topright' });
+        const compassControl = new leaflet.Control({ position });
         compassControl.onAdd = () => {
             const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>';

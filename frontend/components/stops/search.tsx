@@ -62,6 +62,8 @@ export default function SearchForStop() {
         if (selected_stop.found) {
             skipSearchRef.current = true
             setSearchTerm(selected_stop.value)
+        } else if (searchTerm !== "") {
+            setSearchTerm("")
         }
     }, [selected_stop])
 

@@ -101,7 +101,7 @@ export default function Vehicles() {
         <>
             <Header title="Vehicle tracker" />
             <div
-                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 py-4 transition-all duration-300 ${fullscreen
+                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 py-4 transition-all duration-300 h-full flex-grow ${fullscreen
                     ? "fixed inset-0 z-50 bg-background p-0 max-w-none"
                     : ""
                     }`} // ⬅️ NEW
@@ -150,58 +150,56 @@ export default function Vehicles() {
                 {error !== "" ? (
                     "Err: " + error
                 ) : (
-                    <Suspense
-                        fallback={
-                            <LoadingSpinner
-                                description="Loading vehicles..."
-                                height="100svh"
-                            />
-                        }
-                    >
-                        <LeafletMap
-                            defaultZoom={["user", currentUrl.defaultMapCenter]}
-                            mapItems={[
-                                ...vehicles.map(
-                                    (vehicle) =>
-                                        ({
-                                            lat: vehicle.position.lat,
-                                            lon: vehicle.position.lon,
-                                            icon: vehicle.type,
-                                            id: vehicle.trip_id,
-                                            routeID: vehicle.route.id,
-                                            description: {
-                                                text: `${vehicle.route.name}`,
-                                                alwaysShow: true,
-                                            },
-                                            zIndex: 1,
-                                            type: "vehicle",
-                                            onClick: () => {
-                                                selectedVehicle.set(vehicle.trip_id);
-                                            },
-                                        }) as MapItem
-                                ),
-                                ...(stops ? (
-                                    stops.map((item) => ({
-                                        lat: item.stop_lat,
-                                        lon: item.stop_lon,
-                                        icon: "dot",
-                                        id: item.stop_name + " " + item.stop_code,
-                                        routeID: "",
-                                        description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
-                                        zIndex: 1,
-                                        type: "stop",
-                                        onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
-                                    } as MapItem))
-                                ) : [])
-                            ]}
-                            map_id={MAPID}
-                            height={
-                                fullscreen
-                                    ? "100vh" // ⬅️ NEW: full height in fullscreen
-                                    : "calc(100svh - 2rem - 70px - 36px - 1rem)"
+                    <div className="flex flex-col flex-grow h-full">
+                        <Suspense
+                            fallback={
+                                <LoadingSpinner
+                                    description="Loading vehicles..."
+                                    height="100svh"
+                                />
                             }
-                        />
-                    </Suspense>
+                        >
+                            <LeafletMap
+                                defaultZoom={["user", currentUrl.defaultMapCenter]}
+                                mapItems={[
+                                    ...vehicles.map(
+                                        (vehicle) =>
+                                            ({
+                                                lat: vehicle.position.lat,
+                                                lon: vehicle.position.lon,
+                                                icon: vehicle.type,
+                                                id: vehicle.trip_id,
+                                                routeID: vehicle.route.id,
+                                                description: {
+                                                    text: `${vehicle.route.name}`,
+                                                    alwaysShow: true,
+                                                },
+                                                zIndex: 1,
+                                                type: "vehicle",
+                                                onClick: () => {
+                                                    selectedVehicle.set(vehicle.trip_id);
+                                                },
+                                            }) as MapItem
+                                    ),
+                                    ...(stops ? (
+                                        stops.map((item) => ({
+                                            lat: item.stop_lat,
+                                            lon: item.stop_lon,
+                                            icon: "dot",
+                                            id: item.stop_name + " " + item.stop_code,
+                                            routeID: "",
+                                            description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
+                                            zIndex: 1,
+                                            type: "stop",
+                                            onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
+                                        } as MapItem))
+                                    ) : [])
+                                ]}
+                                map_id={MAPID}
+                                height={"100%"}
+                            />
+                        </Suspense>
+                    </div>
                 )}
             </div>
         </>
