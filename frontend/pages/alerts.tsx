@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle } from "lucide-react"
+import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -338,10 +338,17 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 
             <CardFooter className="pt-0">
                 <div className="flex flex-wrap items-center gap-2 justify-between w-full">
-                    <Badge variant={"secondary"} className="flex items-center gap-1">
-                        <AlertTriangle className="h-4 w-4" />
-                        {formatTextToNiceLookingWords(alert.cause.replace("_", " ").toLowerCase(), true)}
-                    </Badge>
+                    {(() => {
+                        const causeInfo = causeSeverityMap[alert.cause] || causeSeverityMap.UNKNOWN_CAUSE
+                        const Icon = causeInfo.icon
+                        return (
+                            <Badge variant={causeInfo.variant} className="flex items-center gap-1">
+                                <Icon className="h-4 w-4" />
+                                {causeInfo.label}
+                            </Badge>
+                        )
+                    })()}
+
                     <Badge variant="outline">
                         {formatTextToNiceLookingWords(alert.effect.replace("_", " ").toLowerCase(), true)}
                     </Badge>
@@ -354,11 +361,33 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 export interface AlertType {
     start_date: number
     end_date: number
-    cause: string
+    cause: "UNKNOWN_CAUSE" | "OTHER_CAUSE" | "TECHNICAL_PROBLEM" | "STRIKE" | "DEMONSTRATION" | "ACCIDENT" | "HOLIDAY" | "WEATHER" | "MAINTENANCE" | "CONSTRUCTION" | "POLICE_ACTIVITY" | "MEDICAL_EMERGENCY"
     effect: string
     title: string
     description: string
     affected: string[]
+}
+
+const causeSeverityMap: Record<
+    AlertType["cause"],
+    {
+        variant: "destructive" | "default" | "secondary"
+        label: string
+        icon: React.ElementType
+    }
+> = {
+    UNKNOWN_CAUSE: { variant: "secondary", label: "Unknown cause", icon: AlertCircle },
+    OTHER_CAUSE: { variant: "secondary", label: "Other", icon: AlertCircle },
+    TECHNICAL_PROBLEM: { variant: "default", label: "Technical issue", icon: Wrench },
+    STRIKE: { variant: "destructive", label: "Strike", icon: Users },
+    DEMONSTRATION: { variant: "destructive", label: "Demonstration", icon: Users },
+    ACCIDENT: { variant: "destructive", label: "Accident", icon: AlertTriangle },
+    HOLIDAY: { variant: "secondary", label: "Holiday schedule", icon: CalendarDays },
+    WEATHER: { variant: "default", label: "Weather", icon: CloudRain },
+    MAINTENANCE: { variant: "secondary", label: "Maintenance", icon: Hammer },
+    CONSTRUCTION: { variant: "default", label: "Construction", icon: Construction },
+    POLICE_ACTIVITY: { variant: "destructive", label: "Police activity", icon: ShieldAlert },
+    MEDICAL_EMERGENCY: { variant: "destructive", label: "Medical emergency", icon: HeartPulse },
 }
 
 export function DisplayTodaysAlerts({ stopName, forceDisplay }: { stopName: string, forceDisplay?: boolean }) {
