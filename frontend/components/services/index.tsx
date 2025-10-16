@@ -354,7 +354,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         </p>
                                                     )}
                                                     <p className="font-medium">
-                                                        <span className="text-muted-foreground">Arriving:</span>{" "}
+                                                        <span className="text-muted-foreground">{service.skipped ? "Passing by" : "Arriving"}:</span>{" "}
                                                         <time dateTime={service.arrival_time}>{convert24hTo12h(service.arrival_time)}</time>
                                                     </p>
                                                     {!service.canceled && !service.skipped && !displayingSchedulePreview && !service.departed && (
