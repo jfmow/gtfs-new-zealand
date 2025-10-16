@@ -39,10 +39,10 @@ export default function Alerts() {
         <>
             <Header title="Travel Alerts" />
             <div className="w-full">
-                <div className="mx-auto max-w-[1400px] flex flex-col p-4">
+                <div className="mx-auto max-w-[1400px] flex flex-col p-4 pt-0">
                     <div className="flex items-center gap-2 mb-4">
                         <StopNotifications stopName={selected_stop.value}>
-                            <Button>
+                            <Button variant={"secondary"}>
                                 <BellDot />
                                 <span className="hidden sm:block">Notifications</span>
                             </Button>
@@ -52,11 +52,9 @@ export default function Alerts() {
                     {loading ? (
                         <LoadingSpinner description="Loading alerts..." />
                     ) : (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="">
                             {alerts.length > 0 ? (
-                                alerts.map((alert, index) => (
-                                    <AlertCard alert={alert} key={index} />
-                                ))
+                                <GroupedAlertsByRoute alerts={alerts} />
                             ) : selected_stop.found ? (
                                 <div className="col-span-full">
                                     <Alert>
@@ -80,23 +78,71 @@ export default function Alerts() {
     )
 }
 
+function groupAlertsByRoute(alerts: AlertType[]) {
+    const grouped: Record<string, AlertType[]> = {}
+
+    alerts.forEach((alert) => {
+        if (alert.affected.length > 0) {
+            alert.affected.forEach((route) => {
+                if (!grouped[route]) grouped[route] = []
+                grouped[route].push(alert)
+            })
+        } else {
+            if (!grouped["No Route"]) grouped["No Route"] = []
+            grouped["No Route"].push(alert)
+        }
+    })
+
+    return grouped
+}
+
+function GroupedAlertsByRoute({ alerts }: { alerts: AlertType[] }) {
+    const groupedAlerts = groupAlertsByRoute(alerts)
+    const [openRoute, setOpenRoute] = useState<string | null>(
+        Object.keys(groupedAlerts)[0] || null
+    )
+
+    return (
+        <div className="grid w-full gap-4">
+            <div className="flex items-center justify-start gap-2 flex-wrap">
+                {Object.keys(groupedAlerts).map((route) => (
+                    <Button
+                        key={route}
+                        variant={openRoute === route ? "default" : "outline"}
+                        onClick={() => setOpenRoute(route)}
+                    >
+                        Alerts for: {route} ({groupedAlerts[route].length})
+                    </Button>
+                ))}
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {groupedAlerts[openRoute || "No Route"]?.map((alert, i) => (
+                    <AlertCard alert={alert} key={i} />
+                ))}
+            </div>
+        </div>
+    )
+}
+
+
+
 function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent?: boolean }) {
     const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
-    const formatDate = (timestamp: number) => {
-        return new Date(timestamp * 1000).toLocaleDateString("en-NZ", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        })
+    const getDaysUntil = (timestamp: number) => {
+        const now = new Date()
+        const startDate = new Date(timestamp * 1000)
+
+        // Clear times for accurate day difference
+        const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+        const startUTC = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+
+        const diffDays = Math.round((startUTC - nowUTC) / (1000 * 60 * 60 * 24))
+        return diffDays
     }
 
     const getAlertStatus = (alert: AlertType) => {
         const now = Date.now() / 1000
-        const oneDayInSeconds = 24 * 60 * 60
-        const oneWeekInSeconds = 7 * oneDayInSeconds
 
         // Currently active
         if (alert.start_date <= now && alert.end_date >= now) {
@@ -105,27 +151,23 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 
         // Starting soon
         if (alert.start_date > now) {
-            const timeUntilStart = alert.start_date - now
+            const daysUntil = getDaysUntil(alert.start_date)
 
-            if (timeUntilStart <= oneDayInSeconds) {
-                const hoursUntil = Math.ceil(timeUntilStart / 3600)
-                return {
-                    status: "soon",
-                    label: hoursUntil <= 1 ? "Starting soon" : `In ${hoursUntil}h`,
-                }
-            } else if (timeUntilStart <= 2 * oneDayInSeconds) {
+            if (daysUntil === 0) {
+                return { status: "soon", label: "Today" }
+            } else if (daysUntil === 1) {
                 return { status: "soon", label: "Tomorrow" }
-            } else if (timeUntilStart <= 7 * oneDayInSeconds) {
-                const daysUntil = Math.ceil(timeUntilStart / oneDayInSeconds)
+            } else if (daysUntil <= 7) {
                 return { status: "soon", label: `In ${daysUntil} days` }
-            } else if (timeUntilStart <= oneWeekInSeconds) {
-                return { status: "soon", label: "Next week" }
+            } else {
+                return { status: "inactive", label: "Inactive" }
             }
         }
 
-        // Inactive (past or far future)
+        // Past
         return { status: "inactive", label: "Inactive" }
     }
+
 
     const getBadgeVariant = (status: string) => {
         switch (status) {
@@ -169,6 +211,48 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
             )
         })
     }
+
+    const formatAlertDuration = (start: number, end: number) => {
+        const startDate = new Date(start * 1000)
+        const endDate = new Date(end * 1000)
+
+        const sameDay =
+            startDate.getFullYear() === endDate.getFullYear() &&
+            startDate.getMonth() === endDate.getMonth() &&
+            startDate.getDate() === endDate.getDate()
+
+        const dateOptions: Intl.DateTimeFormatOptions = {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+            hour: "numeric",
+            minute: "2-digit",
+        }
+
+        if (sameDay) {
+            const dayStr = startDate.toLocaleDateString("en-NZ", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "2-digit",
+            })
+            const startTime = startDate.toLocaleTimeString("en-NZ", {
+                hour: "numeric",
+                minute: "2-digit",
+            })
+            const endTime = endDate.toLocaleTimeString("en-NZ", {
+                hour: "numeric",
+                minute: "2-digit",
+            })
+
+            return `${dayStr} ${startTime} to ${endTime}`
+        } else {
+            return `From: ${startDate.toLocaleString("en-NZ", dateOptions)}\nUntil: ${endDate.toLocaleString(
+                "en-NZ",
+                dateOptions
+            )}`
+        }
+    }
+
     return (
         <Card className="relative flex flex-col">
             <CardHeader className="pb-3">
@@ -193,8 +277,7 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
                             <span className="font-medium">Duration</span>
                         </div>
                         <div className="pl-6 space-y-1 text-sm text-muted-foreground">
-                            <div>From: {formatDate(alert.start_date)}</div>
-                            <div>Until: {formatDate(alert.end_date)}</div>
+                            {formatAlertDuration(alert.start_date, alert.end_date)}
                             {(() => {
                                 const alertStatus = getAlertStatus(alert)
                                 if (alertStatus.status === "soon") {
