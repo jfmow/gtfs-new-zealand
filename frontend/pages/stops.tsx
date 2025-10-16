@@ -15,7 +15,7 @@ export default function Stops() {
             <Header title="Stops map" />
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col px-4 pb-4">
-                    <StopsMap />
+                    <StopsMap customTailwindHeight="calc(100svh - 60px - 2rem)" />
                 </div>
             </div>
 
@@ -63,8 +63,6 @@ export function StopsMap({ customTailwindHeight }: { customTailwindHeight?: stri
             while (parent && parent.offsetHeight === 0) {
                 parent = parent.parentElement
             }
-
-            console.log("Parent:", parent)
 
             if (parent) {
                 const height = parent.getBoundingClientRect().height
