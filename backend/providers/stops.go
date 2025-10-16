@@ -106,11 +106,12 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 	primaryRoute.POST("/stops", func(c echo.Context) error {
 		filterChildren := c.FormValue("children")
 		var noChildren bool
-		if filterChildren == "yes" {
+		switch filterChildren {
+		case "yes":
 			noChildren = false
-		} else if filterChildren == "no" {
+		case "no":
 			noChildren = true
-		} else {
+		default:
 			if filterChildren != "" {
 				return JsonApiResponse(c, http.StatusNotFound, "Invalid children filter", nil, ResponseDetails("children", filterChildren, "details", "Children filter must be 'yes' or 'no'"))
 			}

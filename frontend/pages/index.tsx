@@ -1,14 +1,16 @@
-import Services from "@/components/services";
 import Favorites, { AddToFavorites } from "@/components/stops/favourites";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { useQueryParams } from "@/lib/url-params";
 import { MessageCircleWarningIcon, StarIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
 import { Header } from "@/components/nav";
 import { useIsMobile } from "@/lib/utils";
+
+const Services = lazy(() => import("@/components/services"))
+const StopsMap = lazy(() => import("./stops").then(module => ({ default: module.StopsMap })))
 
 export default function Home() {
   const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } }); // Get the 's' parameter and if it's found
@@ -28,12 +30,14 @@ export default function Home() {
           <div className="flex gap-2 items-center w-full">
             <SearchForStop />
             {selectedStop !== "" ? (
-              <DatePicker onChange={(date) => setSelectedDate(date)} />
+              <>
+                <DatePicker onChange={(date) => setSelectedDate(date)} />
+                <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
+                  <MessageCircleWarningIcon />
+                </Button>
+                <AddToFavorites stopName={selectedStop} />
+              </>
             ) : null}
-            <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
-              <MessageCircleWarningIcon />
-            </Button>
-            <AddToFavorites stopName={selectedStop} />
           </div>
         </div>
         {!isMobile ? (
@@ -54,7 +58,23 @@ export default function Home() {
           </Accordion>
         ) : null}
       </div>
-      <Services filterDate={selectedDate} stopName={selectedStop} />
+
+      {selectedStop === "" && isMobile ? (
+        <>
+          <div className="w-full px-2 pb-4">
+            <Favorites grid />
+          </div>
+          <div className="flex flex-col flex-grow px-0 h-full">
+            <Suspense fallback=" ">
+              <StopsMap />
+            </Suspense>
+          </div>
+        </>
+      ) : (
+        <Suspense fallback="">
+          <Services filterDate={selectedDate} stopName={selectedStop} />
+        </Suspense>
+      )}
     </>
   );
 }

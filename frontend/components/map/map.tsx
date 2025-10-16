@@ -18,6 +18,7 @@ interface MapProps {
     map_id: string
     height: string
     defaultZoom: [LatLng, LatLng] | [LatLng] | ["user", BackupLatLng]
+    options?: MapOptions
 }
 
 type ItemsOnMap = {
@@ -40,12 +41,16 @@ type ItemsOnMap = {
         line: leaflet.GeoJSON | null
     }
 }
+
+interface MapOptions {
+    buttonPosition: "top" | "bottom"
+}
 export default function Map({
     mapItems = [],
     map_id,
     height,
     defaultZoom,
-    line,
+    line
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
