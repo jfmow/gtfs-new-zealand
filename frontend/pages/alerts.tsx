@@ -143,30 +143,30 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 
     const getAlertStatus = (alert: AlertType) => {
         const now = Date.now() / 1000
+        const oneDayInSeconds = 24 * 60 * 60
 
-        // Currently active
-        if (alert.start_date <= now && alert.end_date >= now) {
+        const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + oneDayInSeconds
+
+        // Active if it’s ongoing or missing end_date
+        if (alert.start_date <= now && endDate >= now) {
             return { status: "active", label: "Active" }
         }
 
-        // Starting soon
+        // Upcoming (future start)
         if (alert.start_date > now) {
             const daysUntil = getDaysUntil(alert.start_date)
 
-            if (daysUntil === 0) {
-                return { status: "soon", label: "Today" }
-            } else if (daysUntil === 1) {
-                return { status: "soon", label: "Tomorrow" }
-            } else if (daysUntil <= 7) {
-                return { status: "soon", label: `In ${daysUntil} days` }
-            } else {
-                return { status: "inactive", label: "Inactive" }
-            }
+            if (daysUntil === 0) return { status: "soon", label: "Today" }
+            if (daysUntil === 1) return { status: "soon", label: "Tomorrow" }
+            if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil} days` }
+
+            return { status: "inactive", label: "Inactive" }
         }
 
-        // Past
+        // Otherwise, it’s in the past
         return { status: "inactive", label: "Inactive" }
     }
+
 
 
     const getBadgeVariant = (status: string) => {
