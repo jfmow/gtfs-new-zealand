@@ -65,7 +65,7 @@ export default function Favorites({
                     </Link>
                 ))
             ) : (
-                <div className="flex flex-col w-full text-gray-500 items-center gap-1 justify-center">
+                <div className="flex flex-col w-full text-gray-500 items-center gap-1 justify-center col-span-2">
                     <TriangleAlert className="w-4 h-4 !rotate-0" />
                     <p className="text-sm">No favorites added yet.</p>
                 </div>
