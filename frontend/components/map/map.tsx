@@ -45,7 +45,8 @@ type ItemsOnMap = {
 interface MapOptions {
     buttonPosition: "top" | "bottom"
 }
-export default function Map({
+
+export default function MapComp({
     mapItems = [],
     map_id,
     height,

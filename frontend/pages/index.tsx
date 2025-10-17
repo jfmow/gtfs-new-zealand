@@ -59,12 +59,12 @@ export default function Home() {
         ) : null}
       </div>
 
-      {selectedStop === "" && isMobile ? (
+      {selectedStop === "" ? (
         <>
-          <div className="w-full px-2 pb-4">
+          <div className="w-full px-2 pb-4 max-w-[1400px] mx-auto w-full sm:hidden">
             <Favorites grid />
           </div>
-          <div className="flex flex-col flex-grow px-2 pb-4 h-full">
+          <div className="flex flex-col flex-grow px-2 pb-4 h-full max-w-[1400px] mx-auto w-full">
             <Suspense fallback=" ">
               <StopsMap buttonPosition="bottom" />
             </Suspense>

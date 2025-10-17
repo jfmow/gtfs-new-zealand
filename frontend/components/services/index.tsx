@@ -171,7 +171,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
-            {uniquePlatforms.length > 0 && (
+            {uniquePlatforms.length > 1 && (
                 <section className="mb-6" aria-labelledby="platform-filter-heading">
                     <h2 id="platform-filter-heading" className="sr-only">
                         Filter services by platform
