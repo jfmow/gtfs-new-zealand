@@ -62,6 +62,8 @@ export default function SearchForStop() {
         if (selected_stop.found) {
             skipSearchRef.current = true
             setSearchTerm(selected_stop.value)
+        } else if (searchTerm !== "") {
+            setSearchTerm("")
         }
     }, [selected_stop])
 
@@ -186,7 +188,7 @@ export default function SearchForStop() {
                                         >
                                             <span className="truncate">{item.name}</span>
                                             <span className="ml-auto text-xs text-muted-foreground">
-                                                {item.type_of_stop}
+                                                {item.type_of_stop === "bus" ? "Bus Stop" : item.type_of_stop === "train" ? "Train Station" : item.type_of_stop === "ferry" ? "Ferry Terminal" : "Stop"}
                                             </span>
                                         </Button>
                                     </li>
@@ -229,5 +231,5 @@ async function searchForStop(search: string): Promise<searchData> {
 
 interface StopSearch {
     name: string
-    type_of_stop: string
+    type_of_stop: "bus" | "train" | "ferry" | "other"
 }

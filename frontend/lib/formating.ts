@@ -22,6 +22,20 @@ export function addSecondsToTime(timeStr: string, secondsToAdd: number): string 
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
+export const formatUnixTime = (unixTime: number | null | undefined) => {
+    if (!unixTime) return "00:00 AM";
+
+    const timeString = new Date(unixTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', ':') + ':00';
+    const arrivalTime = convert24hTo12h(timeString);
+
+    const minutesTillArrival = timeTillArrival(timeString);
+    const formattedTime = minutesTillArrival < 60 ? `${minutesTillArrival} min` :
+        minutesTillArrival < 1440 ? `${Math.floor(minutesTillArrival / 60)} hr${minutesTillArrival / 60 > 1 ? 's' : ''}` :
+            `${Math.floor(minutesTillArrival / 1440)} day${Math.floor(minutesTillArrival / 1440) > 1 ? 's' : ''}`;
+
+    return minutesTillArrival < 0 ? arrivalTime : `${arrivalTime} (${formattedTime})`;
+};
+
 export function convert24hTo12h(time24: string): string {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [hours, minutes, seconds] = time24.split(':').map(Number);
@@ -65,7 +79,7 @@ export function timeTillArrivalString(arrivalTime: string): string {
     const diffInDays = target.diff(nowInNZ, 'days');
 
     if (diffInMinutes < 0) {
-        return "Departing"; // Handles past times
+        return "Departed"; // Handles past times
     }
     if (diffInMinutes === 0) {
         return "Now"; // Handles past times

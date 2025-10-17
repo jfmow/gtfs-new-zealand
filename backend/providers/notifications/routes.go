@@ -22,6 +22,7 @@ type Response struct {
 
 func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
 	var tripUpdatesCronMutex sync.Mutex
+	var remindersCronMutex sync.Mutex
 	var alertsCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
 
@@ -103,8 +104,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	c.AddFunc("@every 00h00m30s", func() {
 		now := time.Now().In(localTimeZone)
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
-			if tripUpdatesCronMutex.TryLock() {
-				defer tripUpdatesCronMutex.Unlock()
+			if remindersCronMutex.TryLock() {
+				defer remindersCronMutex.Unlock()
 				if hasReminders, err := notificationDB.HasAnyReminders(); err != nil || !hasReminders {
 					return
 				}
@@ -132,11 +133,12 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 						switch reminder.Type {
 						case "arrival":
 							title = "Your service is arriving soon!"
-							body = "The vehicle is approaching your selected stop. Please prepare."
+							body = "The vehicle is approaching your selected stop."
 						case "get_off":
 							title = "Your stop is next!"
 							body = "Get ready to get off. Make sure to take everything with you."
 						default:
+							notificationDB.DeleteReminder(reminder.ClientId, reminder.Type)
 							continue // unknown type
 						}
 

@@ -75,5 +75,15 @@
 }
 
 .lucide {
-  stroke-width: 2.5px;
+  stroke-width: 3px;
+}
+
+.custom-tooltip {
+  background-color: rgba(255, 255, 255, 0.8);
+  padding: 0.5rem 0.75rem !important;
+  border-radius: var(--radius) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-size: 14px;
+  font-weight: 400;
+  color: #333;
 }

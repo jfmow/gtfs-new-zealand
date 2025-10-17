@@ -49,9 +49,9 @@ func (v Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB 
 
 							// Prepare notification data
 							data := map[string]string{
-								"url": fmt.Sprintf("/?s=%s", stop.StopName+" "+parentStop.StopCode),
+								"url": fmt.Sprintf("/?s=%s", parentStop.StopName+" "+parentStop.StopCode),
 							}
-							title := stop.StopName + " " + stop.StopCode
+							title := parentStop.StopName + " " + parentStop.StopCode
 
 							service, err := gtfsDB.GetServiceByTripAndStop(tripId, stop.StopId, currentTime)
 							if err != nil {

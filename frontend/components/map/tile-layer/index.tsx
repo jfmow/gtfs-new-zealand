@@ -11,11 +11,11 @@ const LABELS_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/light_on
 type MapVariant = "satellite" | "default" | "auto"
 
 
-export default function addMapVariantControlControl(map: leaflet.Map) {
+export default function addMapVariantControlControl(map: leaflet.Map, position: leaflet.ControlPosition = "topright") {
     //Set default layer
     setTileLayer(getMapVariant(), map)
 
-    const variantControl = new leaflet.Control({ position: 'topright' });
+    const variantControl = new leaflet.Control({ position });
     variantControl.onAdd = () => {
         const container = leaflet.DomUtil.create('div');
         container.style.background = "none";

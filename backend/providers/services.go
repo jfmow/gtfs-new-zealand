@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"fmt"
 	"math"
 	"net/http"
 	"net/url"
@@ -14,20 +15,31 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-// TODO: rewrite the services sse
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
 		limit := 20
+
 		if limitStr != "" {
-			if l, err := strconv.Atoi(limitStr); err == nil && l > 0 && l <= 100 {
-				limit = l
-			} else {
-				return JsonApiResponse(c, http.StatusBadRequest, "invalid limit", nil, ResponseDetails("limit", limitStr, "details", "Limit must be a valid integer", "error", err.Error()))
+			l, err := strconv.Atoi(limitStr)
+			if err != nil || l <= 0 || l > 200 {
+				return JsonApiResponse(
+					c,
+					http.StatusBadRequest,
+					"invalid limit",
+					nil,
+					ResponseDetails(
+						"limit", limitStr,
+						"details", "Limit must be a valid integer between 1 and 200",
+						"error", fmt.Sprintf("%v", err),
+					),
+				)
 			}
+			limit = l
 		}
+
 		stopNameEncoded := c.PathParam("stationName")
 		stopName, err := url.PathUnescape(stopNameEncoded)
 		if err != nil {
@@ -89,7 +101,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Headsign:           service.StopHeadsign,
 				Platform:           service.Platform,
 				Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
-				Stop:               &ServicesStop{Id: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode},
+				Stop:               &ServicesStop{Id: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
 				Tracking:           false,
 				TripId:             service.TripID,
 				WheelchairsAllowed: service.StopData.WheelChairBoarding,
@@ -137,7 +149,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				stopUpdates := tripUpdate.GetStopTimeUpdate()
 				_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 				if err == nil {
-					nextStopSeq, _, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+					nextStopSeq, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
 					response.StopsAway = int16(service.StopData.Sequence) - int16(lowestSequence) - int16(nextStopSeq)
 					response.StopState = simpleState
 				}
@@ -151,8 +163,20 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					response.Canceled = cancelled
 				}
 
-				for _, update := range tripUpdate.GetStopTimeUpdate() {
+				for _, update := range stopUpdates {
 					if update.GetStopId() != service.StopId {
+						if int(update.GetStopSequence()) == service.StopData.Sequence {
+							stop, err := gtfsData.GetStopByStopID(update.GetStopId())
+							if err != nil {
+								continue
+							}
+							if stop.ParentStation != service.StopData.StopId {
+								continue
+							} else if stop.PlatformNumber != service.Platform {
+								response.Platform = stop.PlatformNumber
+								response.PlatformChanged = true
+							}
+						}
 						continue
 					}
 					if update.GetScheduleRelationship().Enum().String() == "SKIPPED" {
@@ -265,6 +289,8 @@ type ServicesResponse2 struct {
 	Departed        bool   `json:"departed"`
 	TimeTillArrival int    `json:"time_till_arrival"`
 	StopState       string `json:"stop_state"`
+
+	PlatformChanged bool `json:"platform_changed"`
 }
 
 type ServicesRoute struct {

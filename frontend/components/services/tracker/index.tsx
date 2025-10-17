@@ -99,7 +99,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                     }
                 }
 
-                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${tripId}`, {
+                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${encodeURIComponent(tripId)}`, {
                     method: "GET",
                 })
                 if (stopTimesRes.ok) {
@@ -218,7 +218,7 @@ export interface VehiclesResponse {
     license_plate: string
     position: Position
     type: string
-    state: "Arrived" | "Departed" | "Arriving" | "Boarding" | "Unknown"
+    state: "Approaching" | "AtStop" | "Departed" | "Unknown"
     off_course: boolean
 }
 

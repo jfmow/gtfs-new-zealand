@@ -1,21 +1,12 @@
 import { useRef, useEffect, useState } from "react"
-import {
-    MapPin,
-    Clock,
-    AlertTriangle,
-    Train,
-    Waypoints,
-    Bell,
-    X,
-    Navigation,
-} from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import { format } from "date-fns"
 import notification from "@/lib/notifications"
 import { formatDistance } from "@/lib/utils"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
+import { formatUnixTime } from "@/lib/formating"
 
 interface StopsListProps {
     stops: ServicesStop[] | null
@@ -37,25 +28,11 @@ export default function StopsList({
     const [reminderType, setReminderType] = useState<"get_off" | "arrival" | null>(null)
 
     useEffect(() => {
-        if (
-            !isSelectingReminder &&
-            nextStopRef.current &&
-            scrollAreaRef.current &&
-            vehicle?.trip.next_stop.id
-        ) {
-            const { next_stop, current_stop } = vehicle.trip
-
-            if (next_stop.sequence >= current_stop.sequence) {
-                nextStopRef.current.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                })
-            }
-        }
-    }, [vehicle, isSelectingReminder])
-
-    const formatUnixTime = (unixTime: number | null | undefined) =>
-        unixTime ? format(new Date(unixTime), "h:mm a") : null
+        nextStopRef?.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+        })
+    }, [])
 
     const getStopStatus = (stop: ServicesStop) => {
         if (!vehicle) return { isCurrentStop: false, isNextStop: false, passed: false }
@@ -94,7 +71,7 @@ export default function StopsList({
 
         return {
             currentStopIndex,
-            showAtStop: vehicle.state === "Arrived",
+            showAtStop: vehicle.state === "AtStop",
             showBetweenStops:
                 vehicle.state === "Departed" && currentStopIndex < stopsToUse.length - 1,
         }
@@ -125,6 +102,12 @@ export default function StopsList({
         if (isSelectingReminder && reminderType === type) {
             setIsSelectingReminder(false)
             setReminderType(null)
+            setTimeout(() => {
+                nextStopRef?.current?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "center",
+                })
+            }, 100)
         } else {
             setIsSelectingReminder(true)
             setReminderType(type)
@@ -143,14 +126,14 @@ export default function StopsList({
                     <div className="sticky top-0 z-20 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3">
                         <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                             {reminderType === "get_off"
-                                ? "Click a green stop to be reminded when it's time to get off"
-                                : "Click a green stop to be reminded when the vehicle is arriving"}
+                                ? "Click a stop to be reminded when it's time to get off"
+                                : "Click a stop to be reminded when the vehicle is arriving"}
                         </p>
                     </div>
                 )}
 
                 {stops
-                    ?.filter((stop) => (isSelectingReminder ? !getStopStatus(stop).passed : true))
+                    ?.filter((stop) => (isSelectingReminder ? !getStopStatus(stop).passed && !getStopStatus(stop).isCurrentStop : true))
                     .map((stop, index) => {
                         const { isCurrentStop, isNextStop, passed } = getStopStatus(stop)
                         const stopTime = getStopTime(stop.id)
@@ -168,28 +151,17 @@ export default function StopsList({
                                 : 0
 
                         const delayLabel =
-                            delay > 0
+                            delay > 1
                                 ? `Late: ${delay}min`
-                                : delay < 0
+                                : delay < -1
                                     ? `Early: ${Math.abs(delay)}min`
                                     : ""
 
                         return (
                             <div key={`${stop.id}-${stop.platform}`} className="relative">
-                                {/* --- Vehicle Position Indicator --- */}
-                                {vehiclePosition?.showAtStop &&
-                                    vehiclePosition.currentStopIndex === index && (
-                                        <div className="absolute -left-1 sm:-left-2 top-1/2 -translate-y-1/2 z-10">
-                                            <div className="flex items-center gap-1 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-medium shadow-lg">
-                                                <Train className="w-3 h-3" />
-                                                <span className="hidden sm:inline">Here</span>
-                                            </div>
-                                        </div>
-                                    )}
-
                                 {vehiclePosition?.showBetweenStops &&
                                     vehiclePosition.currentStopIndex === index &&
-                                    !isLast && (
+                                    !isLast && !isSelectingReminder && (
                                         <div className="absolute left-[9px] sm:left-[11px] bottom-[-16px] z-10">
                                             <div className="bg-blue-500 text-white p-1.5 rounded-full shadow-lg animate-pulse">
                                                 <Train className="w-3 h-3" />
@@ -197,11 +169,10 @@ export default function StopsList({
                                         </div>
                                     )}
 
-                                {/* --- Stop Card --- */}
                                 <div
                                     ref={isNextStop ? nextStopRef : null}
                                     onClick={() => canSelect && handleStopSelection(stop)}
-                                    className={`relative flex items-start gap-3 p-3 rounded-lg border transition-all duration-200 min-h-[60px] ${isCurrentStop
+                                    className={`relative flex items-start gap-3 px-2 py-3 rounded-sm border transition-all duration-200 min-h-[60px] ${stopTime?.skipped ? "opacity-50" : ""} ${isCurrentStop
                                         ? "bg-orange-50 dark:bg-orange-900 border-orange-200 dark:border-orange-700 shadow-sm"
                                         : isNextStop
                                             ? "bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-700 shadow-sm ring-2 ring-blue-100 dark:ring-blue-900"
@@ -255,11 +226,12 @@ export default function StopsList({
                                                             Platform {stop.platform}
                                                         </span>
                                                     )}
-
-                                                    <span className="flex items-center gap-1">
-                                                        <Waypoints className="w-3 h-3" />
-                                                        Distance {formatDistance(distance)}
-                                                    </span>
+                                                    {!passed && !isCurrentStop && (
+                                                        <span className="flex items-center gap-1">
+                                                            <Waypoints className="w-3 h-3" />
+                                                            Distance {formatDistance(distance)}
+                                                        </span>
+                                                    )}
 
                                                     {(arrivalTime || departureTime) && (
                                                         <span className="flex items-center gap-1">
@@ -274,7 +246,7 @@ export default function StopsList({
                                                         </span>
                                                     )}
 
-                                                    {delay !== 0 && (
+                                                    {delay > 1 || delay < -1 && (
                                                         <Badge
                                                             variant="secondary"
                                                             className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5"
@@ -286,21 +258,20 @@ export default function StopsList({
                                             </div>
 
                                             <div className="flex flex-col gap-1 items-end flex-shrink-0">
-                                                {isCurrentStop && vehicle && (
+                                                {isCurrentStop && vehicle && !stopTime?.skipped && (
                                                     <Badge variant="secondary" className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
-                                                        {vehicle.state === "Arrived" ? "Now" : "Prev"}
+                                                        {vehicle.state === "AtStop" ? "Current" : "Previous"}
                                                     </Badge>
                                                 )}
-                                                {isNextStop && (
+                                                {isNextStop && !stopTime?.skipped && (
                                                     <Badge variant="secondary" className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
                                                         Next
                                                     </Badge>
                                                 )}
                                                 {stopTime?.skipped && (
-                                                    <Badge variant="outline" className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300">
+                                                    <Badge variant="outline" className="text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300">
                                                         <AlertTriangle className="w-3 h-3 mr-0.5" />
-                                                        <span className="hidden sm:inline">Skipped</span>
-                                                        <span className="sm:hidden">Skip</span>
+                                                        <span>Skipped</span>
                                                     </Badge>
                                                 )}
                                             </div>
@@ -312,7 +283,6 @@ export default function StopsList({
                     })}
             </div>
 
-            {/* Buttons */}
             <div className="flex flex-col sm:flex-row gap-2 mt-4">
                 <Button
                     onClick={() => toggleReminder("get_off")}
@@ -328,24 +298,6 @@ export default function StopsList({
                         <>
                             <Bell className="w-4 h-4 mr-2" />
                             Remind me to get off
-                        </>
-                    )}
-                </Button>
-
-                <Button
-                    onClick={() => toggleReminder("arrival")}
-                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
-                    variant={isSelectingReminder && reminderType === "arrival" ? "outline" : "secondary"}
-                >
-                    {isSelectingReminder && reminderType === "arrival" ? (
-                        <>
-                            <X className="w-4 h-4 mr-2" />
-                            Cancel Selection
-                        </>
-                    ) : (
-                        <>
-                            <Navigation className="w-4 h-4 mr-2" />
-                            Remind me when it&apos;s arriving
                         </>
                     )}
                 </Button>

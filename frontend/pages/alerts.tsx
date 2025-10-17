@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle } from "lucide-react"
+import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -39,10 +39,10 @@ export default function Alerts() {
         <>
             <Header title="Travel Alerts" />
             <div className="w-full">
-                <div className="mx-auto max-w-[1400px] flex flex-col p-4">
+                <div className="mx-auto max-w-[1400px] flex flex-col p-4 pt-0">
                     <div className="flex items-center gap-2 mb-4">
                         <StopNotifications stopName={selected_stop.value}>
-                            <Button>
+                            <Button variant={"secondary"}>
                                 <BellDot />
                                 <span className="hidden sm:block">Notifications</span>
                             </Button>
@@ -52,11 +52,9 @@ export default function Alerts() {
                     {loading ? (
                         <LoadingSpinner description="Loading alerts..." />
                     ) : (
-                        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        <div className="">
                             {alerts.length > 0 ? (
-                                alerts.map((alert, index) => (
-                                    <AlertCard alert={alert} key={index} />
-                                ))
+                                <GroupedAlertsByRoute alerts={alerts} />
                             ) : selected_stop.found ? (
                                 <div className="col-span-full">
                                     <Alert>
@@ -80,52 +78,96 @@ export default function Alerts() {
     )
 }
 
+function groupAlertsByRoute(alerts: AlertType[]) {
+    const grouped: Record<string, AlertType[]> = {}
+
+    alerts.forEach((alert) => {
+        if (alert.affected.length > 0) {
+            alert.affected.forEach((route) => {
+                if (!grouped[route]) grouped[route] = []
+                grouped[route].push(alert)
+            })
+        } else {
+            if (!grouped["No Route"]) grouped["No Route"] = []
+            grouped["No Route"].push(alert)
+        }
+    })
+
+    return grouped
+}
+
+function GroupedAlertsByRoute({ alerts }: { alerts: AlertType[] }) {
+    const groupedAlerts = groupAlertsByRoute(alerts)
+    const [openRoute, setOpenRoute] = useState<string | null>(
+        Object.keys(groupedAlerts)[0] || null
+    )
+
+    return (
+        <div className="grid w-full gap-4">
+            <div className="flex items-center justify-start gap-2 flex-wrap">
+                {Object.keys(groupedAlerts).map((route) => (
+                    <Button
+                        key={route}
+                        variant={openRoute === route ? "default" : "outline"}
+                        onClick={() => setOpenRoute(route)}
+                    >
+                        Alerts for: {route} ({groupedAlerts[route].length})
+                    </Button>
+                ))}
+            </div>
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {groupedAlerts[openRoute || "No Route"]?.map((alert, i) => (
+                    <AlertCard alert={alert} key={i} />
+                ))}
+            </div>
+        </div>
+    )
+}
+
+
+
 function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent?: boolean }) {
     const [descriptionExpanded, setDescriptionExpanded] = useState(false)
 
-    const formatDate = (timestamp: number) => {
-        return new Date(timestamp * 1000).toLocaleDateString("en-NZ", {
-            day: "2-digit",
-            month: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-        })
+    const getDaysUntil = (timestamp: number) => {
+        const now = new Date()
+        const startDate = new Date(timestamp * 1000)
+
+        // Clear times for accurate day difference
+        const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+        const startUTC = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
+
+        const diffDays = Math.round((startUTC - nowUTC) / (1000 * 60 * 60 * 24))
+        return diffDays
     }
 
     const getAlertStatus = (alert: AlertType) => {
         const now = Date.now() / 1000
         const oneDayInSeconds = 24 * 60 * 60
-        const oneWeekInSeconds = 7 * oneDayInSeconds
 
-        // Currently active
-        if (alert.start_date <= now && alert.end_date >= now) {
+        const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + oneDayInSeconds
+
+        // Active if it’s ongoing or missing end_date
+        if (alert.start_date <= now && endDate >= now) {
             return { status: "active", label: "Active" }
         }
 
-        // Starting soon
+        // Upcoming (future start)
         if (alert.start_date > now) {
-            const timeUntilStart = alert.start_date - now
+            const daysUntil = getDaysUntil(alert.start_date)
 
-            if (timeUntilStart <= oneDayInSeconds) {
-                const hoursUntil = Math.ceil(timeUntilStart / 3600)
-                return {
-                    status: "soon",
-                    label: hoursUntil <= 1 ? "Starting soon" : `In ${hoursUntil}h`,
-                }
-            } else if (timeUntilStart <= 2 * oneDayInSeconds) {
-                return { status: "soon", label: "Tomorrow" }
-            } else if (timeUntilStart <= 7 * oneDayInSeconds) {
-                const daysUntil = Math.ceil(timeUntilStart / oneDayInSeconds)
-                return { status: "soon", label: `In ${daysUntil} days` }
-            } else if (timeUntilStart <= oneWeekInSeconds) {
-                return { status: "soon", label: "Next week" }
-            }
+            if (daysUntil === 0) return { status: "soon", label: "Today" }
+            if (daysUntil === 1) return { status: "soon", label: "Tomorrow" }
+            if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil} days` }
+
+            return { status: "inactive", label: "Inactive" }
         }
 
-        // Inactive (past or far future)
+        // Otherwise, it’s in the past
         return { status: "inactive", label: "Inactive" }
     }
+
+
 
     const getBadgeVariant = (status: string) => {
         switch (status) {
@@ -169,6 +211,48 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
             )
         })
     }
+
+    const formatAlertDuration = (start: number, end: number) => {
+        const startDate = new Date(start * 1000)
+        const endDate = new Date(end * 1000)
+
+        const sameDay =
+            startDate.getFullYear() === endDate.getFullYear() &&
+            startDate.getMonth() === endDate.getMonth() &&
+            startDate.getDate() === endDate.getDate()
+
+        const dateOptions: Intl.DateTimeFormatOptions = {
+            day: "2-digit",
+            month: "2-digit",
+            year: "2-digit",
+            hour: "numeric",
+            minute: "2-digit",
+        }
+
+        if (sameDay) {
+            const dayStr = startDate.toLocaleDateString("en-NZ", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "2-digit",
+            })
+            const startTime = startDate.toLocaleTimeString("en-NZ", {
+                hour: "numeric",
+                minute: "2-digit",
+            })
+            const endTime = endDate.toLocaleTimeString("en-NZ", {
+                hour: "numeric",
+                minute: "2-digit",
+            })
+
+            return `${dayStr} ${startTime} to ${endTime}`
+        } else {
+            return `From: ${startDate.toLocaleString("en-NZ", dateOptions)}\nUntil: ${endDate.toLocaleString(
+                "en-NZ",
+                dateOptions
+            )}`
+        }
+    }
+
     return (
         <Card className="relative flex flex-col">
             <CardHeader className="pb-3">
@@ -193,8 +277,7 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
                             <span className="font-medium">Duration</span>
                         </div>
                         <div className="pl-6 space-y-1 text-sm text-muted-foreground">
-                            <div>From: {formatDate(alert.start_date)}</div>
-                            <div>Until: {formatDate(alert.end_date)}</div>
+                            {formatAlertDuration(alert.start_date, alert.end_date)}
                             {(() => {
                                 const alertStatus = getAlertStatus(alert)
                                 if (alertStatus.status === "soon") {
@@ -255,10 +338,17 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 
             <CardFooter className="pt-0">
                 <div className="flex flex-wrap items-center gap-2 justify-between w-full">
-                    <Badge variant={"secondary"} className="flex items-center gap-1">
-                        <AlertTriangle className="h-4 w-4" />
-                        {formatTextToNiceLookingWords(alert.cause.replace("_", " ").toLowerCase(), true)}
-                    </Badge>
+                    {(() => {
+                        const causeInfo = causeSeverityMap[alert.cause] || causeSeverityMap.UNKNOWN_CAUSE
+                        const Icon = causeInfo.icon
+                        return (
+                            <Badge variant={causeInfo.variant} className="flex items-center gap-1">
+                                <Icon className="h-4 w-4" />
+                                {causeInfo.label}
+                            </Badge>
+                        )
+                    })()}
+
                     <Badge variant="outline">
                         {formatTextToNiceLookingWords(alert.effect.replace("_", " ").toLowerCase(), true)}
                     </Badge>
@@ -271,11 +361,33 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
 export interface AlertType {
     start_date: number
     end_date: number
-    cause: string
+    cause: "UNKNOWN_CAUSE" | "OTHER_CAUSE" | "TECHNICAL_PROBLEM" | "STRIKE" | "DEMONSTRATION" | "ACCIDENT" | "HOLIDAY" | "WEATHER" | "MAINTENANCE" | "CONSTRUCTION" | "POLICE_ACTIVITY" | "MEDICAL_EMERGENCY"
     effect: string
     title: string
     description: string
     affected: string[]
+}
+
+const causeSeverityMap: Record<
+    AlertType["cause"],
+    {
+        variant: "destructive" | "default" | "secondary"
+        label: string
+        icon: React.ElementType
+    }
+> = {
+    UNKNOWN_CAUSE: { variant: "secondary", label: "Unknown cause", icon: AlertCircle },
+    OTHER_CAUSE: { variant: "secondary", label: "Other", icon: AlertCircle },
+    TECHNICAL_PROBLEM: { variant: "default", label: "Technical issue", icon: Wrench },
+    STRIKE: { variant: "destructive", label: "Strike", icon: Users },
+    DEMONSTRATION: { variant: "destructive", label: "Demonstration", icon: Users },
+    ACCIDENT: { variant: "destructive", label: "Accident", icon: AlertTriangle },
+    HOLIDAY: { variant: "secondary", label: "Holiday schedule", icon: CalendarDays },
+    WEATHER: { variant: "default", label: "Weather", icon: CloudRain },
+    MAINTENANCE: { variant: "secondary", label: "Maintenance", icon: Hammer },
+    CONSTRUCTION: { variant: "default", label: "Construction", icon: Construction },
+    POLICE_ACTIVITY: { variant: "destructive", label: "Police activity", icon: ShieldAlert },
+    MEDICAL_EMERGENCY: { variant: "destructive", label: "Medical emergency", icon: HeartPulse },
 }
 
 export function DisplayTodaysAlerts({ stopName, forceDisplay }: { stopName: string, forceDisplay?: boolean }) {

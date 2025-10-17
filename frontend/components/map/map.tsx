@@ -18,6 +18,7 @@ interface MapProps {
     map_id: string
     height: string
     defaultZoom: [LatLng, LatLng] | [LatLng] | ["user", BackupLatLng]
+    options?: MapOptions
 }
 
 type ItemsOnMap = {
@@ -41,57 +42,81 @@ type ItemsOnMap = {
     }
 }
 
-export default function Map({
+interface MapOptions {
+    buttonPosition: "top" | "bottom"
+}
+
+export default function MapComp({
     mapItems = [],
     map_id,
     height,
     defaultZoom,
-    line
+    line,
+    options
 }: MapProps) {
-    const mapRef = useRef<leaflet.Map | null>(null)
+    const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
         compass: { control: null },
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
-        mapItems: { clusters: {}, markers: [], zoomButtons: {} }
+        mapItems: { clusters: {}, markers: [], zoomButtons: {} },
     });
 
     useEffect(() => {
-        if (!defaultZoom || !Array.isArray(defaultZoom) || defaultZoom.length < 1 || (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))) {
+        if (
+            !defaultZoom ||
+            !Array.isArray(defaultZoom) ||
+            defaultZoom.length < 1 ||
+            (defaultZoom[0] !== "user" && !Array.isArray(defaultZoom[0]))
+        ) {
             throw new Error("Missing or invalid defaultZoom");
         }
 
-        let map: leaflet.Map | null = mapRef.current
+        let map: leaflet.Map | null = mapRef.current;
         if (!map) {
-            map = createNewMap(mapRef, map_id)
-            addMapVariantControlControl(map)
+            map = createNewMap(mapRef, map_id);
+            addMapVariantControlControl(map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
             setDefaultZoom(map, defaultZoom);
-            addZoomControls(map, itemsOnMap.current.zoomButtons)
-            addUserCompassControl(itemsOnMap.current.compass, map)
+            addZoomControls(map, itemsOnMap.current.zoomButtons, options?.buttonPosition === "bottom" ? "bottomleft" : "topleft");
+            addUserCompassControl(itemsOnMap.current.compass, map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
         }
 
+        // ⬇️ NEW: Resize observer to detect map container size changes
+        const container = document.getElementById(map_id);
+        const resizeObserver = new ResizeObserver(() => {
+            if (map) {
+                map.invalidateSize(); // Force Leaflet to recalculate map dimensions
+            }
+        });
+        if (container) resizeObserver.observe(container);
+
+        // Orientation tracking
         const handleOrientation = (e: DeviceOrientationEvent) => {
             let heading = null;
 
-            if ('webkitCompassHeading' in e) {
-                heading = e.webkitCompassHeading;
+            if ("webkitCompassHeading" in e) {
+                //eslint-disable-next-line @typescript-eslint/no-explicit-any
+                heading = (e as any).webkitCompassHeading;
             } else if (e.alpha !== null) {
                 heading = 360 - e.alpha;
             }
 
             if (typeof heading === "number" && !isNaN(heading)) {
-                document.documentElement.style.setProperty('--user-arrow-rotation', `${heading}deg`);
+                document.documentElement.style.setProperty(
+                    "--user-arrow-rotation",
+                    `${heading}deg`
+                );
             }
         };
 
-        window.addEventListener('deviceorientation', handleOrientation);
+        window.addEventListener("deviceorientation", handleOrientation);
 
         return () => {
-            window.removeEventListener('deviceorientation', handleOrientation);
+            window.removeEventListener("deviceorientation", handleOrientation);
+            resizeObserver.disconnect(); // ⬅️ NEW cleanup
         };
-
-    }, [defaultZoom, map_id])
+    }, [defaultZoom, map_id, options?.buttonPosition]);
 
     useEffect(() => {
         let intervalId: NodeJS.Timeout | undefined;
@@ -100,7 +125,6 @@ export default function Map({
 
         const activeMapItems = itemsOnMap.current;
 
-        // Initialize clusters and zoomButtons if undefined (defensive)
         if (!activeMapItems.mapItems.clusters) {
             activeMapItems.mapItems.clusters = {};
         }
@@ -112,9 +136,6 @@ export default function Map({
         const oldClusters = activeMapItems.mapItems.clusters;
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
 
-
-
-        // Clean up old markers and clusters
         oldMarkers.forEach(({ marker }) => {
             map.removeLayer(marker);
         });
@@ -122,7 +143,6 @@ export default function Map({
             map.removeLayer(cluster);
         });
 
-        // Clean up old zoom controls
         Object.values(oldZoomControls).forEach((control) => {
             map.removeControl(control);
         });
@@ -131,15 +151,12 @@ export default function Map({
         activeMapItems.mapItems.clusters = {};
         activeMapItems.mapItems.zoomButtons = {};
 
-        // Group items by type
         const groupedByType: Record<string, MapItem[]> = {};
-        mapItems.forEach(item => {
+        mapItems.forEach((item) => {
             if (!groupedByType[item.type]) groupedByType[item.type] = [];
             groupedByType[item.type].push(item);
         });
 
-
-        // Process each group
         Object.entries(groupedByType).forEach(([type, items]) => {
             const useCluster = items.length >= 100;
             const updatedMarkers: typeof activeMapItems.mapItems.markers = [];
@@ -150,8 +167,8 @@ export default function Map({
                 activeMapItems.mapItems.clusters[type] = clusterGroup;
             }
 
-            items.forEach(item => {
-                const existing = oldMarkers.find(m => m.id === item.id);
+            items.forEach((item) => {
+                const existing = oldMarkers.find((m) => m.id === item.id);
                 let marker: leaflet.Marker;
 
                 if (existing) {
@@ -168,8 +185,6 @@ export default function Map({
 
                 updatedMarkers.push({ id: item.id, marker });
 
-                // Handle zoom button for this item
-                // Remove old zoom control if it exists
                 if (oldZoomControls[item.id]) {
                     map.removeControl(oldZoomControls[item.id]);
                     delete oldZoomControls[item.id];
@@ -178,8 +193,11 @@ export default function Map({
                 if (item.zoomButton) {
                     const zoomControl = new leaflet.Control({ position: "topright" });
                     zoomControl.onAdd = () => {
-                        const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
-                        button.innerHTML = item.zoomButton ?? "Zoom"
+                        const button = leaflet.DomUtil.create(
+                            "button",
+                            buttonVariants({ variant: "default", size: "icon" })
+                        );
+                        button.innerHTML = item.zoomButton ?? "Zoom";
                         button.onclick = () => {
                             map.flyTo(marker.getLatLng(), 17);
                         };
@@ -190,7 +208,6 @@ export default function Map({
                 }
             });
 
-            // Add cluster group to map if used
             if (useCluster && clusterGroup) {
                 map.addLayer(clusterGroup);
             }
@@ -198,58 +215,62 @@ export default function Map({
             activeMapItems.mapItems.markers.push(...updatedMarkers);
         });
 
-
-        // Remove any zoom buttons for items no longer present
-        Object.keys(oldZoomControls).forEach(itemId => {
-            if (!mapItems.find(i => i.id === itemId && i.zoomButton)) {
+        Object.keys(oldZoomControls).forEach((itemId) => {
+            if (!mapItems.find((i) => i.id === itemId && i.zoomButton)) {
                 map.removeControl(oldZoomControls[itemId]);
                 delete oldZoomControls[itemId];
             }
         });
 
-        // Store updated mapItems state
         itemsOnMap.current.mapItems = activeMapItems.mapItems;
 
-        // Start user location updates
         startLocationUpdates((latLng) => {
-            addUserMarker(activeMapItems.user, map, latLng);
+            addUserMarker(activeMapItems.user, map, latLng, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
         }).then((res) => {
             if (res) intervalId = res;
         });
 
         return () => clearInterval(intervalId);
-    }, [mapItems]);
-
-
-
+    }, [mapItems, options?.buttonPosition]);
 
     useEffect(() => {
-        const activeMapItems = itemsOnMap.current
-        const map = mapRef.current
+        const activeMapItems = itemsOnMap.current;
+        const map = mapRef.current;
         if (line && activeMapItems && map) {
-            const activeNavigation = activeMapItems.line
+            const activeNavigation = activeMapItems.line;
             if (activeNavigation.line) {
-                map.removeLayer(activeNavigation.line)
+                map.removeLayer(activeNavigation.line);
             }
             const leafletLine = leaflet.geoJSON(line.GeoJson, {
                 //@ts-expect-error: is real config value
-                smoothFactor: 1.5, // Adjust the smoothness level
+                smoothFactor: 1.5,
                 style: function () {
-                    return { color: line.color !== "" ? line.color : '#db6ecb', weight: 4 }; // Customize the line color and thickness
-                }
-            })
-            activeMapItems.line.line = leafletLine
-            leafletLine.addTo(map)
-
+                    return {
+                        color: line.color !== "" ? line.color : "#db6ecb",
+                        weight: 4,
+                    };
+                },
+            });
+            activeMapItems.line.line = leafletLine;
+            leafletLine.addTo(map);
         }
-    }, [line])
+    }, [line]);
 
     return (
-        <>
-            <div id={map_id} style={{ height: height, width: '100%', maxHeight: height ? "" : "50vh", zIndex: 1, borderRadius: "10px" }} />
-        </>
-    )
+        <div
+            id={map_id}
+            style={{
+                height: height,
+                width: "100%",
+                maxHeight: height ? "" : "50vh",
+                zIndex: 1,
+                borderRadius: "10px",
+                flexGrow: 1,
+            }}
+        />
+    );
 }
+
 
 function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: string): leaflet.Map {
     let map: leaflet.Map | null = ref.current
@@ -277,7 +298,7 @@ function setDefaultZoom(map: leaflet.Map, defaultZoom: [LatLng] | [LatLng, LatLn
     }
 }
 
-function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomButtons"]) {
+function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomButtons"], position: leaflet.ControlPosition = "topleft") {
     if (activeMapItemsZoom.controls && activeMapItemsZoom.controls.length > 0) {
         activeMapItemsZoom.controls.forEach((control) => map.removeControl(control));
     }
@@ -287,7 +308,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         if ("preventDefault" in e) e.preventDefault();
     }
 
-    const zoomInControl = new leaflet.Control.Zoom({ position: 'topleft' });
+    const zoomInControl = new leaflet.Control.Zoom({ position });
     zoomInControl.onAdd = () => {
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
@@ -301,7 +322,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         return button;
     };
 
-    const zoomOutControl = new leaflet.Control({ position: 'topleft' });
+    const zoomOutControl = new leaflet.Control({ position });
     zoomOutControl.onAdd = () => {
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
@@ -320,7 +341,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
     activeMapItemsZoom.controls = [zoomInControl, zoomOutControl];
 }
 
-function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: [number, number]) {
+function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map, userLocation: [number, number], position: leaflet.ControlPosition = "topright") {
     let userMarker = activeMapItemsUser.marker;
     const userControl = activeMapItemsUser.control;
 
@@ -343,7 +364,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
     }
 
     if (!userControl) {
-        const userLocationControl = new leaflet.Control({ position: "topright" });
+        const userLocationControl = new leaflet.Control({ position });
         userLocationControl.onAdd = () => {
             const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
@@ -357,14 +378,14 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
     }
 }
 
-function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map: leaflet.Map) {
+function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map: leaflet.Map, position: leaflet.ControlPosition = "topright") {
     const oldCompassControl = activeMapItemsCompass.control
     if (oldCompassControl) {
         map.removeControl(oldCompassControl)
     }
     //@ts-expect-error it does infant exist
     if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const compassControl = new leaflet.Control({ position: 'topright' });
+        const compassControl = new leaflet.Control({ position });
         compassControl.onAdd = () => {
             const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
             button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>';
