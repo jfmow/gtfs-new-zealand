@@ -72,9 +72,7 @@ export default function Vehicles() {
 
     useEffect(() => {
         async function getData() {
-            const form = new FormData()
-            form.set("children", "no")
-            const req = await ApiFetch<Stop[]>(`stops`, { method: "POST", body: form })
+            const req = await ApiFetch<Stop[]>(`stops?children=false`, { method: "GET" })
             if (req.ok) {
                 setStops(req.data)
             } else {

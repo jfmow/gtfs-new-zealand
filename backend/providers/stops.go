@@ -26,7 +26,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 
 		stops, ok := stopsForTripCache[tripId]
 		if len(stops.Stops) == 0 || !ok {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("tripId", tripId, "details", "No stops available for the given trip ID in the cache"))
+			return JsonApiResponse(c, http.StatusBadRequest, "no stops found for trip", nil, ResponseDetails("tripId", tripId, "details", "No stops available for the given trip ID in the cache"))
 		}
 
 		var result []ServicesStop
@@ -103,13 +103,13 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 	})
 
 	//Returns a list of all stops from the AT api
-	primaryRoute.POST("/stops", func(c echo.Context) error {
-		filterChildren := c.FormValue("children")
+	primaryRoute.GET("/stops", func(c echo.Context) error {
+		filterChildren := c.QueryParam("children")
 		var noChildren bool
 		switch filterChildren {
-		case "yes":
+		case "true":
 			noChildren = false
-		case "no":
+		case "false":
 			noChildren = true
 		default:
 			if filterChildren != "" {
