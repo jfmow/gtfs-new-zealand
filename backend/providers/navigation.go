@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,9 +26,19 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	navigationRoute := primaryRoute.Group("/map")
 
 	//Returns the route of a route as geo json
-	navigationRoute.POST("/geojson/shapes", func(c echo.Context) error {
-		tripId := c.FormValue("tripId")
-		routeId := c.FormValue("routeId")
+	navigationRoute.GET("/geojson/shapes", func(c echo.Context) error {
+		routeIdEncoded := c.QueryParam("routeId")
+		tripIdEncoded := c.QueryParam("tripId")
+
+		//Escape tripId and routeId
+		tripId, err := url.PathUnescape(tripIdEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil, ResponseDetails("tripId", tripIdEncoded, "details", "Invalid trip ID format", "error", err.Error()))
+		}
+		routeId, err := url.PathUnescape(routeIdEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid route id", nil, ResponseDetails("routeId", routeIdEncoded, "details", "Invalid route ID format", "error", err.Error()))
+		}
 
 		shapes, err := gtfsData.GetShapeByTripID(tripId)
 		if err != nil {
@@ -60,15 +71,15 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	})
 
 	//Finds a walking route from lat,lon to lat,lon using osrm
-	navigationRoute.POST("/nav", func(c echo.Context) error {
+	navigationRoute.GET("/nav", func(c echo.Context) error {
 		ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
 		defer cancel()
 
-		slatStr := c.FormValue("startLat")
-		slonStr := c.FormValue("startLon")
-		elatStr := c.FormValue("endLat")
-		elonStr := c.FormValue("endLon")
-		method := c.FormValue("method")
+		slatStr := c.QueryParam("startLat")
+		slonStr := c.QueryParam("startLon")
+		elatStr := c.QueryParam("endLat")
+		elonStr := c.QueryParam("endLon")
+		method := c.QueryParam("method")
 
 		if method == "" {
 			return JsonApiResponse(c, http.StatusBadRequest, "missing movement method", nil, ResponseDetails("method", method, "details", "Method is required to determine the type of navigation"))

@@ -44,11 +44,8 @@ export default function Vehicles() {
 
     useEffect(() => {
         async function getData() {
-            const form = new FormData();
-            form.set("vehicle_type", vehicleType);
-            const req = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
-                method: "POST",
-                body: form,
+            const req = await ApiFetch<VehiclesResponse[]>(`realtime/live?type=${vehicleType}`, {
+                method: "GET"
             });
             if (!req.ok) {
                 setError(req.error);

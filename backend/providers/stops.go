@@ -51,9 +51,18 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 	})
 
 	//Returns the closest stop to a given lat,lon
-	stopsRoute.POST("/closest-stop", func(c echo.Context) error {
-		latStr := c.FormValue("lat")
-		lonStr := c.FormValue("lon")
+	stopsRoute.GET("/closest-stop", func(c echo.Context) error {
+		latStrEncoded := c.QueryParam("lat")
+		latStr, err := url.QueryUnescape(latStrEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid lat", nil, ResponseDetails("lat", latStrEncoded, "details", "Invalid latitude format", "error", err.Error()))
+		}
+
+		lonStrEncoded := c.QueryParam("lon")
+		lonStr, err := url.QueryUnescape(lonStrEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid lon", nil, ResponseDetails("lon", lonStrEncoded, "details", "Invalid longitude format", "error", err.Error()))
+		}
 
 		// Convert lat and lon to float64
 		lat, err := strconv.ParseFloat(latStr, 64)

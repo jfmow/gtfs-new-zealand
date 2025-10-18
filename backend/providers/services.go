@@ -48,6 +48,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		stop, err := gtfsData.GetStopByNameOrCode(stopName)
 		if err != nil {
+			fmt.Println(err)
 			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop id", nil, ResponseDetails("stopName", stopName, "details", "Stop not found", "error", err.Error()))
 		}
 

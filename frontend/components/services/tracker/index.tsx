@@ -5,7 +5,7 @@ import { Loader2, MapIcon, Navigation } from "lucide-react"
 import { getStopsForTrip } from "../stops"
 import { ApiFetch } from "@/lib/url-context"
 import ServiceTrackerContent from "./body"
-import { useIsMobile } from "@/lib/utils"
+import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet"
 
 interface ServiceTrackerModalProps {
@@ -73,11 +73,8 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                         setStops(stopsData)
                     }
                 } else {
-                    const form = new FormData()
-                    form.set("tripId", tripId)
-                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live`, {
-                        method: "POST",
-                        body: form,
+                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live?tripId=${fullyEncodeURIComponent(tripId)}`, {
+                        method: "GET"
                     })
                     if (!res.ok) {
                         console.error(res.error)
@@ -99,12 +96,14 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                     }
                 }
 
-                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${encodeURIComponent(tripId)}`, {
+                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${fullyEncodeURIComponent(tripId)}`, {
                     method: "GET",
                 })
                 if (stopTimesRes.ok) {
                     setStopTimes(stopTimesRes.data)
                 }
+            } catch (error) {
+                console.error("Error fetching service tracker data:", error)
             } finally {
                 if (isRefresh) {
                     setRefreshing(false)

@@ -27,10 +27,24 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	realtimeRoute := primaryRoute.Group("/realtime")
 
 	//Returns all the locations of vehicles from the AT api
-	realtimeRoute.POST("/live", func(c echo.Context) error {
-		filterTripId := c.FormValue("tripId")
-		vehicleTypeFilter := c.FormValue("vehicle_type")
-		boundsStr := c.FormValue("bounds")
+	realtimeRoute.GET("/live", func(c echo.Context) error {
+		filterTripIdEncoded := c.QueryParam("tripId")
+		vehicleTypeFilterEncoded := c.QueryParam("type")
+		boundsStrEncoded := c.QueryParam("bounds")
+
+		//Escape tripId and routeId
+		filterTripId, err := url.PathUnescape(filterTripIdEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil, ResponseDetails("tripId", filterTripIdEncoded, "details", "Invalid trip ID format", "error", err.Error()))
+		}
+		vehicleTypeFilter, err := url.PathUnescape(vehicleTypeFilterEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid vehicle type", nil, ResponseDetails("vehicle_type", vehicleTypeFilterEncoded, "details", "Invalid vehicle type format", "error", err.Error()))
+		}
+		boundsStr, err := url.PathUnescape(boundsStrEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid bounds", nil, ResponseDetails("bounds", boundsStrEncoded, "details", "Invalid bounds format", "error", err.Error()))
+		}
 
 		var rawBounds [][]float64
 		var hasBounds = true

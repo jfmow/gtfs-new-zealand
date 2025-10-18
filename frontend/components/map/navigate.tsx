@@ -23,17 +23,8 @@ export default function Navigate({ start, end }: NavigateProps) {
         if (start.lat === 0 || start.lon === 0) return
         if (end.lat === 0 || end.lon === 0) return
 
-        const form = new FormData()
-
-        form.set("startLat", `${start.lat}`)
-        form.set("startLon", `${start.lon}`)
-        form.set("endLat", `${end.lat}`)
-        form.set("endLon", `${end.lon}`)
-
-        form.set("method", "walking")
-
         try {
-            const response = await ApiFetch<OSRMResponse>(`map/nav`, { method: "POST", body: form });
+            const response = await ApiFetch<OSRMResponse>(`map/nav?startLat=${start.lat}&startLon=${start.lon}&endLat=${end.lat}&endLon=${end.lon}&method=walking`, { method: "GET" });
             if (!response.ok) {
                 openNavigation(end.lat, end.lon)
                 return

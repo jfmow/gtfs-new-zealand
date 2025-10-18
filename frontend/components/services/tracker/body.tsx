@@ -10,6 +10,7 @@ import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
 import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, ClockIcon, Navigation2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { fullyEncodeURIComponent } from "@/lib/utils"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
@@ -66,15 +67,8 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     useEffect(() => {
         const getRouteLine = async () => {
             try {
-                const form = new FormData()
-                form.set("tripId", tripId)
-                if (vehicle) {
-                    form.set("routeId", vehicle.route.id)
-                }
-
-                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes`, {
-                    method: "POST",
-                    body: form,
+                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes?tripId=${fullyEncodeURIComponent(tripId)}&routeId=${fullyEncodeURIComponent(vehicle?.route.id || "")}`, {
+                    method: "GET",
                 })
 
                 if (!response.ok) {
