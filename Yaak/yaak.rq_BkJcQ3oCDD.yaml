@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_BkJcQ3oCDD
+createdAt: 2025-10-18T01:25:34.750836
+updatedAt: 2025-10-18T01:25:46.377734
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_cxhGB8EYeq
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: All Routes
+sortPriority: 0.0018
+url: ${[ url ]}/${[ provider ]}/routes
+urlParameters: []

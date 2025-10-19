@@ -1,0 +1,30 @@
+type: http_request
+model: http_request
+id: rq_dmjbmWm5Dg
+createdAt: 2025-10-18T01:33:43.210301
+updatedAt: 2025-10-18T01:35:38.027699
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_FpYAmY69o9
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Trip Route Line
+sortPriority: 0.0015
+url: ${[ url ]}/${[ provider ]}/map/gejson/shapes
+urlParameters:
+- enabled: true
+  name: tripId
+  value: test123
+  id: fWRkGYHtmx
+- enabled: false
+  name: routeId
+  value: optional
+  id: re90UcuBnB
+- enabled: true
+  name: ''
+  value: ''
+  id: KqCgRXtfhD

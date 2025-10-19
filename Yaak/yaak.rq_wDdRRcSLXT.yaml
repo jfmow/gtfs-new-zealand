@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_wDdRRcSLXT
+createdAt: 2025-10-18T01:09:10.410776
+updatedAt: 2025-10-18T01:18:01.926217
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Stops For Trip ID
+sortPriority: 0.0
+url: ${[ url ]}/${[ provider ]}/stops/:tripid
+urlParameters:
+- enabled: true
+  name: :tripid
+  value: tripid1234
+  id: A8V5hvCKce
+- enabled: true
+  name: ''
+  value: ''
+  id: ScTJEfiDN6

@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_ajBmGfPVaf
+createdAt: 2025-10-18T01:17:38.136626
+updatedAt: 2025-10-18T01:18:36.246469
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Search for stop
+sortPriority: 0.001
+url: ${[ url ]}/${[ provider ]}/stops/find-stop/:stopName
+urlParameters:
+- enabled: true
+  name: :stopName
+  value: Bald
+  id: AzZURaHEya
+- enabled: true
+  name: ''
+  value: ''
+  id: nwtUjmvraM

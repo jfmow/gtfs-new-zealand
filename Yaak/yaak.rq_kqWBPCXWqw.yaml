@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_kqWBPCXWqw
+createdAt: 2025-10-18T01:22:28.542808
+updatedAt: 2025-10-18T01:25:32.332740
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_cxhGB8EYeq
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Route By ID
+sortPriority: 0.0019
+url: ${[ url ]}/${[ provider ]}/routes/:routeid
+urlParameters:
+- enabled: true
+  name: :routeid
+  value: WEST-201
+  id: fRrhimMYr6
+- enabled: true
+  name: ''
+  value: ''
+  id: QnZK0yxnCX

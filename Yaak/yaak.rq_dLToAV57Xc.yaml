@@ -1,0 +1,42 @@
+type: http_request
+model: http_request
+id: rq_dLToAV57Xc
+createdAt: 2025-10-18T01:35:53.381552
+updatedAt: 2025-10-18T01:44:39.976563
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_FpYAmY69o9
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Walking Directions
+sortPriority: 0.0014
+url: ${[ url ]}/${[ provider ]}/map/nav
+urlParameters:
+- enabled: true
+  name: startLat
+  value: '0'
+  id: ATfeFP8u4T
+- enabled: true
+  name: startLon
+  value: '0'
+  id: YCV7PPfFgC
+- enabled: true
+  name: endLat
+  value: '1'
+  id: Tn39ikCVDs
+- enabled: true
+  name: endLon
+  value: '1'
+  id: pzXJXeDHjU
+- enabled: true
+  name: method
+  value: walking
+  id: 0fC9MPMtH9
+- enabled: true
+  name: ''
+  value: ''
+  id: j7cMPjRckW

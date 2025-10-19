@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_cxhGB8EYeq
+createdAt: 2025-10-18T01:22:21.745860
+updatedAt: 2025-10-18T01:22:24.980258
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_iapjBafuWa
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Routes
+sortPriority: 0.0

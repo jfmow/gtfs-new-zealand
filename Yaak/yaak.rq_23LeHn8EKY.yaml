@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_23LeHn8EKY
+createdAt: 2025-10-18T01:18:52.398526
+updatedAt: 2025-10-18T01:26:36.325755
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: All Stops
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/stops
+urlParameters:
+- enabled: true
+  name: children
+  value: 'false'
+  id: AzZURaHEya
+- enabled: true
+  name: ''
+  value: ''
+  id: pIS3uKQKwS

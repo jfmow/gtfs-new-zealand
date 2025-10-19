@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_E2nE7MoiBm
+createdAt: 2025-10-18T01:15:11.099925
+updatedAt: 2025-10-18T01:22:24.982239
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_iapjBafuWa
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: Stops
+sortPriority: 1000.0

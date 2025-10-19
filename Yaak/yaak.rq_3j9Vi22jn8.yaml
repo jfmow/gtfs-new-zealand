@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_3j9Vi22jn8
+createdAt: 2025-10-18T01:16:09.158338
+updatedAt: 2025-10-18T02:16:39.961249
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    id: TMpkdACdf0
+    name: lat
+    value: '1'
+  - enabled: true
+    id: NgGiVFvN7T
+    name: lon
+    value: '1'
+  - enabled: true
+    id: H4MrRBYbpm
+    name: ''
+    value: ''
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Closest Stop
+sortPriority: -0.0001
+url: ${[ url ]}/${[ provider ]}/stops/closest-stop
+urlParameters:
+- enabled: true
+  name: lat
+  value: '0'
+  id: scmA7fnVCB
+- enabled: true
+  name: lon
+  value: '0'
+  id: ysGykzXsSK
+- enabled: true
+  name: ''
+  value: ''
+  id: tqwwaUxIKB

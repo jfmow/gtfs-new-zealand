@@ -1,0 +1,30 @@
+type: http_request
+model: http_request
+id: rq_dXQpUAwmgU
+createdAt: 2025-10-18T01:33:12.711483
+updatedAt: 2025-10-18T01:33:27.628668
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Closest Vehicle
+sortPriority: 0.0016
+url: ${[ url ]}/${[ provider ]}/realtime/find-my-vehicle/:lat/:lon
+urlParameters:
+- enabled: true
+  name: :lat
+  value: '1'
+  id: eG83NiWUqr
+- enabled: true
+  name: :lon
+  value: '1'
+  id: 4j50PDYCNy
+- enabled: true
+  name: ''
+  value: ''
+  id: EvVkWnCg8Q

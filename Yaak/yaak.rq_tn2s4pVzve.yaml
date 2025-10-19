@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_tn2s4pVzve
+createdAt: 2025-10-18T01:32:22.715749
+updatedAt: 2025-10-18T01:33:08.280475
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Stop Times for Trip Id
+sortPriority: 0.0017
+url: ${[ url ]}/${[ provider ]}/realtime/stop-times
+urlParameters:
+- enabled: true
+  name: tripId
+  value: test123
+  id: 40EFHdvfuk
+- enabled: true
+  name: ''
+  value: ''
+  id: XJHtmGZRvT

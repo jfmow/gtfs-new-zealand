@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_4vsnYm9D62
+createdAt: 2025-10-18T01:31:47.592858
+updatedAt: 2025-10-18T01:32:13.865750
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Alerts
+sortPriority: 0.0018
+url: ${[ url ]}/${[ provider ]}/realtime/alerts/:stopname
+urlParameters:
+- enabled: true
+  name: :stopname
+  value: Baldwin Ave Train Station
+  id: 0EG3R2Wp6a
+- enabled: true
+  name: ''
+  value: ''
+  id: 5brkRdqtd7

@@ -1,0 +1,13 @@
+type: folder
+model: folder
+id: fl_iapjBafuWa
+createdAt: 2025-10-18T01:09:08.108603
+updatedAt: 2025-10-18T01:09:08.108604
+workspaceId: wk_bWMUdJqQEt
+folderId: null
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: TrainApi
+sortPriority: -1760749700000.0

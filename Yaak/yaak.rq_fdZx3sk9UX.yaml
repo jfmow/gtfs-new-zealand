@@ -1,0 +1,51 @@
+type: http_request
+model: http_request
+id: rq_fdZx3sk9UX
+createdAt: 2025-10-18T01:29:35.712575
+updatedAt: 2025-10-18T01:44:10.301855
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: false
+    id: 8MvVPrRVAZ
+    name: tripId
+    value: ''
+  - enabled: false
+    id: V6r2Mz9w2q
+    name: type
+    value: ''
+  - enabled: false
+    id: XsnfURPtjB
+    name: bounds
+    value: ''
+  - enabled: true
+    id: UrwIbSrbWd
+    name: ''
+    value: ''
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Vehicles
+sortPriority: 0.0019
+url: ${[ url ]}/${[ provider ]}/realtime/live
+urlParameters:
+- enabled: false
+  name: tripId
+  value: ''
+  id: ipRbcDrh9z
+- enabled: false
+  name: type
+  value: ''
+  id: uy3TCAYdEJ
+- enabled: false
+  name: bounds
+  value: ''
+  id: DmcKeer63m
+- enabled: true
+  name: ''
+  value: ''
+  id: txyKXZVmpD
