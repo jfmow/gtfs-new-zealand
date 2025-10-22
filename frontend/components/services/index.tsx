@@ -478,8 +478,10 @@ function sortServices(services: Service[], platformFilter: string | number | und
         .filter((item) => item.time_till_arrival >= -2)
         .sort((a, b) => {
             // Departed services first, still ordered by arrival time within each group
-            if (a.departed && !b.departed) return -1
-            if (!a.departed && b.departed) return 1
+            if (!a.canceled && !b.canceled) {
+                if (a.departed && !b.departed) return -1
+                if (!a.departed && b.departed) return 1
+            }
             return timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)
         })
 }
