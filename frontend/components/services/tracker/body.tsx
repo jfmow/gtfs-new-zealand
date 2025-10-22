@@ -133,7 +133,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         <Card className="border-destructive bg-destructive/5 mb-4">
                             <CardContent className="flex items-center gap-2 p-3 sm:p-4">
                                 <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5 text-destructive flex-shrink-0" />
-                                <p className="text-sm font-medium text-destructive">Vehicle location issue detected</p>
+                                <p className="text-sm font-medium text-destructive">Vehicle off course</p>
                             </CardContent>
                         </Card>
                     )}
