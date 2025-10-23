@@ -220,7 +220,7 @@ Routes must contain all routes they want, it will fully replace what is currentl
 
 If not routes are set, the client will be notified for every route.
 */
-func (client *NotificationClient) SubscribeToStop(parentStopId string, routes []string) error {
+func (client NotificationClient) SubscribeToStop(parentStopId string, routes []string) error {
 	if parentStopId == "" {
 		return errors.New("missing parent stop id")
 	}
@@ -251,7 +251,7 @@ Delete a notification client
 
 stop can be parent or child or "" (to delete all)
 */
-func (client *NotificationClient) DeleteNotificationClient(parentStopId string) error {
+func (client NotificationClient) DeleteNotificationClient(parentStopId string) error {
 	if parentStopId == "" {
 		query := `
 				DELETE FROM notifications
@@ -407,6 +407,9 @@ routeIds must be an array of route IDs
 hasSeenId is a unique id given to check if that notification has already been served
 */
 func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, routeIds []string, updateUID string, limit int, offset int) ([]NotificationClient, error) {
+	if len(routeIds) == 0 {
+		return nil, errors.New("must provide at least 1 route id")
+	}
 	// Build the query for checking any route ID matches
 	routeChecks := make([]string, len(routeIds))
 	args := make([]interface{}, 0, len(routeIds)+3) // +3 for parentStopId, limit, offset
@@ -659,7 +662,7 @@ func (v Database) SendNotificationsInBatches(clients []NotificationClient, body,
 /*
 Send a notification
 */
-func (client *NotificationClient) SendNotification(body, title string, data map[string]string, urgency webpush.Urgency) error {
+func (client NotificationClient) SendNotification(body, title string, data map[string]string, urgency webpush.Urgency) error {
 	publicKey, found := os.LookupEnv("WP_PUB")
 	if !found {
 		panic("missing public VAPID key (env:WP_PUB)")
@@ -750,6 +753,8 @@ func (client *NotificationClient) AppendToRecentNotifications(newNotification st
 	if err != nil {
 		return errors.New("failed to update recent notifications")
 	}
+
+	client.RecentNotifications = notifications
 
 	return nil
 }
@@ -971,9 +976,9 @@ Update a already existing subscription to a new one
 
 Basically just retains the client (is the point of this)
 */
-func (oldClient *NotificationClient) RefreshSubscription(newClient Notification) (*NotificationClient, error) {
+func (oldClient *NotificationClient) RefreshSubscription(newClient Notification) error {
 	if oldClient.Notification.Endpoint == newClient.Endpoint && oldClient.Notification.Keys.Auth == newClient.Auth && oldClient.Notification.Keys.P256dh == newClient.P256dh {
-		return nil, errors.New("can't update subscription to same thing")
+		return errors.New("can't update subscription to same thing")
 	}
 
 	query := `
@@ -991,15 +996,17 @@ func (oldClient *NotificationClient) RefreshSubscription(newClient Notification)
 
 	_, err := oldClient.db.db.Exec(query, oldClient.Notification.Endpoint, oldClient.Notification.Keys.P256dh, oldClient.Notification.Keys.Auth, newClient.Endpoint, newClient.P256dh, newClient.Auth)
 	if err != nil {
-		return nil, errors.New("problem updating client")
+		return errors.New("problem updating client")
 	}
 
 	newRecord, err := oldClient.db.FindNotificationClient(newClient.Endpoint, newClient.P256dh, newClient.Auth, "")
 	if err != nil {
-		return nil, errors.New("problem retrieving new client")
+		return errors.New("problem retrieving new client")
 	}
 
-	return newRecord, nil
+	oldClient = newRecord
+
+	return nil
 }
 
 func (v Database) SetClientExpiryWarningSent(client NotificationClient) error {
@@ -1018,111 +1025,6 @@ func (v Database) SetClientExpiryWarningSent(client NotificationClient) error {
 		return errors.New("problem updating client")
 	}
 	return nil
-}
-
-//Reminders
-
-func (v Database) AddReminder(clientId int, tripId string, stopSequence int, reminderType string) error {
-	if reminderType != "arrival" && reminderType != "get_off" {
-		return errors.New("invalid reminder type")
-	}
-
-	// Remove existing reminder of this type for this client
-	deleteQuery := `DELETE FROM reminders WHERE client_id = ? AND type = ?`
-	_, err := v.db.Exec(deleteQuery, clientId, reminderType)
-	if err != nil {
-		return errors.New("failed to delete existing reminder")
-	}
-
-	// Insert new reminder
-	insertQuery := `
-		INSERT INTO reminders (client_id, trip_id, stop_sequence, type, created_at)
-		VALUES (?, ?, ?, ?, ?)
-	`
-	_, err = v.db.Exec(insertQuery, clientId, tripId, stopSequence, reminderType, time.Now().Unix())
-	if err != nil {
-		return errors.New("failed to insert new reminder")
-	}
-
-	return nil
-}
-
-func (v Database) DeleteReminder(clientId int, reminderType string) error {
-	query := `DELETE FROM reminders WHERE client_id = ? AND type = ?`
-	_, err := v.db.Exec(query, clientId, reminderType)
-	if err != nil {
-		return errors.New("failed to delete reminder")
-	}
-	return nil
-}
-
-type Reminder struct {
-	ClientId     int    `json:"client_id"`
-	TripId       string `json:"trip_id"`
-	StopSequence int    `json:"stop_sequence"`
-	Type         string `json:"type"` // "arrival" or "get_off"
-	CreatedAt    int64  `json:"created_at"`
-}
-
-func (v Database) GetAllReminders() ([]Reminder, error) {
-	query := `SELECT client_id, trip_id, stop_sequence, type, created_at FROM reminders`
-
-	rows, err := v.db.Query(query)
-	if err != nil {
-		return nil, errors.New("failed to query reminders")
-	}
-	defer rows.Close()
-
-	var reminders []Reminder
-	for rows.Next() {
-		var r Reminder
-		if err := rows.Scan(&r.ClientId, &r.TripId, &r.StopSequence, &r.Type, &r.CreatedAt); err != nil {
-			return nil, errors.New("failed to scan reminder row")
-		}
-		reminders = append(reminders, r)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, errors.New("error during reminder rows iteration")
-	}
-
-	return reminders, nil
-}
-
-func (v Database) GetReminderByType(clientId int, reminderType string) (*Reminder, error) {
-	query := `SELECT client_id, trip_id, stop_sequence, type, created_at FROM reminders WHERE client_id = ? AND type = ?`
-
-	var r Reminder
-	err := v.db.QueryRow(query, clientId, reminderType).Scan(
-		&r.ClientId, &r.TripId, &r.StopSequence, &r.Type, &r.CreatedAt,
-	)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			return nil, nil
-		}
-		return nil, errors.New("failed to query reminder by type")
-	}
-	return &r, nil
-}
-
-func (v Database) HasReminder(clientId int) (bool, error) {
-	var count int
-	query := `SELECT COUNT(*) FROM reminders WHERE client_id = ?`
-	err := v.db.QueryRow(query, clientId).Scan(&count)
-	if err != nil {
-		return false, errors.New("failed to query reminder existence")
-	}
-	return count > 0, nil
-}
-
-func (v Database) HasAnyReminders() (bool, error) {
-	query := `SELECT 1 FROM reminders LIMIT 1`
-	rows, err := v.db.Query(query)
-	if err != nil {
-		return false, errors.New("failed to query reminders existence")
-	}
-	defer rows.Close()
-	return rows.Next(), nil
 }
 
 type NotificationClient struct {

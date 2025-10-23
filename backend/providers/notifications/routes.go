@@ -270,7 +270,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		if _, err := oldClient.RefreshSubscription(Notification{
+		if err := oldClient.RefreshSubscription(Notification{
 			Endpoint: new_endpoint,
 			P256dh:   new_p256dh,
 			Auth:     new_auth,
