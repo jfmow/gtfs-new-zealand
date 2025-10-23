@@ -41,7 +41,7 @@ export default function Alerts() {
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4 pt-0">
                     <div className="flex items-center gap-2 mb-4">
-                        <StopNotifications stopName={selected_stop.value}>
+                        <StopNotifications stopName={selected_stop.value} routes={Array.from(new Set(alerts.flatMap((a) => a.affected)))}>
                             <Button variant={"secondary"}>
                                 <BellDot />
                                 <span className="hidden sm:block">Notifications</span>
