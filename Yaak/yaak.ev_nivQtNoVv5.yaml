@@ -3,7 +3,7 @@ model: environment
 id: ev_nivQtNoVv5
 workspaceId: wk_bWMUdJqQEt
 createdAt: 2025-10-18T01:09:54.256340
-updatedAt: 2025-10-18T01:10:42.941993
+updatedAt: 2025-10-24T22:33:11.503569
 name: TrainApi
 public: true
 base: false
@@ -12,10 +12,10 @@ parentId: ev_aT4hAk7Cr5
 variables:
 - enabled: true
   name: url
-  value: https://trainapi.suddsy.dev
-  id: suPugTjpEt
+  value: http://localhost:8090
+  id: 5DP4G9NjGs
 - enabled: true
   name: provider
   value: at
-  id: yWIDku4cbG
+  id: 4xR6hMFtip
 color: null
