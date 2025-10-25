@@ -1,7 +1,6 @@
 package providers
 
 import (
-	"os"
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
@@ -69,8 +68,6 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData)
 
-	if val := os.Getenv("PRODUCTION"); val == "true" {
-		notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache)
-	}
+	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache)
 
 }
