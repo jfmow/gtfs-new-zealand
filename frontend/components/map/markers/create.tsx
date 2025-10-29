@@ -4,7 +4,7 @@ import "leaflet.markercluster";
 export interface MapItem {
     lat: number;
     lon: number;
-    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | string;
+    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "current stop marker" | "hidden";
     id: string;
     routeID: string;
     zIndex: number;
@@ -13,7 +13,7 @@ export interface MapItem {
         text: string;
         alwaysShow: boolean;
     }
-    type: 'stop' | 'vehicle'
+    type: 'stop' | 'vehicle' | 'waypoint'
     zoomButton?: string
 }
 
@@ -43,7 +43,7 @@ export function createNewMarker(MapItem: MapItem): leaflet.Marker {
 export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): leaflet.Marker {
     const customIcon = createMarkerIcon(
         MapItem.routeID,
-        MapItem.icon || "bus",
+        MapItem.icon,
         MapItem.description.text,
         MapItem.description.alwaysShow
     );
@@ -87,6 +87,13 @@ export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): 
 function createMarkerIcon(routeId: string, icon: string, description: string, alwaysShowDiscription: boolean): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
     if (!icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
+    }
+    if (icon === "hidden") {
+        return leaflet.divIcon({
+            className: "hidden-icon",
+            html: `<div style="width: 0px; height: 0px;"></div>`,
+            iconAnchor: [0, 0],
+        });
     }
 
     const iconUrl = routesWithIcons.includes(routeId)

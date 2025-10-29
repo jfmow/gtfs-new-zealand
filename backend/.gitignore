@@ -4,3 +4,4 @@ base
 .env
 notifications
 logs
+history

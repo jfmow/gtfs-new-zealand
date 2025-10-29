@@ -102,7 +102,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Headsign:           service.StopHeadsign,
 				Platform:           service.Platform,
 				Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
-				Stop:               &ServicesStop{Id: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
+				Stop:               &ServicesStop{ParentStopId: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
 				Tracking:           false,
 				TripId:             service.TripID,
 				WheelchairsAllowed: service.StopData.WheelChairBoarding,
@@ -254,10 +254,10 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				RouteColor:     service.RouteColor,
 			}
 			response.Stop = &ServicesStop{
-				Id:   service.StopId,
-				Lat:  service.StopData.StopLat,
-				Lon:  service.StopData.StopLon,
-				Name: stop.StopName,
+				ParentStopId: service.StopId,
+				Lat:          service.StopData.StopLat,
+				Lon:          service.StopData.StopLon,
+				Name:         stop.StopName,
 			}
 			response.Tracking = false
 			response.TripId = service.TripID
@@ -301,10 +301,11 @@ type ServicesRoute struct {
 }
 
 type ServicesStop struct {
-	Lat      float64 `json:"lat"`
-	Lon      float64 `json:"lon"`
-	Id       string  `json:"id"`
-	Name     string  `json:"name"`
-	Platform string  `json:"platform"`
-	Sequence int     `json:"sequence"`
+	Lat          float64 `json:"lat"`
+	Lon          float64 `json:"lon"`
+	ParentStopId string  `json:"parent_stop_id"`
+	Name         string  `json:"name"`
+	Platform     string  `json:"platform"`
+	Sequence     int     `json:"sequence"`
+	ChildStopId  string  `json:"child_stop_id"`
 }

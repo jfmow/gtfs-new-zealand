@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X } from 'lucide-react'
+import { Map, Settings2Icon, MenuIcon, X, ClockFading, Bus, Car, Siren } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -36,29 +36,36 @@ const NAV_ROUTES: NavRoute[] = [
         href: '/',
         label: 'Train/Bus/Ferry',
         description: 'Find transportation options',
-        icon: Train,
+        icon: Bus,
         description_short: "Services"
     },
     {
         href: '/stops',
         label: 'Find a stop',
         description: 'Locate nearby stops',
-        icon: MapPin,
+        icon: Map,
         description_short: "Stops"
     },
     {
         href: '/vehicles',
         label: 'Vehicles',
         description: 'View real-time vehicle locations',
-        icon: Map,
+        icon: Car,
         description_short: "Vehicles"
     },
     {
         href: '/alerts',
         label: 'Travel Alerts',
         description: 'Travel advisories and alerts',
-        icon: MessageCircleWarningIcon,
+        icon: Siren,
         description_short: "Alerts"
+    },
+    {
+        href: '/history',
+        label: 'Service History',
+        description: 'View previous trips and services',
+        icon: ClockFading,
+        description_short: "History"
     },
     {
         component: SettingsPopover,

@@ -361,7 +361,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		stopTimesForStops := getPredictedStopArrivalTimesForTrip(updatesForTrip.GetStopTimeUpdate(), localTimeZone)
 		//get stops for trip id
 		type StopTimes struct {
-			StopId        string  `json:"stop_id"` //child stop id
+			ParentStopId  string  `json:"parent_stop_id"` //parent stop id
+			ChildStopId   string  `json:"child_stop_id"`  //child stop id
 			ArrivalTime   int64   `json:"arrival_time"`
 			DepartureTime int64   `json:"departure_time"`
 			ScheduledTime int64   `json:"scheduled_time"`
@@ -389,10 +390,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			var data StopTimes
 
 			if stop.ParentStation != "" {
-				data.StopId = stop.ParentStation
-			} else {
-				data.StopId = stop.StopId
+				data.ParentStopId = stop.ParentStation
 			}
+
+			data.ChildStopId = stop.StopId
 
 			if nextStopSequenceNumber > (stop.Sequence - lowestSequence) {
 				data.Passed = true
@@ -628,14 +629,14 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 
 func getXStop(stopsForTripId []gtfs.Stop, currentStop int, cachedStops caches.ParentStopsByChildCache) ServicesStop {
 	stopData := stopsForTripId[max(currentStop, 0)]
+	//Check if we have a parent stop
 	if stopData.ParentStation != "" {
 		parentStop, ok := cachedStops()[stopData.StopId]
 		if ok && parentStop.StopName != "" {
 			stopData.StopName = parentStop.StopName
-			stopData.StopId = stopData.ParentStation
 		}
 	}
-	result := ServicesStop{Id: stopData.StopId, Name: stopData.StopName, Lat: stopData.StopLat, Lon: stopData.StopLon, Platform: stopData.PlatformNumber, Sequence: stopData.Sequence}
+	result := ServicesStop{ParentStopId: stopData.ParentStation, ChildStopId: stopData.StopId, Name: stopData.StopName, Lat: stopData.StopLat, Lon: stopData.StopLon, Platform: stopData.PlatformNumber, Sequence: stopData.Sequence}
 	return result
 }
 

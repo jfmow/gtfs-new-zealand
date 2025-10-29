@@ -38,11 +38,11 @@ export default function StopsList({
         if (!vehicle) return { isCurrentStop: false, isNextStop: false, passed: false }
 
         const isCurrentStop =
-            vehicle.trip.current_stop.id === stop.id &&
+            vehicle.trip.current_stop.parent_stop_id === stop.parent_stop_id &&
             stop.platform === vehicle.trip.current_stop.platform
 
         const isNextStop =
-            vehicle.trip.next_stop.id === stop.id &&
+            vehicle.trip.next_stop.parent_stop_id === stop.parent_stop_id &&
             stop.platform === vehicle.trip.next_stop.platform &&
             !isCurrentStop
 
@@ -52,7 +52,7 @@ export default function StopsList({
     }
 
     const getStopTime = (stopId: string) =>
-        stopTimes?.find((st) => st.stop_id === stopId)
+        stopTimes?.find((st) => st.parent_stop_id === stopId)
 
     const getVehiclePosition = () => {
         if (!stops || !vehicle) return null
@@ -63,7 +63,7 @@ export default function StopsList({
 
         const currentStopIndex = stopsToUse.findIndex(
             (stop) =>
-                stop.id === vehicle.trip.current_stop.id &&
+                stop.parent_stop_id === vehicle.trip.current_stop.parent_stop_id &&
                 stop.platform === vehicle.trip.current_stop.platform,
         )
 
@@ -136,7 +136,7 @@ export default function StopsList({
                     ?.filter((stop) => (isSelectingReminder ? !getStopStatus(stop).passed && !getStopStatus(stop).isCurrentStop : true))
                     .map((stop, index) => {
                         const { isCurrentStop, isNextStop, passed } = getStopStatus(stop)
-                        const stopTime = getStopTime(stop.id)
+                        const stopTime = getStopTime(stop.parent_stop_id)
                         const distance = stopTime?.dist || 0
                         const isLast = index === stops.length - 1
                         const arrivalTime = formatUnixTime(stopTime?.arrival_time)
@@ -158,7 +158,7 @@ export default function StopsList({
                                     : ""
 
                         return (
-                            <div key={`${stop.id}-${stop.platform}`} className="relative">
+                            <div key={`${stop.parent_stop_id}-${stop.platform}`} className="relative">
                                 {vehiclePosition?.showBetweenStops &&
                                     vehiclePosition.currentStopIndex === index &&
                                     !isLast && !isSelectingReminder && (

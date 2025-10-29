@@ -64,7 +64,6 @@ async function createNewSubscription() {
     const sw = await getSwRegistration()
     const newSubscription = await sw.pushManager.subscribe({
         userVisibleOnly: true,
-        //@ts-expect-error it does work
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUB || ""),
 
     });
@@ -75,7 +74,6 @@ async function getNotificationPermissionState() {
     const sw = await getSwRegistration()
     const state = await sw.pushManager.permissionState({
         userVisibleOnly: true,
-        //@ts-expect-error it does work
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUB || ""),
 
     })

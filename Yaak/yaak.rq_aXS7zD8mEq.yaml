@@ -1,0 +1,34 @@
+type: http_request
+model: http_request
+id: rq_aXS7zD8mEq
+createdAt: 2025-10-25T00:19:39.438795
+updatedAt: 2025-10-25T22:17:21.687415
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_KRbp3MKP4W
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Services
+sortPriority: 0.0011
+url: ${[ url ]}/${[ provider ]}/hs?page=1&size=200
+urlParameters:
+- enabled: true
+  name: limit
+  value: '10'
+  id: ZKsuI8yPV0
+- enabled: true
+  name: :stopname
+  value: Asquith Avenue
+  id: 0vjYyE0Q5v
+- enabled: true
+  name: :tripid
+  value: 1021-11147-44760-2-1b0a09d1
+  id: REKgD3HPTp
+- enabled: true
+  name: ''
+  value: ''
+  id: Sj3EYVEVNU

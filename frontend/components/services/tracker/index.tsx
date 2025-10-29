@@ -31,7 +31,8 @@ export interface PreviewData {
 }
 
 export interface StopTimes {
-    stop_id: string
+    parent_stop_id: string
+    child_stop_id: string
     arrival_time: number
     departure_time: number
     scheduled_time: number
@@ -243,7 +244,8 @@ export interface Trip {
 export interface ServicesStop {
     lat: number
     lon: number
-    id: string
+    parent_stop_id: string
+    child_stop_id: string
     name: string
     platform: string
     sequence: number

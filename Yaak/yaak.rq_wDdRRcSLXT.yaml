@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_wDdRRcSLXT
 createdAt: 2025-10-18T01:09:10.410776
-updatedAt: 2025-10-18T01:18:01.926217
+updatedAt: 2025-10-27T03:25:01.936051
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_E2nE7MoiBm
 authentication: {}
@@ -18,9 +18,9 @@ url: ${[ url ]}/${[ provider ]}/stops/:tripid
 urlParameters:
 - enabled: true
   name: :tripid
-  value: tripid1234
+  value: 247-810054-23580-2-7000551-b8b43679
   id: A8V5hvCKce
 - enabled: true
   name: ''
   value: ''
-  id: ScTJEfiDN6
+  id: 0cKwiTv260

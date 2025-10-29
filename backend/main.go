@@ -99,7 +99,7 @@ func main() {
 		panic(err)
 	}
 
-	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, localTimeZone)
+	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, "at", localTimeZone)
 
 	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
@@ -117,7 +117,7 @@ func main() {
 		panic(err)
 	}
 
-	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, localTimeZone)
+	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, "wel", localTimeZone)
 
 	christchurchApiKey, found := os.LookupEnv("CHRISTCHURCH_APIKEY")
 	if !found {
@@ -134,14 +134,14 @@ func main() {
 		panic(err)
 	}
 
-	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, localTimeZone)
+	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, "christ", localTimeZone)
 	/*
 		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
 		if err != nil {
 			fmt.Println("Error loading at gtfs db")
 		}
 
-		SEQRealtimeData, err := rt.NewClient("", "", 10*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
+		SEQRealtimeData, err := rt.NewClient("", "", 15*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
 		if err != nil {
 			panic(err)
 		}
