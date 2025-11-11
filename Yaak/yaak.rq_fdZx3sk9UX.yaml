@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_fdZx3sk9UX
 createdAt: 2025-10-18T01:29:35.712575
-updatedAt: 2025-10-18T01:44:10.301855
+updatedAt: 2025-11-11T19:33:50.660428
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_Dnquxyknm3
 authentication: {}
@@ -33,9 +33,9 @@ name: Vehicles
 sortPriority: 0.0019
 url: ${[ url ]}/${[ provider ]}/realtime/live
 urlParameters:
-- enabled: false
+- enabled: true
   name: tripId
-  value: ''
+  value: 247-810057-30600-2-7013551-ae20bba6
   id: ipRbcDrh9z
 - enabled: false
   name: type
@@ -48,4 +48,4 @@ urlParameters:
 - enabled: true
   name: ''
   value: ''
-  id: txyKXZVmpD
+  id: vTcK9tHHSH

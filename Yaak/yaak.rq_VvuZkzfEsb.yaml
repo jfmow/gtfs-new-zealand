@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_VvuZkzfEsb
 createdAt: 2025-10-18T01:09:13.628590
-updatedAt: 2025-10-24T22:46:48.160735
+updatedAt: 2025-11-11T19:33:26.970099
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_KRbp3MKP4W
 authentication: {}
@@ -22,9 +22,9 @@ urlParameters:
   id: ZKsuI8yPV0
 - enabled: true
   name: :stopname
-  value: Asquith Avenue
+  value: Baldwin Ave Train Station
   id: 0vjYyE0Q5v
 - enabled: true
   name: ''
   value: ''
-  id: UGDTfJAY7G
+  id: e9vGJKFUsA

@@ -1,15 +1,9 @@
 package providers
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
-	"github.com/jfmow/at-trains-api/providers/history"
 	"github.com/jfmow/at-trains-api/providers/notifications"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
@@ -76,7 +70,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 
 	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache)
 
-	hsdb := history.SetupHistoricalDataStorage(realtime, gtfsName, localTimeZone)
+	/*hsdb := history.SetupHistoricalDataStorage(realtime, gtfsName, localTimeZone)
 
 	primaryRouter.GET("/hs/:trip", func(c echo.Context) error {
 		encodedtripId := c.PathParam("trip")
@@ -161,5 +155,5 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		}
 
 		return JsonApiResponse(c, 200, "OK", trips)
-	})
+	})*/
 }
