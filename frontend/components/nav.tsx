@@ -17,6 +17,7 @@ interface BaseNavRoute {
     description: string;
     icon: React.ComponentType<{ className?: string }>;
     description_short: string;
+    hidden?: boolean;
 }
 
 interface HrefNavRoute extends BaseNavRoute {
@@ -65,7 +66,8 @@ const NAV_ROUTES: NavRoute[] = [
         label: 'Service History',
         description: 'View previous trips and services',
         icon: ClockFading,
-        description_short: "History"
+        description_short: "History",
+        hidden: true
     },
     {
         component: SettingsPopover,
@@ -74,7 +76,7 @@ const NAV_ROUTES: NavRoute[] = [
         icon: Settings2Icon,
         description_short: "Settings"
     },
-]
+].filter(route => !route.hidden)
 
 export default function NavBar() {
     const { theme } = useTheme()
