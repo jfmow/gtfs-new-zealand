@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Head from "next/head";
+import { ApiFetch } from "@/lib/url-context";
 
 interface Trip {
     TripID: string;
@@ -29,19 +30,16 @@ export default function HistoryPage() {
     async function fetchTrips(pageNumber: number) {
         setLoading(true);
         setError(null);
-        try {
-            const res = await fetch(`http://localhost:8090/at/hs?page=${pageNumber}&size=10`);
-            if (!res.ok) throw new Error(`Failed to fetch trips (${res.status})`);
-            const data: ApiResponse = await res.json();
-
-            setTrips(data.data.trips);
-            setPage(data.data.page);
-            setTotalPages(data.data.total_pages);
-        } catch (err: any) {
-            setError(err.message);
-        } finally {
-            setLoading(false);
+        const res = await ApiFetch<ApiResponse>(`/hs?page=${pageNumber}&size=10`);
+        if (!res.ok) {
+            return setError(`Failed to fetch trips: ${res.error} ${res.trace_id || ""}`);
         }
+        const data = res.data;
+
+        setTrips(data.data.trips);
+        setPage(data.data.page);
+        setTotalPages(data.data.total_pages);
+        setLoading(false);
     }
 
     useEffect(() => {
