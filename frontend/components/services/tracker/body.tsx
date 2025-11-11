@@ -204,15 +204,15 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                     ({
                                                         lat: item.lat,
                                                         lon: item.lon,
-                                                        icon: vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id
+                                                        icon: vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.next_stop.child_stop_id === item.child_stop_id
                                                             ? "next stop marker"
                                                             : currentStop?.name === item.name
                                                                 ? "marked stop marker"
-                                                                : vehicle.trip.final_stop.parent_stop_id === item.parent_stop_id
+                                                                : vehicle.trip.final_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.final_stop.child_stop_id === item.child_stop_id
                                                                     ? "end marker"
-                                                                    : vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id
+                                                                    : vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.next_stop.child_stop_id === item.child_stop_id
                                                                         ? "next stop marker"
-                                                                        : item.parent_stop_id === vehicle.trip.current_stop.parent_stop_id
+                                                                        : item.parent_stop_id === vehicle.trip.current_stop.parent_stop_id || item.child_stop_id === vehicle.trip.current_stop.child_stop_id
                                                                             ? "current stop marker"
                                                                             : vehicle.trip.current_stop.sequence > item.sequence
                                                                                 ? "dot gray"
