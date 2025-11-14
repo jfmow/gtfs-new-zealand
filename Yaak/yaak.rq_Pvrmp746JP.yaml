@@ -1,8 +1,8 @@
 type: http_request
 model: http_request
-id: rq_kqWBPCXWqw
-createdAt: 2025-10-18T01:22:28.542808
-updatedAt: 2025-10-25T22:46:32.782755
+id: rq_Pvrmp746JP
+createdAt: 2025-10-25T22:46:29.506494
+updatedAt: 2025-10-25T22:49:09.325241
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_cxhGB8EYeq
 authentication: {}
@@ -12,15 +12,15 @@ bodyType: null
 description: ''
 headers: []
 method: GET
-name: Route By ID
-sortPriority: 2000.0
-url: ${[ url ]}/${[ provider ]}/routes/:routeid
+name: Search for route
+sortPriority: 0.0
+url: ${[ url ]}/${[ provider ]}/routes/find-route/:routeName
 urlParameters:
 - enabled: true
-  name: :routeid
-  value: WEST-201
-  id: fRrhimMYr6
+  name: :routeName
+  value: ou
+  id: gMxYVKt8cC
 - enabled: true
   name: ''
   value: ''
-  id: QnZK0yxnCX
+  id: NQ93csJh0r

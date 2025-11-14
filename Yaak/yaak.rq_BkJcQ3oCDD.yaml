@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_BkJcQ3oCDD
 createdAt: 2025-10-18T01:25:34.750836
-updatedAt: 2025-10-18T01:25:46.377734
+updatedAt: 2025-10-25T22:46:32.781155
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_cxhGB8EYeq
 authentication: {}
@@ -13,6 +13,6 @@ description: ''
 headers: []
 method: GET
 name: All Routes
-sortPriority: 0.0018
+sortPriority: 1000.0
 url: ${[ url ]}/${[ provider ]}/routes
 urlParameters: []

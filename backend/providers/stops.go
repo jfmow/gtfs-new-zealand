@@ -37,7 +37,8 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 				return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("stopId", i.StopId, "details", "No parent stop available for the given child stop ID in the gtfs data", "error", err.Error()))
 			}
 
-			responseData.Id = stop.StopId
+			responseData.ParentStopId = stop.StopId
+			responseData.ChildStopId = i.StopId
 			responseData.Lat = stop.StopLat
 			responseData.Lon = stop.StopLon
 			responseData.Name = stop.StopName + " " + stop.StopCode

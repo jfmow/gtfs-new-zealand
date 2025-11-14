@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Train, MapPin, Map, MessageCircleWarningIcon, Settings2Icon, MenuIcon, X } from 'lucide-react'
+import { Map, Settings2Icon, MenuIcon, X, ClockFading, Car, Siren, CalendarDays } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -17,6 +17,7 @@ interface BaseNavRoute {
     description: string;
     icon: React.ComponentType<{ className?: string }>;
     description_short: string;
+    hidden?: boolean;
 }
 
 interface HrefNavRoute extends BaseNavRoute {
@@ -34,31 +35,39 @@ type NavRoute = HrefNavRoute | ComponentNavRoute;
 const NAV_ROUTES: NavRoute[] = [
     {
         href: '/',
-        label: 'Train/Bus/Ferry',
+        label: 'Live Schedule',
         description: 'Find transportation options',
-        icon: Train,
-        description_short: "Services"
+        icon: CalendarDays,
+        description_short: "Schedule"
     },
     {
         href: '/stops',
         label: 'Find a stop',
         description: 'Locate nearby stops',
-        icon: MapPin,
+        icon: Map,
         description_short: "Stops"
     },
     {
         href: '/vehicles',
-        label: 'Vehicles',
+        label: 'Track Vehicles',
         description: 'View real-time vehicle locations',
-        icon: Map,
+        icon: Car,
         description_short: "Vehicles"
     },
     {
         href: '/alerts',
         label: 'Travel Alerts',
         description: 'Travel advisories and alerts',
-        icon: MessageCircleWarningIcon,
+        icon: Siren,
         description_short: "Alerts"
+    },
+    {
+        href: '/history',
+        label: 'Service History',
+        description: 'View previous trips and services',
+        icon: ClockFading,
+        description_short: "History",
+        hidden: true
     },
     {
         component: SettingsPopover,
@@ -67,7 +76,7 @@ const NAV_ROUTES: NavRoute[] = [
         icon: Settings2Icon,
         description_short: "Settings"
     },
-]
+].filter(route => !route.hidden)
 
 export default function NavBar() {
     const { theme } = useTheme()
@@ -90,15 +99,14 @@ export default function NavBar() {
             {isMobile ? (
                 <nav className='sticky top-0 bg-background/80 backdrop-blur-sm w-full py-4 px-2 flex items-center justify-between z-50'>
                     <div className='flex items-center justify-between w-full'>
-                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
-                            <MenuIcon />
-                            Menu
-                        </Button>
                         <Link href='/'>
                             <div className="flex items-center">
                                 <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
                             </div>
                         </Link>
+                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
+                            <MenuIcon />
+                        </Button>
                     </div>
                     <AnimatePresence>
                         {menuOpen && (
@@ -108,10 +116,9 @@ export default function NavBar() {
                                 exit={{ opacity: 0 }}
                                 className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black overflow-x-hidden"
                             >
-                                <div className="flex justify-between items-center mt-4 mx-2">
+                                <div className="flex justify-between items-center mt-4 mx-2 ml-auto">
                                     <Button variant="ghost" onClick={() => setMenuOpen(false)}>
                                         <X className="w-6 h-6" />
-                                        Menu
                                     </Button>
                                 </div>
                                 <motion.div
@@ -125,8 +132,8 @@ export default function NavBar() {
                                     }}
                                     initial="hidden"
                                     animate="show"
-                                    className='px-6 flex flex-col h-full flex-grow overflow-y-auto overflow-x-hidden'>
-                                    <div className='flex items-center justify-start mb-4 mt-8'>
+                                    className='px-6 flex flex-col h-full flex-grow overflow-y-hidden overflow-x-hidden'>
+                                    <div className='flex items-center justify-start mb-4 mt-4'>
                                         <p className='text-muted-foreground text-sm'>Menu</p>
                                     </div>
                                     <motion.ul
@@ -151,9 +158,9 @@ export default function NavBar() {
                                                 {item.component ? (
                                                     <item.component>
                                                         <button
-                                                            className="flex items-center gap-4 w-full text-left"
+                                                            className="flex items-center gap-2 w-full text-left"
                                                         >
-                                                            <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
+                                                            <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
                                                             <div className='flex flex-col'>
                                                                 <p className='font-medium text-primary font-semibold'>{item.label}</p>
                                                                 <p className='text-muted-foreground text-sm'>{item.description}</p>
@@ -162,11 +169,11 @@ export default function NavBar() {
                                                     </item.component>
                                                 ) : (
                                                     <Link
-                                                        className="flex items-center gap-4 w-full text-left"
+                                                        className="flex items-center gap-2 w-full text-left"
                                                         href={item.href}
                                                         onClick={() => setMenuOpen(false)}
                                                     >
-                                                        <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5' />
+                                                        <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
                                                         <div className='flex flex-col'>
                                                             <p className='font-medium text-primary font-semibold'>{item.label}</p>
                                                             <p className='text-muted-foreground text-sm'>{item.description}</p>
@@ -175,9 +182,10 @@ export default function NavBar() {
                                                 )}
                                             </motion.li>
                                         ))}
+
                                     </motion.ul>
                                     <motion.div
-                                        className='flex items-center justify-start mb-2 mt-8'
+                                        className='flex items-center justify-start mb-2 mt-auto border-b pb-2'
                                         variants={{
                                             hidden: { opacity: 0, x: -20 },
                                             show: { opacity: 1, x: 0 },

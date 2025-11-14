@@ -157,7 +157,7 @@ export default function Vehicles() {
                             <LeafletMap
                                 defaultZoom={["user", currentUrl.defaultMapCenter]}
                                 mapItems={[
-                                    ...vehicles.map(
+                                    ...vehicles.filter((v) => v.route.id !== "").map(
                                         (vehicle) =>
                                             ({
                                                 lat: vehicle.position.lat,

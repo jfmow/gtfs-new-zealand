@@ -363,10 +363,14 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                                 <span className="text-muted-foreground">Stops away:</span>{" "}
                                                                 <span className="font-medium">{service.stops_away || 0}</span>
                                                             </p>
-                                                            <p className="inline-flex gap-1.5 items-center">
-                                                                <span className="text-muted-foreground">Occupancy:</span>
-                                                                <OccupancyStatusIndicator type="people" value={service.occupancy} />
-                                                            </p>
+                                                            {service.occupancy > 0 ? (
+                                                                <>
+                                                                    <p className="inline-flex gap-1.5 items-center">
+                                                                        <span className="text-muted-foreground">Occupancy:</span>
+                                                                        <OccupancyStatusIndicator value={service.occupancy} type="people" />
+                                                                    </p>
+                                                                </>
+                                                            ) : null}
                                                         </>
                                                     )}
                                                 </div>

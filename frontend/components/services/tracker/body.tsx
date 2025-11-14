@@ -62,7 +62,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
             }, 100)
             return () => clearTimeout(timeoutId)
         }
-    }, [tabValue, vehicle?.trip.next_stop.id, vehicle?.trip.next_stop.platform])
+    }, [tabValue, vehicle?.trip.next_stop.parent_stop_id, vehicle?.trip.next_stop.platform])
 
     useEffect(() => {
         const getRouteLine = async () => {
@@ -122,7 +122,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
             tripId && stopTimes
                 ? formatUnixTime(
                     stopTimes.find(
-                        (stop) => isAtStop ? stop.stop_id === vehicle.trip.current_stop.id : stop.stop_id === vehicle.trip.next_stop.id
+                        (stop) => isAtStop ? stop.parent_stop_id === vehicle.trip.current_stop.parent_stop_id : stop.parent_stop_id === vehicle.trip.next_stop.parent_stop_id
                     )?.arrival_time || 0
                 )
                 : "";
@@ -204,15 +204,15 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                     ({
                                                         lat: item.lat,
                                                         lon: item.lon,
-                                                        icon: vehicle.trip.next_stop.id === item.id
+                                                        icon: vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.next_stop.child_stop_id === item.child_stop_id
                                                             ? "next stop marker"
                                                             : currentStop?.name === item.name
                                                                 ? "marked stop marker"
-                                                                : vehicle.trip.final_stop.id === item.id
+                                                                : vehicle.trip.final_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.final_stop.child_stop_id === item.child_stop_id
                                                                     ? "end marker"
-                                                                    : vehicle.trip.next_stop.id === item.id
+                                                                    : vehicle.trip.next_stop.parent_stop_id === item.parent_stop_id || vehicle.trip.next_stop.child_stop_id === item.child_stop_id
                                                                         ? "next stop marker"
-                                                                        : item.id === vehicle.trip.current_stop.id
+                                                                        : item.parent_stop_id === vehicle.trip.current_stop.parent_stop_id || item.child_stop_id === vehicle.trip.current_stop.child_stop_id
                                                                             ? "current stop marker"
                                                                             : vehicle.trip.current_stop.sequence > item.sequence
                                                                                 ? "dot gray"
@@ -231,7 +231,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                             {
                                                 lat: vehicle.position.lat,
                                                 lon: vehicle.position.lon,
-                                                icon: vehicle.type || "bus",
+                                                icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
                                                 id: vehicle.trip_id,
                                                 routeID: vehicle.route.id,
                                                 description: { text: "Vehicle you're tracking", alwaysShow: false },
@@ -245,7 +245,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                             {
                                                 lat: vehicle.position.lat,
                                                 lon: vehicle.position.lon,
-                                                icon: vehicle.type || "bus",
+                                                icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
                                                 id: vehicle.trip_id,
                                                 routeID: vehicle.route.id,
                                                 description: { text: "Vehicle you're tracking", alwaysShow: false },

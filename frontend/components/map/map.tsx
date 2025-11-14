@@ -26,6 +26,7 @@ type ItemsOnMap = {
         clusters: Record<string, MarkerClusterGroup>
         markers: { id: string, marker: leaflet.Marker }[]
         zoomButtons: Record<string, leaflet.Control>
+        waypointLine: leaflet.Polyline | null
     }
     zoomButtons: {
         controls: leaflet.Control[] | null
@@ -60,7 +61,7 @@ export default function MapComp({
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
-        mapItems: { clusters: {}, markers: [], zoomButtons: {} },
+        mapItems: { clusters: {}, markers: [], zoomButtons: {}, waypointLine: null },
     });
 
     useEffect(() => {
@@ -147,6 +148,16 @@ export default function MapComp({
             map.removeControl(control);
         });
 
+        // Remove all polyline segments from the map
+        const overlayPane = map.getPane('overlayPane');
+        const existingLines = overlayPane?.getElementsByClassName('leaflet-interactive') || [];
+        Array.from(existingLines).forEach(el => {
+            if (el instanceof SVGPathElement) {
+                el.remove();
+            }
+        });
+        activeMapItems.mapItems.waypointLine = null;
+
         activeMapItems.mapItems.markers = [];
         activeMapItems.mapItems.clusters = {};
         activeMapItems.mapItems.zoomButtons = {};
@@ -213,6 +224,84 @@ export default function MapComp({
             }
 
             activeMapItems.mapItems.markers.push(...updatedMarkers);
+
+            // Handle waypoints connection line
+            if (type === 'waypoint') {
+                // Remove existing waypoint line
+                if (activeMapItems.mapItems.waypointLine) {
+                    map.removeLayer(activeMapItems.mapItems.waypointLine);
+                }
+
+                // Create new waypoint line if there are at least 2 points
+                if (items.length >= 2) {
+                    // Sort items by id to maintain consistent order
+                    const sortedItems = [...items].sort((a, b) => a.id.localeCompare(b.id));
+
+                    // Create segments between consecutive points
+                    const segments: leaflet.Polyline[] = [];
+                    for (let i = 0; i < sortedItems.length - 1; i++) {
+                        const point1 = sortedItems[i];
+                        const point2 = sortedItems[i + 1];
+
+                        // Get speed values from description text
+                        const speed1 = parseInt(point1.description.text.match(/Speed (\d+)kmh/)?.[1] || "0");
+                        const speed2 = parseInt(point2.description.text.match(/Speed (\d+)kmh/)?.[1] || "0");
+                        const avgSpeed = (speed1 + speed2) / 2;
+
+                        // Calculate color based on speed
+                        // Green (slow) to Yellow (medium) to Red (fast)
+                        const maxSpeed = 100; // Adjust based on your speed range
+                        const speedRatio = Math.min(avgSpeed / maxSpeed, 1);
+
+                        let color;
+                        if (speedRatio <= 0.5) {
+                            // Green to Yellow
+                            const ratio = speedRatio * 2;
+                            const red = Math.round(255 * ratio);
+                            const green = 255;
+                            const blue = 0;
+                            color = `rgb(${red},${green},${blue})`;
+                        } else {
+                            // Yellow to Red
+                            const ratio = (speedRatio - 0.5) * 2;
+                            const red = 255;
+                            const green = Math.round(255 * (1 - ratio));
+                            const blue = 0;
+                            color = `rgb(${red},${green},${blue})`;
+                        }
+
+                        const segment = leaflet.polyline(
+                            [[point1.lat, point1.lon], [point2.lat, point2.lon]],
+                            {
+                                color: color,
+                                weight: 4,
+                                opacity: 0.8,
+                                smoothFactor: 1.5
+                            }
+                        );
+
+                        // Add tooltip showing speed
+                        segment.bindTooltip(`${avgSpeed.toFixed(1)} km/h`, {
+                            permanent: false,
+                            direction: 'top'
+                        });
+
+                        segment.addTo(map);
+                        segments.push(segment);
+                    }
+
+                    // Store all segments to remove them later
+                    activeMapItems.mapItems.waypointLine = segments[0]; // Store first segment for compatibility
+                    // Apply rounded corners to all line segments
+                    const existingSegments = map.getPane('overlayPane')?.getElementsByClassName('leaflet-interactive') || [];
+                    Array.from(existingSegments).forEach(el => {
+                        if (el instanceof SVGPathElement) {
+                            el.setAttribute('stroke-linecap', 'round');
+                            el.setAttribute('stroke-linejoin', 'round');
+                        }
+                    });
+                }
+            }
         });
 
         Object.keys(oldZoomControls).forEach((itemId) => {
