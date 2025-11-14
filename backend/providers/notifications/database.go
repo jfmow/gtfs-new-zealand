@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"time"
 
@@ -32,10 +33,7 @@ func newDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Data
 		return nil, errors.New("time zone is required")
 	}
 
-	dbPath := os.Getenv("NOTIFICATIONS_DATABASE")
-	if dbPath == "" {
-		dbPath = defaultDBFileName
-	}
+	dbPath := path.Join(getWorkDir(), "notifications", defaultDBFileName)
 
 	if !filepath.IsAbs(dbPath) {
 		cwd, err := os.Getwd()
