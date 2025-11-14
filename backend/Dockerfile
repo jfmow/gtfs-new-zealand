@@ -1,29 +1,44 @@
-# ---- Build stage ----
-FROM golang:1.23-alpine AS builder
+# syntax=docker/dockerfile:1.7
 
-# Build deps for CGO (gcc, musl-dev, etc.)
+########################
+# Build stage
+########################
+FROM --platform=$TARGETPLATFORM golang:1.23-alpine AS builder
+
+# We need a compiler + libc headers for CGO
 RUN apk add --no-cache build-base tzdata
 
 WORKDIR /src
 
-# Cache deps
+# Cache Go deps
 COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy the rest of the source
 COPY . .
 
-# Build linux/amd64 binary with CGO enabled
+# TARGETARCH is provided by buildx (amd64, arm, etc.)
+ARG TARGETARCH
+
 ENV CGO_ENABLED=1 \
-    GOOS=linux \
-    GOARCH=amd64
+    GOOS=linux
 
-RUN go build -o /trains/base .
+# Build per-arch, adding GOARM=7 for Raspberry Pi (32-bit armv7)
+RUN if [ "$TARGETARCH" = "arm" ]; then \
+    echo "Building CGO binary for linux/arm/v7"; \
+    GOARCH=arm GOARM=7 go build -o /trains/base .; \
+    else \
+    echo "Building CGO binary for linux/$TARGETARCH"; \
+    GOARCH=$TARGETARCH go build -o /trains/base .; \
+    fi
 
-# ---- Runtime stage ----
+
+########################
+# Runtime stage
+########################
 FROM alpine:3.20.2
 
-# Install tzdata for time zone info
+# Install tzdata package to get time zone information
 RUN apk add --no-cache tzdata
 
 ENV TZ=UTC \
@@ -32,11 +47,13 @@ ENV TZ=UTC \
     OSRM_URL="http://router.project-osrm.org/route/v1/walking/" \
     GOMEMLIMIT="500MiB"
 
-# Copy the built binary from the builder stage
+# Copy the binary built in the builder stage
 COPY --from=builder /trains/base /trains/base
 
 RUN chmod +x /trains/base
 
+# Expose the default port
 EXPOSE 8085
 
+# Start your app
 CMD ["/bin/sh", "-c", "/trains/base --http=0.0.0.0:$port"]
