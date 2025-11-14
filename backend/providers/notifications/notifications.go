@@ -156,6 +156,8 @@ stops can be parents or child's
 parentStopId can be blank to just create a client
 */
 func (v *Database) CreateNotificationClient(endpoint, p256dh, auth string, gtfsDB gtfs.Database) (*NotificationClient, error) {
+	_ = gtfsDB // kept for signature compatibility
+
 	// Validate input parameters
 	if len(endpoint) < 2 || !isValidURL(endpoint) {
 		return nil, errors.New("invalid endpoint url")
@@ -166,51 +168,30 @@ func (v *Database) CreateNotificationClient(endpoint, p256dh, auth string, gtfsD
 	if len(auth) < 8 || !isBase64Url(auth) {
 		return nil, errors.New("invalid auth")
 	}
+	created := int(time.Now().In(v.timeZone).Unix())
 
-	// Insert the new notification client into the `notifications` table
-	query := `
-		INSERT INTO notifications (endpoint, p256dh, auth, created)
-		VALUES (?, ?, ?, ?);
-	`
-
-	notificationClient := Notification{
-		Endpoint: endpoint,
-		P256dh:   p256dh,
-		Auth:     auth,
-		Created:  int(time.Now().In(v.timeZone).Unix()),
+	if client, err := v.FindNotificationClient(endpoint, p256dh, auth, ""); err == nil {
+		return client, nil
+	} else if !errors.Is(err, ErrClientNotFound) {
+		return nil, err
 	}
 
-	existingClient, err := v.FindNotificationClient(notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, "")
-	if err == nil {
-		notificationClient.Id = existingClient.Id
-	} else {
-		// Execute the query and get the last inserted ID
-		result, err := v.db.Exec(query, notificationClient.Endpoint, notificationClient.P256dh, notificationClient.Auth, notificationClient.Created)
-		if err != nil {
-			fmt.Println(err)
-			return nil, errors.New("failed to create new client")
-		}
-
-		// Get the ID of the newly created notification
-		newRecordId, err := result.LastInsertId()
-		if err != nil {
-			return nil, errors.New("failed to retrieve client ID")
-		}
-		notificationClient.Id = int(newRecordId)
+	if _, err := v.execContext(
+		`INSERT INTO notifications (endpoint, p256dh, auth, created) VALUES (?, ?, ?, ?);`,
+		endpoint,
+		p256dh,
+		auth,
+		created,
+	); err != nil {
+		return nil, errors.New("failed to create new client")
 	}
 
-	return &NotificationClient{
-		Id: notificationClient.Id,
-		Notification: webpush.Subscription{
-			Endpoint: notificationClient.Endpoint,
-			Keys: webpush.Keys{
-				P256dh: notificationClient.P256dh,
-				Auth:   notificationClient.Auth,
-			},
-		},
-		Created: notificationClient.Created,
-		db:      v,
-	}, nil
+	newClient, err := v.FindNotificationClient(endpoint, p256dh, auth, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return newClient, nil
 }
 
 /*
@@ -224,23 +205,20 @@ func (client NotificationClient) SubscribeToStop(parentStopId string, routes []s
 	if parentStopId == "" {
 		return errors.New("missing parent stop id")
 	}
-	// Insert each stop into the `stops` table
-	stopQuery := `
-		INSERT INTO stops (clientId, parent_stop, routes)
-		VALUES (?, ?, ?);
-	`
-
-	var marshledRoutes []byte = nil
-	if len(routes) > 0 {
-		mr, err := json.Marshal(routes)
-		if err != nil {
-			return errors.New("failed to marshal updated notifications")
-		}
-		marshledRoutes = mr
+	marshalledRoutes, err := encodeRoutes(routes)
+	if err != nil {
+		return errors.New("failed to marshal updated notifications")
 	}
 
-	if _, err := client.db.db.Exec(stopQuery, client.Id, parentStopId, marshledRoutes); err != nil {
-		return err
+	_, execErr := client.db.execContext(
+		`INSERT INTO stops (clientId, parent_stop, routes) VALUES (?, ?, ?) 
+                ON CONFLICT(clientId, parent_stop) DO UPDATE SET routes = excluded.routes;`,
+		client.Id,
+		parentStopId,
+		marshalledRoutes,
+	)
+	if execErr != nil {
+		return execErr
 	}
 
 	return nil
@@ -253,28 +231,12 @@ stop can be parent or child or "" (to delete all)
 */
 func (client NotificationClient) DeleteNotificationClient(parentStopId string) error {
 	if parentStopId == "" {
-		query := `
-				DELETE FROM notifications
-				WHERE endpoint = ? AND p256dh = ? AND auth = ?
-			`
-
-		_, err := client.db.db.Exec(query, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth)
-		if err != nil {
+		if _, err := client.db.execContext(`DELETE FROM notifications WHERE id = ?`, client.Id); err != nil {
 			return errors.New("failed to delete client")
 		}
 	} else {
 		// If a stop is provided, check if it exists for the given client
-		query := `
-				DELETE FROM stops
-				WHERE clientId IN (
-					SELECT n.id
-					FROM notifications n
-					WHERE n.endpoint = ? AND n.p256dh = ? AND n.auth = ? 
-				) AND parent_stop = ?
-			`
-
-		_, err := client.db.db.Exec(query, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth, parentStopId)
-		if err != nil {
+		if _, err := client.db.execContext(`DELETE FROM stops WHERE clientId = ? AND parent_stop = ?`, client.Id, parentStopId); err != nil {
 			return errors.New("failed to delete stop entry")
 		}
 	}
@@ -295,44 +257,45 @@ USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
 */
 func (v *Database) GetNotificationClientsByStop(parentStopId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
 	query := `
-		SELECT 
-			n.id AS notification_id,
-			n.endpoint,
-			n.p256dh,
-			n.auth,
-			n.recent_notifications,
-			n.created,
-			n.expiry_warning_sent,
-			s.routes
-		FROM 
-			notifications n
-		JOIN 
-			stops s
-		ON 
-			n.id = s.clientId  -- Adjust this to the actual column for the join
-		WHERE 
-			s.parent_stop = ?
-		LIMIT ?
-		OFFSET ?
-	`
+                SELECT
+                        n.id AS notification_id,
+                        n.endpoint,
+                        n.p256dh,
+                        n.auth,
+                        n.recent_notifications,
+                        n.created,
+                        n.expiry_warning_sent,
+                        s.routes
+                FROM
+                        notifications n
+                JOIN
+                        stops s
+                ON
+                        n.id = s.clientId
+                WHERE
+                        s.parent_stop = ?
+                LIMIT ?
+                OFFSET ?
+        `
 
-	rows, err := v.db.Query(query, parentStopId, limit, offset)
+	rows, cancel, err := v.queryContext(query, parentStopId, limit, offset)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("no clients found")
 		}
 		return nil, fmt.Errorf("failed to query notification clients: %w", err)
 	}
+	defer cancel()
 	defer rows.Close()
 
 	var clients []NotificationClient
 
 	for rows.Next() {
 		var notification Notification
-		var recent string
-		var routesStr sql.NullString // to handle possible NULL routes value
+		var recent sql.NullString
+		var routesStr sql.NullString
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&notification.Id,
 			&notification.Endpoint,
 			&notification.P256dh,
@@ -340,35 +303,27 @@ func (v *Database) GetNotificationClientsByStop(parentStopId string, hasSeenId s
 			&recent,
 			&notification.Created,
 			&notification.ExpiryWarningSent,
-			&routesStr, // <- routes column
-		)
-		if err != nil {
+			&routesStr,
+		); err != nil {
 			return nil, fmt.Errorf("failed to scan notification client: %w", err)
 		}
 
-		// Parse recent notifications
-		if recent != "[]" && recent != "" {
-			if err := json.Unmarshal([]byte(recent), &notification.RecentNotifications); err != nil {
-				return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
-			}
+		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
+			return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
 		}
 
-		// Parse routes
-		var routes []string
-		if routesStr.Valid && routesStr.String != "" && routesStr.String != "[]" {
-			if err := json.Unmarshal([]byte(routesStr.String), &routes); err != nil {
-				return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
-			}
+		routes, err := decodeRoutes(routesStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
 		}
 
-		// Skip old or seen clients
-		excludeClient := slices.Contains(notification.RecentNotifications, hasSeenId)
 		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
 			client := NotificationClient{Id: notification.Id, db: v}
 			client.DeleteNotificationClient("")
 			continue
 		}
-		if excludeClient {
+
+		if slices.Contains(notification.RecentNotifications, hasSeenId) {
 			continue
 		}
 
@@ -384,7 +339,7 @@ func (v *Database) GetNotificationClientsByStop(parentStopId string, hasSeenId s
 			RecentNotifications: notification.RecentNotifications,
 			Created:             notification.Created,
 			ExpiryWarningSent:   notification.ExpiryWarningSent,
-			Routes:              routes, // ✅ append routes here
+			Routes:              routes,
 			db:                  v,
 		}
 
@@ -449,20 +404,21 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 
 	args = append(args, limit, offset)
 
-	rows, err := v.db.Query(query, args...)
+	rows, cancel, err := v.queryContext(query, args...)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("no clients found")
 		}
 		return nil, fmt.Errorf("failed to query notification clients by stop+route: %w", err)
 	}
+	defer cancel()
 	defer rows.Close()
 
 	var clients []NotificationClient
 
 	for rows.Next() {
 		var notification Notification
-		var recent string
+		var recent sql.NullString
 		var routesStr sql.NullString
 
 		if err := rows.Scan(
@@ -478,19 +434,13 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 			return nil, fmt.Errorf("failed to scan notification client: %w", err)
 		}
 
-		// Parse recent notifications
-		if recent != "" && recent != "[]" {
-			if err := json.Unmarshal([]byte(recent), &notification.RecentNotifications); err != nil {
-				return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
-			}
+		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
+			return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
 		}
 
-		// Parse routes JSON
-		var routes []string
-		if routesStr.Valid && routesStr.String != "" && routesStr.String != "[]" {
-			if err := json.Unmarshal([]byte(routesStr.String), &routes); err != nil {
-				return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
-			}
+		routes, err := decodeRoutes(routesStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
 		}
 
 		// Skip old or seen clients
@@ -554,14 +504,14 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 	`
 
 	// Prepare the query
-	rows, err := v.db.Query(query, limit, offset)
+	rows, cancel, err := v.queryContext(query, limit, offset)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			// If no client found, return an error
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("no clients found")
 		}
 		return nil, errors.New("failed to query notification clients")
 	}
+	defer cancel()
 	defer rows.Close()
 
 	// Slice to store results
@@ -570,8 +520,8 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 	// Iterate over the rows
 	for rows.Next() {
 		var notification Notification
-		var recent string
-		err := rows.Scan(
+		var recent sql.NullString
+		if err := rows.Scan(
 			&notification.Id,
 			&notification.Endpoint,
 			&notification.P256dh,
@@ -579,16 +529,12 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 			&recent,
 			&notification.Created,
 			&notification.ExpiryWarningSent,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, errors.New("failed to scan notification client")
 		}
 
-		if recent != "[]" {
-			err = json.Unmarshal([]byte(recent), &notification.RecentNotifications)
-			if err != nil {
-				return nil, errors.New("failed to parse recent notifications")
-			}
+		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
+			return nil, errors.New("failed to parse recent notifications")
 		}
 
 		client := NotificationClient{
@@ -707,50 +653,40 @@ Update the trip_id's we've already seen
 func (client *NotificationClient) AppendToRecentNotifications(newNotification string) error {
 
 	// Query to fetch the current `recent_notifications` array
-	var recentNotifications string
 	query := `
-		SELECT recent_notifications
-		FROM notifications
-		WHERE endpoint = ? AND p256dh = ? AND auth = ?
-	`
-	err := client.db.db.QueryRow(query, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth).Scan(&recentNotifications)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			// If no client found, return an error
+                SELECT recent_notifications
+                FROM notifications
+                WHERE id = ?
+        `
+
+	row, cancel := client.db.queryRowContext(query, client.Id)
+	defer cancel()
+
+	var recent sql.NullString
+	if err := row.Scan(&recent); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return errors.New("client not found")
 		}
 		return errors.New("failed to fetch recent notifications")
 	}
 
-	// If the `recent_notifications` is empty, initialize it to an empty array
-	if recentNotifications == "" {
-		recentNotifications = "[]"
-	}
-
-	// Parse the current `recent_notifications` array into a Go slice
-	var notifications []string
-	err = json.Unmarshal([]byte(recentNotifications), &notifications)
+	notifications, err := decodeRecentNotifications(recent)
 	if err != nil {
 		return errors.New("failed to unmarshal recent notifications")
 	}
 
-	// Append the new notifications to the slice
 	notifications = append(notifications, newNotification)
 
-	// Convert the updated slice back to a JSON string
 	updatedNotifications, err := json.Marshal(notifications)
 	if err != nil {
 		return errors.New("failed to marshal updated notifications")
 	}
 
-	// Update the `recent_notifications` field in the database
-	updateQuery := `
-		UPDATE notifications
-		SET recent_notifications = ?
-		WHERE endpoint = ? AND p256dh = ? AND auth = ?
-	`
-	_, err = client.db.db.Exec(updateQuery, updatedNotifications, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth)
-	if err != nil {
+	if _, err := client.db.execContext(
+		`UPDATE notifications SET recent_notifications = ? WHERE id = ?`,
+		updatedNotifications,
+		client.Id,
+	); err != nil {
 		return errors.New("failed to update recent notifications")
 	}
 
@@ -787,6 +723,80 @@ func (v *Database) SendNotificationToAllClients(body string, title string, url s
 	return nil
 }
 
+func (v *Database) HasAnyReminders() (bool, error) {
+	row, cancel := v.queryRowContext(`SELECT 1 FROM reminders LIMIT 1`)
+	defer cancel()
+
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check reminders: %w", err)
+	}
+
+	return true, nil
+}
+
+func (v *Database) GetAllReminders() ([]Reminder, error) {
+	rows, cancel, err := v.queryContext(`SELECT id, clientId, trip_id, stop_sequence, type, created FROM reminders`)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return []Reminder{}, nil
+		}
+		return nil, fmt.Errorf("failed to query reminders: %w", err)
+	}
+	defer cancel()
+	defer rows.Close()
+
+	var reminders []Reminder
+	for rows.Next() {
+		var (
+			reminder Reminder
+			created  int64
+		)
+
+		if err := rows.Scan(&reminder.Id, &reminder.ClientId, &reminder.TripId, &reminder.StopSequence, &reminder.Type, &created); err != nil {
+			return nil, fmt.Errorf("failed to scan reminder: %w", err)
+		}
+
+		reminder.Created = time.Unix(created, 0).In(v.timeZone)
+		reminders = append(reminders, reminder)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating reminders: %w", err)
+	}
+
+	return reminders, nil
+}
+
+func (v *Database) AddReminder(clientId int, tripId string, stopSequence int, reminderType string) error {
+	created := time.Now().In(v.timeZone).Unix()
+
+	if _, err := v.execContext(
+		`INSERT INTO reminders (clientId, trip_id, stop_sequence, type, created)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(clientId, type) DO UPDATE SET trip_id=excluded.trip_id, stop_sequence=excluded.stop_sequence, created=excluded.created`,
+		clientId,
+		tripId,
+		stopSequence,
+		reminderType,
+		created,
+	); err != nil {
+		return fmt.Errorf("failed to upsert reminder: %w", err)
+	}
+
+	return nil
+}
+
+func (v *Database) DeleteReminder(clientId int, reminderType string) error {
+	if _, err := v.execContext(`DELETE FROM reminders WHERE clientId = ? AND type = ?`, clientId, reminderType); err != nil {
+		return fmt.Errorf("failed to delete reminder: %w", err)
+	}
+	return nil
+}
+
 /*
 Find a notification client by its subscription
 
@@ -794,104 +804,102 @@ stopId MUST be a PARENT stop (can be "" for broad query)
 */
 func (v *Database) FindNotificationClient(endpoint, p256dh, auth string, parentStopId string) (*NotificationClient, error) {
 	// Query to find notification clients by stop
-	var query string
+	var (
+		query string
+		args  []any
+	)
+
 	if parentStopId == "" {
 		query = `
-			SELECT 
-				id,
-				endpoint,
-				p256dh,
-				auth,
-				recent_notifications,
-				created
-			FROM 
-				notifications
-			WHERE endpoint = ?
-			AND p256dh = ?
-			AND auth = ?
-		`
+                        SELECT
+                                id,
+                                endpoint,
+                                p256dh,
+                                auth,
+                                recent_notifications,
+                                created,
+                                expiry_warning_sent
+                        FROM
+                                notifications
+                        WHERE endpoint = ?
+                        AND p256dh = ?
+                        AND auth = ?
+                `
+		args = []any{endpoint, p256dh, auth}
 	} else {
 		query = `
-		SELECT 
-			n.id AS notification_id,
-			n.endpoint,
-			n.p256dh,
-			n.auth,
-			n.recent_notifications,
-			n.created,
-			s.routes
-		FROM 
-			notifications n
-		JOIN 
-			stops s
-		ON 
-			n.id = s.clientId  -- Adjust this to the actual column for the join
-		WHERE n.endpoint = ?
-		AND n.p256dh = ?
-		AND n.auth = ?
-		AND s.parent_stop = ?
-	`
+                        SELECT
+                                n.id AS notification_id,
+                                n.endpoint,
+                                n.p256dh,
+                                n.auth,
+                                n.recent_notifications,
+                                n.created,
+                                n.expiry_warning_sent,
+                                s.routes
+                        FROM
+                                notifications n
+                        JOIN
+                                stops s
+                        ON
+                                n.id = s.clientId
+                        WHERE n.endpoint = ?
+                        AND n.p256dh = ?
+                        AND n.auth = ?
+                        AND s.parent_stop = ?
+                `
+		args = []any{endpoint, p256dh, auth, parentStopId}
 	}
 
-	// Prepare the query
-	rows := v.db.QueryRow(query, endpoint, p256dh, auth, parentStopId)
+	row, cancel := v.queryRowContext(query, args...)
+	defer cancel()
 
-	// Iterate over the rows
-	var notification Notification
-	var recent string
-	var routesStr sql.NullString
+	var (
+		notification Notification
+		recent       sql.NullString
+		routesStr    sql.NullString
+	)
 
+	var err error
 	if parentStopId == "" {
-		err := rows.Scan(
+		err = row.Scan(
 			&notification.Id,
 			&notification.Endpoint,
 			&notification.P256dh,
 			&notification.Auth,
 			&recent,
 			&notification.Created,
+			&notification.ExpiryWarningSent,
 		)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// If no client found, return an error
-				return nil, errors.New("no clients found")
-			}
-			return nil, errors.New("failed to query/scan notification client")
-		}
 	} else {
-		err := rows.Scan(
+		err = row.Scan(
 			&notification.Id,
 			&notification.Endpoint,
 			&notification.P256dh,
 			&notification.Auth,
 			&recent,
 			&notification.Created,
+			&notification.ExpiryWarningSent,
 			&routesStr,
 		)
-		if err != nil {
-			if err == sql.ErrNoRows {
-				// If no client found, return an error
-				return nil, errors.New("no clients found")
-			}
-			return nil, errors.New("failed to query/scan notification client")
+	}
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrClientNotFound
 		}
+		return nil, errors.New("failed to query/scan notification client")
 	}
 
-	if recent != "[]" {
-		err := json.Unmarshal([]byte(recent), &notification.RecentNotifications)
-		if err != nil {
-			return nil, errors.New("failed to parse recent notifications")
-		}
+	if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
+		return nil, errors.New("failed to parse recent notifications")
 	}
 
-	// Parse routes JSON
-	var routes []string
-	if routesStr.Valid && routesStr.String != "" && routesStr.String != "[]" {
-		if err := json.Unmarshal([]byte(routesStr.String), &routes); err != nil {
-			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
-		}
+	routes, err := decodeRoutes(routesStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
 	}
 
-	client := NotificationClient{
+	client := &NotificationClient{
 		Id: notification.Id,
 		Notification: webpush.Subscription{
 			Endpoint: notification.Endpoint,
@@ -902,11 +910,12 @@ func (v *Database) FindNotificationClient(endpoint, p256dh, auth string, parentS
 		},
 		RecentNotifications: notification.RecentNotifications,
 		Created:             notification.Created,
-		db:                  v,
+		ExpiryWarningSent:   notification.ExpiryWarningSent,
 		Routes:              routes,
+		db:                  v,
 	}
 
-	return &client, nil
+	return client, nil
 }
 
 /*
@@ -914,43 +923,43 @@ Find a client by their id (only found in the db)
 */
 func (v *Database) FindNotificationClientById(id int) (*NotificationClient, error) {
 	query := `
-		SELECT 
-			endpoint,
-			p256dh,
-			auth,
-			recent_notifications,
-			created,
-			expiry_warning_sent
-		FROM 
-			notifications
-		WHERE 
-			id = ?
-	`
+                SELECT
+                        endpoint,
+                        p256dh,
+                        auth,
+                        recent_notifications,
+                        created,
+                        expiry_warning_sent
+                FROM
+                        notifications
+                WHERE
+                        id = ?
+        `
 
 	var notification Notification
-	var recent string
+	var recent sql.NullString
 
-	err := v.db.QueryRow(query, id).Scan(
+	row, cancel := v.queryRowContext(query, id)
+	defer cancel()
+
+	if err := row.Scan(
 		&notification.Endpoint,
 		&notification.P256dh,
 		&notification.Auth,
 		&recent,
 		&notification.Created,
 		&notification.ExpiryWarningSent,
-	)
-
-	if err != nil {
-		if err == sql.ErrNoRows {
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("client not found")
 		}
 		return nil, errors.New("failed to query notification client by ID")
 	}
 
-	if recent != "[]" {
-		err = json.Unmarshal([]byte(recent), &notification.RecentNotifications)
-		if err != nil {
-			return nil, errors.New("failed to parse recent notifications")
-		}
+	if notifications, err := decodeRecentNotifications(recent); err == nil {
+		notification.RecentNotifications = notifications
+	} else {
+		return nil, errors.New("failed to parse recent notifications")
 	}
 
 	client := &NotificationClient{
@@ -981,21 +990,13 @@ func (oldClient *NotificationClient) RefreshSubscription(newClient Notification)
 		return errors.New("can't update subscription to same thing")
 	}
 
-	query := `
-		UPDATE notifications
-		SET
-			endpoint = ?,
-			p256dh = ?,
-			auth = ?,
-			expiry_warning_sent = 0
-		WHERE
-			endpoint = ?
-			AND p256dh = ?
-			AND auth = ?;
-	`
-
-	_, err := oldClient.db.db.Exec(query, oldClient.Notification.Endpoint, oldClient.Notification.Keys.P256dh, oldClient.Notification.Keys.Auth, newClient.Endpoint, newClient.P256dh, newClient.Auth)
-	if err != nil {
+	if _, err := oldClient.db.execContext(
+		`UPDATE notifications SET endpoint = ?, p256dh = ?, auth = ?, expiry_warning_sent = 0 WHERE id = ?;`,
+		newClient.Endpoint,
+		newClient.P256dh,
+		newClient.Auth,
+		oldClient.Id,
+	); err != nil {
 		return errors.New("problem updating client")
 	}
 
@@ -1004,23 +1005,21 @@ func (oldClient *NotificationClient) RefreshSubscription(newClient Notification)
 		return errors.New("problem retrieving new client")
 	}
 
-	oldClient = newRecord
+	*oldClient = *newRecord
 
 	return nil
 }
 
-func (v Database) SetClientExpiryWarningSent(client NotificationClient) error {
+func (v *Database) SetClientExpiryWarningSent(client NotificationClient) error {
 	query := `
-		UPDATE notifications
-		SET
-			expiry_warning_sent = 1
-		WHERE
-			endpoint = ?
-			AND p256dh = ?
-			AND auth = ?;
-	`
+                UPDATE notifications
+                SET
+                        expiry_warning_sent = 1
+                WHERE
+                        id = ?;
+        `
 
-	_, err := v.db.Exec(query, client.Notification.Endpoint, client.Notification.Keys.P256dh, client.Notification.Keys.Auth)
+	_, err := v.execContext(query, client.Id)
 	if err != nil {
 		return errors.New("problem updating client")
 	}
