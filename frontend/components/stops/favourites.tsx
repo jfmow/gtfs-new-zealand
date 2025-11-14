@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useEffect, useState } from "react"
-import { Star, TriangleAlert } from "lucide-react"
+import { Star } from "lucide-react"
 import { Button } from "../ui/button"
 import { Input } from "../ui/input"
 import {
@@ -65,9 +65,8 @@ export default function Favorites({
                     </Link>
                 ))
             ) : (
-                <div className="flex flex-col w-full text-gray-500 items-center gap-1 justify-center col-span-2">
-                    <TriangleAlert className="w-4 h-4 !rotate-0" />
-                    <p className="text-sm">No favorites added yet.</p>
+                <div className="flex flex-col w-full text-gray-500 items-center gap-0 p-2 justify-center col-span-2">
+                    <p className="text-sm">No favorites saved</p>
                 </div>
             )}
         </div>

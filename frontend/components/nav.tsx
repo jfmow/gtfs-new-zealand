@@ -185,7 +185,7 @@ export default function NavBar() {
 
                                     </motion.ul>
                                     <motion.div
-                                        className='flex items-center justify-start mb-2 mt-auto'
+                                        className='flex items-center justify-start mb-2 mt-auto border-b pb-2'
                                         variants={{
                                             hidden: { opacity: 0, x: -20 },
                                             show: { opacity: 1, x: 0 },
