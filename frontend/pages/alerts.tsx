@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { BellDot, MegaphoneOff, Clock, MapPin, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
+import { BellDot, MegaphoneOff, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -10,25 +10,35 @@ import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 import { Header } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 
+interface AlertResponse {
+    alerts: AlertByRouteId;
+    routes_to_display: string[]
+}
+
+type AlertByRouteId = Record<string, AlertType[]>;
 
 export default function Alerts() {
-    const [alerts, setAlerts] = useState<AlertType[]>([])
+    const [alerts, setAlerts] = useState<AlertByRouteId>({})
     const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s", "r"] } })
     const [loading, setLoading] = useState(false)
+    const [routes, setRoutes] = useState<string[]>([])
 
     useEffect(() => {
         if (selected_stop.found) {
             setLoading(true)
-            ApiFetch<AlertType[]>(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`).then(async (res) => {
+            ApiFetch<AlertResponse>(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`).then(async (res) => {
                 if (res.ok) {
-                    setAlerts(res.data)
+                    setAlerts(res.data.alerts)
+                    setRoutes(res.data.routes_to_display)
+                    console.log(res.data)
                 } else {
-                    setAlerts([])
+                    setAlerts({})
+                    setRoutes([])
                 }
                 setLoading(false)
             })
@@ -41,7 +51,7 @@ export default function Alerts() {
             <div className="w-full">
                 <div className="mx-auto max-w-[1400px] flex flex-col p-4 pt-0">
                     <div className="flex items-center gap-2 mb-4">
-                        <StopNotifications stopName={selected_stop.value} routes={Array.from(new Set(alerts.flatMap((a) => a.affected)))}>
+                        <StopNotifications stopName={selected_stop.value} routes={routes}>
                             <Button variant={"secondary"}>
                                 <BellDot />
                                 <span className="hidden sm:block">Notifications</span>
@@ -53,7 +63,7 @@ export default function Alerts() {
                         <LoadingSpinner description="Loading alerts..." />
                     ) : (
                         <div className="">
-                            {alerts.length > 0 ? (
+                            {Object.keys(alerts).length > 0 ? (
                                 <GroupedAlertsByRoute alerts={alerts} />
                             ) : selected_stop.found ? (
                                 <div className="col-span-full">
@@ -78,26 +88,8 @@ export default function Alerts() {
     )
 }
 
-function groupAlertsByRoute(alerts: AlertType[]) {
-    const grouped: Record<string, AlertType[]> = {}
-
-    alerts.forEach((alert) => {
-        if (alert.affected.length > 0) {
-            alert.affected.forEach((route) => {
-                if (!grouped[route]) grouped[route] = []
-                grouped[route].push(alert)
-            })
-        } else {
-            if (!grouped["No Route"]) grouped["No Route"] = []
-            grouped["No Route"].push(alert)
-        }
-    })
-
-    return grouped
-}
-
-function GroupedAlertsByRoute({ alerts }: { alerts: AlertType[] }) {
-    const groupedAlerts = groupAlertsByRoute(alerts)
+function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
+    const groupedAlerts = alerts
     const [openRoute, setOpenRoute] = useState<string | null>(
         Object.keys(groupedAlerts)[0] || null
     )
@@ -317,23 +309,6 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
                     </Collapsible>
                 </div>
 
-                {alert.affected.length > 0 && !reducedContent && (
-                    <Collapsible>
-                        <CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium text-primary hover:underline">
-                            <MapPin className="h-4 w-4" />
-                            Affected routes ({alert.affected.length})
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="mt-2">
-                            <ul className="pl-6 space-y-1 text-sm text-muted-foreground">
-                                {alert.affected.map((item, idx) => (
-                                    <li key={idx} className="list-disc">
-                                        {item}
-                                    </li>
-                                ))}
-                            </ul>
-                        </CollapsibleContent>
-                    </Collapsible>
-                )}
             </CardContent>
 
             <CardFooter className="pt-0">
@@ -365,7 +340,6 @@ export interface AlertType {
     effect: string
     title: string
     description: string
-    affected: string[]
 }
 
 const causeSeverityMap: Record<

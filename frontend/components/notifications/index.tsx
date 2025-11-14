@@ -149,7 +149,7 @@ export default function StopNotifications({
                                     }
                                 }}
                             >
-                                Disable all alerts
+                                Disable All Notifications
                             </Button>
 
                             <div className="flex items-center gap-2">

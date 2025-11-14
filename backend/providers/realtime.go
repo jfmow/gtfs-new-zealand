@@ -197,6 +197,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		var foundRoutes map[string]gtfs.Route = make(map[string]gtfs.Route)
+		var routesKeys []string
 
 		for _, child := range childStops {
 			//Get all the routes that stop at our parent stop's platforms
@@ -209,6 +210,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					continue
 				}
 				foundRoutes[v.RouteId] = v
+				routesKeys = append(routesKeys, v.RouteId)
 			}
 
 		}
@@ -217,69 +219,38 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "no routes found for stop: "+stopName))
 		}
 
-		var foundAlerts []AlertResponse
+		// Make sure this is initialised somewhere before the loop
+		foundAlerts := make(map[string][]AlertResponseData)
 
 		for _, route := range foundRoutes {
 			alertsForRoute, err := alerts.FindAlertsByRouteId(route.RouteId)
 			if err != nil {
 				continue // No alerts for this route
 			}
+
 			for _, alert := range alertsForRoute {
 				if filterByToday {
-					var isToday = false
+					isToday := false
 					for _, period := range alert.GetActivePeriod() {
 						startTime := time.Unix(int64(period.GetStart()), 0)
 						nowDay := time.Now().In(localTimeZone).YearDay()
 						alertDay := startTime.In(localTimeZone).YearDay()
 						if nowDay == alertDay {
 							isToday = true
+							break // no need to keep checking
 						}
 					}
 					if !isToday {
 						continue
 					}
 				}
-				seenAffected := make(map[string]struct{})
-				var affected []string
-
-				for i := range alert.GetInformedEntity() {
-					stopID := alert.GetInformedEntity()[i].GetStopId()
-					routeId := alert.GetInformedEntity()[i].GetRouteId()
-					if routeId != "" {
-						// Check if we've already processed this parent stop
-						if _, exists := seenAffected[routeId]; exists {
-							continue
-						}
-
-						// Add to the set
-						seenAffected[routeId] = struct{}{}
-
-						// Update the stop ID to parent stop name
-						affected = append(affected, routeId)
-					} else if stopID != "" {
-						stop, err := gtfsData.GetParentStopByChildStopID(stopID)
-						if err != nil {
-							continue
-						}
-
-						// Check if we've already processed this parent stop
-						if _, exists := seenAffected[stop.StopId]; exists {
-							continue
-						}
-
-						// Add to the set
-						seenAffected[stop.StopId] = struct{}{}
-
-						// Update the stop ID to parent stop name
-						affected = append(affected, stop.StopName)
-					}
-				}
 
 				activePeriods := alert.GetActivePeriod()
 				if len(activePeriods) == 0 {
-					//no start or end
+					// no start or end
 					continue
 				}
+
 				smallestStart := activePeriods[0].GetStart()
 				biggestEnd := activePeriods[0].GetEnd()
 
@@ -292,18 +263,18 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					}
 				}
 
-				var parsedAlert = AlertResponse{
+				parsedAlert := AlertResponseData{
 					StartDate:   int(smallestStart),
 					EndDate:     int(biggestEnd),
 					Cause:       alert.GetCause().String(),
 					Effect:      alert.GetEffect().String(),
 					Title:       alert.GetHeaderText().GetTranslation()[0].GetText(),
 					Description: alert.GetDescriptionText().GetTranslation()[0].GetText(),
-					Affected:    affected,
 					Severity:    alert.GetSeverityLevel().String(),
 				}
 
-				foundAlerts = append(foundAlerts, parsedAlert)
+				// 🔑 append to the slice for this route
+				foundAlerts[route.RouteId] = append(foundAlerts[route.RouteId], parsedAlert)
 			}
 		}
 
@@ -311,11 +282,18 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusNotFound, "no alerts found", nil, ResponseDetails("stopName", stopName, "details", "No alerts found for the given stop"))
 		}
 		//Sort by start, smallest to biggest
-		sort.Slice(foundAlerts, func(i, j int) bool {
-			return foundAlerts[i].StartDate < foundAlerts[j].StartDate
-		})
+		for routeID := range foundAlerts {
+			sort.Slice(foundAlerts[routeID], func(i, j int) bool {
+				return foundAlerts[routeID][i].StartDate < foundAlerts[routeID][j].StartDate
+			})
+		}
 
-		return JsonApiResponse(c, http.StatusOK, "", foundAlerts)
+		response := AlertResponse{
+			Alerts:          foundAlerts,
+			RoutesToDisplay: routesKeys,
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", response)
 	})
 
 	realtimeRoute.GET("/stop-times", func(c echo.Context) error {
@@ -759,12 +737,16 @@ type VehiclesPosition struct {
 
 // Alerts response
 type AlertResponse struct {
-	StartDate   int      `json:"start_date"`
-	EndDate     int      `json:"end_date"`
-	Cause       string   `json:"cause"`
-	Effect      string   `json:"effect"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Affected    []string `json:"affected"`
-	Severity    string   `json:"severity"`
+	Alerts          map[string][]AlertResponseData `json:"alerts"`
+	RoutesToDisplay []string                       `json:"routes_to_display"`
+}
+
+type AlertResponseData struct {
+	StartDate   int    `json:"start_date"`
+	EndDate     int    `json:"end_date"`
+	Cause       string `json:"cause"`
+	Effect      string `json:"effect"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Severity    string `json:"severity"`
 }
