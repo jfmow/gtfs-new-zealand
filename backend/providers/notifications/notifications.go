@@ -20,6 +20,11 @@ import (
 	"github.com/jfmow/gtfs/realtime/proto"
 )
 
+const (
+	recentNotificationTTL        = 72 * time.Hour
+	maxRecentNotificationEntries = 64
+)
+
 func (v *Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
 	var (
 		cachedParentStops = parentStopsCache()
@@ -255,9 +260,11 @@ hasSeenId is a unique id given to check if that notification has already been se
 
 USE A CHECK OF found clients == 0 TO CHECK IF THERE ARE NO MORE FOUND
 */
+
 func (v *Database) GetNotificationClientsByStop(parentStopId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
+	now := time.Now().In(v.timeZone)
 	query := `
-                SELECT
+SELECT
                         n.id AS notification_id,
                         n.endpoint,
                         n.p256dh,
@@ -311,19 +318,20 @@ func (v *Database) GetNotificationClientsByStop(parentStopId string, hasSeenId s
 		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
 			return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
 		}
+		notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, now)
 
 		routes, err := decodeRoutes(routesStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
 		}
 
-		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(now) {
 			client := NotificationClient{Id: notification.Id, db: v}
 			client.DeleteNotificationClient("")
 			continue
 		}
 
-		if slices.Contains(notification.RecentNotifications, hasSeenId) {
+		if hasSeenId != "" && hasSeenNotification(notification.RecentNotifications, hasSeenId, now) {
 			continue
 		}
 
@@ -361,10 +369,12 @@ routeIds must be an array of route IDs
 
 hasSeenId is a unique id given to check if that notification has already been served
 */
+
 func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, routeIds []string, updateUID string, limit int, offset int) ([]NotificationClient, error) {
 	if len(routeIds) == 0 {
 		return nil, errors.New("must provide at least 1 route id")
 	}
+	now := time.Now().In(v.timeZone)
 	// Build the query for checking any route ID matches
 	routeChecks := make([]string, len(routeIds))
 	args := make([]interface{}, 0, len(routeIds)+3) // +3 for parentStopId, limit, offset
@@ -437,15 +447,16 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
 			return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
 		}
+		notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, now)
 
 		routes, err := decodeRoutes(routesStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
 		}
 
-		// Skip old or seen clients
-		excludeClient := len(notification.RecentNotifications) > 0 && slices.Contains(notification.RecentNotifications, routeIds[0])
-		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
+		// Skip old or already notified clients
+		excludeClient := updateUID != "" && hasSeenNotification(notification.RecentNotifications, updateUID, now)
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(now) {
 			// stale - remove
 			client := NotificationClient{Id: notification.Id, db: v}
 			client.DeleteNotificationClient("")
@@ -486,6 +497,7 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 	if limit > 1000 {
 		fmt.Println("Don't you think that this limit is a bit high? (Func: GetNotificationClients)")
 	}
+	now := time.Now().In(v.timeZone)
 
 	// Query to find notification clients by stop
 	query := `
@@ -536,6 +548,8 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
 			return nil, errors.New("failed to parse recent notifications")
 		}
+		notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, time.Now().In(v.timeZone))
+		notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, now)
 
 		client := NotificationClient{
 			Id: notification.Id,
@@ -552,7 +566,7 @@ func (v *Database) GetNotificationClients(limit int, offset int) ([]Notification
 			db:                  v,
 		}
 
-		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(time.Now().In(v.timeZone)) {
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(now) {
 			//The notification is > 30 days old
 			//remove it
 			client.DeleteNotificationClient("")
@@ -651,13 +665,15 @@ func (client NotificationClient) SendNotification(body, title string, data map[s
 Update the trip_id's we've already seen
 */
 func (client *NotificationClient) AppendToRecentNotifications(newNotification string) error {
+	if newNotification == "" {
+		return nil
+	}
 
-	// Query to fetch the current `recent_notifications` array
 	query := `
-                SELECT recent_notifications
-                FROM notifications
-                WHERE id = ?
-        `
+SELECT recent_notifications
+FROM notifications
+WHERE id = ?
+`
 
 	row, cancel := client.db.queryRowContext(query, client.Id)
 	defer cancel()
@@ -674,10 +690,14 @@ func (client *NotificationClient) AppendToRecentNotifications(newNotification st
 	if err != nil {
 		return errors.New("failed to unmarshal recent notifications")
 	}
+	now := time.Now().In(client.db.timeZone)
+	notifications = pruneRecentNotificationEntries(notifications, now)
+	notifications = append(notifications, RecentNotificationEntry{ID: newNotification, SeenAt: now.Unix()})
+	if len(notifications) > maxRecentNotificationEntries {
+		notifications = notifications[len(notifications)-maxRecentNotificationEntries:]
+	}
 
-	notifications = append(notifications, newNotification)
-
-	updatedNotifications, err := json.Marshal(notifications)
+	updatedNotifications, err := encodeRecentNotifications(notifications)
 	if err != nil {
 		return errors.New("failed to marshal updated notifications")
 	}
@@ -693,6 +713,56 @@ func (client *NotificationClient) AppendToRecentNotifications(newNotification st
 	client.RecentNotifications = notifications
 
 	return nil
+}
+
+func hasSeenNotification(entries []RecentNotificationEntry, target string, now time.Time) bool {
+	if target == "" || len(entries) == 0 {
+		return false
+	}
+	cutoff := now.Add(-recentNotificationTTL).Unix()
+	for _, entry := range entries {
+		if entry.ID != target {
+			continue
+		}
+		seenAt := entry.SeenAt
+		if seenAt == 0 {
+			seenAt = now.Unix()
+		}
+		if seenAt >= cutoff {
+			return true
+		}
+	}
+	return false
+}
+
+func pruneRecentNotificationEntries(entries []RecentNotificationEntry, now time.Time) []RecentNotificationEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	cutoff := now.Add(-recentNotificationTTL).Unix()
+	pruned := make([]RecentNotificationEntry, 0, len(entries))
+	seen := make(map[string]struct{}, len(entries))
+	for _, entry := range entries {
+		if entry.ID == "" {
+			continue
+		}
+		seenAt := entry.SeenAt
+		if seenAt == 0 {
+			seenAt = now.Unix()
+		}
+		if seenAt < cutoff {
+			continue
+		}
+		if _, exists := seen[entry.ID]; exists {
+			continue
+		}
+		pruned = append(pruned, RecentNotificationEntry{ID: entry.ID, SeenAt: seenAt})
+		seen[entry.ID] = struct{}{}
+	}
+	if len(pruned) > maxRecentNotificationEntries {
+		pruned = pruned[len(pruned)-maxRecentNotificationEntries:]
+	}
+	return pruned
 }
 
 /*
@@ -961,6 +1031,7 @@ func (v *Database) FindNotificationClientById(id int) (*NotificationClient, erro
 	} else {
 		return nil, errors.New("failed to parse recent notifications")
 	}
+	notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, time.Now().In(v.timeZone))
 
 	client := &NotificationClient{
 		Id: id,
@@ -1029,7 +1100,7 @@ func (v *Database) SetClientExpiryWarningSent(client NotificationClient) error {
 type NotificationClient struct {
 	Id                  int
 	Notification        webpush.Subscription
-	RecentNotifications []string
+	RecentNotifications []RecentNotificationEntry
 	Created             int
 	ExpiryWarningSent   int
 	db                  *Database

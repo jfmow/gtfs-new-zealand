@@ -124,7 +124,7 @@ type Notification struct {
 	Endpoint            string
 	P256dh              string
 	Auth                string
-	RecentNotifications []string
+	RecentNotifications []RecentNotificationEntry
 	Created             int
 	ExpiryWarningSent   int
 }
@@ -138,16 +138,49 @@ type Reminder struct {
 	Created      time.Time
 }
 
-func decodeRecentNotifications(raw sql.NullString) ([]string, error) {
+type RecentNotificationEntry struct {
+	ID     string `json:"id"`
+	SeenAt int64  `json:"seen_at,omitempty"`
+}
+
+func decodeRecentNotifications(raw sql.NullString) ([]RecentNotificationEntry, error) {
 	if !raw.Valid || raw.String == "" || raw.String == "[]" {
 		return nil, nil
 	}
 
-	var notifications []string
-	if err := json.Unmarshal([]byte(raw.String), &notifications); err != nil {
+	var entries []RecentNotificationEntry
+	if err := json.Unmarshal([]byte(raw.String), &entries); err == nil {
+		var cleaned []RecentNotificationEntry
+		for _, entry := range entries {
+			if entry.ID == "" {
+				continue
+			}
+			cleaned = append(cleaned, entry)
+		}
+		return cleaned, nil
+	}
+
+	var legacy []string
+	if err := json.Unmarshal([]byte(raw.String), &legacy); err != nil {
 		return nil, err
 	}
-	return notifications, nil
+
+	entries = make([]RecentNotificationEntry, 0, len(legacy))
+	for _, id := range legacy {
+		if id == "" {
+			continue
+		}
+		entries = append(entries, RecentNotificationEntry{ID: id})
+	}
+
+	return entries, nil
+}
+
+func encodeRecentNotifications(entries []RecentNotificationEntry) ([]byte, error) {
+	if len(entries) == 0 {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(entries)
 }
 
 func encodeRoutes(routes []string) ([]byte, error) {
