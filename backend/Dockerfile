@@ -3,7 +3,7 @@
 ########################
 # Build stage
 ########################
-FROM --platform=$TARGETPLATFORM golang:1.23-alpine AS builder
+FROM --platform=$TARGETPLATFORM golang:1.24-alpine AS builder
 
 # We need a compiler + libc headers for CGO
 RUN apk add --no-cache build-base tzdata
@@ -36,7 +36,7 @@ RUN if [ "$TARGETARCH" = "arm" ]; then \
 ########################
 # Runtime stage
 ########################
-FROM alpine:3.20.2
+FROM alpine:latest
 
 # Install tzdata package to get time zone information
 RUN apk add --no-cache tzdata
