@@ -112,9 +112,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			tripUpdate, err := tripUpdates.ByTripID(currentTripId)
-			if err != nil {
+			if err != nil || !checkIfTripStarted(tripUpdate.GetTrip().GetStartTime(), tripUpdate.GetTrip().GetStartDate(), localTimeZone) {
 				continue //skip because it's probably not in service
 			}
+
 			if filterTripId != "" {
 				var tripData VehiclesTrip
 				//If they are selecting a single vehicle, we can give stop info, otherwise its a waste of time because we don't even show it
@@ -162,6 +163,10 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			response = append(response, responseData)
+		}
+
+		if len(response) == 0 {
+			return JsonApiResponse(c, http.StatusNotFound, "no vehicles found", nil, ResponseDetails("error", "No vehicles found matching the given criteria"))
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", response)
@@ -700,6 +705,29 @@ func haversine(lat1, lon1, lat2, lon2 float64) float64 {
 	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
 
 	return R * c
+}
+
+/*
+startTime = HH:MM:SS
+startDate = YYYYMMDD
+
+returns true by default
+*/
+func checkIfTripStarted(startTime, startDate string, localTimeZone *time.Location) bool {
+	now := time.Now().In(localTimeZone)
+	if startTime != "" && startDate != "" {
+		parsedStartTime, err := time.ParseInLocation("15:04:05", startTime, localTimeZone)
+		if err == nil {
+			parsedStartDate, err := time.ParseInLocation("20060102", startDate, localTimeZone)
+			if err == nil {
+				combinedStartDateTime := time.Date(parsedStartDate.Year(), parsedStartDate.Month(), parsedStartDate.Day(), parsedStartTime.Hour(), parsedStartTime.Minute(), parsedStartTime.Second(), 0, localTimeZone)
+				if now.Before(combinedStartDateTime) {
+					return false
+				}
+			}
+		}
+	}
+	return true
 }
 
 // Vehicles

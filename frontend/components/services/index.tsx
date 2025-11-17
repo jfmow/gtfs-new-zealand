@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AccessibilityIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
+import { AccessibilityIcon, BadgeInfo, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
@@ -11,6 +11,7 @@ import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
 import { Button } from "../ui/button"
 import { motion, AnimatePresence } from "framer-motion"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 
 interface ServicesProps {
     stopName: string
@@ -30,11 +31,13 @@ export interface Service {
     wheelchairs_allowed: number
     route: ServicesRoute
     stop: ServicesStop
-    tracking: boolean
+    trip_update_tracking: boolean
+    location_tracking: boolean
     departed: boolean
     time_till_arrival: number
     stop_state: "Arrived" | "Departed" | "Arriving" | "Boarding"
     platform_changed: boolean
+    trip_started: boolean
 }
 
 export interface ServicesRoute {
@@ -341,6 +344,18 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     >
                                                         {service.route.name}
                                                     </span>
+                                                    {service.trip_update_tracking && !service.location_tracking && service.trip_started && (
+                                                        <TooltipProvider>
+                                                            <Tooltip delayDuration={0}>
+                                                                <TooltipTrigger>
+                                                                    <BadgeInfo className="w-4 h-4" />
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    <p>Partial service updates available</p>
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        </TooltipProvider>
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardTitle>
@@ -397,7 +412,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                     }}
                                                     currentStop={service.stop}
                                                     loaded={true}
-                                                    has={service.tracking}
+                                                    has={service.location_tracking}
                                                     tripId={service.trip_id}
                                                 />
                                                 <div
