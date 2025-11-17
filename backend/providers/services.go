@@ -103,10 +103,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Platform:           service.Platform,
 				Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
 				Stop:               &ServicesStop{ParentStopId: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
-				Tracking:           false,
+				LocationTracking:   false,
+				TripUpdateTracking: false,
 				TripId:             service.TripID,
 				WheelchairsAllowed: service.StopData.WheelChairBoarding,
 				BikesAllowed:       service.TripData.BikesAllowed,
+				TripStarted:        true,
 			}
 
 			defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
@@ -125,7 +127,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 			if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
 				response.Occupancy = int8(foundVehicle.GetOccupancyStatus())
-				response.Tracking = true
+				response.LocationTracking = true
 				if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
 					response.Canceled = true
 				}
@@ -139,6 +141,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
+				response.TripUpdateTracking = true
+
+				startTime := tripUpdate.GetTrip().GetStartTime() // "HH:MM:SS"
+				startDate := tripUpdate.GetTrip().GetStartDate() // "YYYYMMDD"
+				response.TripStarted = checkIfTripStarted(startTime, startDate, localTimeZone)
+
 				arrivalTimePlusDelay := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
 
 				formattedArrivalTime := arrivalTimePlusDelay.Format("15:04:05")
@@ -259,7 +267,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Lon:          service.StopData.StopLon,
 				Name:         stop.StopName,
 			}
-			response.Tracking = false
+			response.LocationTracking = false
 			response.TripId = service.TripID
 
 			result = append(result, response)
@@ -286,10 +294,12 @@ type ServicesResponse2 struct {
 
 	Stop *ServicesStop `json:"stop"`
 
-	Tracking        bool   `json:"tracking"`
-	Departed        bool   `json:"departed"`
-	TimeTillArrival int    `json:"time_till_arrival"`
-	StopState       string `json:"stop_state"`
+	LocationTracking   bool   `json:"location_tracking"`
+	TripUpdateTracking bool   `json:"trip_update_tracking"`
+	Departed           bool   `json:"departed"`
+	TimeTillArrival    int    `json:"time_till_arrival"`
+	StopState          string `json:"stop_state"`
+	TripStarted        bool   `json:"trip_started"`
 
 	PlatformChanged bool `json:"platform_changed"`
 }
