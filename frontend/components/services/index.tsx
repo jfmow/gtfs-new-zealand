@@ -361,7 +361,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         </CardTitle>
 
                                         <CardDescription className="text-sm">
-                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                                            <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                                                 <div className="space-y-1">
                                                     {service.platform_changed && (
                                                         <p className="font-semibold text-red-600 dark:text-red-400 text-xs uppercase tracking-wide">
@@ -404,16 +404,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         <CardContent className={`pt-0 ${service.canceled || service.departed || service.skipped ? "hidden" : ""}`}>
                                             <div className="grid grid-cols-2 items-stretch gap-2">
                                                 <ServiceTrackerModal
-                                                    previewData={{
-                                                        tripHeadsign: service.headsign,
-                                                        route_id: service.route.id,
-                                                        route_name: service.route.name,
-                                                        trip_id: service.trip_id,
-                                                    }}
-                                                    currentStop={service.stop}
-                                                    loaded={true}
-                                                    has={service.location_tracking}
-                                                    tripId={service.trip_id}
+                                                    service={service}
                                                 />
                                                 <div
                                                     className="flex items-center justify-center text-center rounded-md font-semibold p-1 bg-primary/10 text-primary border border-primary/20"
@@ -506,7 +497,7 @@ function sortServices(services: Service[], platformFilter: string | number | und
 }
 
 function formatArrivalTime(minutes: number): string {
-    if (minutes <= 0.5) return "Arriving now"
+    if (minutes <= 0.5) return "now"
 
     const hours = Math.floor(minutes / 60)
     const mins = Math.round(minutes % 60)

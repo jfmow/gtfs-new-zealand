@@ -1,14 +1,14 @@
 import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import LoadingSpinner from "../../loading-spinner"
-import { formatTextToNiceLookingWords, formatUnixTime } from "@/lib/formating"
+import { formatUnixTime } from "@/lib/formating"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 import StopsList from "./stops-list"
 import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, ClockIcon, Navigation2 } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, House } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 
@@ -21,7 +21,6 @@ interface ServiceTrackerContentProps {
     stops: ServicesStop[] | null
     stopTimes: StopTimes[] | null
     previewData?: PreviewData
-    has: boolean
     tripId: string
     currentStop?: {
         id: string
@@ -38,7 +37,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     vehicle,
     stops,
     previewData,
-    has,
     tripId,
     currentStop,
     stopTimes,
@@ -297,49 +295,62 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     }
 
     // Preview mode
-    if (!has && previewData && stops) {
+    if (!vehicle && previewData && stops) {
         const sortedStops = stops.sort((a, b) => a.sequence - b.sequence)
         const mapBounds = getBoundsFromStops(sortedStops);
 
         return (
-            <div className="space-y-4 sm:space-y-6">
+            <div className="space-y-4 sm:space-y-6 relative">
                 <div>
                     <div className="flex items-start justify-between gap-3 mb-4">
                         <div className="flex-1 min-w-0">
-                            <h2 className="text-xl sm:text-2xl font-bold mb-2">
-                                {formatTextToNiceLookingWords(previewData.tripHeadsign)}
-                            </h2>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <ClockIcon className="h-4 w-4" />
-                                <span>Service Preview</span>
-                                <span>•</span>
-                                <span>{stops.length} stops</span>
+                            <div className="flex items-center w-full flex-nowrap gap-3 mb-4">
+                                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                    <span
+                                        aria-label="Service route name"
+                                        className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
+                                        style={{
+                                            background: "#" + (previewData.route_color !== "" ? previewData.route_color : "000000"),
+                                            filter: "brightness(0.9) contrast(1.1)",
+                                        }}
+                                    >
+                                        {previewData.route_name}
+                                    </span>
+                                </div>
+                                <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
+                                    {previewData.tripHeadsign}
+                                </h1>
                             </div>
+                            <Card>
+                                <CardContent className="p-4">
+                                    <div className="flex flex-wrap gap-1 items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <House className="h-4 w-4 text-blue-600" />
+                                                <span className="font-medium">Stops:</span>
+                                                <span>{stops.length}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <MapPinIcon className="h-4 w-4 text-green-600" />
+                                                <span className="font-medium">From:</span>
+                                                <span>{sortedStops[0].name}</span>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <FlagIcon className="h-4 w-4 text-red-600" />
+                                                <span className="font-medium">To:</span>
+                                                <span>{sortedStops[sortedStops.length - 1].name}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
                         </div>
-                        {refreshing && <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin text-muted-foreground" />}
                     </div>
 
-                    {/* Route Summary */}
-                    <Card className="mb-4">
-                        <CardContent className="p-4">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <MapPinIcon className="h-4 w-4 text-green-600" />
-                                        <span className="font-medium">From:</span>
-                                        <span>{sortedStops[0].name}</span>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <FlagIcon className="h-4 w-4 text-red-600" />
-                                        <span className="font-medium">To:</span>
-                                        <span>{sortedStops[sortedStops.length - 1].name}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
                 </div>
 
                 <Tabs defaultValue="track" className="w-full">
