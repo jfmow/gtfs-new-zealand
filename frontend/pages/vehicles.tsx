@@ -96,7 +96,7 @@ export default function Vehicles() {
         <>
             <Header title="Vehicle tracker" />
             <div
-                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 py-4 transition-all duration-300 h-full flex-grow ${fullscreen
+                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 transition-all duration-300 h-full flex-grow ${fullscreen
                     ? "fixed inset-0 z-50 bg-background p-0 max-w-none"
                     : ""
                     }`} // ⬅️ NEW
