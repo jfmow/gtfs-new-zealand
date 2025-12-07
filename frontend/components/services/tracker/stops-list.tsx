@@ -52,7 +52,7 @@ export default function StopsList({
     }
 
     const getStopTime = (stopId: string) =>
-        stopTimes?.find((st) => st.parent_stop_id === stopId)
+        stopTimes?.find((st) => st.parent_stop_id === stopId || st.child_stop_id === stopId)
 
     const getVehiclePosition = () => {
         if (!stops || !vehicle) return null
