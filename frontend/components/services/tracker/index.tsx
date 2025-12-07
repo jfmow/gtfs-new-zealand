@@ -1,7 +1,7 @@
 import { memo, useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "../../ui/button"
-import { Loader2, MapIcon, Navigation } from "lucide-react"
+import { Eye, Loader2, Navigation } from "lucide-react"
 import { getStopsForTrip } from "../stops"
 import { ApiFetch } from "@/lib/url-context"
 import ServiceTrackerContent from "./body"
@@ -164,7 +164,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                         </>
                     ) : (
                         <>
-                            <MapIcon className="w-4 h-4" />
+                            <Eye className="w-4 h-4" />
                             Preview
                         </>
                     )}

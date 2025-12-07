@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AccessibilityIcon, BadgeInfo, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
+import { AccessibilityIcon, BadgeInfo, BadgeInfoIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
@@ -441,49 +441,52 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     Service information legend
                 </h2>
                 <div className="space-y-4">
-                    <p className="text-sm text-muted-foreground font-medium">Displaying the next 20 services for each platform</p>
+                    <div className="flex items-center gap-1">
+                        <BadgeInfoIcon className="w-4 h-4" />
+                        <p className="text-sm text-muted-foreground font-medium">Tracking data is incomplete, but service is updating.</p>
+                    </div>
 
                     <div className="grid sm:grid-cols-2 gap-4">
                         <div>
                             <h3 className="text-sm font-semibold mb-2 text-foreground">Bicycle Access</h3>
-                            <div className="space-y-2">
-                                <div className="flex gap-2 items-center">
+                            <ul className="space-y-2">
+                                <li className="flex gap-2 items-center">
                                     <BikeIcon aria-hidden="true" className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
                                     <span className="text-sm text-muted-foreground">Bikes are allowed</span>
-                                </div>
-                                <div className="flex gap-2 items-center">
+                                </li>
+                                <li className="flex gap-2 items-center">
                                     <BikeIcon aria-hidden="true" className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
-                                    <span className="text-sm text-muted-foreground">Bikes might be allowed (please ask)</span>
-                                </div>
-                                <div className="flex gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Bikes might be allowed</span>
+                                </li>
+                                <li className="flex gap-2 items-center">
                                     <BikeIcon aria-hidden="true" className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
                                     <span className="text-sm text-muted-foreground">Bikes are not allowed</span>
-                                </div>
-                            </div>
+                                </li>
+                            </ul>
                         </div>
 
                         <div>
                             <h3 className="text-sm font-semibold mb-2 text-foreground">Wheelchair Accessibility</h3>
-                            <div className="space-y-2">
-                                <div className="flex gap-2 items-center">
+                            <ul className="space-y-2">
+                                <li className="flex gap-2 items-center">
                                     <AccessibilityIcon
                                         aria-hidden="true"
                                         className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0"
                                     />
                                     <span className="text-sm text-muted-foreground">Wheelchair accessible</span>
-                                </div>
-                                <div className="flex gap-2 items-center">
+                                </li>
+                                <li className="flex gap-2 items-center">
                                     <AccessibilityIcon
                                         aria-hidden="true"
                                         className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0"
                                     />
-                                    <span className="text-sm text-muted-foreground">Accessibility unknown (please ask)</span>
-                                </div>
-                                <div className="flex gap-2 items-center">
+                                    <span className="text-sm text-muted-foreground">Accessibility unknown</span>
+                                </li>
+                                <li className="flex gap-2 items-center">
                                     <AccessibilityIcon aria-hidden="true" className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
                                     <span className="text-sm text-muted-foreground">Not wheelchair accessible</span>
-                                </div>
-                            </div>
+                                </li>
+                            </ul>
                         </div>
                     </div>
                 </div>

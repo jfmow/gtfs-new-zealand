@@ -8,7 +8,7 @@ import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, House } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 
@@ -325,21 +325,20 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                 <CardContent className="p-4">
                                     <div className="flex flex-wrap gap-1 items-center justify-between">
                                         <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <House className="h-4 w-4 text-blue-600" />
+                                            <div className="flex items-center gap-1 text-sm">
                                                 <span className="font-medium">Stops:</span>
                                                 <span>{stops.length}</span>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-2 text-sm">
+                                            <div className="flex items-center gap-1 text-sm">
                                                 <MapPinIcon className="h-4 w-4 text-green-600" />
                                                 <span className="font-medium">From:</span>
                                                 <span>{sortedStops[0].name}</span>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <div className="flex items-center gap-2 text-sm">
+                                            <div className="flex items-center gap-1 text-sm">
                                                 <FlagIcon className="h-4 w-4 text-red-600" />
                                                 <span className="font-medium">To:</span>
                                                 <span>{sortedStops[sortedStops.length - 1].name}</span>
