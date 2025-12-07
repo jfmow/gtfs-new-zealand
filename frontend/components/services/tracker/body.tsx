@@ -300,9 +300,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         const mapBounds = getBoundsFromStops(sortedStops);
 
         return (
-            <div className="space-y-4 sm:space-y-6 relative">
+            <div className="space-y-3 relative">
                 <div>
-                    <div className="flex items-start justify-between gap-3 mb-4">
+                    <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center w-full flex-nowrap gap-3 mb-4">
                                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
