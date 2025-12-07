@@ -7,12 +7,20 @@ import { ApiFetch } from "@/lib/url-context"
 import ServiceTrackerContent from "./body"
 import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet"
-import { Service } from ".."
 
 interface ServiceTrackerModalProps {
-    service: Service
+    tripId: string
+    currentStop?: {
+        id: string
+        lat: number
+        lon: number
+        name: string
+    }
     defaultOpen?: boolean
     onOpenChange?: (v: boolean) => void
+    loaded: boolean
+    has: boolean
+    previewData?: PreviewData
 }
 
 export interface PreviewData {
@@ -38,9 +46,13 @@ export interface StopTimes {
 const REFRESH_INTERVAL = 10 // Refresh interval in seconds
 
 const ServiceTrackerModal = memo(function ServiceTrackerModal({
-    service,
+    loaded,
+    tripId,
+    currentStop,
+    has,
     defaultOpen,
     onOpenChange,
+    previewData,
 }: ServiceTrackerModalProps) {
     const [stops, setStops] = useState<ServicesStop[] | null>(null)
     const [stopTimes, setStopTimes] = useState<StopTimes[]>([])
@@ -57,13 +69,13 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             }
 
             try {
-                if (!service.location_tracking) { //does not have tracking
-                    const stopsData = await getStopsForTrip(service.trip_id)
+                if (!has) {
+                    const stopsData = await getStopsForTrip(tripId)
                     if (stopsData) {
                         setStops(stopsData)
                     }
-                } else { //does have tracking
-                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live?tripId=${fullyEncodeURIComponent(service.trip_id)}`, {
+                } else {
+                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live?tripId=${fullyEncodeURIComponent(tripId)}`, {
                         method: "GET"
                     })
                     if (!res.ok) {
@@ -73,12 +85,12 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                         if (res.data && res.data.length >= 1) {
                             const vehicle = res.data[0]
                             setVehicle(vehicle)
-                            const stopsData = await getStopsForTrip(service.trip_id)
+                            const stopsData = await getStopsForTrip(tripId)
                             if (stopsData) {
                                 setStops(stopsData)
                             }
                         } else {
-                            const stopsData = await getStopsForTrip(service.trip_id)
+                            const stopsData = await getStopsForTrip(tripId)
                             if (stopsData) {
                                 setStops(stopsData)
                             }
@@ -86,7 +98,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                     }
                 }
 
-                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${fullyEncodeURIComponent(service.trip_id)}`, {
+                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${fullyEncodeURIComponent(tripId)}`, {
                     method: "GET",
                 })
                 if (stopTimesRes.ok) {
@@ -127,7 +139,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                 clearInterval(intervalId)
             }
         }
-    }, [open, service])
+    }, [has, open, tripId])
 
     const handleOpenChange = (v: boolean) => {
         setOpen(v)
@@ -137,15 +149,15 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     const triggerButton = !defaultOpen ? (
         <Button
             aria-label="Track service on map"
-            disabled={initialLoading}
+            disabled={!loaded || initialLoading}
             className="w-full"
-            variant={service.location_tracking ? "default" : "secondary"}
+            variant={!loaded ? "default" : !has ? "secondary" : "default"}
         >
-            {initialLoading ? (
+            {!loaded || initialLoading ? (
                 <Loader2 className="h-4 w-4 animate-spin text-secondary" />
             ) : (
                 <>
-                    {service.location_tracking ? (
+                    {has ? (
                         <>
                             <Navigation className="w-4 h-4" />
                             Track
@@ -161,20 +173,13 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
         </Button>
     ) : null
 
-
     const content = (
         <ServiceTrackerContent
             vehicle={vehicle}
             stops={stops}
-            previewData={{
-                tripHeadsign: service.headsign,
-                route_id: service.route.id,
-                route_name: service.route.name,
-                trip_id: service.trip_id,
-                route_color: service.route.color
-            }}
-            tripId={service.trip_id}
-            currentStop={service.stop}
+            previewData={previewData}
+            tripId={tripId}
+            currentStop={currentStop}
             stopTimes={stopTimes}
             refreshing={refreshing}
         />
@@ -184,7 +189,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
         return (
             <Dialog open={open} onOpenChange={handleOpenChange}>
                 {triggerButton && <DialogTrigger asChild>{triggerButton}</DialogTrigger>}
-                {open && stops && (
+                {open && (vehicle || (!has && previewData && stops)) && (
                     <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">{content}</DialogContent>
                 )}
             </Dialog>
@@ -194,7 +199,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     return (
         <Sheet open={open} onOpenChange={handleOpenChange}>
             {triggerButton && <SheetTrigger asChild>{triggerButton}</SheetTrigger>}
-            {open && stops && (
+            {open && (vehicle || (!has && previewData && stops)) && (
                 <SheetContent side={"bottom"} className="max-h-[90vh] rounded-t-lg">
                     <div className="mx-auto w-full max-w-sm overflow-y-auto">{content}</div>
                 </SheetContent>

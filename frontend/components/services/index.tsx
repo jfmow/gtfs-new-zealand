@@ -404,7 +404,17 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         <CardContent className={`pt-0 ${service.canceled || service.departed || service.skipped ? "hidden" : ""}`}>
                                             <div className="grid grid-cols-2 items-stretch gap-2">
                                                 <ServiceTrackerModal
-                                                    service={service}
+                                                    previewData={{
+                                                        tripHeadsign: service.headsign,
+                                                        route_id: service.route.id,
+                                                        route_name: service.route.name,
+                                                        trip_id: service.trip_id,
+                                                        route_color: service.route.color
+                                                    }}
+                                                    currentStop={service.stop}
+                                                    loaded={true}
+                                                    has={service.location_tracking}
+                                                    tripId={service.trip_id}
                                                 />
                                                 <div
                                                     className="flex items-center justify-center text-center rounded-md font-semibold p-1 bg-primary/10 text-primary border border-primary/20"
