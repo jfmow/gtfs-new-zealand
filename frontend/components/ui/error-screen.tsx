@@ -1,6 +1,6 @@
 import { useState } from "react"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
-import { AlertCircle, Info, Code, ChevronDown, ChevronUp, Hash } from "lucide-react"
+import { Info, ChevronDown, ChevronUp, Check, Copy } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -14,112 +14,47 @@ export default function ErrorScreen({
     errorTitle: string
     traceId?: string
 }) {
-    const [detailsExpanded, setDetailsExpanded] = useState(false)
+    const [copied, setCopied] = useState(false)
 
-    const getErrorSeverity = (errorText: string) => {
-        const lowerError = errorText.toLowerCase()
-        if (lowerError.includes("fatal") || lowerError.includes("critical")) {
-            return { level: "critical", label: "Critical" }
-        }
-        if (lowerError.includes("warning") || lowerError.includes("warn")) {
-            return { level: "warning", label: "Warning" }
-        }
-        return { level: "error", label: "Error" }
-    }
-
-    const getBadgeVariant = (level: string) => {
-        switch (level) {
-            case "critical":
-                return "destructive"
-            case "warning":
-                return "default"
-            default:
-                return "destructive"
+    const handleCopyTraceId = () => {
+        if (traceId) {
+            navigator.clipboard.writeText(traceId)
+            setCopied(true)
+            setTimeout(() => setCopied(false), 2000)
         }
     }
-
-    const truncateText = (text: string, maxLength = 120) => {
-        if (text.length <= maxLength) return text
-        return text.slice(0, maxLength) + "..."
-    }
-
-    const severity = getErrorSeverity(errorText)
-    const formattedError = formatTextToNiceLookingWords(errorText, true)
 
     return (
-        <div className="flex-grow w-full flex items-center justify-center p-4">
-            <Card className="w-full max-w-lg mx-auto">
-                <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg leading-tight flex items-center gap-2">
-                            <AlertCircle className="h-5 w-5 text-destructive" />
-                            {errorTitle}
-                        </CardTitle>
-                        <Badge variant={getBadgeVariant(severity.level)} className="shrink-0">
-                            {severity.label}
-                        </Badge>
-                    </div>
-                </CardHeader>
+        <div className="flex-grow w-full flex flex-col items-center justify-center p-4 bg-background">
+            <div className="w-full max-w-sm text-center space-y-3">
+                <h1 className="text-2xl font-semibold tracking-tight text-foreground">{errorTitle}</h1>
 
-                <CardContent className="space-y-4 flex-grow">
+                <p className="text-sm text-foreground/70 leading-snug">{errorText}</p>
 
-                    {traceId && (
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2 text-sm">
-                                <Hash className="h-4 w-4 text-muted-foreground" />
-                                <span className="font-medium">Trace ID</span>
-                            </div>
-                            <div className="pl-6">
-                                <code className="text-xs bg-muted px-2 py-1 rounded font-mono text-foreground select-all">
-                                    {traceId}
-                                </code>
-                            </div>
-                        </div>
-                    )}
-
-                    <div className="space-y-2">
-                        <Collapsible open={detailsExpanded} onOpenChange={setDetailsExpanded}>
-                            <div className="text-sm leading-relaxed">
-                                {detailsExpanded ? (
-                                    <div className="rounded-md border bg-muted/30 p-4">
-                                        <p className="font-mono text-sm text-foreground whitespace-pre-wrap">{formattedError}</p>
-                                    </div>
+                {traceId && (
+                    <div className="pt-2 space-y-2">
+                        <p className="text-xs text-foreground/50 uppercase tracking-wide">Trace ID</p>
+                        <div className="flex items-center gap-2 bg-foreground/5 rounded p-2 border border-foreground/10">
+                            <code className="font-mono text-xs text-foreground/60 break-all flex-1">{traceId}</code>
+                            <button
+                                onClick={handleCopyTraceId}
+                                className="flex-shrink-0 p-1.5 hover:bg-foreground/10 rounded transition-colors"
+                                aria-label="Copy trace ID"
+                            >
+                                {copied ? (
+                                    <Check className="h-3.5 w-3.5 text-foreground/60" />
                                 ) : (
-                                    <p className="mb-2 text-muted-foreground">{truncateText(formattedError)}</p>
+                                    <Copy className="h-3.5 w-3.5 text-foreground/60" />
                                 )}
-                            </div>
-                            {formattedError.length > 120 && (
-                                <CollapsibleTrigger className="flex items-center gap-1 text-sm font-medium text-primary hover:underline mt-2">
-                                    {detailsExpanded ? (
-                                        <>
-                                            <ChevronUp className="h-4 w-4" />
-                                            Show less
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ChevronDown className="h-4 w-4" />
-                                            Show details
-                                        </>
-                                    )}
-                                </CollapsibleTrigger>
-                            )}
-                        </Collapsible>
+                            </button>
+                        </div>
                     </div>
-                </CardContent>
-
-                <CardFooter className="pt-0">
-                    <div className="flex flex-wrap items-center gap-2 justify-between w-full">
-                        <Badge variant="secondary" className="flex items-center gap-1">
-                            <Code className="h-4 w-4" />
-                            System Error
-                        </Badge>
-                        <Badge variant="outline">Needs Attention</Badge>
-                    </div>
-                </CardFooter>
-            </Card>
+                )}
+            </div>
         </div>
     )
 }
+
 
 export function InfoScreen({ infoText, infoTitle }: { infoText: string; infoTitle: string }) {
     const [detailsExpanded, setDetailsExpanded] = useState(false)

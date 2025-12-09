@@ -53,12 +53,7 @@ interface TrainsApiResponse<DataType> {
 export type ApiResult<DataType> = {
     ok: true
     data: DataType
-} | {
-    ok: false
-    error: string
-    status_code?: number
-    trace_id?: string
-}
+} | ApiError
 
 const TRACE_ID_KEY = "trace-id";
 
@@ -96,14 +91,14 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
         const res_data = await req.json() as TrainsApiResponse<T>;
 
         if (req.ok) {
-            return { ok: true, data: res_data.data };
+            return { ok: true, data: res_data.data }
         } else {
             return {
                 ok: false,
                 error: res_data.message,
                 status_code: req.status,
                 trace_id: res_data.trace_id,
-            };
+            } as ApiError
         }
     } catch (error) {
         return {
@@ -111,6 +106,14 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
             error: error instanceof Error ? error.message : "Unknown error occurred",
             status_code: 500,
             trace_id: "",
-        };
+        } as ApiError
     }
+}
+
+
+export interface ApiError {
+    ok: false
+    error: string
+    status_code?: number
+    trace_id?: string
 }

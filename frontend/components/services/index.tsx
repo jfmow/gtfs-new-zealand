@@ -148,12 +148,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     <DisplayTodaysAlerts stopName={stopName} forceDisplay />
                     <InfoScreen
                         infoTitle="No Services Scheduled"
-                        infoText={`No services are scheduled for departure today at "${stopName}".`}
+                        infoText={`No services are scheduled at "${stopName}".`}
                     />
                 </>
             )
         }
-        return <ErrorScreen traceId={errorTrace} errorTitle="Uh Oh! An error has occurred..." errorText={errorMessage} />
+        return <ErrorScreen traceId={errorTrace} errorTitle="An error has occurred" errorText={errorMessage} />
     }
 
     if (stopName === "") {

@@ -1,7 +1,7 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
-import { ApiFetch, useUrl } from "@/lib/url-context";
+import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
 const LeafletMap = dynamic(() => import("../components/map/map"), {
@@ -40,29 +40,33 @@ export function StopsMap({
     buttonPosition?: "top" | "bottom"
 }) {
     const [stops, setStops] = useState<Stop[]>()
-    const [error, setError] = useState("")
+    const [error, setError] = useState<ApiError | null>()
     const { currentUrl } = useUrl()
 
     // --- Fetch Stops once ---
     useEffect(() => {
         async function getData() {
             const req = await ApiFetch<Stop[]>(`stops?children=false`, { method: "GET" })
-            if (req.ok) setStops(req.data)
-            else setError(req.error)
+            if (req.ok) {
+                setStops(req.data)
+            }
+            else {
+                setError(req)
+            }
         }
         getData()
     }, [])
 
-    if (error !== "") {
+    if (error) {
         return (
             <ErrorScreen
-                errorTitle="An error occurred while loading the stops"
-                errorText={error}
+                errorTitle="An error has occurred"
+                errorText={error.error}
+                traceId={error.trace_id}
             />
         )
     }
 
-    // --- Let CSS handle height ---
     const finalHeight =
         customTailwindHeight && customTailwindHeight !== ""
             ? customTailwindHeight

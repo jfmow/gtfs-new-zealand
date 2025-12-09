@@ -13,7 +13,7 @@ import { Maximize2, Minimize2 } from "lucide-react";
 import ServiceTrackerModal, {
     VehiclesResponse,
 } from "@/components/services/tracker";
-import { ApiFetch, useUrl } from "@/lib/url-context";
+import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { useQueryParams } from "@/lib/url-params";
@@ -33,7 +33,7 @@ type VehicleFilters = "Train" | "Bus" | "Ferry" | "all";
 export default function Vehicles() {
     const [vehicles, setVehicles] = useState<VehiclesResponse[]>([]);
     const [stops, setStops] = useState<Stop[]>([]);
-    const [error, setError] = useState("");
+    const [error, setError] = useState<ApiError | null>();
     const [vehicleType, setVehicleType] = useState<VehicleFilters>("all");
     const [fullscreen, setFullscreen] = useState(false); // ⬅️ NEW
     const { currentUrl } = useUrl();
@@ -48,11 +48,11 @@ export default function Vehicles() {
                 method: "GET"
             });
             if (!req.ok) {
-                setError(req.error);
+                setError(req);
                 setVehicles([]);
             } else {
                 setVehicles(req.data);
-                setError("");
+                setError(null);
             }
         }
 
@@ -73,7 +73,7 @@ export default function Vehicles() {
             if (req.ok) {
                 setStops(req.data)
             } else {
-                setError(req.error)
+                setError(req)
             }
         }
         if (showStops) {
@@ -83,11 +83,12 @@ export default function Vehicles() {
         }
     }, [showStops])
 
-    if (error !== "") {
+    if (error) {
         return (
             <ErrorScreen
-                errorTitle="An error occurred while loading the vehicles"
-                errorText={error}
+                errorTitle="An error has occurred"
+                errorText={error.error}
+                traceId={error.trace_id}
             />
         );
     }
@@ -99,7 +100,7 @@ export default function Vehicles() {
                 className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 transition-all duration-300 h-full flex-grow ${fullscreen
                     ? "fixed inset-0 z-50 bg-background p-0 max-w-none"
                     : ""
-                    }`} // ⬅️ NEW
+                    }`}
             >
                 <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3">
@@ -142,60 +143,56 @@ export default function Vehicles() {
                     />
                 ) : null}
 
-                {error !== "" ? (
-                    "Err: " + error
-                ) : (
-                    <div className="flex flex-col flex-grow h-full">
-                        <Suspense
-                            fallback={
-                                <LoadingSpinner
-                                    description="Loading vehicles..."
-                                    height="100svh"
-                                />
-                            }
-                        >
-                            <LeafletMap
-                                defaultZoom={["user", currentUrl.defaultMapCenter]}
-                                mapItems={[
-                                    ...vehicles.filter((v) => v.route.id !== "").map(
-                                        (vehicle) =>
-                                            ({
-                                                lat: vehicle.position.lat,
-                                                lon: vehicle.position.lon,
-                                                icon: vehicle.type,
-                                                id: vehicle.trip_id,
-                                                routeID: vehicle.route.id,
-                                                description: {
-                                                    text: `${vehicle.route.name}`,
-                                                    alwaysShow: true,
-                                                },
-                                                zIndex: 1,
-                                                type: "vehicle",
-                                                onClick: () => {
-                                                    selectedVehicle.set(vehicle.trip_id);
-                                                },
-                                            }) as MapItem
-                                    ),
-                                    ...(stops ? (
-                                        stops.map((item) => ({
-                                            lat: item.stop_lat,
-                                            lon: item.stop_lon,
-                                            icon: "dot",
-                                            id: item.stop_name + " " + item.stop_code,
-                                            routeID: "",
-                                            description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
-                                            zIndex: 1,
-                                            type: "stop",
-                                            onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
-                                        } as MapItem))
-                                    ) : [])
-                                ]}
-                                map_id={MAPID}
-                                height={"100%"}
+                <div className="flex flex-col flex-grow h-full">
+                    <Suspense
+                        fallback={
+                            <LoadingSpinner
+                                description="Loading vehicles..."
+                                height="100svh"
                             />
-                        </Suspense>
-                    </div>
-                )}
+                        }
+                    >
+                        <LeafletMap
+                            defaultZoom={["user", currentUrl.defaultMapCenter]}
+                            mapItems={[
+                                ...vehicles.filter((v) => v.route.id !== "").map(
+                                    (vehicle) =>
+                                        ({
+                                            lat: vehicle.position.lat,
+                                            lon: vehicle.position.lon,
+                                            icon: vehicle.type,
+                                            id: vehicle.trip_id,
+                                            routeID: vehicle.route.id,
+                                            description: {
+                                                text: `${vehicle.route.name}`,
+                                                alwaysShow: true,
+                                            },
+                                            zIndex: 1,
+                                            type: "vehicle",
+                                            onClick: () => {
+                                                selectedVehicle.set(vehicle.trip_id);
+                                            },
+                                        }) as MapItem
+                                ),
+                                ...(stops ? (
+                                    stops.map((item) => ({
+                                        lat: item.stop_lat,
+                                        lon: item.stop_lon,
+                                        icon: "dot",
+                                        id: item.stop_name + " " + item.stop_code,
+                                        routeID: "",
+                                        description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
+                                        zIndex: 1,
+                                        type: "stop",
+                                        onClick: () => window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`
+                                    } as MapItem))
+                                ) : [])
+                            ]}
+                            map_id={MAPID}
+                            height={"100%"}
+                        />
+                    </Suspense>
+                </div>
             </div>
         </>
     );
