@@ -1,1 +1,3 @@
-docker buildx build --platform linux/amd64,linux/arm/v7 -t your-registry.com/yourimage:latest --push .
+docker buildx build --platform linux/amd64,linux/arm/v7 -t registry.suddsy.dev/trains:latest --push .
+
+GOOS=linux GOARCH=amd go build -o base . && docker buildx build --platform linux/amd64 -t registry.suddsy.dev/rowlyze:latest --push .

@@ -3,7 +3,6 @@ package providers
 import (
 	"encoding/json"
 	"errors"
-	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -28,145 +27,204 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 	//Returns all the locations of vehicles from the AT api
 	realtimeRoute.GET("/live", func(c echo.Context) error {
-		filterTripIdEncoded := c.QueryParam("tripId")
-		vehicleTypeFilterEncoded := c.QueryParam("type")
-		boundsStrEncoded := c.QueryParam("bounds")
-
-		//Escape tripId and routeId
-		filterTripId, err := url.PathUnescape(filterTripIdEncoded)
+		// ==================================================================
+		// Read and decode query parameters
+		// ==================================================================
+		// All params are URL-escaped by default, so unescape first.
+		tripID, err := url.PathUnescape(c.QueryParam("tripId"))
 		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil, ResponseDetails("tripId", filterTripIdEncoded, "details", "Invalid trip ID format", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil,
+				ResponseDetails("tripId", c.QueryParam("tripId"), "error", err.Error()))
 		}
-		vehicleTypeFilter, err := url.PathUnescape(vehicleTypeFilterEncoded)
+
+		vehicleTypeFilter, err := url.PathUnescape(c.QueryParam("type"))
 		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid vehicle type", nil, ResponseDetails("vehicle_type", vehicleTypeFilterEncoded, "details", "Invalid vehicle type format", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid vehicle type", nil,
+				ResponseDetails("vehicle_type", c.QueryParam("type"), "error", err.Error()))
 		}
-		boundsStr, err := url.PathUnescape(boundsStrEncoded)
+
+		boundsStr, err := url.PathUnescape(c.QueryParam("bounds"))
 		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid bounds", nil, ResponseDetails("bounds", boundsStrEncoded, "details", "Invalid bounds format", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid bounds", nil,
+				ResponseDetails("bounds", c.QueryParam("bounds"), "error", err.Error()))
 		}
 
-		var rawBounds [][]float64
-		var hasBounds = true
+		// ==================================================================
+		// Parse bounds (optional)
+		// ==================================================================
+		// Bounds restrict vehicles to a visible map area.
+		// If omitted, all vehicles are returned.
+		hasBounds := boundsStr != ""
+		rawBounds := [][]float64{{0, 0}, {0, 0}}
 
-		if boundsStr == "" {
-			// Default to [[0,0],[0,0]]
-			hasBounds = false
-			rawBounds = [][]float64{
-				{0.0, 0.0},
-				{0.0, 0.0},
-			}
-		} else {
-			// Try to unmarshal JSON input
-			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil {
-				return JsonApiResponse(c, http.StatusBadRequest, "Invalid bounds format", nil, ResponseDetails("bounds", boundsStr, "details", "Bounds must be a valid JSON array in the format [[lat1,lng1],[lat2,lng2]]", "error", err.Error()))
-			}
+		if hasBounds {
+			// Expect [[lat1,lng1],[lat2,lng2]]
+			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil ||
+				len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
 
-			// Basic validation
-			if len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
-				return JsonApiResponse(c, http.StatusBadRequest, "Bounds must be in the format [[lat1,lng1],[lat2,lng2]]", nil, ResponseDetails("bounds", boundsStr, "details", "Bounds must be a valid JSON array in the format [[lat1,lng1],[lat2,lng2]]"))
+				return JsonApiResponse(
+					c,
+					http.StatusBadRequest,
+					"invalid bounds format",
+					nil,
+					ResponseDetails(
+						"bounds",
+						boundsStr,
+						"details",
+						"Expected [[lat1,lng1],[lat2,lng2]]",
+					),
+				)
 			}
 		}
 
-		point1 := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
-		point2 := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
+		// Normalize bounds into LatLng structs for easy reuse
+		boundA := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
+		boundB := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
 
+		// ==================================================================
+		// Load realtime GTFS feeds
+		// ==================================================================
+		// Vehicles = live positions
+		// TripUpdates = service status + stop progression
 		vehicles, err := realtime.GetVehicles()
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No vehicles found in the GTFS data", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
+				ResponseDetails("error", "No vehicles found", "details", err.Error()))
 		}
 
 		tripUpdates, err := realtime.GetTripUpdates()
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No trip updates found in the GTFS data", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
+				ResponseDetails("error", "No trip updates found", "details", err.Error()))
 		}
 
-		var response []VehiclesResponse = []VehiclesResponse{}
+		// ==================================================================
+		// Preload caches to avoid repeated DB / file access
+		// ==================================================================
+		routeCache := getRouteCache()
+		stopsForTripCache := getStopsForTripCache()
 
-		cachedRoutes := getRouteCache()
-		cachedStopsForTrips := getStopsForTripCache()
+		response := make([]VehiclesResponse, 0)
 
+		// ==================================================================
+		// Main vehicle processing loop
+		// ==================================================================
 		for _, vehicle := range vehicles {
-			if hasBounds && !pointInBounds(float64(vehicle.GetPosition().GetLatitude()), float64(vehicle.GetPosition().GetLongitude()), point1, point2) {
-				//skip
+			pos := vehicle.GetPosition()
+			lat, lng := float64(pos.GetLatitude()), float64(pos.GetLongitude())
+
+			// Skip vehicles outside the requested map bounds
+			if hasBounds && !pointInBounds(lat, lng, boundA, boundB) {
 				continue
 			}
-			currentTripId := vehicle.GetTrip().GetTripId()
-			currentRouteId := vehicle.GetTrip().GetRouteId()
-			if currentRouteId == "" || currentTripId == "" || (filterTripId != "" && currentTripId != filterTripId) {
+
+			trip := vehicle.GetTrip()
+			tripIDCur := trip.GetTripId()
+			routeID := trip.GetRouteId()
+
+			// Skip vehicles without valid trip or route data
+			if tripIDCur == "" || routeID == "" {
 				continue
 			}
-			var responseData VehiclesResponse = VehiclesResponse{
-				TripId:       currentTripId,
-				Position:     VehiclesPosition{Lat: vehicle.GetPosition().GetLatitude(), Lon: vehicle.GetPosition().GetLongitude()},
+
+			// If a specific trip is requested, only include that trip
+			if tripID != "" && tripIDCur != tripID {
+				continue
+			}
+
+			// ------------------------------------------------------------------
+			// Trip update validation
+			// ------------------------------------------------------------------
+			// Ensure the trip has started and is currently in service
+			tripUpdate, err := tripUpdates.ByTripID(tripIDCur)
+			if err != nil || !checkIfTripStarted(
+				tripUpdate.GetTrip().GetStartTime(),
+				tripUpdate.GetTrip().GetStartDate(),
+				localTimeZone,
+			) {
+				continue
+			}
+
+			// ------------------------------------------------------------------
+			// Route lookup + vehicle type filtering
+			// ------------------------------------------------------------------
+			routeData, err := getVehicleRouteData(routeID, routeCache)
+			if err != nil {
+				continue
+			}
+
+			// Allow filtering by vehicle type (bus, rail, etc.)
+			if vehicleTypeFilter != "" &&
+				vehicleTypeFilter != "all" &&
+				!strings.EqualFold(routeData.VehicleType, vehicleTypeFilter) {
+				continue
+			}
+
+			// ------------------------------------------------------------------
+			// Base response payload
+			// ------------------------------------------------------------------
+			resp := VehiclesResponse{
+				TripId:       tripIDCur,
+				Route:        *routeData,
+				VehicleType:  strings.ToLower(routeData.VehicleType),
+				Position:     VehiclesPosition{Lat: pos.GetLatitude(), Lon: pos.GetLongitude()},
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 			}
 
-			if routeData, err := getVehicleRouteData(currentRouteId, cachedRoutes); err == nil {
-				responseData.Route = *routeData
-				responseData.VehicleType = responseData.Route.VehicleType
-				if vehicleTypeFilter != "" && vehicleTypeFilter != "all" && !strings.EqualFold(routeData.VehicleType, strings.ToLower(vehicleTypeFilter)) {
-					continue
-				}
-			}
-
-			tripUpdate, err := tripUpdates.ByTripID(currentTripId)
-			if err != nil || !checkIfTripStarted(tripUpdate.GetTrip().GetStartTime(), tripUpdate.GetTrip().GetStartDate(), localTimeZone) {
-				continue //skip because it's probably not in service
-			}
-
-			if filterTripId != "" {
-				var tripData VehiclesTrip
-				//If they are selecting a single vehicle, we can give stop info, otherwise its a waste of time because we don't even show it
-				currentTrip, err := gtfsData.GetTripByID(currentTripId)
+			// ------------------------------------------------------------------
+			// Detailed trip information (only when a single trip is requested)
+			// ------------------------------------------------------------------
+			// This is intentionally skipped for list views for performance.
+			if tripID != "" {
+				currentTrip, err := gtfsData.GetTripByID(tripIDCur)
 				if err != nil {
-					//Missing trip in db
 					continue
 				}
-				tripData.Headsign = currentTrip.TripHeadsign
 
-				stopsForTripData, ok := cachedStopsForTrips[currentTripId]
-				stopsForTrip := stopsForTripData.Stops
-				if !ok || len(stopsForTrip) == 0 || stopsForTripData.LowestSequence == -1 {
-					continue //Skip
+				stopsData, ok := stopsForTripCache[tripIDCur]
+				if !ok || len(stopsData.Stops) == 0 || stopsData.LowestSequence == -1 {
+					continue
 				}
 
-				sort.Slice(stopsForTrip, func(i, j int) bool {
-					return stopsForTrip[i].Sequence < stopsForTrip[j].Sequence
+				// Ensure stops are ordered by sequence
+				sort.Slice(stopsData.Stops, func(i, j int) bool {
+					return stopsData.Stops[i].Sequence < stopsData.Stops[j].Sequence
 				})
 
-				stopUpdates := tripUpdate.GetStopTimeUpdate()
+				// Determine next stop and trip state (in-transit, stopped, etc.)
+				nextSeq, _, state := getNextStopSequence(
+					tripUpdate.GetStopTimeUpdate(),
+					stopsData.LowestSequence,
+					localTimeZone,
+				)
 
-				nextStopSequenceNumber, _, simpleState := getNextStopSequence(stopUpdates, stopsForTripData.LowestSequence, localTimeZone)
-
-				tripData.FirstStop = getXStop(stopsForTrip, 0, getParentStopByChildCache)
-				tripData.CurrentStop = getXStop(stopsForTrip, min(nextStopSequenceNumber-1, len(stopsForTrip)-1), getParentStopByChildCache)
-				tripData.NextStop = getXStop(stopsForTrip, min(nextStopSequenceNumber, len(stopsForTrip)-1), getParentStopByChildCache)
-				tripData.FinalStop = getXStop(stopsForTrip, len(stopsForTrip)-1, getParentStopByChildCache)
-				responseData.State = simpleState
-
-				if filterTripId != "" {
-					line, err := NewTripShapeDistance(currentTripId, gtfsData)
-					if err == nil {
-						distanceFromLine, err := line.DistanceFromLine(
-							float64(vehicle.GetPosition().GetLatitude()),
-							float64(vehicle.GetPosition().GetLongitude()),
-						)
-						if err == nil && distanceFromLine > 500.0 {
-							responseData.OffCourse = true
-						}
-					}
+				resp.State = state
+				resp.Trip = &VehiclesTrip{
+					Headsign:    currentTrip.TripHeadsign,
+					FirstStop:   getStopBySequenceNumber(stopsData.Stops, 0, getParentStopByChildCache),
+					CurrentStop: getStopBySequenceNumber(stopsData.Stops, min(nextSeq-1, len(stopsData.Stops)-1), getParentStopByChildCache),
+					NextStop:    getStopBySequenceNumber(stopsData.Stops, min(nextSeq, len(stopsData.Stops)-1), getParentStopByChildCache),
+					FinalStop:   getStopBySequenceNumber(stopsData.Stops, len(stopsData.Stops)-1, getParentStopByChildCache),
 				}
 
-				responseData.Trip = &tripData
+				// Detect vehicles that have deviated significantly from the route shape
+				if line, err := NewTripShapeDistance(tripIDCur, gtfsData); err == nil {
+					if dist, err := line.DistanceFromLine(lat, lng); err == nil && dist > 500 {
+						resp.OffCourse = true
+					}
+				}
 			}
 
-			response = append(response, responseData)
+			response = append(response, resp)
 		}
 
+		// ==================================================================
+		// Final response
+		// ==================================================================
 		if len(response) == 0 {
-			return JsonApiResponse(c, http.StatusNotFound, "no vehicles found", nil, ResponseDetails("error", "No vehicles found matching the given criteria"))
+			return JsonApiResponse(c, http.StatusNotFound, "no vehicles found", nil,
+				ResponseDetails("error", "No vehicles found matching the given criteria"))
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", response)
@@ -491,17 +549,6 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// Always return an array
 		return JsonApiResponse(c, http.StatusOK, "Closest vehicles", results)
 	})
-
-}
-
-func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
-	// Allow sw/ne to be provided in any order: normalize bounds
-	minLat := math.Min(sw.Lat, ne.Lat)
-	maxLat := math.Max(sw.Lat, ne.Lat)
-	minLng := math.Min(sw.Lng, ne.Lng)
-	maxLng := math.Max(sw.Lng, ne.Lng)
-
-	return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng
 }
 
 // getNextStopSequence inspects a trip's StopTimeUpdates (which may include
@@ -610,7 +657,8 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 	return 0, nil, "Unknown"
 }
 
-func getXStop(stopsForTripId []gtfs.Stop, currentStop int, cachedStops caches.ParentStopsByChildCache) ServicesStop {
+// Get a stop from a list of stops based on its sequence number
+func getStopBySequenceNumber(stopsForTripId []gtfs.Stop, currentStop int, cachedStops caches.ParentStopsByChildCache) ServicesStop {
 	stopData := stopsForTripId[max(currentStop, 0)]
 	//Check if we have a parent stop
 	if stopData.ParentStation != "" {
@@ -688,23 +736,6 @@ func getPredictedStopArrivalTimesForTrip(stopUpdates []*proto.TripUpdate_StopTim
 	}
 
 	return results
-}
-
-// haversine returns the distance in meters between two lat/lon points
-func haversine(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371000 // Earth radius in meters
-
-	dLat := (lat2 - lat1) * math.Pi / 180
-	dLon := (lon2 - lon1) * math.Pi / 180
-
-	lat1 = lat1 * math.Pi / 180
-	lat2 = lat2 * math.Pi / 180
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Sin(dLon/2)*math.Sin(dLon/2)*math.Cos(lat1)*math.Cos(lat2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-
-	return R * c
 }
 
 /*
