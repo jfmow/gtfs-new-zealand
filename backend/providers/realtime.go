@@ -666,8 +666,11 @@ func getStopBySequenceNumber(stopsForTripId []gtfs.Stop, currentStop int, cached
 		if ok && parentStop.StopName != "" {
 			stopData.StopName = parentStop.StopName
 		}
+	} else {
+		stopData.ParentStation = stopData.StopId
 	}
 	result := ServicesStop{ParentStopId: stopData.ParentStation, ChildStopId: stopData.StopId, Name: stopData.StopName, Lat: stopData.StopLat, Lon: stopData.StopLon, Platform: stopData.PlatformNumber, Sequence: stopData.Sequence}
+
 	return result
 }
 
