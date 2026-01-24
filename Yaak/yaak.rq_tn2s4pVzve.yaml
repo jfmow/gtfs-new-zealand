@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_tn2s4pVzve
 createdAt: 2025-10-18T01:32:22.715749
-updatedAt: 2025-10-19T20:58:18.795750
+updatedAt: 2026-01-24T06:46:14.671285
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_Dnquxyknm3
 authentication: {}
@@ -18,9 +18,9 @@ url: ${[ url ]}/${[ provider ]}/realtime/stop-times
 urlParameters:
 - enabled: true
   name: tripId
-  value: 247-810023-33600-2-8145501-20fcffeb
+  value: 20-02005-70800-2-3a4f7ce1
   id: 40EFHdvfuk
 - enabled: true
   name: ''
   value: ''
-  id: QBNAG8QuJC
+  id: 3QXnGmV6N6

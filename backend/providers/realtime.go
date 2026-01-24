@@ -432,6 +432,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 			if stop.ParentStation != "" {
 				data.ParentStopId = stop.ParentStation
+			} else {
+				data.ParentStopId = stop.StopId
 			}
 
 			data.ChildStopId = stop.StopId
