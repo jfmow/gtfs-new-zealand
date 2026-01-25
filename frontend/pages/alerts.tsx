@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { BellDot, MegaphoneOff, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
+import { BellDot, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -14,6 +14,7 @@ import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface AlertResponse {
     alerts: AlertByRouteId;
@@ -63,16 +64,8 @@ export default function Alerts() {
                         <LoadingSpinner description="Loading alerts..." />
                     ) : (
                         <div className="">
-                            {Object.keys(alerts).length > 0 ? (
+                            {selected_stop.found ? (
                                 <GroupedAlertsByRoute alerts={alerts} />
-                            ) : selected_stop.found ? (
-                                <div className="col-span-full">
-                                    <Alert>
-                                        <MegaphoneOff className="h-4 w-4" />
-                                        <AlertTitle>No alerts found</AlertTitle>
-                                        <AlertDescription>This stop has no active alerts at the moment.</AlertDescription>
-                                    </Alert>
-                                </div>
                             ) : (
                                 <div className="col-span-full">
                                     <div className="text-center py-8">
@@ -89,29 +82,46 @@ export default function Alerts() {
 }
 
 function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
-    const groupedAlerts = alerts
-    const [openRoute, setOpenRoute] = useState<string | null>(
-        Object.keys(groupedAlerts)[0] || null
-    )
+    const routes = Object.keys(alerts)
+    const [openRoute, setOpenRoute] = useState<string>(routes[0] ?? "")
 
     return (
-        <div className="grid w-full gap-4">
-            <div className="flex items-center justify-start gap-2 flex-wrap">
-                {Object.keys(groupedAlerts).map((route) => (
-                    <Button
-                        key={route}
-                        variant={openRoute === route ? "default" : "outline"}
-                        onClick={() => setOpenRoute(route)}
-                    >
-                        Alerts for: {route} ({groupedAlerts[route].length})
-                    </Button>
-                ))}
-            </div>
-            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {groupedAlerts[openRoute || "No Route"]?.map((alert, i) => (
-                    <AlertCard alert={alert} key={i} />
-                ))}
-            </div>
+        <div className="w-full bg-muted/50 p-6 rounded-xl shadow-xl">
+            <h2 className="mb-2 font-semibold">Alerts by Route</h2>
+            {routes.length === 0 ? (
+                <Alert>
+                    <AlertCircle className="w-5 h-5" />
+                    <AlertTitle>No Alerts</AlertTitle>
+                    <AlertDescription>No travel alerts or warnings were found for the selected stop.</AlertDescription>
+                </Alert>
+            ) : (
+                <Tabs value={openRoute} onValueChange={setOpenRoute}>
+                    <TabsList className="flex flex-wrap h-auto mb-6 w-fit">
+                        {routes.map((route) => (
+                            <TabsTrigger
+                                key={route}
+                                value={route}
+                                className="flex items-center gap-2"
+                            >
+                                {route}
+                                <Badge variant="secondary">
+                                    {alerts[route].length}
+                                </Badge>
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
+
+                    {routes.map((route) => (
+                        <TabsContent key={route} value={route}>
+                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                {alerts[route].map((alert, i) => (
+                                    <AlertCard key={i} alert={alert} />
+                                ))}
+                            </div>
+                        </TabsContent>
+                    ))}
+                </Tabs>
+            )}
         </div>
     )
 }
