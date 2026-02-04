@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Map, Settings2Icon, MenuIcon, X, ClockFading, Car, Siren, CalendarDays } from 'lucide-react'
+import { Map, Settings2Icon, MenuIcon, X, ClockFading, Car, Siren, CalendarDays, Bus } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Favorites from './stops/favourites'
 import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
 import SettingsList from './settings'
+import { useRouter } from 'next/router'
 
 
 interface BaseNavRoute {
@@ -82,6 +83,7 @@ export default function NavBar() {
     const { theme } = useTheme()
     const isMobile = useIsMobile()
     const [menuOpen, setMenuOpen] = useState(false)
+    const router = useRouter()
 
     useEffect(() => {
         if (menuOpen) {
@@ -97,15 +99,16 @@ export default function NavBar() {
     return (
         <>
             {isMobile ? (
-                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm w-full py-4 px-2 flex items-center justify-between z-50'>
+                <nav className='sticky top-0 bg-background/95 backdrop-blur-md w-full py-3 px-4 flex items-center justify-between z-50 border-b'>
                     <div className='flex items-center justify-between w-full'>
-                        <Link href='/'>
-                            <div className="flex items-center">
-                                <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                        <Link href='/' className="flex items-center gap-2">
+                            <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary">
+                                <Bus className="w-5 h-5 text-primary-foreground" />
                             </div>
+                            <span className="font-semibold text-lg">Transit NZ</span>
                         </Link>
-                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
-                            <MenuIcon />
+                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"} size="icon" className="rounded-full">
+                            <MenuIcon className="w-5 h-5" />
                         </Button>
                     </div>
                     <AnimatePresence>
@@ -114,11 +117,17 @@ export default function NavBar() {
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
                                 exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black overflow-x-hidden"
+                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background overflow-x-hidden"
                             >
-                                <div className="flex justify-between items-center mt-4 mx-2 ml-auto">
-                                    <Button variant="ghost" onClick={() => setMenuOpen(false)}>
-                                        <X className="w-6 h-6" />
+                                <div className="flex justify-between items-center py-3 px-4 border-b bg-background">
+                                    <Link href='/' className="flex items-center gap-2">
+                                        <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary">
+                                            <Bus className="w-5 h-5 text-primary-foreground" />
+                                        </div>
+                                        <span className="font-semibold text-lg">Transit NZ</span>
+                                    </Link>
+                                    <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setMenuOpen(false)}>
+                                        <X className="w-5 h-5" />
                                     </Button>
                                 </div>
                                 <motion.div
@@ -126,23 +135,23 @@ export default function NavBar() {
                                         hidden: {},
                                         show: {
                                             transition: {
-                                                staggerChildren: 0.1,
+                                                staggerChildren: 0.08,
                                             },
                                         },
                                     }}
                                     initial="hidden"
                                     animate="show"
-                                    className='px-6 flex flex-col h-full flex-grow overflow-y-hidden overflow-x-hidden'>
-                                    <div className='flex items-center justify-start mb-4 mt-4'>
-                                        <p className='text-muted-foreground text-sm'>Menu</p>
+                                    className='px-4 py-6 flex flex-col h-full flex-grow overflow-y-auto overflow-x-hidden'>
+                                    <div className='flex items-center justify-start mb-3'>
+                                        <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>Navigation</h3>
                                     </div>
                                     <motion.ul
-                                        className="flex flex-col gap-3"
+                                        className="flex flex-col gap-2"
                                         variants={{
                                             hidden: {},
                                             show: {
                                                 transition: {
-                                                    staggerChildren: 0.1,
+                                                    staggerChildren: 0.08,
                                                 },
                                             },
                                         }}
@@ -151,61 +160,62 @@ export default function NavBar() {
                                             <motion.li
                                                 key={item.label}
                                                 variants={{
-                                                    hidden: { opacity: 0, x: -20 },
-                                                    show: { opacity: 1, x: 0 },
+                                                    hidden: { opacity: 0, y: 10 },
+                                                    show: { opacity: 1, y: 0 },
                                                 }}
                                             >
                                                 {item.component ? (
                                                     <item.component>
                                                         <button
-                                                            className="flex items-center gap-2 w-full text-left"
+                                                            className="flex items-center gap-3 w-full text-left p-3 rounded-xl hover:bg-accent transition-colors"
                                                         >
-                                                            <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
+                                                            <div className="flex items-center justify-center w-11 h-11 rounded-lg bg-primary/10">
+                                                                <item.icon className='w-5 h-5 text-primary' />
+                                                            </div>
                                                             <div className='flex flex-col'>
-                                                                <p className='font-medium text-primary font-semibold'>{item.label}</p>
-                                                                <p className='text-muted-foreground text-sm'>{item.description}</p>
+                                                                <p className='font-semibold text-foreground'>{item.label}</p>
+                                                                <p className='text-muted-foreground text-xs'>{item.description}</p>
                                                             </div>
                                                         </button>
                                                     </item.component>
                                                 ) : (
                                                     <Link
-                                                        className="flex items-center gap-2 w-full text-left"
+                                                        className="flex items-center gap-3 w-full text-left p-3 rounded-xl hover:bg-accent transition-colors"
                                                         href={item.href}
                                                         onClick={() => setMenuOpen(false)}
                                                     >
-                                                        <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
+                                                        <div className="flex items-center justify-center w-11 h-11 rounded-lg bg-primary/10">
+                                                            <item.icon className='w-5 h-5 text-primary' />
+                                                        </div>
                                                         <div className='flex flex-col'>
-                                                            <p className='font-medium text-primary font-semibold'>{item.label}</p>
-                                                            <p className='text-muted-foreground text-sm'>{item.description}</p>
+                                                            <p className='font-semibold text-foreground'>{item.label}</p>
+                                                            <p className='text-muted-foreground text-xs'>{item.description}</p>
                                                         </div>
                                                     </Link>
                                                 )}
                                             </motion.li>
                                         ))}
-
                                     </motion.ul>
                                     <motion.div
-                                        className='flex items-center justify-start mb-2 mt-auto border-b pb-2'
+                                        className='flex items-center justify-start mb-3 mt-6'
                                         variants={{
-                                            hidden: { opacity: 0, x: -20 },
-                                            show: { opacity: 1, x: 0 },
+                                            hidden: { opacity: 0, y: 10 },
+                                            show: { opacity: 1, y: 0 },
                                         }}
                                     >
-                                        <p className='text-muted-foreground text-sm'>Favourites</p>
+                                        <h3 className='text-xs font-semibold uppercase tracking-wider text-muted-foreground'>Favorites</h3>
                                     </motion.div>
                                     <motion.div
                                         variants={{
-                                            hidden: { opacity: 0, x: -20 },
-                                            show: { opacity: 1, x: 0 },
+                                            hidden: { opacity: 0, y: 10 },
+                                            show: { opacity: 1, y: 0 },
                                         }}
-                                        className='-m-1'
+                                        className='mb-4'
                                     >
                                         <Favorites grid onClick={() => setMenuOpen(false)} />
                                     </motion.div>
                                 </motion.div>
-                                <div
-                                    className='mt-auto grid gap-2 p-4'
-                                >
+                                <div className='mt-auto p-4 border-t bg-background'>
                                     <FindCurrentVehicle />
                                 </div>
                             </motion.div>
@@ -213,35 +223,48 @@ export default function NavBar() {
                     </AnimatePresence>
                 </nav>
             ) : (
-                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-start z-50">
-                    <Link href='/'>
-                        <div className="flex items-center">
-                            <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
+                <nav className="sticky top-0 bg-background/95 backdrop-blur-md border-b z-50">
+                    <div className="mx-auto max-w-[1400px] w-full px-6 py-3 flex items-center justify-between">
+                        <div className="flex items-center gap-8">
+                            <Link href='/' className="flex items-center gap-2">
+                                <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-primary">
+                                    <Bus className="w-5 h-5 text-primary-foreground" />
+                                </div>
+                                <span className="font-semibold text-lg">Transit NZ</span>
+                            </Link>
+                            <ul className="flex font-medium text-sm items-center gap-1">
+                                {NAV_ROUTES.map((item) => {
+                                    const isActive = item.href && router.pathname === item.href
+                                    return (
+                                        <li key={item.label}>
+                                            {item.component ? (
+                                                <item.component>
+                                                    <button className={cn(
+                                                        buttonVariants({ variant: 'ghost' }), 
+                                                        'flex items-center gap-2 rounded-lg'
+                                                    )}>
+                                                        <item.icon className='w-4 h-4' />
+                                                        <span>{item.description_short}</span>
+                                                    </button>
+                                                </item.component>
+                                            ) : (
+                                                <Link
+                                                    href={item.href}
+                                                    className={cn(
+                                                        buttonVariants({ variant: 'ghost' }), 
+                                                        'flex items-center gap-2 rounded-lg',
+                                                        isActive && 'bg-accent text-accent-foreground'
+                                                    )}
+                                                >
+                                                    <item.icon className='w-4 h-4' />
+                                                    <span>{item.description_short}</span>
+                                                </Link>
+                                            )}
+                                        </li>
+                                    )
+                                })}
+                            </ul>
                         </div>
-                    </Link>
-                    <div className='flex items-center gap-2'>
-                        <ul className="flex font-medium text-sm items-center gap-0">
-                            {NAV_ROUTES.map((item) => (
-                                <li key={item.label}>
-                                    {item.component ? (
-                                        <item.component>
-                                            <button className={cn(buttonVariants({ variant: 'ghost' }), 'flex items-center gap-2')}>
-                                                <item.icon className='w-6 h-6' />
-                                                <span>{item.description_short}</span>
-                                            </button>
-                                        </item.component>
-                                    ) : (
-                                        <Link
-                                            href={item.href}
-                                            className={cn(buttonVariants({ variant: 'ghost', }), 'flex items-center gap-2')}
-                                        >
-                                            <item.icon className='w-6 h-6' />
-                                            <span>{item.description_short}</span>
-                                        </Link>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
                     </div>
                 </nav>
             )}

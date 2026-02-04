@@ -25,15 +25,15 @@ export default function Home() {
   return (
     <>
       <Header title="Train, Bus, Ferry - Find you next journey" />
-      <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4">
-        <div className="grid items-center gap-2">
+      <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 sm:px-6 py-6 gap-4">
+        <div className="flex flex-col gap-4">
           <div className="flex gap-2 items-center w-full">
             <SearchForStop />
             {selectedStop !== "" ? (
               <>
                 <DatePicker onChange={(date) => setSelectedDate(date)} />
-                <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
-                  <MessageCircleWarningIcon />
+                <Button aria-label="Travel alerts" disabled={selectedStop === ""} variant={"outline"} size="icon" className="rounded-lg" onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}>
+                  <MessageCircleWarningIcon className="w-4 h-4" />
                 </Button>
                 <AddToFavorites stopName={selectedStop} />
               </>
@@ -41,17 +41,17 @@ export default function Home() {
           </div>
         </div>
         {!isMobile ? (
-          <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible>
-            <AccordionItem value="item-1">
-              <AccordionTrigger className="!no-underline">
-                <div className="flex items-center gap-1">
+          <Accordion value={selected_stop.found ? undefined : selectedStop === "" ? "item-1" : ""} type="single" collapsible className="border rounded-lg px-4">
+            <AccordionItem value="item-1" className="border-0">
+              <AccordionTrigger className="!no-underline hover:no-underline py-3">
+                <div className="flex items-center gap-2">
                   <StarIcon className="text-yellow-500 fill-yellow-500 w-4 h-4" />
-                  <h4 className="scroll-m-20 text-sm font-semibold tracking-tight">
+                  <h4 className="text-sm font-semibold">
                     Favorites
                   </h4>
                 </div>
               </AccordionTrigger>
-              <AccordionContent>
+              <AccordionContent className="pb-4">
                 <Favorites />
               </AccordionContent>
             </AccordionItem>
@@ -61,19 +61,21 @@ export default function Home() {
 
       {selectedStop === "" ? (
         <>
-          <div className="w-full px-2 pb-4 max-w-[1400px] mx-auto w-full sm:hidden">
+          <div className="w-full px-4 pb-4 max-w-[1400px] mx-auto w-full sm:hidden">
             <Favorites grid />
           </div>
-          <div className="flex flex-col flex-grow px-2 pb-4 h-full max-w-[1400px] mx-auto w-full">
+          <div className="flex flex-col flex-grow px-4 pb-4 h-full max-w-[1400px] mx-auto w-full">
             <Suspense fallback=" ">
               <StopsMap buttonPosition="bottom" />
             </Suspense>
           </div>
         </>
       ) : (
-        <Suspense fallback="">
-          <Services filterDate={selectedDate} stopName={selectedStop} />
-        </Suspense>
+        <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6">
+          <Suspense fallback="">
+            <Services filterDate={selectedDate} stopName={selectedStop} />
+          </Suspense>
+        </div>
       )}
     </>
   );
