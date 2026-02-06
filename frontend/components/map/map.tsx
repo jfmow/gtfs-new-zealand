@@ -1,3 +1,5 @@
+'use client';
+
 import leaflet, { MarkerClusterGroup } from "leaflet"
 import React, { useEffect, useRef } from "react"
 import 'leaflet/dist/leaflet.css';
@@ -19,6 +21,7 @@ interface MapProps {
     height: string
     defaultZoom: [LatLng, LatLng] | [LatLng] | ["user", BackupLatLng]
     options?: MapOptions
+    onMapClick?: (lat: number, lon: number) => void
 }
 
 type ItemsOnMap = {
@@ -53,7 +56,8 @@ export default function MapComp({
     height,
     defaultZoom,
     line,
-    options
+    options,
+    onMapClick
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
@@ -81,6 +85,13 @@ export default function MapComp({
             setDefaultZoom(map, defaultZoom);
             addZoomControls(map, itemsOnMap.current.zoomButtons, options?.buttonPosition === "bottom" ? "bottomleft" : "topleft");
             addUserCompassControl(itemsOnMap.current.compass, map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
+
+            // Add map click handler
+            if (onMapClick) {
+                map.on('click', (e) => {
+                    onMapClick(e.latlng.lat, e.latlng.lng);
+                });
+            }
         }
 
         // ⬇️ NEW: Resize observer to detect map container size changes
@@ -331,15 +342,24 @@ export default function MapComp({
                 map.removeLayer(activeNavigation.line);
             }
             const leafletLine = leaflet.geoJSON(line.GeoJson, {
-                //@ts-expect-error: is real config value
+                //@ts-expect-error it does exist
                 smoothFactor: 1.5,
-                style: function () {
+                style: function (feature) {
+                    const mode = feature?.properties?.mode;
+
                     return {
-                        color: line.color !== "" ? line.color : "#db6ecb",
+                        color:
+                            line.color === "" ? mode === "walk"
+                                ? "#ff9a2d"   // green for walking
+                                : mode === "transit"
+                                    ? "#3b82f6"   // blue for transit
+                                    : "#db6ecb"  // fallback
+                                : line.color,
                         weight: 4,
                     };
                 },
             });
+
             activeMapItems.line.line = leafletLine;
             leafletLine.addTo(map);
         }
@@ -402,7 +422,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
         button.title = "Zoom in";
-        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
         button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
             map.zoomIn();
@@ -416,7 +436,7 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
         const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
         button.type = "button";
         button.title = "Zoom out";
-        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
         button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
             map.zoomOut();
@@ -456,7 +476,7 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         const userLocationControl = new leaflet.Control({ position });
         userLocationControl.onAdd = () => {
             const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
-            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
+            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
             button.onclick = () => {
                 map.flyTo(userMarker.getLatLng(), 15);
             };
@@ -477,7 +497,7 @@ function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map
         const compassControl = new leaflet.Control({ position });
         compassControl.onAdd = () => {
             const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
-            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>';
+            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>';
             button.onclick = async () => {
                 //@ts-expect-error it does infant exist
                 await DeviceOrientationEvent.requestPermission();
