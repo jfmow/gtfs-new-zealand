@@ -232,4 +232,6 @@ async function searchForStop(search: string): Promise<searchData> {
 interface StopSearch {
     name: string
     type_of_stop: "bus" | "train" | "ferry" | "other"
+    stop_lat: number
+    stop_lon: number
 }
