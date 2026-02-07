@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -18,6 +19,11 @@ import (
 
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
+
+	osrmApiUrl, found := os.LookupEnv("OSRM_URL")
+	if !found {
+		panic("OSRM_URL env not found")
+	}
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
@@ -352,7 +358,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			MaxNearbyStops: 50,
 			MaxResults:     5,
 			MinResults:     3,
-			OsrmURL:        "https://osrm.suddsy.dev/",
+			OsrmURL:        osrmApiUrl,
 		})
 		if err != nil {
 			log.Fatalf("planning failed: %v", err)

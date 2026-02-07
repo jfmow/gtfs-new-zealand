@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Map, Settings2Icon, MenuIcon, X, ClockFading, Car, Siren, CalendarDays } from 'lucide-react'
+import { Map, Settings2Icon, MenuIcon, X, Car, Siren, CalendarDays, Route } from 'lucide-react'
 import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
@@ -41,6 +41,13 @@ const NAV_ROUTES: NavRoute[] = [
         description_short: "Schedule"
     },
     {
+        href: '/plan',
+        label: 'Journey Planner',
+        description: 'Plan your trip',
+        icon: Route,
+        description_short: "Journey Planner"
+    },
+    {
         href: '/stops',
         label: 'Find a stop',
         description: 'Locate nearby stops',
@@ -62,21 +69,13 @@ const NAV_ROUTES: NavRoute[] = [
         description_short: "Alerts"
     },
     {
-        href: '/history',
-        label: 'Service History',
-        description: 'View previous trips and services',
-        icon: ClockFading,
-        description_short: "History",
-        hidden: true
-    },
-    {
         component: SettingsPopover,
         label: 'Settings',
         description: 'Set app preferences and change region',
         icon: Settings2Icon,
         description_short: "Settings"
     },
-].filter(route => !route.hidden)
+]
 
 export default function NavBar() {
     const { theme } = useTheme()
