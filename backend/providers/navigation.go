@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"math"
@@ -160,6 +161,11 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		if limit == "" {
 			limit = "5"
 		}
+		limitValue, err := strconv.Atoi(limit)
+		if err != nil || limitValue <= 0 {
+			limitValue = 5
+			limit = "5"
+		}
 
 		nominatimURL := os.Getenv("NOMINATIM_URL")
 		if nominatimURL == "" {
@@ -218,6 +224,26 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 
 		ranked := make([]rankedResult, 0, len(rawResults))
 
+		stopResults, err := gtfsData.SearchForStopsByNameOrCode(query, false)
+		if err == nil {
+			for _, stop := range stopResults {
+				label := stop.Name
+				sim := similarity(query, label)
+				score := sim*0.9 + 0.5
+				ranked = append(ranked, rankedResult{
+					LocationAutocompleteResult: LocationAutocompleteResult{
+						ID:         hashStopID(stop.StopId),
+						Label:      label,
+						Lat:        stop.Lat,
+						Lon:        stop.Lon,
+						Type:       "stop",
+						Importance: 1,
+					},
+					Score: score,
+				})
+			}
+		}
+
 		for _, r := range rawResults {
 			lat, _ := strconv.ParseFloat(r.Lat, 64)
 			lon, _ := strconv.ParseFloat(r.Lon, 64)
@@ -228,7 +254,7 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 			ranked = append(ranked, rankedResult{
 				LocationAutocompleteResult: LocationAutocompleteResult{
 					ID:          r.PlaceID,
-					Label:       r.DisplayName,
+					Label:       simplifiedAddress(r),
 					Lat:         lat,
 					Lon:         lon,
 					Type:        r.Type,
@@ -246,6 +272,10 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		results := make([]LocationAutocompleteResult, 0, len(ranked))
 		for _, r := range ranked {
 			results = append(results, r.LocationAutocompleteResult)
+		}
+
+		if len(results) > limitValue {
+			results = results[:limitValue]
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", results)
@@ -546,14 +576,28 @@ func GetWalkingDirections(start, end Coordinates) GeoJSONResponse {
 }
 
 // Nav search
+type NominatimAddress struct {
+	HouseNumber string `json:"house_number"`
+	Road        string `json:"road"`
+	Suburb      string `json:"suburb"`
+	City        string `json:"city"`
+	Town        string `json:"town"`
+	State       string `json:"state"`
+	Postcode    string `json:"postcode"`
+	Country     string `json:"country"`
+	CountryCode string `json:"country_code"`
+}
+
 type NominatimResult struct {
-	PlaceID     int      `json:"place_id"`
-	Lat         string   `json:"lat"`
-	Lon         string   `json:"lon"`
-	DisplayName string   `json:"display_name"`
-	Type        string   `json:"type"`
-	Importance  float64  `json:"importance"`
-	BoundingBox []string `json:"boundingbox"`
+	PlaceID     int               `json:"place_id"`
+	Lat         string            `json:"lat"`
+	Lon         string            `json:"lon"`
+	DisplayName string            `json:"display_name"`
+	Type        string            `json:"type"`
+	Importance  float64           `json:"importance"`
+	BoundingBox []string          `json:"boundingbox"`
+	Address     NominatimAddress  `json:"address"`
+	Namedetails map[string]string `json:"namedetails"` // <-- captures building names
 }
 
 type LocationAutocompleteResult struct {
@@ -613,4 +657,43 @@ func levenshtein(a, b string) int {
 	}
 
 	return dp[len(a)][len(b)]
+}
+
+func hashStopID(stopID string) int {
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(stopID))
+	return int(hasher.Sum32())
+}
+
+func simplifiedAddress(result NominatimResult) string {
+	parts := []string{}
+
+	// Include the building or place name if present
+	if name, ok := result.Namedetails["name"]; ok && name != "" {
+		parts = append(parts, name)
+	}
+
+	addr := result.Address
+	if addr.HouseNumber != "" {
+		parts = append(parts, addr.HouseNumber)
+	}
+	if addr.Road != "" {
+		parts = append(parts, addr.Road)
+	}
+	if addr.Suburb != "" {
+		parts = append(parts, addr.Suburb)
+	}
+	if addr.City != "" {
+		parts = append(parts, addr.City)
+	} else if addr.Town != "" {
+		parts = append(parts, addr.Town)
+	}
+	if addr.Postcode != "" {
+		parts = append(parts, addr.Postcode)
+	}
+	if addr.Country != "" {
+		parts = append(parts, addr.Country)
+	}
+
+	return strings.Join(parts, " ")
 }
