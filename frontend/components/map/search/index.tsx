@@ -22,9 +22,20 @@ interface LocationSearchInputProps {
     value?: { lat: number; lon: number; label: string } | null
     onSelect: (location: { lat: number; lon: number; label: string } | null) => void
     storageKey: string // For recent searches
+    onSelectFromMap?: () => void
+    onUseCurrentLocation?: () => void
+    isLocating?: boolean
 }
 
-export function LocationSearchInput({ placeholder, value, onSelect, storageKey }: LocationSearchInputProps) {
+export function LocationSearchInput({
+    placeholder,
+    value,
+    onSelect,
+    storageKey,
+    onSelectFromMap,
+    onUseCurrentLocation,
+    isLocating,
+}: LocationSearchInputProps) {
     const [searchTerm, setSearchTerm] = useState("")
     const [results, setResults] = useState<LocationAutocompleteResult[]>([])
     const [recentSearches, setRecentSearches] = useState<LocationAutocompleteResult[]>([])
@@ -126,10 +137,10 @@ export function LocationSearchInput({ placeholder, value, onSelect, storageKey }
 
     return (
         <div className="relative w-full" ref={searchRef}>
-            <div className="flex items-center">
+            <div className="flex flex-wrap items-center gap-2">
                 <SearchInput
                     value={value?.label || searchTerm}
-                    className="w-full"
+                    className="min-w-0 flex-1"
                     placeholder={placeholder}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onFocus={() => {
@@ -140,11 +151,33 @@ export function LocationSearchInput({ placeholder, value, onSelect, storageKey }
                     }}
                 />
                 {value && (
-                    <Button variant="ghost" size="icon" onClick={handleClear} className="ml-2">
+                    <Button variant="ghost" size="icon" onClick={handleClear}>
                         <X className="h-4 w-4" />
                     </Button>
                 )}
             </div>
+            {(onSelectFromMap || onUseCurrentLocation) && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {onSelectFromMap && (
+                        <Button type="button" variant="outline" size="sm" onClick={onSelectFromMap}>
+                            <span className="whitespace-normal text-left leading-snug">Select on map</span>
+                        </Button>
+                    )}
+                    {onUseCurrentLocation && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={onUseCurrentLocation}
+                            disabled={isLocating}
+                        >
+                            <span className="whitespace-normal text-left leading-snug">
+                                {isLocating ? "Locating..." : "Use current location"}
+                            </span>
+                        </Button>
+                    )}
+                </div>
+            )}
 
             {isOpen && (
                 <div className="absolute z-50 mt-1 bg-background rounded-md shadow-lg border w-full max-w-full">

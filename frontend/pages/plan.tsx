@@ -4,13 +4,18 @@ import { MapItem } from "@/components/map/markers/create";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch } from "@/lib/url-context";
-import { ArrowRight, Bus, Clock, MapPin, Navigation, X } from "lucide-react";
+import { useIsMobile } from "@/lib/utils";
+import { Header } from "@/components/nav";
+import { Bus } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Suspense, useState, useRef, useEffect } from "react";
-
+import type { GeoJSON } from "@/components/map/geojson-types"
 const LeafletMap = dynamic(() => import("@/components/map/map"), {
     ssr: false,
 });
@@ -32,8 +37,12 @@ export default function PlanJourney() {
     const [selectedRoute, setSelectedRoute] = useState<JourneyType | undefined>();
     const [isSearching, setIsSearching] = useState(false);
     const [locationMode, setLocationMode] = useState<'start' | 'end'>('start');
+    const [isSelectingOnMap, setIsSelectingOnMap] = useState(false);
+    const [isRouteMapOpen, setIsRouteMapOpen] = useState(false);
+    const [isLocating, setIsLocating] = useState<null | 'start' | 'end'>(null);
+    const [locationError, setLocationError] = useState<string | null>(null);
+    const isMobile = useIsMobile();
 
-    const totalDistance = selectedRoute ? selectedRoute.Legs.reduce((sum, leg) => sum + leg.DistanceKm, 0) : 0;
 
     // Handle map clicks to set start/end locations
     const locationModeRef = useRef<'start' | 'end'>('start');
@@ -47,14 +56,49 @@ export default function PlanJourney() {
         } else {
             setEndLocation({ lat, lon, label: "End Point" });
         }
+        setIsSelectingOnMap(false);
     };
 
+    const handleSelectFromMap = (mode: 'start' | 'end') => {
+        setLocationMode(mode);
+        setIsSelectingOnMap(true);
+    };
+
+    const handleUseCurrentLocation = (mode: 'start' | 'end') => {
+        setLocationError(null);
+        if (!navigator?.geolocation) {
+            setLocationError("Current location is unavailable in this browser.");
+            return;
+        }
+        setIsLocating(mode);
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const location = {
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                    label: "Current location",
+                };
+                if (mode === 'start') {
+                    setStartLocation(location);
+                } else {
+                    setEndLocation(location);
+                }
+                setIsLocating(null);
+            },
+            () => {
+                setLocationError("Unable to access your current location.");
+                setIsLocating(null);
+            },
+            { enableHighAccuracy: true, timeout: 10000 }
+        );
+    };
 
     // Plan the journey
     const planJourney = async () => {
         if (!startLocation || !endLocation) return;
 
         setIsSearching(true);
+        setApiResponse([])
         try {
             // Simulate API call - replace with your actual API endpoint
             const response = await ApiFetch<JourneyType[]>(
@@ -63,12 +107,9 @@ export default function PlanJourney() {
 
             if (response.ok) {
                 setApiResponse(response.data);
-                if (response.data.length > 0) {
-                    setSelectedRoute(response.data[0]);
-                }
             }
         } catch (error) {
-            console.error("[v0] Error planning journey:", error);
+            console.error("Error planning journey:", error);
         } finally {
             setIsSearching(false);
         }
@@ -150,85 +191,47 @@ export default function PlanJourney() {
     }
 
     return (
-        <div className="min-h-screen bg-background">
-            <div className="mx-auto max-w-7xl space-y-6 p-4 md:p-8">
-                <div className="space-y-2">
-                    <h1 className="text-balance text-3xl font-bold tracking-tight">Plan Your Journey</h1>
-                    <p className="text-muted-foreground">Click on the map to select start and end points, then customize your journey options</p>
-                </div>
+        <>
+            <Header title="Train, Bus, Ferry - Find your next journey" />
+            <div className="mx-auto w-full max-w-[1400px] flex flex-col gap-6 px-4 pb-4">
+                <div className="grid gap-6 mx-auto w-full max-w-4xl">
+                    <Card className="">
+                        <CardHeader>
+                            <CardTitle>Journey Options</CardTitle>
+                            <CardDescription>Plan a trip that works for you.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <DatePicker onDateChange={(d) => setSelectedDate(d)} />
+                            </div>
 
-                <div className="grid gap-6 lg:grid-cols-3">
-                    {/* Map Section */}
-                    <div className="lg:col-span-2">
-                        <Card className="overflow-hidden">
-                            <CardHeader>
-                                <div className="flex items-start justify-between gap-4">
-                                    <div className="space-y-1.5">
-                                        <CardTitle>Interactive Map</CardTitle>
-                                        <CardDescription>
-                                            Click on the map to set your {locationMode} location
-                                        </CardDescription>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button
-                                            variant={locationMode === 'start' ? 'default' : 'outline'}
-                                            size="sm"
-                                            onClick={() => setLocationMode('start')}
-                                        >
-                                            Set Start
-                                        </Button>
-                                        <Button
-                                            variant={locationMode === 'end' ? 'default' : 'outline'}
-                                            size="sm"
-                                            onClick={() => setLocationMode('end')}
-                                        >
-                                            Set End
-                                        </Button>
-                                    </div>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="p-0">
-                                <Suspense fallback={<div className="flex h-[600px] items-center justify-center">Loading map...</div>}>
-                                    <LeafletMap
-                                        defaultZoom={["user", [51.5074, -0.1278]]}
-                                        mapItems={mapMarkers}
-                                        map_id="journey-planner-map"
-                                        height="600px"
-                                        line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
-                                        onMapClick={handleMapClick}
-                                    />
-                                </Suspense>
-                            </CardContent>
-                        </Card>
-                    </div>
+                            <LocationSearchInput
+                                placeholder="Search start location..."
+                                value={startLocation}
+                                onSelect={setStartLocation}
+                                storageKey="recentStartLocations"
+                                onSelectFromMap={() => handleSelectFromMap('start')}
+                                onUseCurrentLocation={() => handleUseCurrentLocation('start')}
+                                isLocating={isLocating === 'start'}
+                            />
 
-                    {/* Options Panel */}
-                    <div className="space-y-6">
-                        <Card>
-                            <CardHeader>
-                                <CardTitle>Journey Options</CardTitle>
-                                <CardDescription>Customize your journey preferences</CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="space-y-2">
-                                    <DatePicker onDateChange={(d) => setSelectedDate(d)} />
-                                </div>
+                            <LocationSearchInput
+                                placeholder="Search end location..."
+                                value={endLocation}
+                                onSelect={setEndLocation}
+                                storageKey="recentEndLocations"
+                                onSelectFromMap={() => handleSelectFromMap('end')}
+                                onUseCurrentLocation={() => handleUseCurrentLocation('end')}
+                                isLocating={isLocating === 'end'}
+                            />
 
-                                <LocationSearchInput
-                                    placeholder="Search start location..."
-                                    value={startLocation}
-                                    onSelect={setStartLocation}
-                                    storageKey="recentStartLocations"
-                                />
+                            {locationError && (
+                                <p className="text-sm text-destructive" role="alert">
+                                    {locationError}
+                                </p>
+                            )}
 
-                                <LocationSearchInput
-                                    placeholder="Search end location..."
-                                    value={endLocation}
-                                    onSelect={setEndLocation}
-                                    storageKey="recentEndLocations"
-                                />
-
-                                {/* Max Walk Distance */}
+                            <div className="grid gap-4 sm:grid-cols-3">
                                 <div className="space-y-2">
                                     <Label htmlFor="maxWalk">Max Walking Distance</Label>
                                     <Select value={maxWalkKm} onValueChange={setMaxWalkKm}>
@@ -246,7 +249,6 @@ export default function PlanJourney() {
                                     </Select>
                                 </div>
 
-                                {/* Walking Speed */}
                                 <div className="space-y-2">
                                     <Label htmlFor="walkSpeed">Walking Speed</Label>
                                     <Select value={walkSpeed} onValueChange={setWalkSpeed}>
@@ -262,7 +264,6 @@ export default function PlanJourney() {
                                     </Select>
                                 </div>
 
-                                {/* Max Transfers */}
                                 <div className="space-y-2">
                                     <Label htmlFor="maxTransfers">Max Transfers</Label>
                                     <Select value={maxTransfers} onValueChange={setMaxTransfers}>
@@ -279,51 +280,58 @@ export default function PlanJourney() {
                                         </SelectContent>
                                     </Select>
                                 </div>
+                            </div>
 
-                                <Button
-                                    className="w-full"
-                                    onClick={planJourney}
-                                    disabled={!startLocation || !endLocation || isSearching}
-                                >
-                                    {isSearching ? "Searching..." : "Search Routes"}
-                                </Button>
-                            </CardContent>
-                        </Card>
+                            <Button
+                                className="w-full"
+                                onClick={planJourney}
+                                disabled={!startLocation || !endLocation || isSearching}
+                            >
+                                {isSearching ? "Searching..." : "Search Routes"}
+                            </Button>
+                        </CardContent>
+                    </Card>
 
-                        {/* Trip Summary */}
-                        {selectedRoute && (
+                    <div className="">
+                        {apiResponse.length > 0 && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Trip Summary</CardTitle>
+                                    <CardTitle>Route Options</CardTitle>
+                                    <CardDescription>Select a route to view on the map</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-start gap-3">
-                                        <Clock className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-medium">Duration</p>
-                                            <p className="text-2xl font-bold">{formatDuration(selectedRoute.TotalDuration)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-3">
-                                        <Navigation className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-medium">Distance</p>
-                                            <p className="text-2xl font-bold">{totalDistance.toFixed(2)} km</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-3">
-                                        <MapPin className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-medium">Transfers</p>
-                                            <p className="text-2xl font-bold">{selectedRoute.Transfers}</p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-start gap-3">
-                                        <ArrowRight className="mt-0.5 h-5 w-5 text-muted-foreground" />
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-medium">Time</p>
-                                            <p className="text-sm">{formatTime(selectedRoute.DepartureTime)} - {formatTime(selectedRoute.ArrivalTime)}</p>
-                                        </div>
+                                <CardContent>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        {apiResponse.map((route, index) => {
+                                            const isSelected = route.ID === selectedRoute?.ID;
+                                            return (
+                                                <Button
+                                                    key={index}
+                                                    variant={isSelected ? 'default' : 'outline'}
+                                                    className="h-auto justify-start p-4 text-left"
+                                                    onClick={() => {
+                                                        setSelectedRoute(route);
+                                                        setIsRouteMapOpen(true);
+                                                    }}
+                                                >
+                                                    <div className="flex w-full flex-col gap-2">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <Badge variant={route.Transfers > 0 ? 'secondary' : 'default'}>
+                                                                Option {index + 1}
+                                                            </Badge>
+                                                            <span className="text-sm font-semibold">{formatDuration(route.TotalDuration)}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                            <Bus className="h-3 w-3" />
+                                                            <span>{getRouteSummary(route)}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 text-xs">
+                                                            <span>{route.Transfers} transfer{route.Transfers !== 1 ? 's' : ''}</span>
+                                                            <span>{formatTime(route.DepartureTime)} - {formatTime(route.ArrivalTime)}</span>
+                                                        </div>
+                                                    </div>
+                                                </Button>
+                                            );
+                                        })}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -331,103 +339,123 @@ export default function PlanJourney() {
                     </div>
                 </div>
 
-                {/* Route Options */}
-                {apiResponse.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Route Options</CardTitle>
-                            <CardDescription>Select a route to view on the map</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                {apiResponse.map((route, index) => {
-                                    const isSelected = route.ID === selectedRoute?.ID;
-                                    return (
-                                        <Button
-                                            key={index}
-                                            variant={isSelected ? 'default' : 'outline'}
-                                            className="h-auto justify-start p-4 text-left"
-                                            onClick={() => setSelectedRoute(route)}
-                                        >
-                                            <div className="flex w-full flex-col gap-2">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <Badge variant={route.Transfers > 0 ? 'secondary' : 'default'}>
-                                                        Option {index + 1}
-                                                    </Badge>
-                                                    <span className="text-sm font-semibold">{formatDuration(route.TotalDuration)}</span>
-                                                </div>
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <Bus className="h-3 w-3" />
-                                                    <span>{getRouteSummary(route)}</span>
-                                                </div>
-                                                <div className="flex items-center gap-3 text-xs">
-                                                    <span>{route.Transfers} transfer{route.Transfers !== 1 ? 's' : ''}</span>
-                                                    <span>{formatTime(route.DepartureTime)} - {formatTime(route.ArrivalTime)}</span>
-                                                </div>
-                                            </div>
-                                        </Button>
-                                    );
-                                })}
-                            </div>
-                        </CardContent>
-                    </Card>
-                )}
 
-                {/* Route Details */}
-                {selectedRoute && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Route Details</CardTitle>
-                            <CardDescription>Step-by-step journey information</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {selectedRoute.Legs.map((leg, index) => (
-                                <div key={index} className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
-                                    <div className="flex items-center gap-2">
-                                        <Badge
-                                            variant={leg.Mode === 'walk' ? 'secondary' : 'default'}
-                                            style={leg.Route?.route_color ? { backgroundColor: `#${leg.Route.route_color}`, color: '#fff' } : undefined}
-                                        >
-                                            {leg.Mode === 'walk' ? 'Walk' : `${leg.Route?.vehicle_type || 'Bus'} ${leg.Route?.route_short_name || leg.RouteID}`}
-                                        </Badge>
-                                        <span className="text-sm text-muted-foreground">
-                                            {formatDuration(leg.Duration)}
-                                        </span>
-                                    </div>
-                                    <div className="space-y-1 text-sm">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-green-500" />
-                                            <span className="font-medium">{formatTime(leg.DepartureTime)}</span>
-                                            <span className="text-muted-foreground">
-                                                {leg.FromStop?.stop_name || 'Start'}
-                                            </span>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-2 w-2 rounded-full bg-red-500" />
-                                            <span className="font-medium">{formatTime(leg.ArrivalTime)}</span>
-                                            <span className="text-muted-foreground">
-                                                {leg.ToStop?.stop_name || 'Destination'}
-                                            </span>
-                                        </div>
-                                    </div>
-                                    {leg.DistanceKm > 0 && (
-                                        <p className="text-xs text-muted-foreground">
-                                            Distance: {leg.DistanceKm.toFixed(2)} km
-                                        </p>
-                                    )}
-                                    {leg.Route && (
-                                        <div className="space-y-0.5 text-xs text-muted-foreground">
-                                            <p>Agency: {leg.Route.agency_id}</p>
-                                            <p>Trip ID: {leg.TripID}</p>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </CardContent>
-                    </Card>
-                )}
             </div>
-        </div>
+
+            {isMobile ? (
+                <Sheet open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
+                    <SheetContent side="bottom" className="max-h-[85vh] overflow-hidden">
+                        <SheetHeader>
+                            <SheetTitle>Route Details</SheetTitle>
+                            <SheetDescription>Review the selected journey on the map or in a list.</SheetDescription>
+                        </SheetHeader>
+                        <Tabs defaultValue="details" className="mt-4">
+                            <TabsList className="w-full">
+                                <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
+                                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="map">
+                                <div className="h-[60vh] overflow-hidden rounded-md border">
+                                    <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                        <LeafletMap
+                                            defaultZoom={["user", [51.5074, -0.1278]]}
+                                            mapItems={mapMarkers}
+                                            map_id="journey-planner-route-map"
+                                            height="100%"
+                                            line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                        />
+                                    </Suspense>
+                                </div>
+                            </TabsContent>
+                            <TabsContent value="details">
+                                {selectedRoute && (
+                                    <div className="max-h-[60vh] overflow-y-auto p-2">
+                                        <RouteDetailsContent route={selectedRoute} />
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </Tabs>
+                    </SheetContent>
+                </Sheet>
+            ) : (
+                <Dialog open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
+                    <DialogContent className="max-w-5xl">
+                        <DialogHeader>
+                            <DialogTitle>Route Details</DialogTitle>
+                            <DialogDescription>Review the selected journey on the map or in a list.</DialogDescription>
+                        </DialogHeader>
+                        <Tabs defaultValue="details" className="mt-4">
+                            <TabsList className="w-full">
+                                <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
+                                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="map">
+                                <div className="h-[60vh] overflow-hidden rounded-md border">
+                                    <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                        <LeafletMap
+                                            defaultZoom={["user", [51.5074, -0.1278]]}
+                                            mapItems={mapMarkers}
+                                            map_id="journey-planner-route-map"
+                                            height="100%"
+                                            line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                        />
+                                    </Suspense>
+                                </div>
+                            </TabsContent>
+                            <TabsContent value="details">
+                                {selectedRoute && (
+                                    <div className="max-h-[60vh] overflow-y-auto p-2">
+                                        <RouteDetailsContent route={selectedRoute} />
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </Tabs>
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {isMobile ? (
+                <Sheet open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
+                    <SheetContent side="bottom" className="h-[85vh] overflow-hidden">
+                        <SheetHeader>
+                            <SheetTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</SheetTitle>
+                            <SheetDescription>Tap the map to set your {locationMode} point.</SheetDescription>
+                        </SheetHeader>
+                        <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
+                            <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                <LeafletMap
+                                    defaultZoom={["user", [51.5074, -0.1278]]}
+                                    mapItems={mapMarkers}
+                                    map_id="journey-planner-select-map"
+                                    height="100%"
+                                    onMapClick={handleMapClick}
+                                />
+                            </Suspense>
+                        </div>
+                    </SheetContent>
+                </Sheet>
+            ) : (
+                <Dialog open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
+                    <DialogContent className="max-w-5xl">
+                        <DialogHeader>
+                            <DialogTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</DialogTitle>
+                            <DialogDescription>Click the map to set your {locationMode} point.</DialogDescription>
+                        </DialogHeader>
+                        <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
+                            <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                <LeafletMap
+                                    defaultZoom={["user", [51.5074, -0.1278]]}
+                                    mapItems={mapMarkers}
+                                    map_id="journey-planner-select-map"
+                                    height="100%"
+                                    onMapClick={handleMapClick}
+                                />
+                            </Suspense>
+                        </div>
+                    </DialogContent>
+                </Dialog>
+            )}
+        </>
     );
 }
 
@@ -451,6 +479,49 @@ function formatDuration(nanoseconds: number) {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours}h ${mins}m`;
+}
+
+function RouteDetailsContent({ route }: { route: JourneyType }) {
+    return (
+        <div className="space-y-4">
+            {route.Legs.map((leg, index) => (
+                <div key={index} className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
+                    <div className="flex items-center gap-2">
+                        <Badge
+                            variant={leg.Mode === 'walk' ? 'secondary' : 'default'}
+                            style={leg.Route?.route_color ? { backgroundColor: `#${leg.Route.route_color}`, color: '#fff' } : undefined}
+                        >
+                            {leg.Mode === 'walk' ? 'Walk' : `${leg.Route?.vehicle_type || 'Bus'} ${leg.Route?.route_short_name || leg.RouteID}`}
+                        </Badge>
+                        <span className="text-sm text-muted-foreground">
+                            {formatDuration(leg.Duration)}
+                        </span>
+                    </div>
+                    <div className="space-y-1 text-sm">
+                        <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-green-500" />
+                            <span className="font-medium">{formatTime(leg.DepartureTime)}</span>
+                            <span className="text-muted-foreground">
+                                {leg.FromStop?.stop_name || 'Start'}
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 rounded-full bg-red-500" />
+                            <span className="font-medium">{formatTime(leg.ArrivalTime)}</span>
+                            <span className="text-muted-foreground">
+                                {leg.ToStop?.stop_name || 'Destination'}
+                            </span>
+                        </div>
+                    </div>
+                    {leg.DistanceKm > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                            Distance: {leg.DistanceKm.toFixed(2)} km
+                        </p>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
 }
 
 export interface JourneyType {
@@ -500,7 +571,6 @@ export interface Route {
 }
 
 import { Calendar } from "@/components/ui/calendar"
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field"
 import { Input } from "@/components/ui/input"
 import {
     Popover,
@@ -531,53 +601,50 @@ function DatePicker({ onDateChange }: { onDateChange: (date: Date) => void }) {
     }, [date])
 
     return (
-        <FieldGroup className="mx-auto max-w-xs flex-row">
-            {/* Date Picker */}
-            <Field>
-                <FieldLabel htmlFor="date-picker-optional">Date</FieldLabel>
-                <Popover open={open} onOpenChange={setOpen}>
-                    <PopoverTrigger asChild>
-                        <Button
-                            variant="outline"
-                            id="date-picker-optional"
-                            className="w-32 justify-between font-normal"
-                        >
-                            {date ? format(date, "PPP") : "Select date"}
-                            <ChevronDownIcon />
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-                        <Calendar
-                            mode="single"
-                            selected={date}
-                            captionLayout="dropdown"
-                            defaultMonth={date}
-                            onSelect={(selectedDate) => {
-                                if (!selectedDate) return
-                                const updatedDate = new Date(selectedDate)
-                                // Preserve current time
-                                updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
-                                setDate(updatedDate)
-                                setOpen(false)
-                            }}
-                        />
-                    </PopoverContent>
-                </Popover>
-            </Field>
-
-            {/* Time Picker */}
-            <Field className="w-32">
-                <FieldLabel htmlFor="time-picker-optional">Time</FieldLabel>
-                <Input
-                    type="time"
-                    id="time-picker-optional"
-                    step="1"
-                    value={date ? format(date, "HH:mm:ss") : "00:00:00"}
-                    onChange={handleTimeChange}
-                    className="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-                />
-            </Field>
-        </FieldGroup>
+        <div className="flex flex-col space-y-2">
+            <Label>Date & Time</Label>
+            <div className="flex flex-col md:flex-row gap-2">
+                <div className="">
+                    <Popover open={open} onOpenChange={setOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                id="date-picker-optional"
+                                className="font-normal"
+                            >
+                                {date ? format(date, "PPP") : "Select date"}
+                                <ChevronDownIcon />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+                            <Calendar
+                                mode="single"
+                                selected={date}
+                                captionLayout="dropdown"
+                                defaultMonth={date}
+                                onSelect={(selectedDate) => {
+                                    if (!selectedDate) return
+                                    const updatedDate = new Date(selectedDate)
+                                    // Preserve current time
+                                    updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
+                                    setDate(updatedDate)
+                                    setOpen(false)
+                                }}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+                <div className="space-y-1">
+                    <Input
+                        type="time"
+                        id="time-picker-optional"
+                        step="1"
+                        value={date ? format(date, "HH:mm:ss") : "00:00:00"}
+                        onChange={handleTimeChange}
+                        className="w-fit bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                    />
+                </div>
+            </div>
+        </div>
     )
 }
-
