@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ApiFetch } from "@/lib/url-context";
+import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
 import { Bus } from "lucide-react";
@@ -42,6 +42,7 @@ export default function PlanJourney() {
     const [isLocating, setIsLocating] = useState<null | 'start' | 'end'>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
     const isMobile = useIsMobile();
+    const { currentUrl } = useUrl()
 
 
     // Handle map clicks to set start/end locations
@@ -355,17 +356,19 @@ export default function PlanJourney() {
                                 <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
                             </TabsList>
                             <TabsContent value="map">
-                                <div className="h-[60vh] overflow-hidden rounded-md border">
-                                    <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                        <LeafletMap
-                                            defaultZoom={["user", [51.5074, -0.1278]]}
-                                            mapItems={mapMarkers}
-                                            map_id="journey-planner-route-map"
-                                            height="100%"
-                                            line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
-                                        />
-                                    </Suspense>
-                                </div>
+                                {selectedRoute && (
+                                    <div className="h-[60vh] overflow-hidden rounded-md border">
+                                        <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                            <LeafletMap
+                                                defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
+                                                mapItems={mapMarkers}
+                                                map_id="journey-planner-route-map"
+                                                height="100%"
+                                                line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                            />
+                                        </Suspense>
+                                    </div>
+                                )}
                             </TabsContent>
                             <TabsContent value="details">
                                 {selectedRoute && (
@@ -390,17 +393,19 @@ export default function PlanJourney() {
                                 <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
                             </TabsList>
                             <TabsContent value="map">
-                                <div className="h-[60vh] overflow-hidden rounded-md border">
-                                    <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                        <LeafletMap
-                                            defaultZoom={["user", [51.5074, -0.1278]]}
-                                            mapItems={mapMarkers}
-                                            map_id="journey-planner-route-map"
-                                            height="100%"
-                                            line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
-                                        />
-                                    </Suspense>
-                                </div>
+                                {selectedRoute && (
+                                    <div className="h-[60vh] overflow-hidden rounded-md border">
+                                        <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                            <LeafletMap
+                                                defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
+                                                mapItems={mapMarkers}
+                                                map_id="journey-planner-route-map"
+                                                height="100%"
+                                                line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                            />
+                                        </Suspense>
+                                    </div>
+                                )}
                             </TabsContent>
                             <TabsContent value="details">
                                 {selectedRoute && (
@@ -424,7 +429,7 @@ export default function PlanJourney() {
                         <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
                             <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
                                 <LeafletMap
-                                    defaultZoom={["user", [51.5074, -0.1278]]}
+                                    defaultZoom={["user", currentUrl.defaultMapCenter]}
                                     mapItems={mapMarkers}
                                     map_id="journey-planner-select-map"
                                     height="100%"
@@ -444,7 +449,7 @@ export default function PlanJourney() {
                         <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
                             <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
                                 <LeafletMap
-                                    defaultZoom={["user", [51.5074, -0.1278]]}
+                                    defaultZoom={["user", currentUrl.defaultMapCenter]}
                                     mapItems={mapMarkers}
                                     map_id="journey-planner-select-map"
                                     height="100%"
