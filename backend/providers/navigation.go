@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -140,6 +141,114 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 			}
 			return JsonApiResponse(c, http.StatusOK, "", result)
 		}
+	})
+
+	// Location search (autocomplete) using self-hosted Nominatim
+	navigationRoute.GET("/search", func(c echo.Context) error {
+		query := strings.TrimSpace(c.QueryParam("q"))
+		if query == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusBadRequest,
+				"missing query",
+				nil,
+				ResponseDetails("q", query, "details", "Query parameter 'q' is required"),
+			)
+		}
+
+		limit := c.QueryParam("limit")
+		if limit == "" {
+			limit = "5"
+		}
+
+		nominatimURL := os.Getenv("NOMINATIM_URL")
+		if nominatimURL == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusInternalServerError,
+				"nominatim not configured",
+				nil,
+				ResponseDetails("details", "NOMINATIM_URL env var is not set"),
+			)
+		}
+
+		// Build request
+		reqURL := fmt.Sprintf(
+			"%s/search?format=jsonv2&q=%s&limit=%s&addressdetails=1&namedetails=1&extratags=1&dedupe=1",
+			strings.TrimRight(nominatimURL, "/"),
+			url.QueryEscape(query),
+			limit,
+		)
+
+		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		// REQUIRED by Nominatim usage policy (even self-hosted is a good habit)
+		req.Header.Set("User-Agent", "suddsy-dev-trains-api/1.0")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadGateway, "", nil, err.Error())
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return JsonApiResponse(
+				c,
+				http.StatusBadGateway,
+				"nominatim error",
+				nil,
+				ResponseDetails("status", resp.StatusCode, "body", string(body)),
+			)
+		}
+
+		var rawResults []NominatimResult
+		if err := json.NewDecoder(resp.Body).Decode(&rawResults); err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		type rankedResult struct {
+			LocationAutocompleteResult
+			Score float64
+		}
+
+		ranked := make([]rankedResult, 0, len(rawResults))
+
+		for _, r := range rawResults {
+			lat, _ := strconv.ParseFloat(r.Lat, 64)
+			lon, _ := strconv.ParseFloat(r.Lon, 64)
+
+			sim := similarity(query, r.DisplayName)
+			score := sim*0.7 + r.Importance*0.3
+
+			ranked = append(ranked, rankedResult{
+				LocationAutocompleteResult: LocationAutocompleteResult{
+					ID:          r.PlaceID,
+					Label:       r.DisplayName,
+					Lat:         lat,
+					Lon:         lon,
+					Type:        r.Type,
+					Importance:  r.Importance,
+					BoundingBox: r.BoundingBox,
+				},
+				Score: score,
+			})
+		}
+
+		sort.SliceStable(ranked, func(i, j int) bool {
+			return ranked[i].Score > ranked[j].Score
+		})
+
+		results := make([]LocationAutocompleteResult, 0, len(ranked))
+		for _, r := range ranked {
+			results = append(results, r.LocationAutocompleteResult)
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", results)
 	})
 
 }
@@ -434,4 +543,74 @@ func GetWalkingDirections(start, end Coordinates) GeoJSONResponse {
 	}
 
 	return geoJSON
+}
+
+// Nav search
+type NominatimResult struct {
+	PlaceID     int      `json:"place_id"`
+	Lat         string   `json:"lat"`
+	Lon         string   `json:"lon"`
+	DisplayName string   `json:"display_name"`
+	Type        string   `json:"type"`
+	Importance  float64  `json:"importance"`
+	BoundingBox []string `json:"boundingbox"`
+}
+
+type LocationAutocompleteResult struct {
+	ID          int      `json:"id"`
+	Label       string   `json:"label"`
+	Lat         float64  `json:"lat"`
+	Lon         float64  `json:"lon"`
+	Type        string   `json:"type"`
+	Importance  float64  `json:"importance"`
+	BoundingBox []string `json:"boundingBox"`
+}
+
+func similarity(a, b string) float64 {
+	a = strings.ToLower(a)
+	b = strings.ToLower(b)
+
+	if strings.Contains(a, b) || strings.Contains(b, a) {
+		return 1.0
+	}
+
+	la, lb := len(a), len(b)
+	if la == 0 || lb == 0 {
+		return 0
+	}
+
+	// Levenshtein-lite
+	dist := levenshtein(a, b)
+	maxLen := math.Max(float64(la), float64(lb))
+	return 1.0 - float64(dist)/maxLen
+}
+
+func levenshtein(a, b string) int {
+	dp := make([][]int, len(a)+1)
+	for i := range dp {
+		dp[i] = make([]int, len(b)+1)
+	}
+
+	for i := 0; i <= len(a); i++ {
+		dp[i][0] = i
+	}
+	for j := 0; j <= len(b); j++ {
+		dp[0][j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			dp[i][j] = min(
+				dp[i-1][j]+1,
+				dp[i][j-1]+1,
+				dp[i-1][j-1]+cost,
+			)
+		}
+	}
+
+	return dp[len(a)][len(b)]
 }

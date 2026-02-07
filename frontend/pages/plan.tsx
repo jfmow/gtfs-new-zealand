@@ -213,53 +213,20 @@ export default function PlanJourney() {
                                 <div className="space-y-2">
                                     <DatePicker onDateChange={(d) => setSelectedDate(d)} />
                                 </div>
-                                {/* Start Location */}
-                                <div className="space-y-2">
-                                    <Label>Start Location</Label>
-                                    <div className="flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm">
-                                        {startLocation ? (
-                                            <>
-                                                <span className="text-muted-foreground">
-                                                    {startLocation.lat.toFixed(4)}, {startLocation.lon.toFixed(4)}
-                                                </span>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0"
-                                                    onClick={() => setStartLocation(null)}
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </Button>
-                                            </>
-                                        ) : (
-                                            <span className="text-muted-foreground">Click on map</span>
-                                        )}
-                                    </div>
-                                </div>
 
-                                {/* End Location */}
-                                <div className="space-y-2">
-                                    <Label>End Location</Label>
-                                    <div className="flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm">
-                                        {endLocation ? (
-                                            <>
-                                                <span className="text-muted-foreground">
-                                                    {endLocation.lat.toFixed(4)}, {endLocation.lon.toFixed(4)}
-                                                </span>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0"
-                                                    onClick={() => setEndLocation(null)}
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                </Button>
-                                            </>
-                                        ) : (
-                                            <span className="text-muted-foreground">Click on map</span>
-                                        )}
-                                    </div>
-                                </div>
+                                <LocationSearchInput
+                                    placeholder="Search start location..."
+                                    value={startLocation}
+                                    onSelect={setStartLocation}
+                                    storageKey="recentStartLocations"
+                                />
+
+                                <LocationSearchInput
+                                    placeholder="Search end location..."
+                                    value={endLocation}
+                                    onSelect={setEndLocation}
+                                    storageKey="recentEndLocations"
+                                />
 
                                 {/* Max Walk Distance */}
                                 <div className="space-y-2">
@@ -542,6 +509,7 @@ import {
 } from "@/components/ui/popover"
 import { format } from "date-fns"
 import { ChevronDownIcon } from "lucide-react"
+import { LocationSearchInput } from "@/components/map/search";
 
 function DatePicker({ onDateChange }: { onDateChange: (date: Date) => void }) {
     const [open, setOpen] = useState(false)
