@@ -2,9 +2,11 @@ package providers
 
 import (
 	"fmt"
+	"log"
 	"math"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"time"
@@ -17,6 +19,11 @@ import (
 
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
+
+	osrmApiUrl, found := os.LookupEnv("OSRM_URL")
+	if !found {
+		panic("OSRM_URL env not found")
+	}
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
@@ -275,6 +282,107 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
+
+	servicesRoute.GET("/plan", func(c echo.Context) error {
+		// assuming you already have gtfsData (gtfs.Database)
+		startLatStr := c.QueryParam("startLat")
+		startLonStr := c.QueryParam("startLon")
+
+		startLat, err := strconv.ParseFloat(startLatStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid latitude", nil, ResponseDetails("lat", startLat, "error", err.Error()))
+		}
+		startLon, err := strconv.ParseFloat(startLonStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid longitude", nil, ResponseDetails("lon", startLon, "error", err.Error()))
+		}
+
+		endLatStr := c.QueryParam("endLat")
+		endLonStr := c.QueryParam("endLon")
+
+		endLat, err := strconv.ParseFloat(endLatStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid latitude", nil, ResponseDetails("lat", endLatStr, "error", err.Error()))
+		}
+		endLon, err := strconv.ParseFloat(endLonStr, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "Invalid longitude", nil, ResponseDetails("lon", endLonStr, "error", err.Error()))
+		}
+
+		date := c.QueryParam("date")
+		leaveTime := time.Now()
+
+		if date != "" {
+			t, err := time.Parse(time.RFC3339, date)
+			if err != nil {
+				return JsonApiResponse(
+					c,
+					http.StatusBadRequest,
+					"invalid date",
+					nil,
+					ResponseDetails("date", date, "details", "Invalid date format", "error", err.Error()),
+				)
+			}
+
+			// Convert to local timezone if needed
+			leaveTime = t.In(localTimeZone)
+		}
+
+		maxWalkKm, err := queryFloat(c, "maxWalkKm", 1.0)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid maxWalkKm", nil,
+				ResponseDetails("maxWalkKm", c.QueryParam("maxWalkKm"), "error", err.Error()))
+		}
+
+		walkSpeed, err := queryFloat(c, "walkSpeed", 4.8)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid walkSpeedKmph", nil,
+				ResponseDetails("walkSpeedKmph", c.QueryParam("walkSpeedKmph"), "error", err.Error()))
+		}
+
+		maxTransfers, err := queryInt(c, "maxTransfers", 2)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid maxTransfers", nil,
+				ResponseDetails("maxTransfers", c.QueryParam("maxTransfers"), "error", err.Error()))
+		}
+
+		plans, err := gtfsData.PlanJourneyRaptor(gtfs.JourneyRequest{
+			StartLat:       startLat,
+			StartLon:       startLon,
+			EndLat:         endLat,
+			EndLon:         endLon,
+			DepartAt:       leaveTime,
+			MaxWalkKm:      maxWalkKm,
+			WalkSpeedKmph:  walkSpeed,
+			MaxTransfers:   maxTransfers,
+			MaxNearbyStops: 50,
+			MaxResults:     5,
+			MinResults:     3,
+			OsrmURL:        osrmApiUrl,
+		})
+		if err != nil {
+			log.Fatalf("planning failed: %v", err)
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", plans)
+	})
+}
+
+func queryFloat(c echo.Context, key string, def float64) (float64, error) {
+	v := c.QueryParam(key)
+	if v == "" {
+		return def, nil
+	}
+	return strconv.ParseFloat(v, 64)
+}
+
+func queryInt(c echo.Context, key string, def int) (int, error) {
+	v := c.QueryParam(key)
+	if v == "" {
+		return def, nil
+	}
+	i, err := strconv.Atoi(v)
+	return i, err
 }
 
 // Services

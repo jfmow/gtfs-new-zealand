@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"math"
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -140,6 +142,143 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 			}
 			return JsonApiResponse(c, http.StatusOK, "", result)
 		}
+	})
+
+	// Location search (autocomplete) using self-hosted Nominatim
+	navigationRoute.GET("/search", func(c echo.Context) error {
+		query := strings.TrimSpace(c.QueryParam("q"))
+		if query == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusBadRequest,
+				"missing query",
+				nil,
+				ResponseDetails("q", query, "details", "Query parameter 'q' is required"),
+			)
+		}
+
+		limit := c.QueryParam("limit")
+		if limit == "" {
+			limit = "5"
+		}
+		limitValue, err := strconv.Atoi(limit)
+		if err != nil || limitValue <= 0 {
+			limitValue = 5
+			limit = "5"
+		}
+
+		nominatimURL := os.Getenv("NOMINATIM_URL")
+		if nominatimURL == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusInternalServerError,
+				"nominatim not configured",
+				nil,
+				ResponseDetails("details", "NOMINATIM_URL env var is not set"),
+			)
+		}
+
+		// Build request
+		reqURL := fmt.Sprintf(
+			"%s/search?format=jsonv2&q=%s&limit=%s&addressdetails=1&namedetails=1&extratags=1&dedupe=1",
+			strings.TrimRight(nominatimURL, "/"),
+			url.QueryEscape(query),
+			limit,
+		)
+
+		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		// REQUIRED by Nominatim usage policy (even self-hosted is a good habit)
+		req.Header.Set("User-Agent", "suddsy-dev-trains-api/1.0")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadGateway, "", nil, err.Error())
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return JsonApiResponse(
+				c,
+				http.StatusBadGateway,
+				"nominatim error",
+				nil,
+				ResponseDetails("status", resp.StatusCode, "body", string(body)),
+			)
+		}
+
+		var rawResults []NominatimResult
+		if err := json.NewDecoder(resp.Body).Decode(&rawResults); err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		type rankedResult struct {
+			LocationAutocompleteResult
+			Score float64
+		}
+
+		ranked := make([]rankedResult, 0, len(rawResults))
+
+		stopResults, err := gtfsData.SearchForStopsByNameOrCode(query, false)
+		if err == nil {
+			for _, stop := range stopResults {
+				label := stop.Name
+				sim := similarity(query, label)
+				score := sim*0.9 + 0.5
+				ranked = append(ranked, rankedResult{
+					LocationAutocompleteResult: LocationAutocompleteResult{
+						ID:         hashStopID(stop.StopId),
+						Label:      label,
+						Lat:        stop.Lat,
+						Lon:        stop.Lon,
+						Type:       "stop",
+						Importance: 1,
+					},
+					Score: score,
+				})
+			}
+		}
+
+		for _, r := range rawResults {
+			lat, _ := strconv.ParseFloat(r.Lat, 64)
+			lon, _ := strconv.ParseFloat(r.Lon, 64)
+
+			sim := similarity(query, r.DisplayName)
+			score := sim*0.7 + r.Importance*0.3
+
+			ranked = append(ranked, rankedResult{
+				LocationAutocompleteResult: LocationAutocompleteResult{
+					ID:          r.PlaceID,
+					Label:       simplifiedAddress(r),
+					Lat:         lat,
+					Lon:         lon,
+					Type:        r.Type,
+					Importance:  r.Importance,
+					BoundingBox: r.BoundingBox,
+				},
+				Score: score,
+			})
+		}
+
+		sort.SliceStable(ranked, func(i, j int) bool {
+			return ranked[i].Score > ranked[j].Score
+		})
+
+		results := make([]LocationAutocompleteResult, 0, len(ranked))
+		for _, r := range ranked {
+			results = append(results, r.LocationAutocompleteResult)
+		}
+
+		if len(results) > limitValue {
+			results = results[:limitValue]
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", results)
 	})
 
 }
@@ -434,4 +573,127 @@ func GetWalkingDirections(start, end Coordinates) GeoJSONResponse {
 	}
 
 	return geoJSON
+}
+
+// Nav search
+type NominatimAddress struct {
+	HouseNumber string `json:"house_number"`
+	Road        string `json:"road"`
+	Suburb      string `json:"suburb"`
+	City        string `json:"city"`
+	Town        string `json:"town"`
+	State       string `json:"state"`
+	Postcode    string `json:"postcode"`
+	Country     string `json:"country"`
+	CountryCode string `json:"country_code"`
+}
+
+type NominatimResult struct {
+	PlaceID     int               `json:"place_id"`
+	Lat         string            `json:"lat"`
+	Lon         string            `json:"lon"`
+	DisplayName string            `json:"display_name"`
+	Type        string            `json:"type"`
+	Importance  float64           `json:"importance"`
+	BoundingBox []string          `json:"boundingbox"`
+	Address     NominatimAddress  `json:"address"`
+	Namedetails map[string]string `json:"namedetails"` // <-- captures building names
+}
+
+type LocationAutocompleteResult struct {
+	ID          int      `json:"id"`
+	Label       string   `json:"label"`
+	Lat         float64  `json:"lat"`
+	Lon         float64  `json:"lon"`
+	Type        string   `json:"type"`
+	Importance  float64  `json:"importance"`
+	BoundingBox []string `json:"boundingBox"`
+}
+
+func similarity(a, b string) float64 {
+	a = strings.ToLower(a)
+	b = strings.ToLower(b)
+
+	if strings.Contains(a, b) || strings.Contains(b, a) {
+		return 1.0
+	}
+
+	la, lb := len(a), len(b)
+	if la == 0 || lb == 0 {
+		return 0
+	}
+
+	// Levenshtein-lite
+	dist := levenshtein(a, b)
+	maxLen := math.Max(float64(la), float64(lb))
+	return 1.0 - float64(dist)/maxLen
+}
+
+func levenshtein(a, b string) int {
+	dp := make([][]int, len(a)+1)
+	for i := range dp {
+		dp[i] = make([]int, len(b)+1)
+	}
+
+	for i := 0; i <= len(a); i++ {
+		dp[i][0] = i
+	}
+	for j := 0; j <= len(b); j++ {
+		dp[0][j] = j
+	}
+
+	for i := 1; i <= len(a); i++ {
+		for j := 1; j <= len(b); j++ {
+			cost := 0
+			if a[i-1] != b[j-1] {
+				cost = 1
+			}
+			dp[i][j] = min(
+				dp[i-1][j]+1,
+				dp[i][j-1]+1,
+				dp[i-1][j-1]+cost,
+			)
+		}
+	}
+
+	return dp[len(a)][len(b)]
+}
+
+func hashStopID(stopID string) int {
+	hasher := fnv.New32a()
+	_, _ = hasher.Write([]byte(stopID))
+	return int(hasher.Sum32())
+}
+
+func simplifiedAddress(result NominatimResult) string {
+	parts := []string{}
+
+	// Include the building or place name if present
+	if name, ok := result.Namedetails["name"]; ok && name != "" {
+		parts = append(parts, name)
+	}
+
+	addr := result.Address
+	if addr.HouseNumber != "" {
+		parts = append(parts, addr.HouseNumber)
+	}
+	if addr.Road != "" {
+		parts = append(parts, addr.Road)
+	}
+	if addr.Suburb != "" {
+		parts = append(parts, addr.Suburb)
+	}
+	if addr.City != "" {
+		parts = append(parts, addr.City)
+	} else if addr.Town != "" {
+		parts = append(parts, addr.Town)
+	}
+	if addr.Postcode != "" {
+		parts = append(parts, addr.Postcode)
+	}
+	if addr.Country != "" {
+		parts = append(parts, addr.Country)
+	}
+
+	return strings.Join(parts, " ")
 }
