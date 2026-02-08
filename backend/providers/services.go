@@ -347,18 +347,19 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		plans, err := gtfsData.PlanJourneyRaptor(gtfs.JourneyRequest{
-			StartLat:       startLat,
-			StartLon:       startLon,
-			EndLat:         endLat,
-			EndLon:         endLon,
-			DepartAt:       leaveTime,
-			MaxWalkKm:      maxWalkKm,
-			WalkSpeedKmph:  walkSpeed,
-			MaxTransfers:   maxTransfers,
-			MaxNearbyStops: 50,
-			MaxResults:     5,
-			MinResults:     3,
-			OsrmURL:        osrmApiUrl,
+			StartLat:        startLat,
+			StartLon:        startLon,
+			EndLat:          endLat,
+			EndLon:          endLon,
+			DepartAt:        leaveTime,
+			MaxWalkKm:       maxWalkKm,
+			WalkSpeedKmph:   walkSpeed,
+			MaxTransfers:    maxTransfers,
+			MaxNearbyStops:  50,
+			MaxResults:      5,
+			MinResults:      3,
+			OsrmURL:         osrmApiUrl,
+			IncludeChildren: true,
 		})
 		if err != nil {
 			log.Fatalf("planning failed: %v", err)
