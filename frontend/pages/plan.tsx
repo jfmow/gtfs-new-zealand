@@ -600,6 +600,11 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                             <span className="text-muted-foreground">
                                 {leg.FromStop?.stop_name || 'Start'}
                             </span>
+                            {leg.FromStop?.platform_number && leg.FromStop.platform_number !== "" && (
+                                <Badge variant={"outline"}>
+                                    Platform {leg.FromStop?.platform_number || ''}
+                                </Badge>
+                            )}
                         </div>
                         <div className="flex items-center gap-2">
                             <div className="h-2 w-2 rounded-full bg-red-500" />
@@ -607,6 +612,11 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                             <span className="text-muted-foreground">
                                 {leg.ToStop?.stop_name || 'Destination'}
                             </span>
+                            {leg.ToStop?.platform_number && leg.ToStop.platform_number !== "" && (
+                                <Badge variant={"outline"}>
+                                    Platform {leg.ToStop?.platform_number || ''}
+                                </Badge>
+                            )}
                         </div>
                     </div>
                     {leg.DistanceKm > 0 && (
@@ -649,10 +659,19 @@ export interface Leg {
 }
 
 export interface Stop {
+    location_type: number;
+    parent_station: string;
+    stop_code: string;
     stop_id: string;
-    stop_name: string;
     stop_lat: number;
     stop_lon: number;
+    stop_name: string;
+    stop_headsign: string;
+    wheelchair_boarding: number;
+    platform_number: string;
+    stop_type: string;
+    stop_sequence: number;
+    is_child_stop: boolean;
 }
 
 export interface Route {
