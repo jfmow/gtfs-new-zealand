@@ -338,7 +338,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                         aria-label="Service route name"
                                                         className="shrink-0 px-2 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
                                                         style={{
-                                                            background: "#" + (service.route.color !== "" ? service.route.color : "000000"),
+                                                            background: "#" + (service.route.color !== "" ? service.route.color : "424242"),
                                                             filter: "brightness(0.9) contrast(1.1)",
                                                         }}
                                                     >
