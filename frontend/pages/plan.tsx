@@ -5,7 +5,7 @@ import React from "react"
 import { MapItem } from "@/components/map/markers/create";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
-import { Footprints } from "lucide-react";
+import { Clock, Footprints } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Suspense, useState, useRef, useEffect } from "react";
 import type { GeoJSON } from "@/components/map/geojson-types"
@@ -56,14 +56,20 @@ export default function PlanJourney() {
     const [locationError, setLocationError] = useState<string | null>(null);
     const isMobile = useIsMobile();
     const { currentUrl } = useUrl()
-    const [open, setOpen] = useState(false)
-    const [date, setDate] = useState<Date>(new Date())
+
+    const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now");
 
     // Handle map clicks to set start/end locations
     const locationModeRef = useRef<'start' | 'end'>('start');
     useEffect(() => {
         locationModeRef.current = locationMode;
     }, [locationMode]);
+
+    useEffect(() => {
+        if (timeType === "now") {
+            setSelectedDate(new Date());
+        }
+    }, [timeType]);
 
     const handleMapClick = (lat: number, lon: number) => {
         if (locationModeRef.current === 'start') {
@@ -117,7 +123,7 @@ export default function PlanJourney() {
         try {
             // Simulate API call - replace with your actual API endpoint
             const response = await ApiFetch<JourneyType[]>(
-                `/services/plan?startLat=${startLocation.lat}&startLon=${startLocation.lon}&endLat=${endLocation.lat}&endLon=${endLocation.lon}&date=${selectedDate.toISOString()}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
+                `/services/plan?startLat=${startLocation.lat}&startLon=${startLocation.lon}&endLat=${endLocation.lat}&endLon=${endLocation.lon}&date=${selectedDate.toISOString()}&timeType=${timeType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
             );
 
             if (response.ok) {
@@ -205,49 +211,65 @@ export default function PlanJourney() {
         });
     }
 
-    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!date) return
-        const [hours, minutes, seconds] = e.target.value.split(":").map(Number)
-        const updatedDate = new Date(date)
-        updatedDate.setHours(hours, minutes, seconds || 0)
-        setDate(updatedDate)
-    }
-
-    useEffect(() => {
-        if (date && setSelectedDate) {
-            setSelectedDate(date)
-        }
-    }, [date])
-
     return (
         <>
             <Header title="Train, Bus, Ferry - Find your next journey" />
             <div className="mx-auto w-full max-w-4xl px-4 py-6 md:py-8">
-                {/* Main Journey Planner Card */}
-                <Card className="shadow-sm">
-                    <CardContent className="p-4 md:p-6 space-y-4">
-                        {/* Locations */}
-                        <div className="space-y-3">
-                            <LocationSearchInput
-                                placeholder="From"
-                                value={startLocation}
-                                onSelect={setStartLocation}
-                                storageKey="recentStartLocations"
-                                onSelectFromMap={() => handleSelectFromMap('start')}
-                                onUseCurrentLocation={() => handleUseCurrentLocation('start')}
-                                isLocating={isLocating === 'start'}
-                            />
-
-                            <LocationSearchInput
-                                placeholder="To"
-                                value={endLocation}
-                                onSelect={setEndLocation}
-                                storageKey="recentEndLocations"
-                                onSelectFromMap={() => handleSelectFromMap('end')}
-                                onUseCurrentLocation={() => handleUseCurrentLocation('end')}
-                                isLocating={isLocating === 'end'}
-                            />
+                <Card className="">
+                    <CardHeader>
+                        <CardTitle>Journey Options</CardTitle>
+                        <CardDescription>Plan a trip that works for you.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="space-y-2">
+                            <div className="grid gap-3 md:grid-cols-[200px_1fr] md:items-end">
+                                <div className="space-y-2">
+                                    <Label htmlFor="timeType">Trip time</Label>
+                                    <Select value={timeType} onValueChange={(value) => setTimeType(value as "now" | "leaveat" | "arriveat")}>
+                                        <SelectTrigger id="timeType">
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="now">Now</SelectItem>
+                                            <SelectItem value="leaveat">Leave at</SelectItem>
+                                            <SelectItem value="arriveat">Arrive at</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                {timeType !== "now" && (
+                                    <DatePicker
+                                        date={selectedDate}
+                                        onDateChange={setSelectedDate}
+                                    />
+                                )}
+                            </div>
+                            {timeType === "now" && (
+                                <p className="text-xs text-muted-foreground">
+                                    Using your current time for routing.
+                                </p>
+                            )}
                         </div>
+
+                        <LocationSearchInput
+                            placeholder="Search start location..."
+                            value={startLocation}
+                            onSelect={setStartLocation}
+                            storageKey="recentStartLocations"
+                            onSelectFromMap={() => handleSelectFromMap('start')}
+                            onUseCurrentLocation={() => handleUseCurrentLocation('start')}
+                            isLocating={isLocating === 'start'}
+                        />
+
+                        <LocationSearchInput
+                            placeholder="Search end location..."
+                            value={endLocation}
+                            onSelect={setEndLocation}
+                            storageKey="recentEndLocations"
+                            onSelectFromMap={() => handleSelectFromMap('end')}
+                            onUseCurrentLocation={() => handleUseCurrentLocation('end')}
+                            isLocating={isLocating === 'end'}
+                        />
+
 
                         {locationError && (
                             <p className="text-sm text-destructive" role="alert">
@@ -255,54 +277,6 @@ export default function PlanJourney() {
                             </p>
                         )}
 
-                        {/* Date & Time */}
-                        <div className="flex flex-col space-y-2">
-                            <Label>Date & Time</Label>
-                            <div className="flex flex-col md:flex-row gap-2">
-                                <div className="">
-                                    <Popover open={open} onOpenChange={setOpen}>
-                                        <PopoverTrigger asChild>
-                                            <Button
-                                                variant="outline"
-                                                id="date-picker-optional"
-                                                className="font-normal bg-transparent"
-                                            >
-                                                {date ? format(date, "PPP") : "Select date"}
-                                                <ChevronDownIcon />
-                                            </Button>
-                                        </PopoverTrigger>
-                                        <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-                                            <Calendar
-                                                mode="single"
-                                                selected={date}
-                                                captionLayout="dropdown"
-                                                defaultMonth={date}
-                                                onSelect={(selectedDate) => {
-                                                    if (!selectedDate) return
-                                                    const updatedDate = new Date(selectedDate)
-                                                    // Preserve current time
-                                                    updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
-                                                    setDate(updatedDate)
-                                                    setOpen(false)
-                                                }}
-                                            />
-                                        </PopoverContent>
-                                    </Popover>
-                                </div>
-                                <div className="space-y-1">
-                                    <Input
-                                        type="time"
-                                        id="time-picker-optional"
-                                        step="1"
-                                        value={date ? format(date, "HH:mm:ss") : "00:00:00"}
-                                        onChange={handleTimeChange}
-                                        className="w-fit bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Advanced Options - Collapsible */}
                         <details className="group">
                             <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2">
                                 <svg
@@ -362,14 +336,12 @@ export default function PlanJourney() {
                             </div>
                         </details>
 
-                        {/* Search Button */}
                         <Button
-                            className="w-full h-11"
-                            size="lg"
+                            className="w-full"
                             onClick={planJourney}
                             disabled={!startLocation || !endLocation || isSearching}
                         >
-                            {isSearching ? "Searching..." : "Find Routes"}
+                            {isSearching ? "Searching..." : "Search Routes"}
                         </Button>
                     </CardContent>
                 </Card>
@@ -380,11 +352,10 @@ export default function PlanJourney() {
                         <h2 className="text-lg font-semibold px-1">Available Routes</h2>
                         <div className="space-y-3">
                             {apiResponse.map((route, index) => {
-                                const isSelected = route.ID === selectedRoute?.ID;
                                 return (
                                     <Button
                                         key={index}
-                                        variant={isSelected ? 'default' : 'outline'}
+                                        variant={'outline'}
                                         className="h-auto w-full justify-start p-4 text-left"
                                         onClick={() => {
                                             setSelectedRoute(route);
@@ -401,8 +372,8 @@ export default function PlanJourney() {
                                                 </Badge>
                                             </div>
                                             <div className="text-xs text-muted-foreground">
-                                                <div className="flex items-center">{getRouteStepsJSX(route)}</div>
-                                                <div className="mt-1">{formatTime(route.DepartureTime)} → {formatTime(route.ArrivalTime)}</div>
+                                                <div className="flex items-center flex-wrap gap-y-1">{getRouteStepsJSX(route)}</div>
+                                                <div className="mt-2">{formatTime(route.DepartureTime)} → {formatTime(route.ArrivalTime)}</div>
                                             </div>
                                         </div>
                                     </Button>
@@ -537,35 +508,58 @@ export default function PlanJourney() {
 function getRouteStepsJSX(route: JourneyType) {
     return route.Legs.map((leg, index) => {
         const isLast = index === route.Legs.length - 1;
+        const nextLeg = !isLast ? route.Legs[index + 1] : null;
+        const waitingNs = nextLeg ? getWaitingTimeNs(leg, nextLeg) : null;
 
-        if (leg.Mode === 'walk') {
-            const minutes = Math.round(leg.Duration / 60000000000); // nanoseconds → minutes
-            return (
-                <span key={index} className="inline-flex items-center gap-1">
-                    <Footprints size={12} />
-                    {minutes} min
-                    {!isLast && <span className="mx-1">→</span>}
-                </span>
-            );
-        } else {
-            return (
-                <span key={index} className="inline-flex items-center gap-1">
+        return (
+            <span key={index} className="inline-flex items-center gap-1">
+                {leg.Mode === "walk" ? (
+                    <>
+                        <Footprints size={12} />
+                        {Math.round(leg.Duration / 60000000000)} min
+                    </>
+                ) : (
                     <span
-                        aria-label="Service route name"
                         className="shrink-0 px-1 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
                         style={{
-                            background: "#" + (leg.Route?.route_color !== "" ? leg.Route?.route_color : "424242"),
+                            background:
+                                "#" +
+                                (leg.Route?.route_color !== ""
+                                    ? leg.Route?.route_color
+                                    : "424242"),
                             filter: "brightness(0.9) contrast(1.1)",
                         }}
                     >
                         {leg.Route?.route_short_name || leg.RouteID}
                     </span>
-                    {!isLast && <span className="mx-1">→</span>}
-                </span>
-            );
-        }
+                )}
+
+                {!isLast && <span className="mx-1">→</span>}
+
+                {/* ⏰ Waiting time */}
+                {!isLast && waitingNs && (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground mx-1">
+                        <Clock size={12} />
+                        {formatDuration(waitingNs)}
+                        <span className="mx-1">→</span>
+                    </span>
+                )}
+            </span>
+        );
     });
 }
+
+function getWaitingTimeNs(prev: Leg, next: Leg) {
+    const arrival = new Date(prev.ArrivalTime).getTime();
+    const departure = new Date(next.DepartureTime).getTime();
+
+    const diffMs = departure - arrival;
+    if (diffMs <= 0) return null;
+
+    // convert ms → nanoseconds to reuse formatDuration
+    return diffMs * 1_000_000;
+}
+
 
 function formatTime(dateString: string | Date) {
     return new Date(dateString).toLocaleTimeString('en-US', {
@@ -670,4 +664,77 @@ export interface Route {
     route_text_color?: string;
     agency_id: string;
     vehicle_type?: string;
+}
+
+
+
+function DatePicker({
+    date,
+    onDateChange,
+    disabled,
+}: {
+    date: Date;
+    onDateChange: (date: Date) => void;
+    disabled?: boolean;
+}) {
+    const [open, setOpen] = useState(false)
+
+    // Handle time input changes
+    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (disabled) return
+        const [hours, minutes, seconds] = e.target.value.split(":").map(Number)
+        const updatedDate = new Date(date)
+        updatedDate.setHours(hours, minutes, seconds || 0)
+        onDateChange(updatedDate)
+    }
+
+    return (
+        <div className="flex flex-col space-y-2">
+            <Label>Date & Time</Label>
+            <div className="flex flex-col md:flex-row gap-2">
+                <div className="">
+                    <Popover open={open} onOpenChange={setOpen}>
+                        <PopoverTrigger asChild>
+                            <Button
+                                variant="outline"
+                                id="date-picker-optional"
+                                className="font-normal"
+                                disabled={disabled}
+                            >
+                                {date ? format(date, "PPP") : "Select date"}
+                                <ChevronDownIcon />
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+                            <Calendar
+                                mode="single"
+                                selected={date}
+                                captionLayout="dropdown"
+                                defaultMonth={date}
+                                onSelect={(selectedDate) => {
+                                    if (!selectedDate) return
+                                    const updatedDate = new Date(selectedDate)
+                                    // Preserve current time
+                                    updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
+                                    onDateChange(updatedDate)
+                                    setOpen(false)
+                                }}
+                            />
+                        </PopoverContent>
+                    </Popover>
+                </div>
+                <div className="space-y-1">
+                    <Input
+                        type="time"
+                        id="time-picker-optional"
+                        step="1"
+                        value={date ? format(date, "HH:mm:ss") : "00:00:00"}
+                        onChange={handleTimeChange}
+                        disabled={disabled}
+                        className="w-fit bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                    />
+                </div>
+            </div>
+        </div>
+    )
 }

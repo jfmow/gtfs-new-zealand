@@ -346,12 +346,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				ResponseDetails("maxTransfers", c.QueryParam("maxTransfers"), "error", err.Error()))
 		}
 
-		plans, err := gtfsData.PlanJourneyRaptor(gtfs.JourneyRequest{
+		timeType := queryString(c, "timeType", "now")
+		jplan := gtfs.JourneyRequest{
 			StartLat:        startLat,
 			StartLon:        startLon,
 			EndLat:          endLat,
 			EndLon:          endLon,
-			DepartAt:        leaveTime,
 			MaxWalkKm:       maxWalkKm,
 			WalkSpeedKmph:   walkSpeed,
 			MaxTransfers:    maxTransfers,
@@ -360,7 +360,18 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			MinResults:      3,
 			OsrmURL:         osrmApiUrl,
 			IncludeChildren: true,
-		})
+		}
+
+		switch timeType {
+		case "arriveat":
+			jplan.ArriveAt = leaveTime
+		case "now", "departat", "":
+			fallthrough
+		default:
+			jplan.DepartAt = leaveTime
+		}
+
+		plans, err := gtfsData.PlanJourneyRaptor(jplan)
 		if err != nil {
 			log.Fatalf("planning failed: %v", err)
 		}
@@ -384,6 +395,18 @@ func queryInt(c echo.Context, key string, def int) (int, error) {
 	}
 	i, err := strconv.Atoi(v)
 	return i, err
+}
+
+func queryString(
+	c echo.Context,
+	key string,
+	def string,
+) string {
+	v := c.QueryParam(key)
+	if v == "" {
+		return def
+	}
+	return v
 }
 
 // Services
