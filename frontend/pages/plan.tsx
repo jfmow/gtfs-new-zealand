@@ -6,14 +6,13 @@ import { MapItem } from "@/components/map/markers/create";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
-import { Accessibility, AlertTriangle, ArrowRight, ArrowUpDown, Bookmark, BookmarkCheck, ChevronRight, Clock, Footprints, Search, Settings2, Trash2, X } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, ArrowUpDown, Bookmark, BookmarkCheck, ChevronRight, Clock, Footprints, Search, Settings2, X } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import type { GeoJSON } from "@/components/map/geojson-types"
