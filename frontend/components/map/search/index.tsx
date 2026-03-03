@@ -143,10 +143,12 @@ export function LocationSearchInput({
                     placeholder={placeholder}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onFocus={() => {
-                        if (!searchTerm && recentSearches.length) {
-                            setShowRecent(true)
+                        if (!searchTerm) {
+                            setShowRecent(recentSearches.length > 0)
                             setIsOpen(true)
-                        } else if (searchTerm.length >= 2) setIsOpen(true)
+                        } else if (searchTerm.length >= 2) {
+                            setIsOpen(true)
+                        }
                     }}
                     className={cn(
                         "flex h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors",
@@ -170,37 +172,43 @@ export function LocationSearchInput({
             {isOpen && (
                 <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg overflow-hidden">
                     <ScrollArea className="max-h-[220px]">
-                        {/* Quick actions */}
-                        {(onSelectFromMap || onUseCurrentLocation) && !results.length && !isLoading && (
-                            <div className="flex items-center gap-1 p-2 border-b">
+                        {/* show buttons before any results/recents when searchTerm is empty */}
+                        {searchTerm.length === 0 && (onUseCurrentLocation || onSelectFromMap) && (
+                            <ul className="py-1 border-b">
                                 {onUseCurrentLocation && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            onUseCurrentLocation()
-                                            setIsOpen(false)
-                                        }}
-                                        disabled={isLocating}
-                                        className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                                    >
-                                        <Navigation className="h-3.5 w-3.5" />
-                                        {isLocating ? "Locating..." : "My location"}
-                                    </button>
+                                    <li>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onUseCurrentLocation()
+                                                setIsOpen(false)
+                                            }}
+                                            disabled={isLocating}
+                                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
+                                        >
+                                            <Navigation className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="truncate">
+                                                {isLocating ? "Locating..." : "My location"}
+                                            </span>
+                                        </button>
+                                    </li>
                                 )}
                                 {onSelectFromMap && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            onSelectFromMap()
-                                            setIsOpen(false)
-                                        }}
-                                        className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-                                    >
-                                        <MapPin className="h-3.5 w-3.5" />
-                                        Pick on map
-                                    </button>
+                                    <li>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onSelectFromMap()
+                                                setIsOpen(false)
+                                            }}
+                                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
+                                        >
+                                            <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="truncate">Pick on map</span>
+                                        </button>
+                                    </li>
                                 )}
-                            </div>
+                            </ul>
                         )}
 
                         {isLoading ? (

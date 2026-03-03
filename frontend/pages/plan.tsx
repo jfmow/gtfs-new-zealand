@@ -537,81 +537,42 @@ export default function PlanJourney() {
             </div>
 
             {/* Route detail modal/sheet */}
-            {isMobile ? (
-                <Sheet open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
-                    <SheetContent side="bottom" className="max-h-[85vh] overflow-hidden">
-                        <SheetHeader>
-                            <SheetTitle>Route Details</SheetTitle>
-                            <SheetDescription>Review the selected journey on the map or in a list.</SheetDescription>
-                        </SheetHeader>
-                        <Tabs defaultValue="details" className="mt-4">
-                            <TabsList className="w-full">
-                                <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
-                                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
-                            </TabsList>
-                            <TabsContent value="map">
-                                {selectedRoute && (
-                                    <div className="h-[60vh] overflow-hidden rounded-md border">
-                                        <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                            <LeafletMap
-                                                defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
-                                                mapItems={mapMarkers}
-                                                map_id="journey-planner-route-map"
-                                                height="100%"
-                                                line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
-                                            />
-                                        </Suspense>
-                                    </div>
-                                )}
-                            </TabsContent>
-                            <TabsContent value="details">
-                                {selectedRoute && (
-                                    <div className="max-h-[60vh] overflow-y-auto p-2">
-                                        <RouteDetailsContent route={selectedRoute} />
-                                    </div>
-                                )}
-                            </TabsContent>
-                        </Tabs>
-                    </SheetContent>
-                </Sheet>
-            ) : (
-                <Dialog open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
-                    <DialogContent className="max-w-5xl">
-                        <DialogHeader>
-                            <DialogTitle>Route Details</DialogTitle>
-                            <DialogDescription>Review the selected journey on the map or in a list.</DialogDescription>
-                        </DialogHeader>
-                        <Tabs defaultValue="details" className="mt-4">
-                            <TabsList className="w-full">
-                                <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
-                                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
-                            </TabsList>
-                            <TabsContent value="map">
-                                {selectedRoute && (
-                                    <div className="h-[60vh] overflow-hidden rounded-md border">
-                                        <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                            <LeafletMap
-                                                defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
-                                                mapItems={mapMarkers}
-                                                map_id="journey-planner-route-map"
-                                                height="100%"
-                                                line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
-                                            />
-                                        </Suspense>
-                                    </div>
-                                )}
-                            </TabsContent>
-                            <TabsContent value="details">
-                                {selectedRoute && (
-                                    <div className="max-h-[60vh] overflow-y-auto p-2">
-                                        <RouteDetailsContent route={selectedRoute} />
-                                    </div>
-                                )}
-                            </TabsContent>
-                        </Tabs>
-                    </DialogContent>
-                </Dialog>
-            )}
+            <Sheet open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
+                <SheetContent side={isMobile ? "bottom" : "right"} className={`h-full ${isMobile ? 'max-h-[85vh]' : 'max-w-5xl'} overflow-hidden`}>
+                    <SheetHeader>
+                        <SheetTitle>Route Details</SheetTitle>
+                        <SheetDescription>Review the selected journey on the map or in a list.</SheetDescription>
+                    </SheetHeader>
+                    <Tabs defaultValue="details" className="mt-4">
+                        <TabsList className="w-full">
+                            <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
+                            <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="map">
+                            {selectedRoute && (
+                                <div className={`h-[60vh] overflow-hidden rounded-md border`}>
+                                    <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                        <LeafletMap
+                                            defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
+                                            mapItems={mapMarkers}
+                                            map_id="journey-planner-route-map"
+                                            height="100%"
+                                            line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                        />
+                                    </Suspense>
+                                </div>
+                            )}
+                        </TabsContent>
+                        <TabsContent value="details">
+                            {selectedRoute && (
+                                <div className="max-h-[60vh] overflow-y-auto p-2">
+                                    <RouteDetailsContent route={selectedRoute} />
+                                </div>
+                            )}
+                        </TabsContent>
+                    </Tabs>
+                </SheetContent>
+            </Sheet>
 
             {/* Map location picker */}
             {isMobile ? (
