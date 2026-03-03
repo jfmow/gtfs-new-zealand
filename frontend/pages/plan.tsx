@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
-import { Accessibility, AlertTriangle, ArrowRight, Clock, Footprints } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, Bookmark, BookmarkCheck, Clock, Footprints, Trash2 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Suspense, useState, useRef, useEffect } from "react";
 import type { GeoJSON } from "@/components/map/geojson-types"
@@ -39,6 +39,55 @@ interface Location {
     label: string;
 }
 
+interface SavedTrip {
+    id: string;
+    name: string;
+    startLocation: Location;
+    endLocation: Location;
+    timeType: "now" | "leaveat" | "arriveat";
+    savedAt: string; // ISO string
+    maxWalkKm: string;
+    walkSpeed: string;
+    maxTransfers: string;
+}
+
+const SAVED_TRIPS_KEY = "savedJourneyTrips";
+
+function useSavedTrips() {
+    const [savedTrips, setSavedTrips] = useState<SavedTrip[]>(() => {
+        if (typeof window === "undefined") return [];
+        try {
+            return JSON.parse(localStorage.getItem(SAVED_TRIPS_KEY) ?? "[]");
+        } catch {
+            return [];
+        }
+    });
+
+    const saveTrip = (trip: Omit<SavedTrip, "id" | "savedAt">) => {
+        const newTrip: SavedTrip = {
+            ...trip,
+            id: crypto.randomUUID(),
+            savedAt: new Date().toISOString(),
+        };
+        setSavedTrips((prev) => {
+            const next = [newTrip, ...prev];
+            localStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify(next));
+            return next;
+        });
+        return newTrip;
+    };
+
+    const deleteTrip = (id: string) => {
+        setSavedTrips((prev) => {
+            const next = prev.filter((t) => t.id !== id);
+            localStorage.setItem(SAVED_TRIPS_KEY, JSON.stringify(next));
+            return next;
+        });
+    };
+
+    return { savedTrips, saveTrip, deleteTrip };
+}
+
 export default function PlanJourney() {
     const [startLocation, setStartLocation] = useState<Location | null>(null);
     const [endLocation, setEndLocation] = useState<Location | null>(null);
@@ -54,10 +103,41 @@ export default function PlanJourney() {
     const [isRouteMapOpen, setIsRouteMapOpen] = useState(false);
     const [isLocating, setIsLocating] = useState<null | 'start' | 'end'>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
+    const [isSavedOpen, setIsSavedOpen] = useState(false);
+    const [justSaved, setJustSaved] = useState(false);
     const isMobile = useIsMobile();
     const { currentUrl } = useUrl()
+    const { savedTrips, saveTrip, deleteTrip } = useSavedTrips();
 
     const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now");
+
+    const canSave = !!(startLocation && endLocation);
+
+    const handleSaveTrip = () => {
+        if (!startLocation || !endLocation) return;
+        const label = `${startLocation.label} → ${endLocation.label}`;
+        saveTrip({
+            name: label,
+            startLocation,
+            endLocation,
+            timeType,
+            maxWalkKm,
+            walkSpeed,
+            maxTransfers,
+        });
+        setJustSaved(true);
+        setTimeout(() => setJustSaved(false), 2000);
+    };
+
+    const handleLoadTrip = (trip: SavedTrip) => {
+        setStartLocation(trip.startLocation);
+        setEndLocation(trip.endLocation);
+        setTimeType(trip.timeType);
+        setMaxWalkKm(trip.maxWalkKm);
+        setWalkSpeed(trip.walkSpeed);
+        setMaxTransfers(trip.maxTransfers);
+        setIsSavedOpen(false);
+    };
 
     // Handle map clicks to set start/end locations
     const locationModeRef = useRef<'start' | 'end'>('start');
@@ -216,9 +296,35 @@ export default function PlanJourney() {
             <Header title="Train, Bus, Ferry - Find your next journey" />
             <div className="mx-auto w-full max-w-4xl px-4 py-6 md:py-8">
                 <Card className="">
-                    <CardHeader>
-                        <CardTitle>Journey Options</CardTitle>
-                        <CardDescription>Plan a trip that works for you.</CardDescription>
+                    <CardHeader className="flex flex-row items-start justify-between gap-2">
+                        <div>
+                            <CardTitle>Journey Options</CardTitle>
+                            <CardDescription>Plan a trip that works for you.</CardDescription>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-xs gap-1.5"
+                                onClick={handleSaveTrip}
+                                disabled={!canSave}
+                                title="Save this trip"
+                            >
+                                {justSaved ? <BookmarkCheck size={15} className="text-green-500" /> : <Bookmark size={15} />}
+                                {justSaved ? "Saved" : "Save"}
+                            </Button>
+                            {savedTrips.length > 0 && (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="text-xs gap-1.5"
+                                    onClick={() => setIsSavedOpen((v) => !v)}
+                                >
+                                    <BookmarkCheck size={15} />
+                                    Saved ({savedTrips.length})
+                                </Button>
+                            )}
+                        </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <div className="space-y-2">
@@ -335,6 +441,38 @@ export default function PlanJourney() {
                                 </div>
                             </div>
                         </details>
+
+                        {isSavedOpen && savedTrips.length > 0 && (
+                            <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Saved Trips</p>
+                                <ul className="space-y-1.5 max-h-56 overflow-y-auto">
+                                    {savedTrips.map((trip) => (
+                                        <li key={trip.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm group">
+                                            <button
+                                                type="button"
+                                                className="flex-1 text-left truncate hover:text-primary transition-colors"
+                                                onClick={() => handleLoadTrip(trip)}
+                                                title="Load this trip"
+                                            >
+                                                <span className="font-medium block truncate">{trip.name}</span>
+                                                <span className="text-xs text-muted-foreground">
+                                                    {new Date(trip.savedAt).toLocaleDateString(undefined, { dateStyle: "medium" })}
+                                                    {" · "}{trip.timeType === "now" ? "Depart now" : trip.timeType === "leaveat" ? "Leave at" : "Arrive at"}
+                                                </span>
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+                                                onClick={() => deleteTrip(trip.id)}
+                                                title="Delete saved trip"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        )}
 
                         <Button
                             className="w-full"
@@ -871,12 +1009,12 @@ function DatePicker({
 }) {
     const [open, setOpen] = useState(false)
 
-    // Handle time input changes
+    // Handle time input changes (hh:mm only)
     const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (disabled) return
-        const [hours, minutes, seconds] = e.target.value.split(":").map(Number)
+        const [hours, minutes] = e.target.value.split(":").map(Number)
         const updatedDate = new Date(date)
-        updatedDate.setHours(hours, minutes, seconds || 0)
+        updatedDate.setHours(hours, minutes, 0)
         onDateChange(updatedDate)
     }
 
@@ -919,8 +1057,8 @@ function DatePicker({
                     <Input
                         type="time"
                         id="time-picker-optional"
-                        step="1"
-                        value={date ? format(date, "HH:mm:ss") : "00:00:00"}
+                        step="60"
+                        value={date ? format(date, "HH:mm") : "00:00"}
                         onChange={handleTimeChange}
                         disabled={disabled}
                         className="w-fit bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
