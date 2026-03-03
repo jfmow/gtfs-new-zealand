@@ -5,18 +5,16 @@ import React from "react"
 import { MapItem } from "@/components/map/markers/create";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
-import { Accessibility, AlertTriangle, ArrowRight, Bookmark, BookmarkCheck, Clock, Footprints, Trash2 } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, ArrowUpDown, Bookmark, BookmarkCheck, ChevronRight, Clock, Footprints, Search, Settings2, X } from "lucide-react";
 import dynamic from "next/dynamic";
-import { Suspense, useState, useRef, useEffect } from "react";
+import { Suspense, useState, useRef, useEffect, useCallback } from "react";
 import type { GeoJSON } from "@/components/map/geojson-types"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
@@ -28,6 +26,11 @@ import {
 import { format } from "date-fns"
 import { ChevronDownIcon } from "lucide-react"
 import { LocationSearchInput } from "@/components/map/search";
+import {
+    Collapsible,
+    CollapsibleContent,
+    CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 
 const LeafletMap = dynamic(() => import("@/components/map/map"), {
     ssr: false,
@@ -44,8 +47,7 @@ interface SavedTrip {
     name: string;
     startLocation: Location;
     endLocation: Location;
-    timeType: "now" | "leaveat" | "arriveat";
-    savedAt: string; // ISO string
+    savedAt: string;
     maxWalkKm: string;
     walkSpeed: string;
     maxTransfers: string;
@@ -103,8 +105,8 @@ export default function PlanJourney() {
     const [isRouteMapOpen, setIsRouteMapOpen] = useState(false);
     const [isLocating, setIsLocating] = useState<null | 'start' | 'end'>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
-    const [isSavedOpen, setIsSavedOpen] = useState(false);
     const [justSaved, setJustSaved] = useState(false);
+    const [savedOpen, setSavedOpen] = useState(false);
     const isMobile = useIsMobile();
     const { currentUrl } = useUrl()
     const { savedTrips, saveTrip, deleteTrip } = useSavedTrips();
@@ -120,7 +122,6 @@ export default function PlanJourney() {
             name: label,
             startLocation,
             endLocation,
-            timeType,
             maxWalkKm,
             walkSpeed,
             maxTransfers,
@@ -132,14 +133,14 @@ export default function PlanJourney() {
     const handleLoadTrip = (trip: SavedTrip) => {
         setStartLocation(trip.startLocation);
         setEndLocation(trip.endLocation);
-        setTimeType(trip.timeType);
+        setTimeType("now");
+        setSelectedDate(new Date());
         setMaxWalkKm(trip.maxWalkKm);
         setWalkSpeed(trip.walkSpeed);
         setMaxTransfers(trip.maxTransfers);
-        setIsSavedOpen(false);
+        setSavedOpen(false);
     };
 
-    // Handle map clicks to set start/end locations
     const locationModeRef = useRef<'start' | 'end'>('start');
     useEffect(() => {
         locationModeRef.current = locationMode;
@@ -194,16 +195,24 @@ export default function PlanJourney() {
         );
     };
 
-    // Plan the journey
+    const swapLocations = useCallback(() => {
+        const temp = startLocation;
+        setStartLocation(endLocation);
+        setEndLocation(temp);
+    }, [startLocation, endLocation]);
+
     const planJourney = async () => {
         if (!startLocation || !endLocation) return;
 
+        // Always use fresh "now" time when timeType is "now"
+        const searchDate = timeType === "now" ? new Date() : selectedDate;
+        setSelectedDate(searchDate);
+
         setIsSearching(true);
-        setApiResponse([])
+        setApiResponse([]);
         try {
-            // Simulate API call - replace with your actual API endpoint
             const response = await ApiFetch<JourneyType[]>(
-                `/services/plan?startLat=${startLocation.lat}&startLon=${startLocation.lon}&endLat=${endLocation.lat}&endLon=${endLocation.lon}&date=${selectedDate.toISOString()}&timeType=${timeType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
+                `/services/plan?startLat=${startLocation.lat}&startLon=${startLocation.lon}&endLat=${endLocation.lat}&endLon=${endLocation.lon}&date=${searchDate.toISOString()}&timeType=${timeType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
             );
 
             if (response.ok) {
@@ -216,7 +225,6 @@ export default function PlanJourney() {
         }
     };
 
-    // Map markers for start and end points
     const mapMarkers: MapItem[] = [];
 
     if (startLocation) {
@@ -253,7 +261,6 @@ export default function PlanJourney() {
         });
     }
 
-    // Add route markers if a route is selected
     if (selectedRoute) {
         selectedRoute.Legs.forEach((leg, index) => {
             if (leg.FromStop) {
@@ -293,239 +300,230 @@ export default function PlanJourney() {
 
     return (
         <>
-            <Header title="Train, Bus, Ferry - Find your next journey" />
-            <div className="mx-auto w-full max-w-4xl px-4 py-6 md:py-8">
-                <Card className="">
-                    <CardHeader className="flex flex-row items-start justify-between gap-2">
-                        <div>
-                            <CardTitle>Journey Options</CardTitle>
-                            <CardDescription>Plan a trip that works for you.</CardDescription>
+            <Header title="Journey Planner" />
+            <div className="mx-auto w-full max-w-xl px-3 pb-8 pt-4 md:pt-6">
+                {/* Search form */}
+                <div className="space-y-3">
+                    {/* Location inputs with swap */}
+                    <div className="flex items-stretch gap-2">
+                        <div className="flex flex-col justify-center">
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                                <span className="h-8 w-px bg-border" />
+                                <span className="h-2.5 w-2.5 rounded-full bg-destructive" />
+                            </div>
                         </div>
-                        <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                        <div className="flex-1 flex flex-col gap-2 min-w-0">
+                            <LocationSearchInput
+                                placeholder="From"
+                                value={startLocation}
+                                onSelect={setStartLocation}
+                                storageKey="recentStartLocations"
+                                onSelectFromMap={() => handleSelectFromMap('start')}
+                                onUseCurrentLocation={() => handleUseCurrentLocation('start')}
+                                isLocating={isLocating === 'start'}
+                            />
+                            <LocationSearchInput
+                                placeholder="To"
+                                value={endLocation}
+                                onSelect={setEndLocation}
+                                storageKey="recentEndLocations"
+                                onSelectFromMap={() => handleSelectFromMap('end')}
+                                onUseCurrentLocation={() => handleUseCurrentLocation('end')}
+                                isLocating={isLocating === 'end'}
+                            />
+                        </div>
+                        <div className="flex flex-col justify-center">
                             <Button
                                 variant="ghost"
-                                size="sm"
-                                className="text-xs gap-1.5"
-                                onClick={handleSaveTrip}
-                                disabled={!canSave}
-                                title="Save this trip"
+                                size="icon"
+                                className="h-9 w-9 shrink-0"
+                                onClick={swapLocations}
+                                disabled={!startLocation && !endLocation}
+                                aria-label="Swap locations"
                             >
-                                {justSaved ? <BookmarkCheck size={15} className="text-green-500" /> : <Bookmark size={15} />}
-                                {justSaved ? "Saved" : "Save"}
+                                <ArrowUpDown className="h-4 w-4" />
                             </Button>
-                            {savedTrips.length > 0 && (
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-xs gap-1.5"
-                                    onClick={() => setIsSavedOpen((v) => !v)}
-                                >
-                                    <BookmarkCheck size={15} />
-                                    Saved ({savedTrips.length})
-                                </Button>
-                            )}
                         </div>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="space-y-2">
-                            <div className="grid gap-3 md:grid-cols-[200px_1fr] md:items-end">
-                                <div className="space-y-2">
-                                    <Label htmlFor="timeType">Trip time</Label>
-                                    <Select value={timeType} onValueChange={(value) => setTimeType(value as "now" | "leaveat" | "arriveat")}>
-                                        <SelectTrigger id="timeType">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="now">Now</SelectItem>
-                                            <SelectItem value="leaveat">Leave at</SelectItem>
-                                            <SelectItem value="arriveat">Arrive at</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                                {timeType !== "now" && (
-                                    <DatePicker
-                                        date={selectedDate}
-                                        onDateChange={setSelectedDate}
-                                    />
-                                )}
-                            </div>
-                            {timeType === "now" && (
-                                <p className="text-xs text-muted-foreground">
-                                    Using your current time for routing.
-                                </p>
-                            )}
-                        </div>
+                    </div>
 
-                        <LocationSearchInput
-                            placeholder="Search start location..."
-                            value={startLocation}
-                            onSelect={setStartLocation}
-                            storageKey="recentStartLocations"
-                            onSelectFromMap={() => handleSelectFromMap('start')}
-                            onUseCurrentLocation={() => handleUseCurrentLocation('start')}
-                            isLocating={isLocating === 'start'}
-                        />
+                    {locationError && (
+                        <p className="text-sm text-destructive" role="alert">
+                            {locationError}
+                        </p>
+                    )}
 
-                        <LocationSearchInput
-                            placeholder="Search end location..."
-                            value={endLocation}
-                            onSelect={setEndLocation}
-                            storageKey="recentEndLocations"
-                            onSelectFromMap={() => handleSelectFromMap('end')}
-                            onUseCurrentLocation={() => handleUseCurrentLocation('end')}
-                            isLocating={isLocating === 'end'}
-                        />
-
-
-                        {locationError && (
-                            <p className="text-sm text-destructive" role="alert">
-                                {locationError}
-                            </p>
-                        )}
-
-                        <details className="group">
-                            <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors list-none flex items-center gap-2">
-                                <svg
-                                    className="h-4 w-4 transition-transform group-open:rotate-90"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                                Advanced options
-                            </summary>
-                            <div className="mt-4 grid gap-4 sm:grid-cols-3 pt-2">
-                                <div className="space-y-2">
-                                    <Label htmlFor="maxWalk" className="text-xs">Max Walk</Label>
-                                    <Select value={maxWalkKm} onValueChange={setMaxWalkKm}>
-                                        <SelectTrigger id="maxWalk" className="h-9">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="0.5">0.5 km</SelectItem>
-                                            <SelectItem value="1">1 km</SelectItem>
-                                            <SelectItem value="2">2 km</SelectItem>
-                                            <SelectItem value="5">5 km</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="walkSpeed" className="text-xs">Walk Speed</Label>
-                                    <Select value={walkSpeed} onValueChange={setWalkSpeed}>
-                                        <SelectTrigger id="walkSpeed" className="h-9">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="3">Slow</SelectItem>
-                                            <SelectItem value="4.8">Average</SelectItem>
-                                            <SelectItem value="5.5">Brisk</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label htmlFor="maxTransfers" className="text-xs">Transfers</Label>
-                                    <Select value={maxTransfers} onValueChange={setMaxTransfers}>
-                                        <SelectTrigger id="maxTransfers" className="h-9">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="0">Direct</SelectItem>
-                                            <SelectItem value="1">1</SelectItem>
-                                            <SelectItem value="2">2</SelectItem>
-                                            <SelectItem value="5">5+</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                        </details>
-
-                        {isSavedOpen && savedTrips.length > 0 && (
-                            <div className="rounded-lg border bg-muted/40 p-3 space-y-2">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Saved Trips</p>
-                                <ul className="space-y-1.5 max-h-56 overflow-y-auto">
-                                    {savedTrips.map((trip) => (
-                                        <li key={trip.id} className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm group">
-                                            <button
-                                                type="button"
-                                                className="flex-1 text-left truncate hover:text-primary transition-colors"
-                                                onClick={() => handleLoadTrip(trip)}
-                                                title="Load this trip"
-                                            >
-                                                <span className="font-medium block truncate">{trip.name}</span>
-                                                <span className="text-xs text-muted-foreground">
-                                                    {new Date(trip.savedAt).toLocaleDateString(undefined, { dateStyle: "medium" })}
-                                                    {" · "}{trip.timeType === "now" ? "Depart now" : trip.timeType === "leaveat" ? "Leave at" : "Arrive at"}
-                                                </span>
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                                                onClick={() => deleteTrip(trip.id)}
-                                                title="Delete saved trip"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
+                    {/* Time type row */}
+                    <div className="flex items-center gap-2">
+                        <Select value={timeType} onValueChange={(value) => setTimeType(value as "now" | "leaveat" | "arriveat")}>
+                            <SelectTrigger className="w-auto min-w-[120px] h-9 text-sm">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="now">Leave now</SelectItem>
+                                <SelectItem value="leaveat">Leave at</SelectItem>
+                                <SelectItem value="arriveat">Arrive by</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {timeType !== "now" && (
+                            <div className="flex-1">
+                                <DatePicker
+                                    date={selectedDate}
+                                    onDateChange={setSelectedDate}
+                                />
                             </div>
                         )}
+                    </div>
 
+                    {/* Advanced options */}
+                    <Collapsible>
+                        <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+                            <Settings2 className="h-3.5 w-3.5" />
+                            <span>Options</span>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <div className="flex flex-wrap gap-2 pt-2">
+                                <Select value={maxWalkKm} onValueChange={setMaxWalkKm}>
+                                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+                                        <span className="text-muted-foreground mr-1">Walk:</span>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0.5">0.5 km</SelectItem>
+                                        <SelectItem value="1">1 km</SelectItem>
+                                        <SelectItem value="2">2 km</SelectItem>
+                                        <SelectItem value="5">5 km</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={walkSpeed} onValueChange={setWalkSpeed}>
+                                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
+                                        <span className="text-muted-foreground mr-1">Speed:</span>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="3">Slow</SelectItem>
+                                        <SelectItem value="4.8">Average</SelectItem>
+                                        <SelectItem value="5.5">Brisk</SelectItem>
+                                    </SelectContent>
+                                </Select>
+
+                                <Select value={maxTransfers} onValueChange={setMaxTransfers}>
+                                    <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
+                                        <span className="text-muted-foreground mr-1">Transfers:</span>
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">Direct</SelectItem>
+                                        <SelectItem value="1">1</SelectItem>
+                                        <SelectItem value="2">2</SelectItem>
+                                        <SelectItem value="5">5+</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </CollapsibleContent>
+                    </Collapsible>
+
+                    {/* Action row: Search + Save + Saved */}
+                    <div className="flex items-center gap-2">
                         <Button
-                            className="w-full"
+                            className="flex-1 h-10"
                             onClick={planJourney}
                             disabled={!startLocation || !endLocation || isSearching}
                         >
-                            {isSearching ? "Searching..." : "Search Routes"}
+                            <Search className="h-4 w-4 mr-2" />
+                            {isSearching ? "Searching..." : "Search"}
                         </Button>
-                    </CardContent>
-                </Card>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-10 w-10 shrink-0"
+                            onClick={handleSaveTrip}
+                            disabled={!canSave}
+                            aria-label="Save trip"
+                        >
+                            {justSaved ? <BookmarkCheck className="h-4 w-4 text-green-500" /> : <Bookmark className="h-4 w-4" />}
+                        </Button>
+                    </div>
+
+                    {/* Saved trips - compact horizontal scroll */}
+                    {savedTrips.length > 0 && (
+                        <Collapsible open={savedOpen} onOpenChange={setSavedOpen}>
+                            <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1 w-full">
+                                <BookmarkCheck className="h-3.5 w-3.5" />
+                                <span>Saved trips ({savedTrips.length})</span>
+                                <ChevronRight className={`h-3 w-3 ml-auto transition-transform ${savedOpen ? 'rotate-90' : ''}`} />
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                                <div className="flex gap-2 overflow-x-auto pb-1 pt-1.5 -mx-1 px-1 scrollbar-hide">
+                                    {savedTrips.map((trip) => (
+                                        <button
+                                            key={trip.id}
+                                            type="button"
+                                            className="group relative flex-shrink-0 flex items-center gap-2 rounded-lg border bg-secondary/50 px-3 py-2 text-left text-sm hover:bg-accent transition-colors max-w-[240px]"
+                                            onClick={() => handleLoadTrip(trip)}
+                                        >
+                                            <div className="min-w-0">
+                                                <p className="truncate text-xs font-medium">{trip.name}</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                className="shrink-0 rounded-full p-0.5 opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    deleteTrip(trip.id);
+                                                }}
+                                                aria-label={`Delete saved trip: ${trip.name}`}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </button>
+                                        </button>
+                                    ))}
+                                </div>
+                            </CollapsibleContent>
+                        </Collapsible>
+                    )}
+                </div>
 
                 {/* Route Results */}
                 {apiResponse.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                        <h2 className="text-lg font-semibold px-1">Available Routes</h2>
-                        <div className="space-y-3">
+                    <div className="mt-6 space-y-2">
+                        <h2 className="text-sm font-medium text-muted-foreground">
+                            {apiResponse.length} route{apiResponse.length !== 1 ? 's' : ''} found
+                        </h2>
+                        <div className="space-y-2">
                             {apiResponse.map((route, index) => {
-                                //const realtimeSummary = getRouteSummaryRealtime(route);
                                 const hasDisruption = route.Legs.some(l => l.Mode === 'transit' && l.trip_usable === false);
                                 return (
                                     <button
                                         key={index}
                                         type="button"
-                                        className="w-full text-left rounded-lg border bg-card text-card-foreground shadow-sm hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden"
+                                        className="w-full text-left rounded-lg border hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden"
                                         onClick={() => {
                                             setSelectedRoute(route);
                                             setIsRouteMapOpen(true);
                                         }}
                                     >
                                         {hasDisruption && (
-                                            <div className="flex items-center gap-2 bg-destructive/10 px-4 py-1.5 text-xs font-medium text-destructive">
-                                                <AlertTriangle size={12} />
+                                            <div className="flex items-center gap-2 bg-destructive/10 px-3 py-1 text-xs font-medium text-destructive">
+                                                <AlertTriangle className="h-3 w-3" />
                                                 Service disruption on this route
                                             </div>
                                         )}
-                                        <div className="flex w-full flex-col gap-3 p-4">
-                                            {/* Top row: duration + times + transfer badge */}
+                                        <div className="flex w-full flex-col gap-2 px-3 py-3">
                                             <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-base font-semibold">{formatDuration(route.TotalDuration)}</span>
-                                                    <span className="text-sm text-muted-foreground">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-semibold">{formatDuration(route.TotalDuration)}</span>
+                                                    <span className="text-xs text-muted-foreground">
                                                         {formatTimeWithRealtime(route.DepartureTime, getFirstTransitLeg(route)?.scheduled_departure_time, getFirstTransitLeg(route)?.realtime_status)}
-                                                        <ArrowRight size={12} className="inline mx-1" />
+                                                        <ArrowRight className="inline mx-1 h-3 w-3" />
                                                         {formatTimeWithRealtime(route.ArrivalTime, getLastTransitLeg(route)?.scheduled_arrival_time, getLastTransitLeg(route)?.realtime_status)}
                                                     </span>
                                                 </div>
-                                                <div className="flex items-center gap-2 shrink-0">
-                                                    <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-xs">
-                                                        {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
-                                                    </Badge>
-                                                </div>
+                                                <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-[10px] shrink-0">
+                                                    {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
+                                                </Badge>
                                             </div>
-                                            {/* Leg strip */}
                                             <div className="flex items-center flex-wrap gap-y-1 gap-x-0.5">
                                                 {getRouteStepsJSX(route)}
                                             </div>
@@ -538,6 +536,7 @@ export default function PlanJourney() {
                 )}
             </div>
 
+            {/* Route detail modal/sheet */}
             {isMobile ? (
                 <Sheet open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
                     <SheetContent side="bottom" className="max-h-[85vh] overflow-hidden">
@@ -614,6 +613,7 @@ export default function PlanJourney() {
                 </Dialog>
             )}
 
+            {/* Map location picker */}
             {isMobile ? (
                 <Sheet open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
                     <SheetContent side="bottom" className="h-[85vh] overflow-hidden">
@@ -668,33 +668,6 @@ function getLastTransitLeg(route: JourneyType): Leg | null {
     return legs[legs.length - 1] ?? null;
 }
 
-/** Returns a realtime summary badge for the worst state across all transit legs */
-/***
- * function getRouteSummaryRealtime(route: JourneyType): { label: string; className: string } | null {
-    const transitLegs = route.Legs.filter(l => l.Mode === 'transit');
-    if (transitLegs.length === 0) return null;
-
-    const hasDisruption = transitLegs.some(l => l.trip_usable === false);
-    if (hasDisruption) return null; // shown separately as a banner
-
-    const maxDelaySec = Math.max(...transitLegs.filter(l => l.realtime_status === RealtimeStatus.Delayed).map(l => l.delay_seconds ?? 0));
-    const maxEarlySec = Math.max(...transitLegs.filter(l => l.realtime_status === RealtimeStatus.Early).map(l => Math.abs(l.delay_seconds ?? 0)));
-
-    if (maxDelaySec > 0) {
-        const mins = Math.round(maxDelaySec / 60);
-        return { label: `Up to ${mins} min delay`, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' };
-    }
-    if (maxEarlySec > 0) {
-        const mins = Math.round(maxEarlySec / 60);
-        return { label: `${mins} min early`, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
-    }
-    const hasScheduled = transitLegs.some(l => l.realtime_status === RealtimeStatus.Scheduled);
-    if (hasScheduled) return { label: 'On time', className: 'bg-muted text-muted-foreground' };
-    return null;
-}
- */
-
-/** Renders a time, with the scheduled time struck-through when realtime shows a difference */
 function formatTimeWithRealtime(actual: Date, scheduled?: Date, status?: RealtimeStatus): React.ReactNode {
     const actualStr = formatTime(actual);
     const isDelayed = status === RealtimeStatus.Delayed;
@@ -727,19 +700,22 @@ function getRouteStepsJSX(route: JourneyType) {
             <span key={index} className="inline-flex items-center gap-1">
                 {leg.Mode === "walk" ? (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <Footprints size={12} />
+                        <Footprints className="h-3 w-3" />
                         {Math.round(leg.Duration / 60000000000)} min
                     </span>
                 ) : (
                     <span className="relative inline-flex items-center">
                         <span
-                            className="shrink-0 px-1.5 py-0.5 rounded text-white dark:text-gray-100 text-xs font-medium"
+                            className="shrink-0 px-1.5 py-0.5 rounded text-[11px] font-medium"
                             style={{
                                 background:
                                     "#" +
                                     (leg.Route?.route_color && leg.Route.route_color !== ""
                                         ? leg.Route.route_color
                                         : "424242"),
+                                color: leg.Route?.route_text_color && leg.Route.route_text_color !== ""
+                                    ? `#${leg.Route.route_text_color}`
+                                    : "#ffffff",
                                 filter: "brightness(0.9) contrast(1.1)",
                                 opacity: leg.trip_usable === false ? 0.5 : 1,
                             }}
@@ -754,13 +730,13 @@ function getRouteStepsJSX(route: JourneyType) {
                     </span>
                 )}
 
-                {!isLast && <ArrowRight size={10} className="text-muted-foreground mx-0.5" />}
+                {!isLast && <ArrowRight className="h-2.5 w-2.5 text-muted-foreground mx-0.5" />}
 
                 {!isLast && waitingNs && waitingNs >= 60000000000 && (
                     <span className="inline-flex items-center gap-1 text-muted-foreground mx-1 text-xs">
-                        <Clock size={10} />
+                        <Clock className="h-2.5 w-2.5" />
                         {formatDuration(waitingNs)}
-                        <ArrowRight size={10} />
+                        <ArrowRight className="h-2.5 w-2.5" />
                     </span>
                 )}
             </span>
@@ -775,7 +751,6 @@ function getWaitingTimeNs(prev: Leg, next: Leg) {
     const diffMs = departure - arrival;
     if (diffMs <= 0) return null;
 
-    // convert ms → nanoseconds to reuse formatDuration
     return diffMs * 1_000_000;
 }
 
@@ -805,33 +780,36 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                 const isEarly = leg.realtime_status === RealtimeStatus.Early;
                 const isOnTime = leg.realtime_status === RealtimeStatus.OnTime;
                 const hasRealtime = isDelayed || isEarly || isOnTime;
-                //const delaySec = leg.delay_seconds ?? 0;
-                //const delayMin = Math.round(Math.abs(delaySec) / 60);
                 const routeColor = leg.Route?.route_color && leg.Route.route_color !== "" ? `#${leg.Route.route_color}` : "#424242";
 
                 return (
                     <div key={legIndex} className="relative">
-                        {/* Disruption alert */}
                         {!isWalk && leg.trip_usable === false && (
                             <div className="mb-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                                <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                                 <span>This service is not running. Check alternative routes.</span>
                             </div>
                         )}
 
-                        {/* Leg header */}
                         <div className="flex items-center gap-2 py-1">
                             {isWalk ? (
                                 <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
-                                    <Footprints size={12} />
+                                    <Footprints className="h-3 w-3" />
                                     Walk · {Math.round(leg.Duration / 60000000000)} min
                                     {leg.DistanceKm > 0 && <span className="text-muted-foreground/70">· {leg.DistanceKm.toFixed(2)} km</span>}
                                 </span>
                             ) : (
                                 <div className="flex items-center gap-2 flex-wrap">
                                     <span
-                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold text-white"
-                                        style={{ backgroundColor: routeColor, filter: "brightness(0.9) contrast(1.1)", opacity: leg.trip_usable === false ? 0.5 : 1 }}
+                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold"
+                                        style={{
+                                            backgroundColor: routeColor,
+                                            color: leg.Route?.route_text_color && leg.Route.route_text_color !== ""
+                                                ? `#${leg.Route.route_text_color}`
+                                                : "#ffffff",
+                                            filter: "brightness(0.9) contrast(1.1)",
+                                            opacity: leg.trip_usable === false ? 0.5 : 1,
+                                        }}
                                     >
                                         {leg.Route?.vehicle_type && <span className="opacity-80">{leg.Route.vehicle_type}</span>}
                                         {leg.Route?.route_short_name || leg.RouteID}
@@ -857,9 +835,7 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                             )}
                         </div>
 
-                        {/* Stops */}
                         <div className="ml-2 space-y-0 border-l-2 border-border pl-4">
-                            {/* From stop */}
                             <div className="relative py-2">
                                 <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
                                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -876,13 +852,12 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                                             <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
                                         )}
                                         {leg.FromStop?.wheelchair_boarding === 1 && (
-                                            <Accessibility size={12} className="text-muted-foreground" />
+                                            <Accessibility className="h-3 w-3 text-muted-foreground" />
                                         )}
                                     </div>
                                 </div>
                             </div>
 
-                            {/* To stop */}
                             <div className="relative py-2">
                                 <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
                                 <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -899,21 +874,20 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                                             <span className="text-xs text-muted-foreground">towards {leg.ToStop.stop_headsign}</span>
                                         )}
                                         {leg.ToStop?.wheelchair_boarding === 1 && (
-                                            <Accessibility size={12} className="text-muted-foreground" />
+                                            <Accessibility className="h-3 w-3 text-muted-foreground" />
                                         )}
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Transfer gap to next leg */}
                         {legIndex < route.Legs.length - 1 && (() => {
                             const nextLeg = route.Legs[legIndex + 1];
                             const waitNs = getWaitingTimeNs(leg, nextLeg);
                             if (!waitNs || waitNs < 60000000000) return null;
                             return (
                                 <div className="ml-2 flex items-center gap-2 py-1.5 text-xs text-muted-foreground">
-                                    <Clock size={11} />
+                                    <Clock className="h-3 w-3" />
                                     <span>{formatDuration(waitNs)} wait</span>
                                 </div>
                             );
@@ -993,11 +967,6 @@ export interface Route {
 }
 
 
-
-
-
-
-
 function DatePicker({
     date,
     onDateChange,
@@ -1009,7 +978,6 @@ function DatePicker({
 }) {
     const [open, setOpen] = useState(false)
 
-    // Handle time input changes (hh:mm only)
     const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (disabled) return
         const [hours, minutes] = e.target.value.split(":").map(Number)
@@ -1019,52 +987,42 @@ function DatePicker({
     }
 
     return (
-        <div className="flex flex-col space-y-2">
-            <Label>Date & Time</Label>
-            <div className="flex flex-col md:flex-row gap-2">
-                <div className="">
-                    <Popover open={open} onOpenChange={setOpen}>
-                        <PopoverTrigger asChild>
-                            <Button
-                                variant="outline"
-                                id="date-picker-optional"
-                                className="font-normal"
-                                disabled={disabled}
-                            >
-                                {date ? format(date, "PPP") : "Select date"}
-                                <ChevronDownIcon />
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-                            <Calendar
-                                mode="single"
-                                selected={date}
-                                captionLayout="dropdown"
-                                defaultMonth={date}
-                                onSelect={(selectedDate) => {
-                                    if (!selectedDate) return
-                                    const updatedDate = new Date(selectedDate)
-                                    // Preserve current time
-                                    updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
-                                    onDateChange(updatedDate)
-                                    setOpen(false)
-                                }}
-                            />
-                        </PopoverContent>
-                    </Popover>
-                </div>
-                <div className="space-y-1">
-                    <Input
-                        type="time"
-                        id="time-picker-optional"
-                        step="60"
-                        value={date ? format(date, "HH:mm") : "00:00"}
-                        onChange={handleTimeChange}
+        <div className="flex items-center gap-1.5">
+            <Popover open={open} onOpenChange={setOpen}>
+                <PopoverTrigger asChild>
+                    <Button
+                        variant="outline"
+                        className="h-9 text-sm font-normal px-3"
                         disabled={disabled}
-                        className="w-fit bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+                    >
+                        {date ? format(date, "d MMM") : "Date"}
+                        <ChevronDownIcon className="h-3.5 w-3.5 ml-1" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto overflow-hidden p-0" align="start">
+                    <Calendar
+                        mode="single"
+                        selected={date}
+                        captionLayout="dropdown"
+                        defaultMonth={date}
+                        onSelect={(selectedDate) => {
+                            if (!selectedDate) return
+                            const updatedDate = new Date(selectedDate)
+                            updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
+                            onDateChange(updatedDate)
+                            setOpen(false)
+                        }}
                     />
-                </div>
-            </div>
+                </PopoverContent>
+            </Popover>
+            <Input
+                type="time"
+                step="60"
+                value={date ? format(date, "HH:mm") : "00:00"}
+                onChange={handleTimeChange}
+                disabled={disabled}
+                className="h-9 w-[100px] text-sm bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+            />
         </div>
     )
 }
