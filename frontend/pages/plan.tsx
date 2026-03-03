@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ApiFetch, useUrl } from "@/lib/url-context";
 import { useIsMobile } from "@/lib/utils";
 import { Header } from "@/components/nav";
-import { Clock, Footprints } from "lucide-react";
+import { Accessibility, AlertTriangle, ArrowRight, Clock, Footprints } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Suspense, useState, useRef, useEffect } from "react";
 import type { GeoJSON } from "@/components/map/geojson-types"
@@ -352,31 +352,47 @@ export default function PlanJourney() {
                         <h2 className="text-lg font-semibold px-1">Available Routes</h2>
                         <div className="space-y-3">
                             {apiResponse.map((route, index) => {
+                                //const realtimeSummary = getRouteSummaryRealtime(route);
+                                const hasDisruption = route.Legs.some(l => l.Mode === 'transit' && l.trip_usable === false);
                                 return (
-                                    <Button
+                                    <button
                                         key={index}
-                                        variant={'outline'}
-                                        className="h-auto w-full justify-start p-4 text-left"
+                                        type="button"
+                                        className="w-full text-left rounded-lg border bg-card text-card-foreground shadow-sm hover:bg-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring overflow-hidden"
                                         onClick={() => {
                                             setSelectedRoute(route);
                                             setIsRouteMapOpen(true);
                                         }}
                                     >
-                                        <div className="flex w-full flex-col gap-2">
-                                            <div className="flex items-center justify-between gap-2">
-                                                <div className="flex items-center gap-2">
-                                                    <span className="font-semibold">{formatDuration(route.TotalDuration)}</span>
-                                                </div>
-                                                <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-xs">
-                                                    {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
-                                                </Badge>
+                                        {hasDisruption && (
+                                            <div className="flex items-center gap-2 bg-destructive/10 px-4 py-1.5 text-xs font-medium text-destructive">
+                                                <AlertTriangle size={12} />
+                                                Service disruption on this route
                                             </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                <div className="flex items-center flex-wrap gap-y-1">{getRouteStepsJSX(route)}</div>
-                                                <div className="mt-2">{formatTime(route.DepartureTime)} → {formatTime(route.ArrivalTime)}</div>
+                                        )}
+                                        <div className="flex w-full flex-col gap-3 p-4">
+                                            {/* Top row: duration + times + transfer badge */}
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-3">
+                                                    <span className="text-base font-semibold">{formatDuration(route.TotalDuration)}</span>
+                                                    <span className="text-sm text-muted-foreground">
+                                                        {formatTimeWithRealtime(route.DepartureTime, getFirstTransitLeg(route)?.scheduled_departure_time, getFirstTransitLeg(route)?.realtime_status)}
+                                                        <ArrowRight size={12} className="inline mx-1" />
+                                                        {formatTimeWithRealtime(route.ArrivalTime, getLastTransitLeg(route)?.scheduled_arrival_time, getLastTransitLeg(route)?.realtime_status)}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-xs">
+                                                        {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                            {/* Leg strip */}
+                                            <div className="flex items-center flex-wrap gap-y-1 gap-x-0.5">
+                                                {getRouteStepsJSX(route)}
                                             </div>
                                         </div>
-                                    </Button>
+                                    </button>
                                 );
                             })}
                         </div>
@@ -505,43 +521,108 @@ export default function PlanJourney() {
     );
 }
 
+function getFirstTransitLeg(route: JourneyType): Leg | null {
+    return route.Legs.find(l => l.Mode === 'transit') ?? null;
+}
+
+function getLastTransitLeg(route: JourneyType): Leg | null {
+    const legs = route.Legs.filter(l => l.Mode === 'transit');
+    return legs[legs.length - 1] ?? null;
+}
+
+/** Returns a realtime summary badge for the worst state across all transit legs */
+/***
+ * function getRouteSummaryRealtime(route: JourneyType): { label: string; className: string } | null {
+    const transitLegs = route.Legs.filter(l => l.Mode === 'transit');
+    if (transitLegs.length === 0) return null;
+
+    const hasDisruption = transitLegs.some(l => l.trip_usable === false);
+    if (hasDisruption) return null; // shown separately as a banner
+
+    const maxDelaySec = Math.max(...transitLegs.filter(l => l.realtime_status === RealtimeStatus.Delayed).map(l => l.delay_seconds ?? 0));
+    const maxEarlySec = Math.max(...transitLegs.filter(l => l.realtime_status === RealtimeStatus.Early).map(l => Math.abs(l.delay_seconds ?? 0)));
+
+    if (maxDelaySec > 0) {
+        const mins = Math.round(maxDelaySec / 60);
+        return { label: `Up to ${mins} min delay`, className: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' };
+    }
+    if (maxEarlySec > 0) {
+        const mins = Math.round(maxEarlySec / 60);
+        return { label: `${mins} min early`, className: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
+    }
+    const hasScheduled = transitLegs.some(l => l.realtime_status === RealtimeStatus.Scheduled);
+    if (hasScheduled) return { label: 'On time', className: 'bg-muted text-muted-foreground' };
+    return null;
+}
+ */
+
+/** Renders a time, with the scheduled time struck-through when realtime shows a difference */
+function formatTimeWithRealtime(actual: Date, scheduled?: Date, status?: RealtimeStatus): React.ReactNode {
+    const actualStr = formatTime(actual);
+    const isDelayed = status === RealtimeStatus.Delayed;
+    const isEarly = status === RealtimeStatus.Early;
+    if ((isDelayed || isEarly) && scheduled) {
+        const scheduledStr = formatTime(scheduled);
+        if (scheduledStr !== actualStr) {
+            return (
+                <span className="inline-flex items-baseline gap-1">
+                    <span>{actualStr}</span>
+                    <span className="line-through text-muted-foreground/60 text-xs hidden">{scheduledStr}</span>
+                </span>
+            );
+        }
+    }
+    return actualStr;
+}
+
 function getRouteStepsJSX(route: JourneyType) {
     return route.Legs.map((leg, index) => {
         const isLast = index === route.Legs.length - 1;
         const nextLeg = !isLast ? route.Legs[index + 1] : null;
         const waitingNs = nextLeg ? getWaitingTimeNs(leg, nextLeg) : null;
+        const isDelayed = leg.realtime_status === RealtimeStatus.Delayed;
+        const isEarly = leg.realtime_status === RealtimeStatus.Early;
+        const isOnTime = leg.realtime_status === RealtimeStatus.OnTime;
+        const hasRealtime = isDelayed || isEarly || isOnTime;
 
         return (
             <span key={index} className="inline-flex items-center gap-1">
                 {leg.Mode === "walk" ? (
-                    <>
+                    <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Footprints size={12} />
                         {Math.round(leg.Duration / 60000000000)} min
-                    </>
+                    </span>
                 ) : (
-                    <span
-                        className="shrink-0 px-1 py-1 rounded text-white dark:text-gray-100 text-xs font-medium"
-                        style={{
-                            background:
-                                "#" +
-                                (leg.Route?.route_color !== ""
-                                    ? leg.Route?.route_color
-                                    : "424242"),
-                            filter: "brightness(0.9) contrast(1.1)",
-                        }}
-                    >
-                        {leg.Route?.route_short_name || leg.RouteID}
+                    <span className="relative inline-flex items-center">
+                        <span
+                            className="shrink-0 px-1.5 py-0.5 rounded text-white dark:text-gray-100 text-xs font-medium"
+                            style={{
+                                background:
+                                    "#" +
+                                    (leg.Route?.route_color && leg.Route.route_color !== ""
+                                        ? leg.Route.route_color
+                                        : "424242"),
+                                filter: "brightness(0.9) contrast(1.1)",
+                                opacity: leg.trip_usable === false ? 0.5 : 1,
+                            }}
+                        >
+                            {leg.Route?.route_short_name || leg.RouteID}
+                        </span>
+                        {hasRealtime && (
+                            <span className={`absolute -top-1 -right-1 h-2 w-2 rounded-full ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`}>
+                                <span className={`absolute inset-0 rounded-full animate-ping opacity-75 ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`} />
+                            </span>
+                        )}
                     </span>
                 )}
 
-                {!isLast && <span className="mx-1">→</span>}
+                {!isLast && <ArrowRight size={10} className="text-muted-foreground mx-0.5" />}
 
-                {/* ⏰ Waiting time */}
-                {!isLast && waitingNs && (
-                    <span className="inline-flex items-center gap-1 text-muted-foreground mx-1">
-                        <Clock size={12} />
+                {!isLast && waitingNs && waitingNs >= 60000000000 && (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground mx-1 text-xs">
+                        <Clock size={10} />
                         {formatDuration(waitingNs)}
-                        <span className="mx-1">→</span>
+                        <ArrowRight size={10} />
                     </span>
                 )}
             </span>
@@ -579,59 +660,135 @@ function formatDuration(nanoseconds: number) {
 
 function RouteDetailsContent({ route }: { route: JourneyType }) {
     return (
-        <div className="space-y-4">
-            {route.Legs.map((leg, index) => (
-                <div key={index} className="space-y-2 border-b pb-4 last:border-b-0 last:pb-0">
-                    <div className="flex items-center gap-2">
-                        <Badge
-                            variant={leg.Mode === 'walk' ? 'secondary' : 'default'}
-                            style={leg.Route?.route_color ? { backgroundColor: `#${leg.Route.route_color}`, color: '#fff' } : undefined}
-                        >
-                            {leg.Mode === 'walk' ? 'Walk' : `${leg.Route?.vehicle_type || 'Bus'} ${leg.Route?.route_short_name || leg.RouteID}`}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                            {formatDuration(leg.Duration)}
-                        </span>
-                    </div>
-                    <div className="space-y-1 text-sm">
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-green-500" />
-                            <span className="font-medium">{formatTime(leg.DepartureTime)}</span>
-                            <span className="text-muted-foreground">
-                                {leg.FromStop?.stop_name || 'Start'}
-                            </span>
-                            {leg.FromStop?.platform_number && leg.FromStop.platform_number !== "" && (
-                                <Badge variant={"outline"}>
-                                    Platform {leg.FromStop?.platform_number || ''}
-                                </Badge>
+        <div className="space-y-1">
+            {route.Legs.map((leg, legIndex) => {
+                const isWalk = leg.Mode === 'walk';
+                const isDelayed = leg.realtime_status === RealtimeStatus.Delayed;
+                const isEarly = leg.realtime_status === RealtimeStatus.Early;
+                const isOnTime = leg.realtime_status === RealtimeStatus.OnTime;
+                const hasRealtime = isDelayed || isEarly || isOnTime;
+                //const delaySec = leg.delay_seconds ?? 0;
+                //const delayMin = Math.round(Math.abs(delaySec) / 60);
+                const routeColor = leg.Route?.route_color && leg.Route.route_color !== "" ? `#${leg.Route.route_color}` : "#424242";
+
+                return (
+                    <div key={legIndex} className="relative">
+                        {/* Disruption alert */}
+                        {!isWalk && leg.trip_usable === false && (
+                            <div className="mb-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                                <AlertTriangle size={13} className="mt-0.5 shrink-0" />
+                                <span>This service is not running. Check alternative routes.</span>
+                            </div>
+                        )}
+
+                        {/* Leg header */}
+                        <div className="flex items-center gap-2 py-1">
+                            {isWalk ? (
+                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                    <Footprints size={12} />
+                                    Walk · {Math.round(leg.Duration / 60000000000)} min
+                                    {leg.DistanceKm > 0 && <span className="text-muted-foreground/70">· {leg.DistanceKm.toFixed(2)} km</span>}
+                                </span>
+                            ) : (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold text-white"
+                                        style={{ backgroundColor: routeColor, filter: "brightness(0.9) contrast(1.1)", opacity: leg.trip_usable === false ? 0.5 : 1 }}
+                                    >
+                                        {leg.Route?.vehicle_type && <span className="opacity-80">{leg.Route.vehicle_type}</span>}
+                                        {leg.Route?.route_short_name || leg.RouteID}
+                                    </span>
+                                    {hasRealtime && (
+                                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isDelayed ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                                            <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`} />
+                                            {isDelayed ? 'Late' : 'Early'}
+                                        </span>
+                                    )}
+                                    {leg.realtime_status === RealtimeStatus.OnTime && (
+                                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                            On time
+                                        </span>
+                                    )}
+                                    {leg.realtime_status === RealtimeStatus.Scheduled && (
+                                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                                            Scheduled
+                                        </span>
+                                    )}
+                                    <span className="text-xs text-muted-foreground">· {formatDuration(leg.Duration)}</span>
+                                </div>
                             )}
                         </div>
-                        <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 rounded-full bg-red-500" />
-                            <span className="font-medium">{formatTime(leg.ArrivalTime)}</span>
-                            <span className="text-muted-foreground">
-                                {leg.ToStop?.stop_name || 'Destination'}
-                            </span>
-                            {leg.ToStop?.platform_number && leg.ToStop.platform_number !== "" && (
-                                <Badge variant={"outline"}>
-                                    Platform {leg.ToStop?.platform_number || ''}
-                                </Badge>
-                            )}
+
+                        {/* Stops */}
+                        <div className="ml-2 space-y-0 border-l-2 border-border pl-4">
+                            {/* From stop */}
+                            <div className="relative py-2">
+                                <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                    <span className="font-medium text-sm">{formatTime(leg.DepartureTime)}</span>
+                                    {hasRealtime && leg.scheduled_departure_time && formatTime(leg.scheduled_departure_time) !== formatTime(leg.DepartureTime) && (
+                                        <span className="text-xs text-muted-foreground line-through">{formatTime(leg.scheduled_departure_time)}</span>
+                                    )}
+                                    <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
+                                    <div className="flex items-center gap-1">
+                                        {leg.FromStop?.platform_number && leg.FromStop.platform_number !== "" && (
+                                            <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.FromStop.platform_number}</Badge>
+                                        )}
+                                        {leg.FromStop?.stop_headsign && leg.FromStop.stop_headsign !== "" && (
+                                            <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
+                                        )}
+                                        {leg.FromStop?.wheelchair_boarding === 1 && (
+                                            <Accessibility size={12} className="text-muted-foreground" />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* To stop */}
+                            <div className="relative py-2">
+                                <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
+                                <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                    <span className="font-medium text-sm">{formatTime(leg.ArrivalTime)}</span>
+                                    {hasRealtime && leg.scheduled_arrival_time && formatTime(leg.scheduled_arrival_time) !== formatTime(leg.ArrivalTime) && (
+                                        <span className="text-xs text-muted-foreground line-through">{formatTime(leg.scheduled_arrival_time)}</span>
+                                    )}
+                                    <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
+                                    <div className="flex items-center gap-1">
+                                        {leg.ToStop?.platform_number && leg.ToStop.platform_number !== "" && (
+                                            <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.ToStop.platform_number}</Badge>
+                                        )}
+                                        {leg.ToStop?.stop_headsign && leg.ToStop.stop_headsign !== "" && (
+                                            <span className="text-xs text-muted-foreground">towards {leg.ToStop.stop_headsign}</span>
+                                        )}
+                                        {leg.ToStop?.wheelchair_boarding === 1 && (
+                                            <Accessibility size={12} className="text-muted-foreground" />
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
+
+                        {/* Transfer gap to next leg */}
+                        {legIndex < route.Legs.length - 1 && (() => {
+                            const nextLeg = route.Legs[legIndex + 1];
+                            const waitNs = getWaitingTimeNs(leg, nextLeg);
+                            if (!waitNs || waitNs < 60000000000) return null;
+                            return (
+                                <div className="ml-2 flex items-center gap-2 py-1.5 text-xs text-muted-foreground">
+                                    <Clock size={11} />
+                                    <span>{formatDuration(waitNs)} wait</span>
+                                </div>
+                            );
+                        })()}
                     </div>
-                    {leg.DistanceKm > 0 && (
-                        <p className="text-xs text-muted-foreground">
-                            Distance: {leg.DistanceKm.toFixed(2)} km
-                        </p>
-                    )}
-                </div>
-            ))}
+                );
+            })}
         </div>
     );
 }
 
+
 export interface JourneyType {
-    ID: string;
     StartLat: number;
     StartLon: number;
     EndLat: number;
@@ -640,22 +797,29 @@ export interface JourneyType {
     ArrivalTime: Date;
     TotalDuration: number;
     Transfers: number;
-    TransferStops: null;
+    TransferStops: Stop[] | null;
     Legs: Leg[];
     RouteGeoJSON: GeoJSON;
+    ID: string;
 }
 
 export interface Leg {
     Mode: string;
-    RouteID: string;
+    FromStop: Stop | null;
+    ToStop: Stop | null;
     TripID: string;
-    FromStop?: Stop;
-    ToStop?: Stop;
+    RouteID: string;
+    Route: Route | null;
     DepartureTime: Date;
     ArrivalTime: Date;
     Duration: number;
     DistanceKm: number;
-    Route?: Route;
+    StopSequenceID: number;
+    scheduled_departure_time: Date;
+    scheduled_arrival_time: Date;
+    trip_usable: boolean;
+    realtime_status?: RealtimeStatus;
+    delay_seconds?: number;
 }
 
 export interface Stop {
@@ -674,16 +838,25 @@ export interface Stop {
     is_child_stop: boolean;
 }
 
+export enum RealtimeStatus {
+    Delayed = "delayed",
+    Early = "early",
+    Scheduled = "scheduled",
+    OnTime = "on_time",
+}
+
 export interface Route {
     route_id: string;
     route_short_name: string;
     route_long_name: string;
-    route_type: number;
-    route_color?: string;
-    route_text_color?: string;
-    agency_id: string;
-    vehicle_type?: string;
+    route_color: string;
+    route_text_color: string;
+    vehicle_type: string;
 }
+
+
+
+
 
 
 

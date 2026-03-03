@@ -360,6 +360,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			MinResults:      3,
 			OsrmURL:         osrmApiUrl,
 			IncludeChildren: true,
+			Realtime:        &realtime,
 		}
 
 		switch timeType {
