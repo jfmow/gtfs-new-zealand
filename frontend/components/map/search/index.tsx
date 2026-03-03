@@ -1,11 +1,11 @@
 'use client'
 
 import { useEffect, useState, useRef } from "react"
-import { SearchInput } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Loader2, Clock, X } from 'lucide-react'
+import { Loader2, Clock, X, MapPin, Navigation } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { ApiFetch } from "@/lib/url-context"
+import { cn } from "@/lib/utils"
 
 export interface LocationAutocompleteResult {
     id: number
@@ -21,7 +21,7 @@ interface LocationSearchInputProps {
     placeholder: string
     value?: { lat: number; lon: number; label: string } | null
     onSelect: (location: { lat: number; lon: number; label: string } | null) => void
-    storageKey: string // For recent searches
+    storageKey: string
     onSelectFromMap?: () => void
     onUseCurrentLocation?: () => void
     isLocating?: boolean
@@ -44,16 +44,15 @@ export function LocationSearchInput({
     const [isLoading, setIsLoading] = useState(false)
     const searchRef = useRef<HTMLDivElement>(null)
     const skipSearchRef = useRef(false)
+    const inputRef = useRef<HTMLInputElement>(null)
 
     const MAX_RECENT = 5
 
-    // Load recent searches from localStorage
     useEffect(() => {
         const saved = localStorage.getItem(storageKey)
         if (saved) setRecentSearches(JSON.parse(saved))
     }, [storageKey])
 
-    // Fetch autocomplete
     useEffect(() => {
         if (skipSearchRef.current) {
             skipSearchRef.current = false
@@ -94,7 +93,6 @@ export function LocationSearchInput({
         }
     }, [searchTerm, recentSearches])
 
-    // Handle outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
@@ -105,7 +103,6 @@ export function LocationSearchInput({
         return () => document.removeEventListener("mousedown", handleClickOutside)
     }, [])
 
-    // Save to recent
     const saveRecent = (item: LocationAutocompleteResult) => {
         setRecentSearches(prev => {
             const filtered = prev.filter(r => r.id !== item.id)
@@ -133,14 +130,17 @@ export function LocationSearchInput({
     const handleClear = () => {
         onSelect(null)
         setSearchTerm("")
+        inputRef.current?.focus()
     }
+
+    const displayValue = value?.label || searchTerm
 
     return (
         <div className="relative w-full" ref={searchRef}>
-            <div className="flex flex-wrap items-center gap-2">
-                <SearchInput
-                    value={value?.label || searchTerm}
-                    className="min-w-0 flex-1"
+            <div className="relative flex items-center">
+                <input
+                    ref={inputRef}
+                    value={displayValue}
                     placeholder={placeholder}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     onFocus={() => {
@@ -149,87 +149,106 @@ export function LocationSearchInput({
                             setIsOpen(true)
                         } else if (searchTerm.length >= 2) setIsOpen(true)
                     }}
+                    className={cn(
+                        "flex h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors",
+                        "placeholder:text-muted-foreground",
+                        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                        "disabled:cursor-not-allowed disabled:opacity-50"
+                    )}
                 />
                 {value && (
-                    <Button variant="ghost" size="icon" onClick={handleClear}>
+                    <button
+                        type="button"
+                        onClick={handleClear}
+                        className="absolute right-2 text-muted-foreground hover:text-foreground transition-colors"
+                        aria-label="Clear location"
+                    >
                         <X className="h-4 w-4" />
-                    </Button>
+                    </button>
                 )}
             </div>
-            {(onSelectFromMap || onUseCurrentLocation) && (
-                <div className="mt-2 flex flex-wrap gap-2">
-                    {onSelectFromMap && (
-                        <Button type="button" variant="outline" size="sm" onClick={onSelectFromMap}>
-                            <span className="whitespace-normal text-left leading-snug">Select on map</span>
-                        </Button>
-                    )}
-                    {onUseCurrentLocation && (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            onClick={onUseCurrentLocation}
-                            disabled={isLocating}
-                        >
-                            <span className="whitespace-normal text-left leading-snug">
-                                {isLocating ? "Locating..." : "Use current location"}
-                            </span>
-                        </Button>
-                    )}
-                </div>
-            )}
 
             {isOpen && (
-                <div className="absolute z-50 mt-1 bg-background rounded-md shadow-lg border w-full max-w-full">
-                    <ScrollArea className="h-[200px] rounded-md">
+                <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg overflow-hidden">
+                    <ScrollArea className="max-h-[220px]">
+                        {/* Quick actions */}
+                        {(onSelectFromMap || onUseCurrentLocation) && !results.length && !isLoading && (
+                            <div className="flex items-center gap-1 p-2 border-b">
+                                {onUseCurrentLocation && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onUseCurrentLocation()
+                                            setIsOpen(false)
+                                        }}
+                                        disabled={isLocating}
+                                        className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                                    >
+                                        <Navigation className="h-3.5 w-3.5" />
+                                        {isLocating ? "Locating..." : "My location"}
+                                    </button>
+                                )}
+                                {onSelectFromMap && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            onSelectFromMap()
+                                            setIsOpen(false)
+                                        }}
+                                        className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                                    >
+                                        <MapPin className="h-3.5 w-3.5" />
+                                        Pick on map
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
                         {isLoading ? (
-                            <div className="flex items-center justify-center h-full">
-                                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                            <div className="flex items-center justify-center py-6">
+                                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                             </div>
                         ) : showRecent && recentSearches.length ? (
-                            <ul className="p-2 space-y-1">
-                                <h3 className="text-sm font-medium text-muted-foreground px-2 py-1">
-                                    Recent Searches
-                                </h3>
+                            <ul className="py-1">
+                                <li className="px-3 py-1.5 text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+                                    Recent
+                                </li>
                                 {recentSearches.map((item) => (
                                     <li key={item.id}>
-                                        <Button
-                                            variant="ghost"
-                                            className="w-full justify-start text-left font-normal"
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
                                             onClick={() => handleSelectRecent(item)}
                                         >
-                                            <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                                            <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                                             <span className="truncate">{item.label}</span>
-                                        </Button>
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
                         ) : results.length ? (
-                            <ul className="p-2 space-y-1">
+                            <ul className="py-1">
                                 {results.map((item) => (
                                     <li key={item.id}>
-                                        <Button
-                                            variant="ghost"
-                                            className="w-full justify-start text-left font-normal"
+                                        <button
+                                            type="button"
+                                            className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent transition-colors"
                                             onClick={() => handleSelect(item)}
                                         >
-                                            <span className="truncate">{item.label}</span>
-                                            <span className="ml-auto text-xs text-muted-foreground">
+                                            <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                            <span className="truncate flex-1">{item.label}</span>
+                                            <span className="text-[11px] text-muted-foreground shrink-0">
                                                 {item.type}
                                             </span>
-                                        </Button>
+                                        </button>
                                     </li>
                                 ))}
                             </ul>
                         ) : searchTerm.length >= 2 ? (
-                            <p className="text-center text-sm text-muted-foreground p-4">
+                            <p className="text-center text-sm text-muted-foreground py-6">
                                 No results found
                             </p>
-                        ) : (
-                            <p className="text-center text-sm text-muted-foreground p-4">
-                                Type at least 2 characters to search
-                            </p>
-                        )}
+                        ) : null}
                     </ScrollArea>
                 </div>
             )}
