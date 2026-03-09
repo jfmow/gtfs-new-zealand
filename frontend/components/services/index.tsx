@@ -382,7 +382,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                                 <>
                                                                     <p className="inline-flex gap-1.5 items-center">
                                                                         <span className="text-muted-foreground">Occupancy:</span>
-                                                                        <OccupancyStatusIndicator value={service.occupancy} type="people" />
+                                                                        <OccupancyStatusIndicator value={service.occupancy} type="message" />
                                                                     </p>
                                                                 </>
                                                             ) : null}
