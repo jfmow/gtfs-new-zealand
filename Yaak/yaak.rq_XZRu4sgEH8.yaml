@@ -1,0 +1,58 @@
+type: http_request
+model: http_request
+id: rq_XZRu4sgEH8
+createdAt: 2026-03-15T20:21:38.364364
+updatedAt: 2026-03-15T20:24:51.840353
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_KRbp3MKP4W
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Plan
+sortPriority: 0.001
+url: ${[ url ]}/${[ provider ]}/services/plan
+urlParameters:
+- enabled: true
+  name: startLat
+  value: '-36.8830490064001'
+  id: ZKsuI8yPV0
+- enabled: true
+  name: startLon
+  value: '174.72471617571017'
+  id: 0vjYyE0Q5v
+- enabled: true
+  name: endLat
+  value: '-36.8531046'
+  id: 3c5ANYG8IE
+- enabled: true
+  name: endLon
+  value: '174.7712914'
+  id: mUTcw6MDXR
+- enabled: true
+  name: date
+  value: 2026-03-15T20:21:25.311Z
+  id: DtqBp3xFrX
+- enabled: true
+  name: timeType
+  value: now
+  id: hDZMzcgBr8
+- enabled: true
+  name: maxWalkKm
+  value: '1'
+  id: A8iUUgXIVq
+- enabled: true
+  name: walkSpeed
+  value: '4.8'
+  id: Jpm7I4FHIK
+- enabled: true
+  name: MaxTransfers
+  value: '5'
+  id: aH9qii4yvJ
+- enabled: true
+  name: ''
+  value: ''
+  id: 0eW24Q6v2z
