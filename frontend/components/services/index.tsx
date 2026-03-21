@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { AccessibilityIcon, BadgeInfo, BadgeInfoIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
+import { AccessibilityIcon, Armchair, BadgeInfo, BadgeInfoIcon, BikeIcon, ChevronDown, ChevronUp, PersonStanding, Skull } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
 import OccupancyStatusIndicator from "./occupancy"
 import ServiceTrackerModal from "./tracker"
@@ -458,7 +458,25 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                         <p className="text-sm text-muted-foreground font-medium">Only receiving partial tracking information.</p>
                     </div>
 
-                    <div className="grid sm:grid-cols-2 gap-4">
+                    <div className="grid sm:grid-cols-3 gap-4">
+                        <div>
+                            <h3 className="text-sm font-semibold mb-2 text-foreground">Occupancy Indicator</h3>
+                            <ul className="space-y-2">
+                                <li className="flex gap-2 items-center">
+                                    <Armchair aria-hidden="true" className="w-5 h-5 text-green-600 dark:text-green-400 shrink-0" />
+                                    <span className="text-sm text-muted-foreground">Seats available</span>
+                                </li>
+                                <li className="flex gap-2 items-center">
+                                    <PersonStanding aria-hidden="true" className="w-5 h-5 text-yellow-600 dark:text-yellow-400 shrink-0" />
+                                    <span className="text-sm text-muted-foreground">Standing room only (no seats available)</span>
+                                </li>
+                                <li className="flex gap-2 items-center">
+                                    <Skull aria-hidden="true" className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+                                    <span className="text-sm text-muted-foreground">Full (no seats or standing room)</span>
+                                </li>
+                            </ul>
+                        </div>
+
                         <div>
                             <h3 className="text-sm font-semibold mb-2 text-foreground">Bicycle Access</h3>
                             <ul className="space-y-2">
@@ -500,6 +518,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                 </li>
                             </ul>
                         </div>
+
+
                     </div>
                 </div>
             </footer>
