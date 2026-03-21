@@ -55,13 +55,18 @@ export interface ServicesStop {
     sequence: number
 }
 
+type PlatformFilter = {
+    type: "platforms" | "routes"
+    value: string | number
+}
+
 const REFRESH_INTERVAL = 10 // Refresh interval in seconds
 
 export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [errorTrace, setErrorTrace] = useState("")
-    const [platformFilter, setPlatformFilter] = useState<string | number | "all">("all")
+    const [platformFilter, setPlatformFilter] = useState<PlatformFilter>({ type: 'platforms', value: "all" })
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
     const [showAllPlatforms, setShowAllPlatforms] = useState(false)
@@ -69,7 +74,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map((service) => service.platform)
-        return [...new Set(platforms)]
+        const uniquePlatforms = [...new Set(platforms)]
             .filter((i) => i !== "" && i !== undefined && i !== "no platform")
             .sort((a, b) => {
                 if (!isNaN(Number(a)) && !isNaN(Number(b))) {
@@ -77,6 +82,13 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 }
                 return a.localeCompare(b)
             })
+
+        if (uniquePlatforms.length === 0) {
+            const routes = services.map((service) => service.route.name)
+            const uniqueRoutes = [...new Set(routes)].sort()
+            return { platforms: uniqueRoutes, type: "routes" }
+        }
+        return { platforms: uniquePlatforms, type: "platforms" }
     }
 
     useEffect(() => {
@@ -85,7 +97,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
 
         setServices([])
-        setPlatformFilter("all")
+        setPlatformFilter({ type: 'platforms', value: "all" })
         setIsInitialLoading(true)
 
         async function fetchServices(date?: Date) {
@@ -169,12 +181,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }
 
     const uniquePlatforms = getUniquePlatforms(services)
-    const shouldShowExpandButton = uniquePlatforms.length > 3 && isMobile
-    const platformsToShow = shouldShowExpandButton && !showAllPlatforms ? uniquePlatforms.slice(0, 3) : uniquePlatforms
+    const shouldShowExpandButton = uniquePlatforms.platforms.length > 3 && isMobile
+    const platformsToShow = shouldShowExpandButton && !showAllPlatforms ? uniquePlatforms.platforms.slice(0, 3) : uniquePlatforms.platforms
 
     return (
         <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
-            {uniquePlatforms.length > 1 && (
+            {uniquePlatforms.platforms.length > 1 && (
                 <section className="mb-6" aria-labelledby="platform-filter-heading">
                     <h2 id="platform-filter-heading" className="sr-only">
                         Filter services by platform
@@ -182,29 +194,29 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     <div role="tablist" aria-label="Platform filters" className="space-y-3">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                             <Button
-                                variant={platformFilter === "all" ? "default" : "outline"}
+                                variant={platformFilter.value === "all" ? "default" : "outline"}
                                 size="sm"
                                 role="tab"
-                                aria-selected={platformFilter === "all"}
+                                aria-selected={platformFilter.value === "all"}
                                 aria-controls="services-list"
-                                onClick={() => setPlatformFilter("all")}
+                                onClick={() => setPlatformFilter({ ...platformFilter, value: "all" })}
                                 className="w-full transition-colors duration-200"
                             >
-                                All Platforms
+                                All {uniquePlatforms.type === "platforms" ? "Platforms" : "Routes"}
                             </Button>
 
                             {platformsToShow.map((platform) => (
                                 <Button
                                     key={platform}
-                                    variant={platformFilter === platform ? "default" : "outline"}
+                                    variant={platformFilter.value === platform ? "default" : "outline"}
                                     size="sm"
                                     role="tab"
-                                    aria-selected={platformFilter === platform}
+                                    aria-selected={platformFilter.value === platform}
                                     aria-controls="services-list"
-                                    onClick={() => setPlatformFilter(platform)}
+                                    onClick={() => setPlatformFilter({ ...platformFilter, value: platform })}
                                     className="w-full transition-colors duration-200"
                                 >
-                                    Platform {platform}
+                                    {uniquePlatforms.type === "platforms" ? "Platform " : "Route "} {platform}
                                 </Button>
                             ))}
                         </div>
@@ -217,7 +229,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     onClick={() => setShowAllPlatforms(!showAllPlatforms)}
                                     aria-expanded={showAllPlatforms}
                                     aria-label={
-                                        showAllPlatforms ? "Show fewer platforms" : `Show ${uniquePlatforms.length - 3} more platforms`
+                                        showAllPlatforms ? `Show fewer ${uniquePlatforms.type}` : `Show ${uniquePlatforms.platforms.length - 3} more ${uniquePlatforms.type}`
                                     }
                                     className="transition-colors duration-200"
                                 >
@@ -229,7 +241,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     ) : (
                                         <>
                                             <ChevronDown className="w-4 h-4 mr-2" aria-hidden="true" />
-                                            Show {uniquePlatforms.length - 3} More
+                                            Show {uniquePlatforms.platforms.length - 3} More
                                         </>
                                     )}
                                 </Button>
@@ -382,7 +394,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                                                 <>
                                                                     <p className="inline-flex gap-1.5 items-center">
                                                                         <span className="text-muted-foreground">Occupancy:</span>
-                                                                        <OccupancyStatusIndicator value={service.occupancy} type="message" />
+                                                                        <OccupancyStatusIndicator value={service.occupancy} type="people" />
                                                                     </p>
                                                                 </>
                                                             ) : null}
@@ -443,7 +455,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 <div className="space-y-4">
                     <div className="flex items-center gap-1">
                         <BadgeInfoIcon className="w-4 h-4" />
-                        <p className="text-sm text-muted-foreground font-medium">Tracking data is incomplete, but service is updating.</p>
+                        <p className="text-sm text-muted-foreground font-medium">Only receiving partial tracking information.</p>
                     </div>
 
                     <div className="grid sm:grid-cols-2 gap-4">
@@ -495,9 +507,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     )
 }
 
-function sortServices(services: Service[], platformFilter: string | number | undefined) {
+function sortServices(services: Service[], platformFilter: PlatformFilter | undefined) {
     return services
-        .filter((item) => platformFilter === "all" || item.platform === platformFilter)
+        .filter((item) => platformFilter?.value === "all" || item.platform === platformFilter?.value || item.route.name === platformFilter?.value)
         .filter((item) => item.time_till_arrival >= -2)
         .sort((a, b) => {
             // Departed services first, still ordered by arrival time within each group

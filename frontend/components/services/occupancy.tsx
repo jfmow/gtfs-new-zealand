@@ -1,4 +1,4 @@
-import { Circle, PersonStandingIcon } from "lucide-react"
+import { Armchair, Circle, PersonStandingIcon, Skull } from "lucide-react"
 
 interface OccupancyStatusIndicatorProps {
     value: number
@@ -10,37 +10,18 @@ export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: O
     const peopleVersion = type === "people"
     switch (value) {
         case 0:
-            if (textVersion) return "Empty"
-            if (peopleVersion) return (
-                <div className="flex items-center" aria-label="Occupancy is empty">
-                    <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
-                </div>
-            )
-            return (
-                <div className="flex items-center" aria-label="Occupancy is empty">
-                    <Circle fill="" className="w-2 h-2" />
-                    <Circle fill="" className="w-2 h-2" />
-                    <Circle fill="" className="w-2 h-2" />
-                    <Circle fill="" className="w-2 h-2" />
-                </div>
-            )
         case 1:
             if (textVersion) return "Some people"
             if (peopleVersion) return (
                 <div className="flex items-center" aria-label="Occupancy is lots of room">
-                    <PersonStandingIcon className="w-4 h-4 text-green-500" />
+                    <Armchair className="w-4 h-4 text-green-500" />
                     <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
+                    <Skull className="w-4 h-4" />
                 </div>
             )
             return (
                 <div className="flex items-center" aria-label="Occupancy is lots of room">
                     <Circle fill="green" className="w-2 h-2" />
-                    <Circle fill="" className="w-2 h-2" />
                     <Circle fill="" className="w-2 h-2" />
                     <Circle fill="" className="w-2 h-2" />
                 </div>
@@ -49,15 +30,13 @@ export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: O
             if (textVersion) return "Busy"
             if (peopleVersion) return (
                 <div className="flex items-center" aria-label="Occupancy is almost full">
-                    <PersonStandingIcon className="w-4 h-4 text-orange-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-orange-500" />
+                    <Armchair className="w-4 h-4 text-orange-500" />
                     <PersonStandingIcon className="w-4 h-4" />
-                    <PersonStandingIcon className="w-4 h-4" />
+                    <Skull className="w-4 h-4" />
                 </div>
             )
             return (
                 <div className="flex items-center" aria-label="Occupancy is almost full">
-                    <Circle fill="orange" className="w-2 h-2" />
                     <Circle fill="orange" className="w-2 h-2" />
                     <Circle fill="" className="w-2 h-2" />
                     <Circle fill="" className="w-2 h-2" />
@@ -67,15 +46,13 @@ export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: O
             if (textVersion) return "Very Busy"
             if (peopleVersion) return (
                 <div className="flex items-center" aria-label="Occupancy is basically full">
+                    <Armchair className="w-4 h-4 text-red-500" />
                     <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4" />
+                    <Skull className="w-4 h-4" />
                 </div>
             )
             return (
                 <div className="flex items-center" aria-label="Occupancy is basically full">
-                    <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="" className="w-2 h-2" />
@@ -85,15 +62,13 @@ export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: O
             if (textVersion) return "Probably not gonna be getting on"
             if (peopleVersion) return (
                 <div className="flex items-center" aria-label="Occupancy is full">
+                    <Armchair className="w-4 h-4 text-red-500" />
                     <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-red-500" />
-                    <PersonStandingIcon className="w-4 h-4 text-red-500" />
+                    <Skull className="w-4 h-4 text-red-500" />
                 </div>
             )
             return (
                 <div className="flex items-center" aria-label="Occupancy is full">
-                    <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="red" className="w-2 h-2" />
                     <Circle fill="red" className="w-2 h-2" />
