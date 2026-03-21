@@ -61,7 +61,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [errorTrace, setErrorTrace] = useState("")
-    const [platformFilter, setPlatformFilter] = useState<string | number | "all">("all")
+    const [serviceFilter, setServiceFilter] = useState<string | number | "all">("all")
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
     const [showAllPlatforms, setShowAllPlatforms] = useState(false)
@@ -79,13 +79,19 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             })
     }
 
+    const getUniqueRoutes = (services: Service[]) => {
+        return [...new Map(services.map((service) => [service.route.id, service.route])).values()]
+            .filter((route) => route.id !== "" && route.name !== "")
+            .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }))
+    }
+
     useEffect(() => {
         if (stopName === "") {
             return
         }
 
         setServices([])
-        setPlatformFilter("all")
+        setServiceFilter("all")
         setIsInitialLoading(true)
 
         async function fetchServices(date?: Date) {
@@ -169,44 +175,52 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }
 
     const uniquePlatforms = getUniquePlatforms(services)
-    const shouldShowExpandButton = uniquePlatforms.length > 3 && isMobile
-    const platformsToShow = shouldShowExpandButton && !showAllPlatforms ? uniquePlatforms.slice(0, 3) : uniquePlatforms
+    const uniqueRoutes = getUniqueRoutes(services)
+    const filterMode = uniquePlatforms.length > 1 ? "platform" : uniquePlatforms.length === 1 && uniqueRoutes.length > 1 ? "route" : null
+    const filterOptions = filterMode === "platform" ? uniquePlatforms : uniqueRoutes
+    const shouldShowExpandButton = filterOptions.length > 3 && isMobile
+    const filterOptionsToShow = shouldShowExpandButton && !showAllPlatforms ? filterOptions.slice(0, 3) : filterOptions
 
     return (
         <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
-            {uniquePlatforms.length > 1 && (
-                <section className="mb-6" aria-labelledby="platform-filter-heading">
-                    <h2 id="platform-filter-heading" className="sr-only">
-                        Filter services by platform
+            {filterMode && (
+                <section className="mb-6" aria-labelledby="service-filter-heading">
+                    <h2 id="service-filter-heading" className="sr-only">
+                        {filterMode === "platform" ? "Filter services by platform" : "Filter services by route"}
                     </h2>
-                    <div role="tablist" aria-label="Platform filters" className="space-y-3">
+                    <div role="tablist" aria-label={filterMode === "platform" ? "Platform filters" : "Route filters"} className="space-y-3">
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                             <Button
-                                variant={platformFilter === "all" ? "default" : "outline"}
+                                variant={serviceFilter === "all" ? "default" : "outline"}
                                 size="sm"
                                 role="tab"
-                                aria-selected={platformFilter === "all"}
+                                aria-selected={serviceFilter === "all"}
                                 aria-controls="services-list"
-                                onClick={() => setPlatformFilter("all")}
+                                onClick={() => setServiceFilter("all")}
                                 className="w-full transition-colors duration-200"
                             >
-                                All Platforms
+                                {filterMode === "platform" ? "All Platforms" : "All Routes"}
                             </Button>
 
-                            {platformsToShow.map((platform) => (
-                                <Button
-                                    key={platform}
-                                    variant={platformFilter === platform ? "default" : "outline"}
-                                    size="sm"
-                                    role="tab"
-                                    aria-selected={platformFilter === platform}
-                                    aria-controls="services-list"
-                                    onClick={() => setPlatformFilter(platform)}
-                                    className="w-full transition-colors duration-200"
-                                >
-                                    Platform {platform}
-                                </Button>
-                            ))}
+                            {filterOptionsToShow.map((option) => {
+                                const optionValue = filterMode === "platform" ? option : option.id
+                                const optionLabel = filterMode === "platform" ? `Platform ${option}` : option.name
+
+                                return (
+                                    <Button
+                                        key={optionValue}
+                                        variant={serviceFilter === optionValue ? "default" : "outline"}
+                                        size="sm"
+                                        role="tab"
+                                        aria-selected={serviceFilter === optionValue}
+                                        aria-controls="services-list"
+                                        onClick={() => setServiceFilter(optionValue)}
+                                        className="w-full transition-colors duration-200"
+                                    >
+                                        {optionLabel}
+                                    </Button>
+                                )
+                            })}
                         </div>
 
                         {shouldShowExpandButton && (
@@ -217,7 +231,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     onClick={() => setShowAllPlatforms(!showAllPlatforms)}
                                     aria-expanded={showAllPlatforms}
                                     aria-label={
-                                        showAllPlatforms ? "Show fewer platforms" : `Show ${uniquePlatforms.length - 3} more platforms`
+                                        showAllPlatforms
+                                            ? `Show fewer ${filterMode === "platform" ? "platforms" : "routes"}`
+                                            : `Show ${filterOptions.length - 3} more ${filterMode === "platform" ? "platforms" : "routes"}`
                                     }
                                     className="transition-colors duration-200"
                                 >
@@ -229,7 +245,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                     ) : (
                                         <>
                                             <ChevronDown className="w-4 h-4 mr-2" aria-hidden="true" />
-                                            Show {uniquePlatforms.length - 3} More
+                                            Show {filterOptions.length - 3} More
                                         </>
                                     )}
                                 </Button>
@@ -251,7 +267,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
                 >
                     <AnimatePresence mode="popLayout">
-                        {sortServices(services, platformFilter).map((service, index) => (
+                        {sortServices(services, serviceFilter, filterMode).map((service, index) => (
                             <motion.li
                                 key={service.trip_id + service.platform}
                                 layout
@@ -495,9 +511,17 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     )
 }
 
-function sortServices(services: Service[], platformFilter: string | number | undefined) {
+function sortServices(
+    services: Service[],
+    serviceFilter: string | number | undefined,
+    filterMode: "platform" | "route" | null,
+) {
     return services
-        .filter((item) => platformFilter === "all" || item.platform === platformFilter)
+        .filter((item) => {
+            if (serviceFilter === "all") return true
+            if (filterMode === "route") return item.route.id === serviceFilter
+            return item.platform === serviceFilter
+        })
         .filter((item) => item.time_till_arrival >= -2)
         .sort((a, b) => {
             // Departed services first, still ordered by arrival time within each group
