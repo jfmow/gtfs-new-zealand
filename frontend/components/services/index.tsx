@@ -177,9 +177,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const uniquePlatforms = getUniquePlatforms(services)
     const uniqueRoutes = getUniqueRoutes(services)
     const filterMode = uniquePlatforms.length > 1 ? "platform" : uniquePlatforms.length === 1 && uniqueRoutes.length > 1 ? "route" : null
-    const filterOptions = filterMode === "platform" ? uniquePlatforms : uniqueRoutes
+    const filterOptions = filterMode === "platform" ? uniquePlatforms : filterMode === "route" ? uniqueRoutes : []
     const shouldShowExpandButton = filterOptions.length > 3 && isMobile
     const filterOptionsToShow = shouldShowExpandButton && !showAllPlatforms ? filterOptions.slice(0, 3) : filterOptions
+    const platformOptionsToShow = filterMode === "platform" ? (filterOptionsToShow as string[]) : []
+    const routeOptionsToShow = filterMode === "route" ? (filterOptionsToShow as ServicesRoute[]) : []
 
     return (
         <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
@@ -202,25 +204,35 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                 {filterMode === "platform" ? "All Platforms" : "All Routes"}
                             </Button>
 
-                            {filterOptionsToShow.map((option) => {
-                                const optionValue = filterMode === "platform" ? option : option.id
-                                const optionLabel = filterMode === "platform" ? `Platform ${option}` : option.name
-
-                                return (
+                            {filterMode === "platform"
+                                ? platformOptionsToShow.map((platform) => (
                                     <Button
-                                        key={optionValue}
-                                        variant={serviceFilter === optionValue ? "default" : "outline"}
+                                        key={platform}
+                                        variant={serviceFilter === platform ? "default" : "outline"}
                                         size="sm"
                                         role="tab"
-                                        aria-selected={serviceFilter === optionValue}
+                                        aria-selected={serviceFilter === platform}
                                         aria-controls="services-list"
-                                        onClick={() => setServiceFilter(optionValue)}
+                                        onClick={() => setServiceFilter(platform)}
                                         className="w-full transition-colors duration-200"
                                     >
-                                        {optionLabel}
+                                        Platform {platform}
                                     </Button>
-                                )
-                            })}
+                                ))
+                                : routeOptionsToShow.map((route) => (
+                                    <Button
+                                        key={route.id}
+                                        variant={serviceFilter === route.id ? "default" : "outline"}
+                                        size="sm"
+                                        role="tab"
+                                        aria-selected={serviceFilter === route.id}
+                                        aria-controls="services-list"
+                                        onClick={() => setServiceFilter(route.id)}
+                                        className="w-full transition-colors duration-200"
+                                    >
+                                        {route.name}
+                                    </Button>
+                                ))}
                         </div>
 
                         {shouldShowExpandButton && (
