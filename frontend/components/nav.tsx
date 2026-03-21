@@ -184,13 +184,13 @@ export default function NavBar() {
 
                                     </motion.ul>
                                     <motion.div
-                                        className='flex items-center justify-start mb-2 mt-auto border-b pb-2'
+                                        className='flex items-center justify-start my-4 pb-2'
                                         variants={{
                                             hidden: { opacity: 0, x: -20 },
                                             show: { opacity: 1, x: 0 },
                                         }}
                                     >
-                                        <p className='text-muted-foreground text-sm'>Favourites</p>
+                                        <p className='text-muted-foreground text-sm'>Favorite stops</p>
                                     </motion.div>
                                     <motion.div
                                         variants={{
@@ -203,7 +203,7 @@ export default function NavBar() {
                                     </motion.div>
                                 </motion.div>
                                 <div
-                                    className='mt-auto grid gap-2 p-4'
+                                    className='mt-auto grid gap-2 p-4 mb-8'
                                 >
                                     <FindCurrentVehicle />
                                 </div>
