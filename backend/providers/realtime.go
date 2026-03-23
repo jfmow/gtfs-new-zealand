@@ -367,43 +367,25 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		stopsForTrip, err := gtfsData.GetStopTimesForTripID(filterTripId)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", ResponseDetails("details", "no stops found for trip", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusInternalServerError, "", ResponseDetails(
+				"details", "no stops found for trip",
+				"error", err.Error(),
+			))
 		}
 
-		tripUpdates, err := realtime.GetTripUpdates()
+		_, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No trip updates found in the GTFS data", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
 		}
-		updatesForTrip, err := tripUpdates.ByTripID(filterTripId)
+
+		line, err := NewTripShapeDistance(filterTripId, gtfsData)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "Invalid trip id", nil, ResponseDetails("details", "No trip update found for the trip id", "error", err.Error()))
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
 		}
 
-		vehicles, err := realtime.GetVehicles()
-		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "No vehicles found in the GTFS data", "error", err.Error()))
-		}
-
-		var vLat float32 = 0
-		var vLon float32 = 0
-
-		vehicleForTrip, err := vehicles.ByTripID(filterTripId)
-		if err == nil {
-			vLat = vehicleForTrip.GetPosition().GetLatitude()
-			vLon = vehicleForTrip.GetPosition().GetLongitude()
-		} else {
-			for _, stop := range stopsForTrip {
-				vLat = float32(stop.StopLat)
-				vLon = float32(stop.StopLon)
-				break // Only take the first stop
-			}
-		}
-
-		stopTimesForStops := getPredictedStopArrivalTimesForTrip(updatesForTrip.GetStopTimeUpdate(), localTimeZone)
-		//get stops for trip id
 		type StopTimes struct {
-			ParentStopId  string  `json:"parent_stop_id"` //parent stop id
-			ChildStopId   string  `json:"child_stop_id"`  //child stop id
+			ParentStopId  string  `json:"parent_stop_id"`
+			ChildStopId   string  `json:"child_stop_id"`
 			ArrivalTime   int64   `json:"arrival_time"`
 			DepartureTime int64   `json:"departure_time"`
 			ScheduledTime int64   `json:"scheduled_time"`
@@ -411,20 +393,55 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			Passed        bool    `json:"passed"`
 			DistanceAway  float64 `json:"dist"`
 		}
-		var result []StopTimes
 
+		var result []StopTimes
 		now := time.Now().In(localTimeZone)
 
-		_, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		// Realtime trip updates are optional.
+		stopTimesForStops := getPredictedStopArrivalTimesForTrip(nil, localTimeZone)
+		nextStopSequenceNumber := 0
+		var tripDelay int32 = 0
+		hasTripUpdate := false
+
+		if tripUpdates, err := realtime.GetTripUpdates(); err == nil {
+			if updatesForTrip, err := tripUpdates.ByTripID(filterTripId); err == nil && updatesForTrip != nil {
+				hasTripUpdate = true
+				stopTimesForStops = getPredictedStopArrivalTimesForTrip(
+					updatesForTrip.GetStopTimeUpdate(),
+					localTimeZone,
+				)
+				nextStopSequenceNumber, _, _ = getNextStopSequence(
+					updatesForTrip.GetStopTimeUpdate(),
+					lowestSequence,
+					localTimeZone,
+				)
+				tripDelay = updatesForTrip.GetDelay()
+			}
 		}
 
-		nextStopSequenceNumber, _, _ := getNextStopSequence(updatesForTrip.StopTimeUpdate, lowestSequence, localTimeZone)
+		// Vehicle positions are optional.
+		var (
+			vLat float32
+			vLon float32
+		)
 
-		line, err := NewTripShapeDistance(filterTripId, gtfsData)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		if vehicles, err := realtime.GetVehicles(); err == nil {
+			if vehicleForTrip, err := vehicles.ByTripID(filterTripId); err == nil && vehicleForTrip != nil {
+				pos := vehicleForTrip.GetPosition()
+				if pos != nil {
+					vLat = pos.GetLatitude()
+					vLon = pos.GetLongitude()
+				}
+			}
+		}
+
+		// Fallback to first stop if no vehicle position is available.
+		if vLat == 0 && vLon == 0 {
+			for _, stop := range stopsForTrip {
+				vLat = float32(stop.StopLat)
+				vLon = float32(stop.StopLon)
+				break
+			}
 		}
 
 		for _, stop := range stopsForTrip {
@@ -435,10 +452,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			} else {
 				data.ParentStopId = stop.StopId
 			}
-
 			data.ChildStopId = stop.StopId
 
-			if nextStopSequenceNumber > (stop.Sequence - lowestSequence) {
+			if hasTripUpdate && nextStopSequenceNumber > (stop.Sequence-lowestSequence) {
 				data.Passed = true
 			}
 
@@ -446,36 +462,49 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			if err != nil {
 				continue
 			}
-			defaultArrivalTime = time.Date(now.Year(), now.Month(), now.Day(), defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(), 0, localTimeZone)
-			data.ScheduledTime = defaultArrivalTime.UnixMilli()
+
+			defaultDepartureTime, err := time.ParseInLocation("15:04:05", stop.DepartureTime, localTimeZone)
+			if err != nil {
+				defaultDepartureTime = defaultArrivalTime
+			}
+
+			scheduledArrival := time.Date(
+				now.Year(), now.Month(), now.Day(),
+				defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(),
+				0, localTimeZone,
+			)
+			scheduledDeparture := time.Date(
+				now.Year(), now.Month(), now.Day(),
+				defaultDepartureTime.Hour(), defaultDepartureTime.Minute(), defaultDepartureTime.Second(),
+				0, localTimeZone,
+			)
+
+			data.ScheduledTime = scheduledArrival.UnixMilli()
 
 			update, found := stopTimesForStops[stop.StopId]
 			if found {
 				data.Skipped = update.Skipped
 			}
 
-			if update.ArrivalTime.IsZero() {
-				if !data.Passed {
-					data.ArrivalTime = data.ScheduledTime + int64(updatesForTrip.GetDelay())*1000
-				} else {
-					data.ArrivalTime = data.ScheduledTime
-				}
-			} else {
+			switch {
+			case found && !update.ArrivalTime.IsZero():
 				data.ArrivalTime = update.ArrivalTime.UnixMilli()
+			case !data.Passed:
+				data.ArrivalTime = scheduledArrival.UnixMilli() + int64(tripDelay)*1000
+			default:
+				data.ArrivalTime = scheduledArrival.UnixMilli()
 			}
 
-			if update.DepartureTime.IsZero() {
-				if !data.Passed {
-					data.DepartureTime = data.ScheduledTime + int64(updatesForTrip.GetDelay())*1000
-				} else {
-					data.DepartureTime = data.ScheduledTime
-				}
-			} else {
+			switch {
+			case found && !update.DepartureTime.IsZero():
 				data.DepartureTime = update.DepartureTime.UnixMilli()
+			case !data.Passed:
+				data.DepartureTime = scheduledDeparture.UnixMilli() + int64(tripDelay)*1000
+			default:
+				data.DepartureTime = scheduledDeparture.UnixMilli()
 			}
 
-			dist, err := line.Dist(float64(vLat), float64(vLon), stop.StopLat, stop.StopLon)
-			if err == nil {
+			if dist, err := line.Dist(float64(vLat), float64(vLon), stop.StopLat, stop.StopLon); err == nil {
 				data.DistanceAway = dist.DistanceToStop
 			}
 
