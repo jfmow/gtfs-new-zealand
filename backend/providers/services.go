@@ -3,7 +3,6 @@ package providers
 import (
 	"fmt"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -150,16 +149,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			if tripUpdate, err := tripUpdatesData.ByTripID(service.TripID); err == nil {
 				response.TripUpdateTracking = true
 
-				startTime := tripUpdate.GetTrip().GetStartTime() // "HH:MM:SS"
-				startDate := tripUpdate.GetTrip().GetStartDate() // "YYYYMMDD"
-				response.TripStarted = checkIfTripStarted(startTime, startDate, localTimeZone)
+				response.TripStarted = checkIfTripStarted(tripUpdate.GetTrip().GetStartTime(), tripUpdate.GetTrip().GetStartDate(), localTimeZone)
+				predictedArrivalTimes := getPredictedStopArrivalTimesForTrip(tripUpdate.GetStopTimeUpdate(), localTimeZone)
 
-				arrivalTimePlusDelay := defaultArrivalTime.Add(time.Duration(tripUpdate.GetDelay()) * time.Second)
+				response.ArrivalTime = predictedArrivalTimes[service.StopId].ArrivalTime.Format("15:04:05")
 
-				formattedArrivalTime := arrivalTimePlusDelay.Format("15:04:05")
-				response.ArrivalTime = formattedArrivalTime
-
-				timeTillArrival := int(math.Round(arrivalTimePlusDelay.Sub(now).Minutes()))
+				timeTillArrival := int(predictedArrivalTimes[service.StopId].ArrivalTime.Sub(now).Minutes())
 				response.TimeTillArrival = timeTillArrival
 
 				stopUpdates := tripUpdate.GetStopTimeUpdate()
