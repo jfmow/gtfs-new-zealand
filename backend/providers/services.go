@@ -2,7 +2,6 @@ package providers
 
 import (
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -302,7 +301,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		plans, err := gtfsData.PlanJourneyRaptor(jplan)
 		if err != nil {
-			log.Fatalf("planning failed: %v", err)
+			return JsonApiResponse(c, http.StatusInternalServerError, "No valid journey found", nil, ResponseDetails("error", err.Error()))
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", plans)
