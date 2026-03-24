@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Loader2, Clock, X, MapPin, Navigation } from 'lucide-react'
 import { ApiFetch } from "@/lib/url-context"
 import { cn } from "@/lib/utils"
+import { SearchInput } from "@/components/ui/input"
 
 export interface LocationAutocompleteResult {
     id: number
@@ -137,7 +138,7 @@ export function LocationSearchInput({
     return (
         <div className="relative w-full" ref={searchRef}>
             <div className="relative flex items-center">
-                <input
+                <SearchInput
                     ref={inputRef}
                     value={displayValue}
                     placeholder={placeholder}
