@@ -6,6 +6,7 @@ import { Loader2, Clock, X, MapPin, Navigation } from 'lucide-react'
 import { ApiFetch } from "@/lib/url-context"
 import { cn } from "@/lib/utils"
 import { SearchInput } from "@/components/ui/input"
+import { useQueryParams } from "@/lib/url-params"
 
 export interface LocationAutocompleteResult {
     id: number
@@ -25,6 +26,7 @@ interface LocationSearchInputProps {
     onSelectFromMap?: () => void
     onUseCurrentLocation?: () => void
     isLocating?: boolean
+    searchParamKey: string
 }
 
 export function LocationSearchInput({
@@ -35,8 +37,9 @@ export function LocationSearchInput({
     onSelectFromMap,
     onUseCurrentLocation,
     isLocating,
+    searchParamKey
 }: LocationSearchInputProps) {
-    const [searchTerm, setSearchTerm] = useState("")
+    const { searchTerm } = useQueryParams({ searchTerm: { type: "string", default: "", keys: [searchParamKey] } })
     const [results, setResults] = useState<LocationAutocompleteResult[]>([])
     const [recentSearches, setRecentSearches] = useState<LocationAutocompleteResult[]>([])
     const [isOpen, setIsOpen] = useState(false)
@@ -59,9 +62,9 @@ export function LocationSearchInput({
             return
         }
 
-        if (!searchTerm || searchTerm.length < 2) {
+        if (!searchTerm.found || searchTerm.value.length < 2) {
             setResults([])
-            setShowRecent(searchTerm.length === 0 && recentSearches.length > 0)
+            setShowRecent(searchTerm.value.length === 0 && recentSearches.length > 0)
             return
         }
 
@@ -70,12 +73,17 @@ export function LocationSearchInput({
         const timeout = setTimeout(async () => {
             try {
                 const response = await ApiFetch<LocationAutocompleteResult[]>(
-                    `/map/search?q=${encodeURIComponent(searchTerm)}&limit=5`,
+                    `/map/search?q=${encodeURIComponent(searchTerm.value)}&limit=5`,
                     { signal: controller.signal }
                 )
                 if (response.ok) {
                     setResults(response.data)
                     setShowRecent(false)
+                    if (response.data.length === 1) {
+                        onSelect(response.data[0])
+                    } else {
+                        setIsOpen(true)
+                    }
                 } else {
                     setResults([])
                 }
@@ -83,7 +91,6 @@ export function LocationSearchInput({
                 console.error(err)
             } finally {
                 setIsLoading(false)
-                setIsOpen(true)
             }
         }, 300)
 
@@ -114,7 +121,7 @@ export function LocationSearchInput({
 
     const handleSelect = (item: LocationAutocompleteResult) => {
         skipSearchRef.current = true
-        setSearchTerm(item.label)
+        searchTerm.set(item.label)
         onSelect({ lat: item.lat, lon: item.lon, label: item.label })
         setIsOpen(false)
         saveRecent(item)
@@ -122,18 +129,18 @@ export function LocationSearchInput({
 
     const handleSelectRecent = (item: LocationAutocompleteResult) => {
         skipSearchRef.current = true
-        setSearchTerm(item.label)
+        searchTerm.set(item.label)
         onSelect({ lat: item.lat, lon: item.lon, label: item.label })
         setIsOpen(false)
     }
 
     const handleClear = () => {
         onSelect(null)
-        setSearchTerm("")
+        searchTerm.set("")
         inputRef.current?.focus()
     }
 
-    const displayValue = value?.label || searchTerm
+    const displayValue = value?.label || searchTerm.value
 
     return (
         <div className="relative w-full" ref={searchRef}>
@@ -142,12 +149,12 @@ export function LocationSearchInput({
                     ref={inputRef}
                     value={displayValue}
                     placeholder={placeholder}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onChange={(e) => searchTerm.set(e.target.value)}
                     onFocus={() => {
-                        if (!searchTerm) {
+                        if (!searchTerm.found) {
                             setShowRecent(recentSearches.length > 0)
                             setIsOpen(true)
-                        } else if (searchTerm.length >= 2) {
+                        } else if (searchTerm.value.length >= 2) {
                             setIsOpen(true)
                         }
                     }}
@@ -174,7 +181,7 @@ export function LocationSearchInput({
                 <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover shadow-lg overflow-hidden">
                     <ScrollArea className="max-h-[220px]">
                         {/* show buttons before any results/recents when searchTerm is empty */}
-                        {searchTerm.length === 0 && (onUseCurrentLocation || onSelectFromMap) && (
+                        {searchTerm.value.length === 0 && (onUseCurrentLocation || onSelectFromMap) && (
                             <ul className="py-1 border-b">
                                 {onUseCurrentLocation && (
                                     <li>
@@ -252,7 +259,7 @@ export function LocationSearchInput({
                                     </li>
                                 ))}
                             </ul>
-                        ) : searchTerm.length >= 2 ? (
+                        ) : searchTerm.value.length >= 2 ? (
                             <p className="text-center text-sm text-muted-foreground py-6">
                                 No results found
                             </p>

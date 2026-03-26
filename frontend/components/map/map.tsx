@@ -38,9 +38,6 @@ type ItemsOnMap = {
         marker: leaflet.Marker | null
         control: leaflet.Control | null
     }
-    compass: {
-        control: leaflet.Control | null
-    }
     line: {
         line: leaflet.GeoJSON | null
     }
@@ -61,7 +58,6 @@ export default function MapComp({
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
     const itemsOnMap = useRef<ItemsOnMap>({
-        compass: { control: null },
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
@@ -84,7 +80,6 @@ export default function MapComp({
             addMapVariantControlControl(map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
             setDefaultZoom(map, defaultZoom);
             addZoomControls(map, itemsOnMap.current.zoomButtons, options?.buttonPosition === "bottom" ? "bottomleft" : "topleft");
-            addUserCompassControl(itemsOnMap.current.compass, map, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
 
             // Add map click handler
             if (onMapClick) {
@@ -102,32 +97,6 @@ export default function MapComp({
             }
         });
         if (container) resizeObserver.observe(container);
-
-        // Orientation tracking
-        const handleOrientation = (e: DeviceOrientationEvent) => {
-            let heading = null;
-
-            if ("webkitCompassHeading" in e) {
-                //eslint-disable-next-line @typescript-eslint/no-explicit-any
-                heading = (e as any).webkitCompassHeading;
-            } else if (e.alpha !== null) {
-                heading = 360 - e.alpha;
-            }
-
-            if (typeof heading === "number" && !isNaN(heading)) {
-                document.documentElement.style.setProperty(
-                    "--user-arrow-rotation",
-                    `${heading}deg`
-                );
-            }
-        };
-
-        window.addEventListener("deviceorientation", handleOrientation);
-
-        return () => {
-            window.removeEventListener("deviceorientation", handleOrientation);
-            resizeObserver.disconnect(); // ⬅️ NEW cleanup
-        };
     }, [defaultZoom, map_id, options?.buttonPosition]);
 
     useEffect(() => {
@@ -284,10 +253,11 @@ export default function MapComp({
                         const segment = leaflet.polyline(
                             [[point1.lat, point1.lon], [point2.lat, point2.lon]],
                             {
-                                color: color,
-                                weight: 4,
-                                opacity: 0.8,
-                                smoothFactor: 1.5
+                                color,
+                                weight: 6,
+                                opacity: 0.95,
+                                smoothFactor: 1.5,
+                                className: "map-route-line",
                             }
                         );
 
@@ -350,12 +320,14 @@ export default function MapComp({
                     return {
                         color:
                             line.color === "" ? mode === "walk"
-                                ? "#ff9a2d"   // green for walking
+                                ? "#ff2da4"   // green for walking
                                 : mode === "transit"
-                                    ? "#3b82f6"   // blue for transit
-                                    : "#db6ecb"  // fallback
+                                    ? "#993bf6"   // blue for transit
+                                    : "#6ec3db"  // fallback
                                 : line.color,
-                        weight: 4,
+                        weight: 6,
+                        opacity: 0.95,
+                        className: "map-route-line",
                     };
                 },
             });
@@ -373,7 +345,8 @@ export default function MapComp({
                 width: "100%",
                 maxHeight: height ? "" : "50vh",
                 zIndex: 1,
-                borderRadius: "10px",
+                borderRadius: "16px",
+                overflow: "hidden",
                 flexGrow: 1,
             }}
         />
@@ -484,28 +457,6 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         };
         activeMapItemsUser.control = userLocationControl;
         map.addControl(userLocationControl);
-    }
-}
-
-function addUserCompassControl(activeMapItemsCompass: ItemsOnMap["compass"], map: leaflet.Map, position: leaflet.ControlPosition = "topright") {
-    const oldCompassControl = activeMapItemsCompass.control
-    if (oldCompassControl) {
-        map.removeControl(oldCompassControl)
-    }
-    //@ts-expect-error it does infant exist
-    if (typeof DeviceOrientationEvent !== "undefined" && typeof DeviceOrientationEvent.requestPermission === "function") {
-        const compassControl = new leaflet.Control({ position });
-        compassControl.onAdd = () => {
-            const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
-            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-compass"><path d="m16.24 7.76-1.804 5.411a2 2 0 0 1-1.265 1.265L7.76 16.24l1.804-5.411a2 2 0 0 1 1.265-1.265z"/><circle cx="12" cy="12" r="10"/></svg>';
-            button.onclick = async () => {
-                //@ts-expect-error it does infant exist
-                await DeviceOrientationEvent.requestPermission();
-            };
-            return button;
-        };
-        activeMapItemsCompass.control = compassControl;
-        map.addControl(compassControl);
     }
 }
 

@@ -31,6 +31,7 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/components/ui/collapsible"
+import { Spinner } from "@/components/ui/spinner";
 
 const LeafletMap = dynamic(() => import("@/components/map/map"), {
     ssr: false,
@@ -106,7 +107,7 @@ export default function PlanJourney() {
     const [isLocating, setIsLocating] = useState<null | 'start' | 'end'>(null);
     const [locationError, setLocationError] = useState<string | null>(null);
     const [justSaved, setJustSaved] = useState(false);
-    const [savedOpen, setSavedOpen] = useState(false);
+    const [savedOpen, setSavedOpen] = useState(true);
     const isMobile = useIsMobile();
     const { currentUrl } = useUrl()
     const { savedTrips, saveTrip, deleteTrip } = useSavedTrips();
@@ -208,6 +209,7 @@ export default function PlanJourney() {
         const searchDate = timeType === "now" ? new Date() : selectedDate;
         setSelectedDate(searchDate);
 
+        setSavedOpen(false)
         setIsSearching(true);
         setApiResponse([]);
         try {
@@ -231,13 +233,13 @@ export default function PlanJourney() {
         mapMarkers.push({
             lat: startLocation.lat,
             lon: startLocation.lon,
-            icon: "marked stop marker",
+            icon: "start marker",
             id: "start",
             routeID: "",
             zIndex: 200,
             onClick: () => { },
             description: {
-                text: `<strong>Start Point</strong>`,
+                text: `<strong>Start</strong>`,
                 alwaysShow: true
             },
             type: "stop" as const
@@ -254,7 +256,7 @@ export default function PlanJourney() {
             zIndex: 200,
             onClick: () => { },
             description: {
-                text: `<strong>End Point</strong>`,
+                text: `<strong>End</strong>`,
                 alwaysShow: true
             },
             type: "stop" as const
@@ -269,11 +271,11 @@ export default function PlanJourney() {
                     lon: leg.FromStop.stop_lon,
                     icon: "next stop marker",
                     id: leg.FromStop.stop_id + "-" + index,
-                    routeID: leg.RouteID,
+                    routeID: '',
                     zIndex: 100,
                     onClick: () => { },
                     description: {
-                        text: `<strong>${leg.FromStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `${leg.Route?.route_short_name} - ${formatTime(leg.DepartureTime)}` : 'Walking'}`,
+                        text: `<strong>${leg.FromStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `Catch ${leg.Route?.route_short_name} - ${formatTime(leg.DepartureTime)}` : 'Start Walking'}`,
                         alwaysShow: false
                     },
                     type: "stop" as const
@@ -285,11 +287,11 @@ export default function PlanJourney() {
                     lon: leg.ToStop.stop_lon,
                     icon: "next stop marker",
                     id: leg.ToStop.stop_id + "-" + index,
-                    routeID: leg.RouteID,
+                    routeID: '',
                     zIndex: 100,
                     onClick: () => { },
                     description: {
-                        text: `<strong>${leg.ToStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `${leg.Route?.route_short_name} - ${formatTime(leg.ArrivalTime)}` : 'Walking'}`,
+                        text: `<strong>${leg.ToStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `Get off ${leg.Route?.route_short_name} - ${formatTime(leg.ArrivalTime)}` : 'Stop Walking'}`,
                         alwaysShow: false
                     },
                     type: "stop" as const
@@ -322,6 +324,7 @@ export default function PlanJourney() {
                                 onSelectFromMap={() => handleSelectFromMap('start')}
                                 onUseCurrentLocation={() => handleUseCurrentLocation('start')}
                                 isLocating={isLocating === 'start'}
+                                searchParamKey='start'
                             />
                             <LocationSearchInput
                                 placeholder="To"
@@ -331,6 +334,7 @@ export default function PlanJourney() {
                                 onSelectFromMap={() => handleSelectFromMap('end')}
                                 onUseCurrentLocation={() => handleUseCurrentLocation('end')}
                                 isLocating={isLocating === 'end'}
+                                searchParamKey='end'
                             />
                         </div>
                         <div className="flex flex-col justify-center">
@@ -353,28 +357,6 @@ export default function PlanJourney() {
                         </p>
                     )}
 
-                    {/* Time type row */}
-                    <div className="flex items-center gap-2">
-                        <Select value={timeType} onValueChange={(value) => setTimeType(value as "now" | "leaveat" | "arriveat")}>
-                            <SelectTrigger className="w-auto min-w-[120px] h-9 text-sm">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="now">Leave now</SelectItem>
-                                <SelectItem value="leaveat">Leave at</SelectItem>
-                                <SelectItem value="arriveat">Arrive by</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {timeType !== "now" && (
-                            <div className="flex-1">
-                                <DatePicker
-                                    date={selectedDate}
-                                    onDateChange={setSelectedDate}
-                                />
-                            </div>
-                        )}
-                    </div>
-
                     {/* Advanced options */}
                     <Collapsible>
                         <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
@@ -383,9 +365,26 @@ export default function PlanJourney() {
                         </CollapsibleTrigger>
                         <CollapsibleContent>
                             <div className="flex flex-wrap gap-2 pt-2">
+                                <Select value={timeType} onValueChange={(value) => setTimeType(value as "now" | "leaveat" | "arriveat")}>
+                                    <SelectTrigger className="w-auto min-w-[120px]">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="now">Leave now</SelectItem>
+                                        <SelectItem value="leaveat">Leave at</SelectItem>
+                                        <SelectItem value="arriveat">Arrive by</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                {timeType !== "now" && (
+                                    <DatePicker
+                                        date={selectedDate}
+                                        onDateChange={setSelectedDate}
+                                    />
+                                )}
+
                                 <Select value={maxWalkKm} onValueChange={setMaxWalkKm}>
-                                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
-                                        <span className="text-muted-foreground mr-1">Walk:</span>
+                                    <SelectTrigger className="w-auto min-w-[100px]">
+                                        <span className="text-muted-foreground mr-1">Max Walk:</span>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -397,8 +396,8 @@ export default function PlanJourney() {
                                 </Select>
 
                                 <Select value={walkSpeed} onValueChange={setWalkSpeed}>
-                                    <SelectTrigger className="h-8 w-auto min-w-[100px] text-xs">
-                                        <span className="text-muted-foreground mr-1">Speed:</span>
+                                    <SelectTrigger className="w-auto min-w-[100px]">
+                                        <span className="text-muted-foreground mr-1">Walking Speed:</span>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -409,17 +408,21 @@ export default function PlanJourney() {
                                 </Select>
 
                                 <Select value={maxTransfers} onValueChange={setMaxTransfers}>
-                                    <SelectTrigger className="h-8 w-auto min-w-[110px] text-xs">
-                                        <span className="text-muted-foreground mr-1">Transfers:</span>
+                                    <SelectTrigger className="w-auto min-w-[110px]">
+                                        <span className="text-muted-foreground mr-1">Max Transfers:</span>
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="0">Direct</SelectItem>
                                         <SelectItem value="1">1</SelectItem>
                                         <SelectItem value="2">2</SelectItem>
+                                        <SelectItem value="3">3</SelectItem>
+                                        <SelectItem value="4">4</SelectItem>
                                         <SelectItem value="5">5+</SelectItem>
                                     </SelectContent>
                                 </Select>
+
+
                             </div>
                         </CollapsibleContent>
                     </Collapsible>
@@ -431,8 +434,17 @@ export default function PlanJourney() {
                             onClick={planJourney}
                             disabled={!startLocation || !endLocation || isSearching}
                         >
-                            <Search className="h-4 w-4 mr-2" />
-                            {isSearching ? "Searching..." : "Search"}
+                            {isSearching ? (
+                                <>
+                                    <Spinner />
+                                    Planning
+                                </>
+                            ) : (
+                                <>
+                                    <Search className="h-4 w-4" />
+                                    Plan
+                                </>
+                            )}
                         </Button>
                         <Button
                             variant="outline"
@@ -538,19 +550,44 @@ export default function PlanJourney() {
 
             {/* Route detail modal/sheet */}
             <Sheet open={isRouteMapOpen} onOpenChange={setIsRouteMapOpen}>
-                <SheetContent side={isMobile ? "bottom" : "right"} className={`h-full ${isMobile ? 'max-h-[85vh]' : 'max-w-5xl'} overflow-hidden`}>
-                    <SheetHeader>
+                <SheetContent side={"bottom"} className={`max-h-[85vh] overflow-hidden`}>
+                    <SheetHeader className="max-w-5xl mx-auto">
                         <SheetTitle>Route Details</SheetTitle>
-                        <SheetDescription>Review the selected journey on the map or in a list.</SheetDescription>
+                        <SheetDescription>Review the selected journey.</SheetDescription>
                     </SheetHeader>
-                    <Tabs defaultValue="details" className="mt-4">
-                        <TabsList className="w-full">
-                            <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
-                            <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="map">
+                    {isMobile ? (
+                        <Tabs defaultValue="details" className="mt-4 max-w-5xl mx-auto">
+                            <TabsList className="w-full">
+                                <TabsTrigger value="map" className="flex-1">Map</TabsTrigger>
+                                <TabsTrigger value="details" className="flex-1">Details</TabsTrigger>
+                            </TabsList>
+                            <TabsContent value="map">
+                                {selectedRoute && (
+                                    <div className={`h-[60vh] overflow-hidden rounded-md border`}>
+                                        <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                            <LeafletMap
+                                                defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
+                                                mapItems={mapMarkers}
+                                                map_id="journey-planner-route-map"
+                                                height="100%"
+                                                line={selectedRoute ? { GeoJson: selectedRoute.RouteGeoJSON, color: "" } : undefined}
+                                            />
+                                        </Suspense>
+                                    </div>
+                                )}
+                            </TabsContent>
+                            <TabsContent value="details">
+                                {selectedRoute && (
+                                    <div className="max-h-[60vh] overflow-y-auto p-2">
+                                        <RouteDetailsContent route={selectedRoute} />
+                                    </div>
+                                )}
+                            </TabsContent>
+                        </Tabs>
+                    ) : (
+                        <div className="flex gap-2 flex-grow mt-4 max-w-5xl mx-auto">
                             {selectedRoute && (
-                                <div className={`h-[60vh] overflow-hidden rounded-md border`}>
+                                <div className={`h-[60vh] overflow-hidden rounded-md border w-full`}>
                                     <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
                                         <LeafletMap
                                             defaultZoom={[[selectedRoute.StartLat, selectedRoute.StartLon], [selectedRoute.EndLat, selectedRoute.EndLon]]}
@@ -562,60 +599,60 @@ export default function PlanJourney() {
                                     </Suspense>
                                 </div>
                             )}
-                        </TabsContent>
-                        <TabsContent value="details">
                             {selectedRoute && (
-                                <div className="max-h-[60vh] overflow-y-auto p-2">
+                                <div className="max-h-[60vh] overflow-y-auto p-2 flex-grow">
                                     <RouteDetailsContent route={selectedRoute} />
                                 </div>
                             )}
-                        </TabsContent>
-                    </Tabs>
+                        </div>
+                    )}
                 </SheetContent>
-            </Sheet>
+            </Sheet >
 
             {/* Map location picker */}
-            {isMobile ? (
-                <Sheet open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
-                    <SheetContent side="bottom" className="h-[85vh] overflow-hidden">
-                        <SheetHeader>
-                            <SheetTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</SheetTitle>
-                            <SheetDescription>Tap the map to set your {locationMode} point.</SheetDescription>
-                        </SheetHeader>
-                        <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
-                            <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                <LeafletMap
-                                    defaultZoom={["user", currentUrl.defaultMapCenter]}
-                                    mapItems={mapMarkers}
-                                    map_id="journey-planner-select-map"
-                                    height="100%"
-                                    onMapClick={handleMapClick}
-                                />
-                            </Suspense>
-                        </div>
-                    </SheetContent>
-                </Sheet>
-            ) : (
-                <Dialog open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
-                    <DialogContent className="max-w-5xl">
-                        <DialogHeader>
-                            <DialogTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</DialogTitle>
-                            <DialogDescription>Click the map to set your {locationMode} point.</DialogDescription>
-                        </DialogHeader>
-                        <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
-                            <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
-                                <LeafletMap
-                                    defaultZoom={["user", currentUrl.defaultMapCenter]}
-                                    mapItems={mapMarkers}
-                                    map_id="journey-planner-select-map"
-                                    height="100%"
-                                    onMapClick={handleMapClick}
-                                />
-                            </Suspense>
-                        </div>
-                    </DialogContent>
-                </Dialog>
-            )}
+            {
+                isMobile ? (
+                    <Sheet open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
+                        <SheetContent side="bottom" className="h-[85vh] overflow-hidden">
+                            <SheetHeader>
+                                <SheetTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</SheetTitle>
+                                <SheetDescription>Tap the map to set your {locationMode} point.</SheetDescription>
+                            </SheetHeader>
+                            <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
+                                <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                    <LeafletMap
+                                        defaultZoom={["user", currentUrl.defaultMapCenter]}
+                                        mapItems={mapMarkers}
+                                        map_id="journey-planner-select-map"
+                                        height="100%"
+                                        onMapClick={handleMapClick}
+                                    />
+                                </Suspense>
+                            </div>
+                        </SheetContent>
+                    </Sheet>
+                ) : (
+                    <Dialog open={isSelectingOnMap} onOpenChange={setIsSelectingOnMap}>
+                        <DialogContent className="max-w-5xl">
+                            <DialogHeader>
+                                <DialogTitle>Select {locationMode === 'start' ? 'start' : 'end'} location</DialogTitle>
+                                <DialogDescription>Click the map to set your {locationMode} point.</DialogDescription>
+                            </DialogHeader>
+                            <div className="mt-4 h-[65vh] overflow-hidden rounded-md border">
+                                <Suspense fallback={<div className="flex h-full items-center justify-center">Loading map...</div>}>
+                                    <LeafletMap
+                                        defaultZoom={["user", currentUrl.defaultMapCenter]}
+                                        mapItems={mapMarkers}
+                                        map_id="journey-planner-select-map"
+                                        height="100%"
+                                        onMapClick={handleMapClick}
+                                    />
+                                </Suspense>
+                            </div>
+                        </DialogContent>
+                    </Dialog>
+                )
+            }
         </>
     );
 }
@@ -754,13 +791,13 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
 
                         <div className="flex items-center gap-2 py-1">
                             {isWalk ? (
-                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-pink-500">
                                     <Footprints className="h-3 w-3" />
                                     Walk · {Math.round(leg.Duration / 60000000000)} min
                                     {leg.DistanceKm > 0 && <span className="text-muted-foreground/70">· {leg.DistanceKm.toFixed(2)} km</span>}
                                 </span>
                             ) : (
-                                <div className="flex items-center gap-2 flex-wrap">
+                                <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                                     <span
                                         className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold"
                                         style={{
@@ -791,7 +828,7 @@ function RouteDetailsContent({ route }: { route: JourneyType }) {
                                             Scheduled
                                         </span>
                                     )}
-                                    <span className="text-xs text-muted-foreground">· {formatDuration(leg.Duration)}</span>
+                                    <span className="text-xs text-muted-foreground ">· {formatDuration(leg.Duration)}</span>
                                 </div>
                             )}
                         </div>

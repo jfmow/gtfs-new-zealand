@@ -4,7 +4,7 @@ import "leaflet.markercluster";
 export interface MapItem {
     lat: number;
     lon: number;
-    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "current stop marker" | "hidden";
+    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "start marker" | "current stop marker" | "hidden";
     id: string;
     routeID: string;
     zIndex: number;
@@ -168,6 +168,7 @@ function getIconUrl(icon: string): string {
         "marked stop marker": "/vehicle_icons/marked stop marker.png",
         "dot gray": "/vehicle_icons/stop_dot_passed.png",
         "current stop marker": "/vehicle_icons/stop_dot_currently_at.png",
+        "start marker": '/vehicle_icons/stop_dot_start.png'
     };
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }

@@ -108,7 +108,7 @@ export function useQueryParams<S extends ParamSchema>(
 
             for (const paramKey of allKeys) {
                 const raw = urlParams.get(paramKey);
-                if (raw !== null) {
+                if (raw !== null && raw !== "") {
                     value = raw;
                     found = true;
                     break;

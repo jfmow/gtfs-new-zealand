@@ -212,7 +212,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                                         ? "next stop marker"
                                                                         : item.parent_stop_id === vehicle.trip.current_stop.parent_stop_id || item.child_stop_id === vehicle.trip.current_stop.child_stop_id
                                                                             ? "current stop marker"
-                                                                            : vehicle.trip.current_stop.sequence > item.sequence
+                                                                            : item.parent_stop_id === vehicle.trip.first_stop.parent_stop_id ? "start marker" : vehicle.trip.current_stop.sequence > item.sequence
                                                                                 ? "dot gray"
                                                                                 : "dot",
                                                         id: item.name,
