@@ -167,7 +167,7 @@ export async function getCurrentPushSubscription(): Promise<{
     };
 }
 
-export async function addReminder(stopIdOrName: string, tripId: string, type: "arrival" | "get_off") {
+export async function addReminder(stopId: string, tripId: string, type: "arrival" | "get_off") {
     // eslint-disable-next-line prefer-const
     let subscription = await getCurrentPushSubscription();
 
@@ -189,7 +189,7 @@ export async function addReminder(stopIdOrName: string, tripId: string, type: "a
     form.set("endpoint", subscription.endpoint);
     form.set("p256dh", subscription.p256dh);
     form.set("auth", subscription.auth);
-    form.set("stopIdOrName", stopIdOrName);
+    form.set("stopId", stopId);
     form.set("tripId", tripId)
     form.set("type", type)
 

@@ -194,7 +194,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	c.Start()
 
 	notificationRoute.POST("/add", func(c echo.Context) error {
-		stopIdOrName := c.FormValue("stopIdOrName")
+		stopId := c.FormValue("stopId")
 		unParsedroutes := c.FormValue("routes")
 		var routes []string
 
@@ -220,7 +220,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		p256dh := c.FormValue("p256dh")
 		auth := c.FormValue("auth")
 
-		stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
+		stop, err := gtfsData.GetStopByStopID(stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
