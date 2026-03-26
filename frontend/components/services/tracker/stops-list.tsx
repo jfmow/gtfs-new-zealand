@@ -81,7 +81,7 @@ export default function StopsList({
     const handleStopSelection = async (stop: ServicesStop) => {
         if (!isSelectingReminder || !tripId || !reminderType) return
 
-        const ok = await notification.addReminder(stop.name, tripId, reminderType)
+        const ok = await notification.addReminder(stop.parent_stop_id, tripId, reminderType)
 
         if (ok) {
             toast.success(

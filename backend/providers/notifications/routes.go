@@ -149,15 +149,25 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 					}
 					nextStopSequenceNumber, _, _, _ := getNextStopSequence(tripUpdate.StopTimeUpdate, lowestSequence, localTimeZone)
 
-					if nextStopSequenceNumber == reminder.StopSequence {
+					// Use >= instead of == to avoid missing reminders when realtime updates
+					// skip over a sequence between polling intervals.
+					if nextStopSequenceNumber >= reminder.StopSequence {
 						var title, body string
 						switch reminder.Type {
 						case "arrival":
-							title = "Your service is arriving soon!"
-							body = "The vehicle is approaching your selected stop."
+							title = "Your stop is coming up!"
+							if nextStopSequenceNumber == reminder.StopSequence {
+								body = "The vehicle is approaching your selected stop."
+							} else {
+								body = "The vehicle is very close to (or has just passed) your selected stop."
+							}
 						case "get_off":
-							title = "Your stop is next!"
-							body = "Get ready to get off. Make sure to take everything with you."
+							title = "Your stop is now!"
+							if nextStopSequenceNumber == reminder.StopSequence {
+								body = "Get ready to get off. Make sure to take everything with you."
+							} else {
+								body = "Your selected stop is now (or has just passed)."
+							}
 						default:
 							notificationDB.DeleteReminder(reminder.ClientId, reminder.Type)
 							continue // unknown type
@@ -499,13 +509,25 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		var sequenceNumber int = 0
+		var (
+			sequenceNumber int
+			stopFound      bool
+		)
 		for _, tripStop := range stopsForTrip {
 			if tripStop.ParentStation == parentStop.StopId {
 				sequenceNumber = tripStop.Sequence
+				stopFound = true
 			} else if parentStop.StopId == tripStop.StopId {
 				sequenceNumber = tripStop.Sequence
+				stopFound = true
 			}
+		}
+		if !stopFound {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "selected stop is not in trip",
+				Data:    nil,
+			})
 		}
 
 		if err := notificationDB.AddReminder(client.Id, tripId, sequenceNumber-lowestSequence, typeOfReminder); err != nil {
