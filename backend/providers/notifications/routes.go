@@ -194,7 +194,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	c.Start()
 
 	notificationRoute.POST("/add", func(c echo.Context) error {
-		stopId := c.FormValue("stopId")
+		stopIdOrName := c.FormValue("stopIdOrName")
 		unParsedroutes := c.FormValue("routes")
 		var routes []string
 
@@ -220,7 +220,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		p256dh := c.FormValue("p256dh")
 		auth := c.FormValue("auth")
 
-		stop, err := gtfsData.GetStopByStopID(stopId)
+		stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -461,7 +461,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		auth := c.FormValue("auth")
 
 		tripId := c.FormValue("tripId")
-		stopIdOrName := c.FormValue("stopIdOrName")
+		stopId := c.FormValue("stopId")
 		typeOfReminder := c.FormValue("type")
 
 		if typeOfReminder != "get_off" && typeOfReminder != "arrival" {
@@ -485,7 +485,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			client = newClient
 		}
 
-		stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
+		stop, err := gtfsData.GetStopByStopID(stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
