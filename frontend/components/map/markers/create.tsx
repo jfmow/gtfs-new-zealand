@@ -106,45 +106,46 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: max-content; height: 40px;">
+            <div style="position: relative; width: max-content; height: 46px;">
             <span
               style="
                 position: absolute;
-                top: -15px;
+                top: -16px;
                 left: 50%;
                 transform: translateX(-50%);
-                color: white;
-                font-size: 14px;
-                font-weight: bold;
-                text-shadow: 0 0 5px rgba(0, 0, 0, 0.7);
+                color: #1d4ed8;
+                font-size: 12px;
+                font-weight: 700;
                 white-space: nowrap;
-                padding: 0 8px;
-                background-color: rgba(0, 0, 0, 0.6);
-                border-radius: 4px;
+                padding: 4px 10px;
+                background-color: rgba(255, 255, 255, 0.96);
+                border-radius: 9999px;
+                border: 1px solid rgba(148, 163, 184, 0.55);
+                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
               "
             >
               ${description}
             </span>
             <img
-              src="${iconUrl}"
-              style="position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 50%; border: 2px solid white;"
+              src="${iconUrl}" alt=""
+              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 9999px; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
             />
             </div>
         `,
-            iconAnchor: [14, 40],
+            iconAnchor: [14, 44],
         });
     } else {
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: 24px; height: 24px;">
+            <div style="position: relative; width: 28px; height: 28px;">
                 <img
-                  src="${iconUrl}"
-                  style="width: 24px; height: 24px;"
+                  src="${iconUrl}" alt=""
+                  style="width: 24px; height: 24px; border-radius: 9999px; border: 1.5px solid #ffffff; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);"
                 />
             </div>
         `,
-            iconAnchor: [12, 30],
+            iconAnchor: [12, 26],
         });
     }
 
