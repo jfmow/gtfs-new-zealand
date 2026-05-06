@@ -106,46 +106,64 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: max-content; height: 46px;">
-            <span
-              style="
-                position: absolute;
-                top: -16px;
-                left: 50%;
-                transform: translateX(-50%);
-                color: #1d4ed8;
-                font-size: 12px;
-                font-weight: 700;
-                white-space: nowrap;
-                padding: 4px 10px;
-                background-color: rgba(255, 255, 255, 0.96);
+            <div style="position: relative; width: max-content; height: 52px; display: flex; flex-direction: column; align-items: center; gap: 4px;">
+              <span
+                style="
+                  display: block;
+                  color: #0f172a;
+                  font-size: 11px;
+                  font-weight: 700;
+                  letter-spacing: 0.01em;
+                  white-space: nowrap;
+                  padding: 3px 10px;
+                  background-color: rgba(255, 255, 255, 0.98);
+                  border-radius: 9999px;
+                  border: 1.5px solid rgba(100, 116, 139, 0.3);
+                  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(255,255,255,0.6);
+                  line-height: 1.4;
+                "
+              >
+                ${description}
+              </span>
+              <div style="
+                width: 34px;
+                height: 34px;
                 border-radius: 9999px;
-                border: 1px solid rgba(148, 163, 184, 0.55);
-                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
-              "
-            >
-              ${description}
-            </span>
-            <img
-              src="${iconUrl}" alt=""
-              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 9999px; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
-            />
+                border: 2.5px solid #ffffff;
+                box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28), 0 0 0 1.5px rgba(100,116,139,0.25);
+                overflow: hidden;
+                background: #f1f5f9;
+                flex-shrink: 0;
+              ">
+                <img
+                  src="${iconUrl}" alt=""
+                  style="width: 100%; height: 100%; object-fit: cover;"
+                />
+              </div>
             </div>
         `,
-            iconAnchor: [14, 44],
+            iconAnchor: [17, 52],
         });
     } else {
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: 28px; height: 28px;">
-                <img
-                  src="${iconUrl}" alt=""
-                  style="width: 24px; height: 24px; border-radius: 9999px; border: 1.5px solid #ffffff; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);"
-                />
+            <div style="
+              width: 34px;
+              height: 34px;
+              border-radius: 9999px;
+              border: 2.5px solid #ffffff;
+              box-shadow: 0 2px 8px rgba(15, 23, 42, 0.28), 0 0 0 1.5px rgba(100,116,139,0.2);
+              overflow: hidden;
+              background: #f1f5f9;
+            ">
+              <img
+                src="${iconUrl}" alt=""
+                style="width: 100%; height: 100%; object-fit: cover;"
+              />
             </div>
         `,
-            iconAnchor: [12, 26],
+            iconAnchor: [17, 17],
         });
     }
 
@@ -177,17 +195,30 @@ export function createMapClusterGroup(): MarkerClusterGroup {
     return leaflet.markerClusterGroup({
         maxClusterRadius: 50, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion. 
         iconCreateFunction: function (cluster) {
-            // Define a custom cluster icon using /blank.png and the number of markers
             const count = cluster.getChildCount();
+            const size = count >= 100 ? 42 : count >= 10 ? 38 : 34;
             return leaflet.divIcon({
-                html: `<div style="position: relative; width: 32px; height: 32px;">
-                     <img src="/vehicle_icons/blank.png" style="width: 100%; height: 100%;" />
-                     <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: black;">
-                       ${count}
-                     </div>
-                   </div>`,
+                html: `<div style="
+                  width: ${size}px;
+                  height: ${size}px;
+                  border-radius: 9999px;
+                  background: rgba(255,255,255,0.97);
+                  border: 2.5px solid #ffffff;
+                  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.3), 0 0 0 1.5px rgba(100,116,139,0.25);
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                  font-size: ${count >= 100 ? 11 : 12}px;
+                  font-weight: 800;
+                  color: #0f172a;
+                  letter-spacing: -0.02em;
+                  font-family: system-ui, -apple-system, sans-serif;
+                ">
+                  ${count}
+                </div>`,
                 className: "custom-cluster-icon",
-                iconSize: [32, 32],
+                iconSize: [size, size],
+                iconAnchor: [size / 2, size / 2],
             });
         },
     });

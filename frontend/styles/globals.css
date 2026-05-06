@@ -105,14 +105,15 @@
 }
 
 .custom-tooltip {
-  background-color: rgba(255, 255, 255, 0.95);
-  padding: 0.35rem 0.7rem !important;
+  background-color: rgba(255, 255, 255, 0.98) !important;
+  padding: 4px 12px !important;
   border-radius: 9999px !important;
-  border: 1px solid rgba(148, 163, 184, 0.5);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  border: 1.5px solid rgba(100, 116, 139, 0.3) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(255,255,255,0.6) !important;
   font-size: 12px;
-  font-weight: 600;
-  color: #1d4ed8;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.01em;
 }
 
 .leaflet-tooltip.custom-tooltip:before {
@@ -122,17 +123,41 @@
 .map-route-line {
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 0.8px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 2.2px rgba(255, 255, 255, 0.85));
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.35)) drop-shadow(0 0 4px rgba(255, 255, 255, 0.7));
 }
 
-.leaflet-control-container .map-control-button {
-  border-radius: 9999px;
-  border: 1px solid rgba(148, 163, 184, 0.5) !important;
-  background: rgba(255, 255, 255, 0.95) !important;
+.map-control-button {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  border-radius: 12px !important;
+  border: 1.5px solid rgba(100, 116, 139, 0.3) !important;
+  background: rgba(255, 255, 255, 0.97) !important;
   color: #0f172a !important;
-  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(255,255,255,0.6) !important;
+  cursor: pointer;
+  transition: background 0.15s, box-shadow 0.15s;
 }
 
-.leaflet-control-container .map-control-button .lucide {
-  stroke-width: 2.1px;
+.map-control-button:hover {
+  background: rgba(241, 245, 249, 0.99) !important;
+  box-shadow: 0 3px 12px rgba(15, 23, 42, 0.22), 0 0 0 1px rgba(255,255,255,0.7) !important;
+}
+
+.map-control-button:active {
+  background: rgba(226, 232, 240, 0.99) !important;
+}
+
+.leaflet-control-container .leaflet-top,
+.leaflet-control-container .leaflet-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.custom-cluster-icon {
+  background: none !important;
+  border: none !important;
 }

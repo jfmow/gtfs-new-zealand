@@ -1,5 +1,4 @@
 import leaflet from "leaflet"
-import { Button } from "@/components/ui/button";
 import { Globe, Repeat, Satellite } from "lucide-react";
 import { useState } from "react";
 import ReactDOM from "react-dom/client";
@@ -137,20 +136,41 @@ function MapVariantToggle({ value, onChange }: { value: MapVariant, onChange: (v
     const currentIndex = mapVariantOrder.indexOf(currentVariant);
     const nextVariant = mapVariantOrder[(currentIndex + 1) % mapVariantOrder.length];
 
+    const variantLabels: Record<MapVariant, string> = {
+        default: "Map",
+        auto: "Auto",
+        satellite: "Satellite",
+    };
+
     return (
-        <Button
-            size="icon"
-            variant="default"
-            title={`Switch map style (${nextVariant})`
-            }
+        <button
+            title={`Map style: ${variantLabels[currentVariant]} (click to switch to ${variantLabels[nextVariant]})`}
             onClick={() => {
                 const newVal = onChange(nextVariant);
                 setCurrentVariant(newVal);
             }}
-            className="border-none"
+            style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                height: "40px",
+                padding: "0 12px",
+                borderRadius: "12px",
+                border: "1.5px solid rgba(100, 116, 139, 0.3)",
+                background: "rgba(255, 255, 255, 0.97)",
+                color: "#0f172a",
+                boxShadow: "0 2px 8px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(255,255,255,0.6)",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontWeight: "700",
+                letterSpacing: "0.01em",
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                whiteSpace: "nowrap",
+            }}
         >
             {mapVariantIcons[currentVariant]}
-        </Button>
+            <span>{variantLabels[currentVariant]}</span>
+        </button>
     );
 }
 

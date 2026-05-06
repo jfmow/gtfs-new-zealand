@@ -4,7 +4,7 @@ import leaflet, { MarkerClusterGroup } from "leaflet"
 import React, { useEffect, useRef } from "react"
 import 'leaflet/dist/leaflet.css';
 import { GeoJSON } from "./geojson-types";
-import { buttonVariants } from "../ui/button";
+
 import addMapVariantControlControl from "./tile-layer";
 import { createMapClusterGroup, createNewMarker, MapItem, updateExistingMarker } from "./markers/create";
 
@@ -184,10 +184,13 @@ export default function MapComp({
                 if (item.zoomButton) {
                     const zoomControl = new leaflet.Control({ position: "topright" });
                     zoomControl.onAdd = () => {
-                        const button = leaflet.DomUtil.create(
-                            "button",
-                            buttonVariants({ variant: "default", size: "icon" })
-                        );
+                        const button = leaflet.DomUtil.create("button", "map-control-button");
+                        button.style.cssText = `
+                            display: flex; align-items: center; justify-content: center;
+                            width: 40px; height: 40px; cursor: pointer;
+                            border-radius: 12px;
+                        `;
+                        button.title = "Zoom to location";
                         button.innerHTML = item.zoomButton ?? "Zoom";
                         button.onclick = () => {
                             map.flyTo(marker.getLatLng(), 17);
@@ -392,10 +395,15 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
 
     const zoomInControl = new leaflet.Control.Zoom({ position });
     zoomInControl.onAdd = () => {
-        const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
+        const button = leaflet.DomUtil.create('button', 'map-control-button');
         button.type = "button";
         button.title = "Zoom in";
-        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
+        button.style.cssText = `
+            display: flex; align-items: center; justify-content: center;
+            width: 40px; height: 40px; cursor: pointer;
+            border-radius: 12px;
+        `;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
         button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
             map.zoomIn();
@@ -406,10 +414,15 @@ function addZoomControls(map: leaflet.Map, activeMapItemsZoom: ItemsOnMap["zoomB
 
     const zoomOutControl = new leaflet.Control({ position });
     zoomOutControl.onAdd = () => {
-        const button = leaflet.DomUtil.create('button', buttonVariants({ variant: "default", size: "icon" }));
+        const button = leaflet.DomUtil.create('button', 'map-control-button');
         button.type = "button";
         button.title = "Zoom out";
-        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
+        button.style.cssText = `
+            display: flex; align-items: center; justify-content: center;
+            width: 40px; height: 40px; cursor: pointer;
+            border-radius: 12px;
+        `;
+        button.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
         button.addEventListener("pointerup", (e) => {
             stopMapEvents(e);
             map.zoomOut();
@@ -435,8 +448,17 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
         userMarker = leaflet.marker(userLocation, {
             icon: leaflet.divIcon({
                 className: "flex items-center justify-center",
-                html: `<div style="position: relative; width: 24px; height: 24px;"><img class="user-marker-arrow" src="/vehicle_icons/location.png" style="width: 24px; height: 24px;"/></div>`,
-                iconAnchor: [12, 30],
+                html: `
+                  <div style="position: relative; width: 20px; height: 20px;">
+                    <div style="
+                      width: 20px; height: 20px;
+                      border-radius: 9999px;
+                      background: #3b82f6;
+                      border: 3px solid #ffffff;
+                      box-shadow: 0 2px 8px rgba(59,130,246,0.55), 0 0 0 4px rgba(59,130,246,0.18);
+                    "></div>
+                  </div>`,
+                iconAnchor: [10, 10],
             }),
             zIndexOffset: 1000,
         });
@@ -448,8 +470,14 @@ function addUserMarker(activeMapItemsUser: ItemsOnMap["user"], map: leaflet.Map,
     if (!userControl) {
         const userLocationControl = new leaflet.Control({ position });
         userLocationControl.onAdd = () => {
-            const button = leaflet.DomUtil.create("button", buttonVariants({ variant: "default", size: "icon" }));
-            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
+            const button = leaflet.DomUtil.create("button", "map-control-button");
+            button.style.cssText = `
+                display: flex; align-items: center; justify-content: center;
+                width: 40px; height: 40px; cursor: pointer;
+                border-radius: 12px;
+            `;
+            button.title = "Go to my location";
+            button.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>';
             button.onclick = () => {
                 map.flyTo(userMarker.getLatLng(), 15);
             };
