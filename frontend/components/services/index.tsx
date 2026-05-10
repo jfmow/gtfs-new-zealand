@@ -103,7 +103,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         async function fetchServices(date?: Date) {
             const req = await ApiFetch<Service[]>(
                 encodeURI(
-                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=100"}`,
+                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=200"}`,
                 ),
             )
             if (req.ok) {
