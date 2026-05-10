@@ -69,7 +69,7 @@ const NAV_ROUTES: NavRoute[] = [
         description_short: "Alerts"
     },
     {
-        component: SettingsPopover,
+        href: '/settings',
         label: 'Settings',
         description: 'Set app preferences and change region',
         icon: Settings2Icon,
@@ -288,18 +288,5 @@ function HeaderMeta() {
             <link rel="apple-touch-icon" href={`/branding/Favicon.png`} />
             <link rel="shortcut icon" href={`/branding/Favicon.png`} />
         </>
-    )
-}
-
-function SettingsPopover({ children }: { children?: ReactNode }) {
-    return (
-        <Popover>
-            <PopoverTrigger asChild>
-                {children}
-            </PopoverTrigger>
-            <PopoverContent>
-                <SettingsList />
-            </PopoverContent>
-        </Popover>
     )
 }
