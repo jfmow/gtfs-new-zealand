@@ -281,6 +281,89 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		return JsonApiResponse(c, http.StatusOK, "", results)
 	})
 
+	// Reverse geocoding - get location name from coordinates
+	navigationRoute.GET("/reverse", func(c echo.Context) error {
+		lat := c.QueryParam("lat")
+		lon := c.QueryParam("lon")
+
+		if lat == "" || lon == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusBadRequest,
+				"missing coordinates",
+				nil,
+				ResponseDetails("details", "Query parameters 'lat' and 'lon' are required"),
+			)
+		}
+
+		// Validate coordinates
+		latVal, err := strconv.ParseFloat(lat, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid latitude", nil, ResponseDetails("lat", lat, "error", err.Error()))
+		}
+		lonVal, err := strconv.ParseFloat(lon, 64)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid longitude", nil, ResponseDetails("lon", lon, "error", err.Error()))
+		}
+
+		nominatimURL := os.Getenv("NOMINATIM_URL")
+		if nominatimURL == "" {
+			return JsonApiResponse(
+				c,
+				http.StatusInternalServerError,
+				"nominatim not configured",
+				nil,
+				ResponseDetails("details", "NOMINATIM_URL env var is not set"),
+			)
+		}
+
+		// Build reverse request
+		reqURL := fmt.Sprintf(
+			"%s/reverse?format=jsonv2&lat=%f&lon=%f&addressdetails=1&namedetails=1&extratags=1",
+			strings.TrimRight(nominatimURL, "/"),
+			latVal,
+			lonVal,
+		)
+
+		req, err := http.NewRequest(http.MethodGet, reqURL, nil)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		req.Header.Set("User-Agent", "suddsy-dev-trains-api/1.0")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadGateway, "", nil, err.Error())
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return JsonApiResponse(
+				c,
+				http.StatusBadGateway,
+				"nominatim error",
+				nil,
+				ResponseDetails("status", resp.StatusCode, "body", string(body)),
+			)
+		}
+
+		var result NominatimResult
+		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, err.Error())
+		}
+
+		locationName := simplifiedAddress(result)
+
+		type ReverseGeocodeResponse struct {
+			Name string `json:"name"`
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", ReverseGeocodeResponse{Name: locationName})
+	})
+
 }
 
 type VehicleDistanceResult struct {
