@@ -8,8 +8,6 @@ import Head from 'next/head'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import Favorites from './stops/favourites'
-import { Popover, PopoverContent, PopoverTrigger } from './ui/popover'
-import SettingsList from './settings'
 
 
 interface BaseNavRoute {
