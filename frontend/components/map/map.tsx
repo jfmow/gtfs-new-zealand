@@ -368,15 +368,15 @@ function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: s
 function setDefaultZoom(map: leaflet.Map, defaultZoom: [LatLng] | [LatLng, LatLng] | ["user", BackupLatLng]) {
     if (defaultZoom[0] === "user") {
         getUserLocation().then((res) => {
-            map.setView(res, 15)
+            map.setView(res, 17)
         }).catch(() => {
-            map.setView(defaultZoom[1], 15)
+            map.setView(defaultZoom[1], 17)
         })
     } else if (defaultZoom.length === 2) {
         const bounds = leaflet.latLngBounds(defaultZoom[0], defaultZoom[1]);
         map.fitBounds(bounds);
     } else {
-        map.setView(defaultZoom[0], 15)
+        map.setView(defaultZoom[0], 17)
     }
 }
 
