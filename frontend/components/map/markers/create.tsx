@@ -4,7 +4,7 @@ import "leaflet.markercluster";
 export interface MapItem {
     lat: number;
     lon: number;
-    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "start marker" | "current stop marker" | "hidden";
+    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "start marker" | "current stop marker" | "hidden" | "train stop marker" | "bus stop marker" | "ferry stop marker";
     id: string;
     routeID: string;
     zIndex: number;
@@ -128,7 +128,7 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
             </span>
             <img
               src="${iconUrl}" alt=""
-              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 9999px; border: 2px solid #ffffff; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
+              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 9999px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
             />
             </div>
         `,
@@ -141,7 +141,7 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
             <div style="position: relative; width: 28px; height: 28px;">
                 <img
                   src="${iconUrl}" alt=""
-                  style="width: 24px; height: 24px; border-radius: 9999px; border: 1.5px solid #ffffff; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);"
+                  style="width: 24px; height: 24px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);"
                 />
             </div>
         `,
@@ -168,7 +168,10 @@ function getIconUrl(icon: string): string {
         "marked stop marker": "/vehicle_icons/marked stop marker.png",
         "dot gray": "/vehicle_icons/stop_dot_passed.png",
         "current stop marker": "/vehicle_icons/stop_dot_currently_at.png",
-        "start marker": '/vehicle_icons/stop_dot_start.png'
+        "start marker": '/vehicle_icons/stop_dot_start.png',
+        "train stop marker": "/vehicle_icons/train stop marker.png",
+        "bus stop marker": "/vehicle_icons/bus stop marker.png",
+        "ferry stop marker": "/vehicle_icons/ferry stop marker.png",
     };
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }

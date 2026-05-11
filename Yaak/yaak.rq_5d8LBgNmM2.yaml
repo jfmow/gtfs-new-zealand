@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_5d8LBgNmM2
 createdAt: 2025-10-18T01:12:18.695858
-updatedAt: 2025-10-18T01:18:12.725183
+updatedAt: 2026-05-10T23:53:22.623330
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_KRbp3MKP4W
 authentication: {}
@@ -18,7 +18,7 @@ url: ${[ url ]}/${[ provider ]}/services/:stopname/schedule
 urlParameters:
 - enabled: true
   name: date
-  value: '1760750083'
+  value: ${[ timestamp.unix() ]}
   id: ZKsuI8yPV0
 - enabled: true
   name: :stopname
@@ -27,4 +27,4 @@ urlParameters:
 - enabled: true
   name: ''
   value: ''
-  id: g3byjZnuYG
+  id: XSMfpnKwZH

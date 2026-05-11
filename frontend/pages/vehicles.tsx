@@ -8,8 +8,6 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Maximize2, Minimize2 } from "lucide-react";
 import ServiceTrackerModal, {
     VehiclesResponse,
 } from "@/components/services/tracker";
@@ -35,7 +33,6 @@ export default function Vehicles() {
     const [stops, setStops] = useState<Stop[]>([]);
     const [error, setError] = useState<ApiError | null>();
     const [vehicleType, setVehicleType] = useState<VehicleFilters>("all");
-    const [fullscreen, setFullscreen] = useState(false); // ⬅️ NEW
     const { currentUrl } = useUrl();
     const { selectedVehicle } = useQueryParams({
         selectedVehicle: { keys: ["tripId"], type: "string", default: "" },
@@ -97,38 +94,36 @@ export default function Vehicles() {
         <>
             <Header title="Vehicle tracker" />
             <div
-                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 transition-all duration-300 h-full flex-grow ${fullscreen
-                    ? "fixed inset-0 z-50 bg-background p-0 max-w-none"
-                    : ""
-                    }`}
+                className={`mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 transition-all duration-300 h-full flex-grow `}
             >
                 <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-3">
-                        <Select
-                            onValueChange={(newValue) =>
-                                setVehicleType(newValue as VehicleFilters)
-                            }
-                        >
-                            <SelectTrigger className="w-[180px]">
-                                <SelectValue placeholder="Vehicle type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="all">All Vehicles</SelectItem>
-                                <SelectItem value="Bus">Bus</SelectItem>
-                                <SelectItem value="Train">Train</SelectItem>
-                                <SelectItem value="Ferry">Ferry</SelectItem>
-                            </SelectContent>
-                        </Select>
+                    <div className="flex items-center justify-between gap-2 w-full">
+                        <div className="flex flex-col items-start justify-center gap-2">
+                            <Label htmlFor="stopType">Filter vehicles by type:</Label>
+                            <Select
+                                value={vehicleType}
+                                onValueChange={(newValue) =>
+                                    setVehicleType(newValue as VehicleFilters)
+                                }
+                            >
+                                <SelectTrigger className="w-[180px]">
+                                    <SelectValue placeholder="Vehicle type" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Vehicles</SelectItem>
+                                    <SelectItem value="Bus">Bus</SelectItem>
+                                    <SelectItem value="Train">Train</SelectItem>
+                                    <SelectItem value="Ferry">Ferry</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
 
-                        <div className="flex items-center gap-3">
-                            <Checkbox onCheckedChange={() => setShowStops(p => !p)} checked={showStops} id="stops" />
+                        <div className="flex items-center gap-2">
                             <Label htmlFor="stops">Show Stops</Label>
+                            <Checkbox onCheckedChange={() => setShowStops(p => !p)} checked={showStops} id="stops" />
                         </div>
                     </div>
 
-                    <Button variant="outline" size="icon" onClick={() => setFullscreen(!fullscreen)}>
-                        {fullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-                    </Button>
                 </div>
 
                 <div className="mb-4" />
@@ -178,7 +173,7 @@ export default function Vehicles() {
                                     stops.map((item) => ({
                                         lat: item.stop_lat,
                                         lon: item.stop_lon,
-                                        icon: "dot",
+                                        icon: item.stop_type === "bus" ? "bus stop marker" : item.stop_type === "ferry" ? "ferry stop marker" : item.stop_type === "train" ? "train stop marker" : "dot",
                                         id: item.stop_name + " " + item.stop_code,
                                         routeID: "",
                                         description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },

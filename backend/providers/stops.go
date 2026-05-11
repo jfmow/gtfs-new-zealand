@@ -126,6 +126,12 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 				return JsonApiResponse(c, http.StatusNotFound, "Invalid children filter", nil, ResponseDetails("children", filterChildren, "details", "Children filter must be 'yes' or 'no'"))
 			}
 		}
+
+		stop_type := c.QueryParam("stop_type")
+		if stop_type != "" && stop_type != "all" && stop_type != "bus" && stop_type != "train" && stop_type != "ferry" {
+			return JsonApiResponse(c, http.StatusNotFound, "Invalid stop_type filter", nil, ResponseDetails("stop_type", stop_type, "details", "Stop type filter must be 'bus', 'train', or 'ferry'"))
+		}
+
 		boundsStr := c.FormValue("bounds")
 
 		var rawBounds [][]float64
@@ -168,9 +174,11 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 		for _, stop := range stops {
 			if hasBounds && !pointInBounds(stop.StopLat, stop.StopLon, point1, point2) {
 				continue
-			} else {
-				filteredStops = append(filteredStops, stop)
 			}
+			if stop_type != "" && stop_type != "all" && stop.StopType != stop_type {
+				continue
+			}
+			filteredStops = append(filteredStops, stop)
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", filteredStops)

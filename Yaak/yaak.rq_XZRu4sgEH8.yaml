@@ -2,7 +2,7 @@ type: http_request
 model: http_request
 id: rq_XZRu4sgEH8
 createdAt: 2026-03-15T20:21:38.364364
-updatedAt: 2026-03-15T20:25:58.963241
+updatedAt: 2026-05-10T23:49:40.915092
 workspaceId: wk_bWMUdJqQEt
 folderId: fl_KRbp3MKP4W
 authentication: {}
@@ -34,7 +34,7 @@ urlParameters:
   id: mUTcw6MDXR
 - enabled: true
   name: date
-  value: 2026-03-15T20:21:25.311Z
+  value: 2026-05-15T20:21:25.311Z
   id: DtqBp3xFrX
 - enabled: true
   name: timeType
@@ -55,4 +55,4 @@ urlParameters:
 - enabled: true
   name: ''
   value: ''
-  id: 0eW24Q6v2z
+  id: ny0fFxS8x8
