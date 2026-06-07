@@ -16,7 +16,7 @@ import Link from "next/link"
 
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
-const MAX_FAVORITES = 4
+const MAX_FAVORITES = 6
 
 // ----------------------------
 // FAVORITES LIST
