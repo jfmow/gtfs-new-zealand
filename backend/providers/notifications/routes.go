@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 
@@ -554,61 +555,71 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 
 	now := time.Now().In(localTimeZone)
 
-	update := stopUpdates[0] //Latest one
-	arrivalTimestamp := update.GetArrival().GetTime()
-	departureTimestamp := update.GetDeparture().GetTime()
-	sequence := int(update.GetStopSequence())
-
-	arrivalTimeLocal := time.Unix(arrivalTimestamp, 0).In(localTimeZone)
-	departureTimeLocal := time.Unix(departureTimestamp, 0).In(localTimeZone)
-	var nextStopSequenceNumber int = sequence
-
-	var state = "Unknown"
-	var simpleState = "Unknown"
-	if arrivalTimestamp != 0 && departureTimestamp != 0 {
-		if now.Before(arrivalTimeLocal) {
-			// Approaching the stop
-			nextStopSequenceNumber = sequence
-			state = "Approaching stop (arrival pending): " + arrivalTimeLocal.String()
-			simpleState = "Arriving"
-		} else if now.Before(departureTimeLocal) {
-			// At the stop, not yet departed
-			nextStopSequenceNumber = sequence
-			state = "At stop (awaiting departure): " + departureTimeLocal.String()
-			simpleState = "Arrived"
-		} else {
-			// Already departed → next stop is the next one
-			nextStopSequenceNumber = sequence + 1
-			state = "Departed stop: " + departureTimeLocal.String()
-			simpleState = "Departed"
+	sort.Slice(stopUpdates, func(i, j int) bool {
+		if stopUpdates[i] == nil || stopUpdates[j] == nil {
+			return false
 		}
-	} else if arrivalTimestamp != 0 {
-		if now.Before(arrivalTimeLocal) {
-			// Approaching stop
-			nextStopSequenceNumber = sequence
-			state = "Approaching stop (arrival only): " + arrivalTimeLocal.String()
-			simpleState = "Arriving"
-		} else {
-			// Already arrived → next stop must be next
-			nextStopSequenceNumber = sequence + 1
-			state = "Arrived at stop (arrival only): " + arrivalTimeLocal.String()
-			simpleState = "Arrived"
+		return stopUpdates[i].GetStopSequence() < stopUpdates[j].GetStopSequence()
+	})
+
+	for _, update := range stopUpdates {
+		if update == nil {
+			continue
 		}
-	} else if departureTimestamp != 0 {
-		if now.Before(departureTimeLocal) {
-			// Still at stop → haven't left yet
-			nextStopSequenceNumber = sequence
-			state = "Waiting to depart (departure only): " + departureTimeLocal.String()
-			simpleState = "Boarding"
-		} else {
-			// Already departed
-			nextStopSequenceNumber = sequence + 1
-			state = "Departed stop (departure only): " + departureTimeLocal.String()
-			simpleState = "Departed"
+
+		var arrivalTs, departureTs int64
+		if a := update.GetArrival(); a != nil {
+			arrivalTs = a.GetTime()
+		}
+		if d := update.GetDeparture(); d != nil {
+			departureTs = d.GetTime()
+		}
+
+		seq := int(update.GetStopSequence())
+
+		if arrivalTs > 0 {
+			at := time.Unix(arrivalTs, 0).In(localTimeZone)
+			if now.Before(at) {
+				return seq - lowestSequence, &at, "Approaching", "Arriving"
+			}
+		}
+
+		if departureTs > 0 {
+			dt := time.Unix(departureTs, 0).In(localTimeZone)
+			if now.Before(dt) {
+				return seq - lowestSequence, &dt, "At stop", "Arrived"
+			}
 		}
 	}
 
-	nextStopSequenceNumber = nextStopSequenceNumber - lowestSequence
+	var lastSeq int
+	var lastTime time.Time
+	found := false
+	for _, update := range stopUpdates {
+		if update == nil {
+			continue
+		}
+		var eventTs int64
+		if d := update.GetDeparture(); d != nil && d.GetTime() > 0 {
+			eventTs = d.GetTime()
+		} else if a := update.GetArrival(); a != nil && a.GetTime() > 0 {
+			eventTs = a.GetTime()
+		}
+		if eventTs == 0 {
+			continue
+		}
+		t := time.Unix(eventTs, 0).In(localTimeZone)
+		if !found || t.After(lastTime) {
+			lastTime = t
+			lastSeq = int(update.GetStopSequence())
+			found = true
+		}
+	}
 
-	return nextStopSequenceNumber, &arrivalTimeLocal, state, simpleState
+	if found {
+		nextSeq := lastSeq + 1
+		return nextSeq - lowestSequence, &lastTime, "Departed", "Departed"
+	}
+
+	return 0, nil, "Unknown", ""
 }
