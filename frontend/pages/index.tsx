@@ -1,4 +1,5 @@
 import Favorites, { AddToFavorites } from "@/components/stops/favourites";
+import NavigateToStop from "@/components/stops/navigate-to-stop";
 import SearchForStop from "@/components/stops/search";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -30,6 +31,7 @@ export default function Home() {
           {selectedStop !== "" && (
             <>
               <DatePicker onChange={(date) => setSelectedDate(date)} />
+              <NavigateToStop stopName={selectedStop} />
               <Button
                 aria-label="Travel alerts"
                 variant="outline"

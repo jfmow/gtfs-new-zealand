@@ -95,6 +95,21 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 		return JsonApiResponse(c, http.StatusOK, "", closetStop)
 	})
 
+	stopsRoute.GET("/stop/:stopId", func(c echo.Context) error {
+		stopIdEncoded := c.PathParam("stopId")
+		stopId, err := url.PathUnescape(stopIdEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop id", nil, ResponseDetails("stopId", stopIdEncoded, "details", "Invalid stop ID format", "error", err.Error()))
+		}
+
+		stop, err := gtfsData.GetStopByStopID(stopId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusNotFound, "stop not found", nil, ResponseDetails("stopId", stopId, "details", "No stop found for the given stop ID", "error", err.Error()))
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", stop)
+	})
+
 	//Returns all the stops matching the name, is a search function. e.g bald returns [Baldwin Ave Train Station, ymca...etc] stop data
 	stopsRoute.GET("/find-stop/:stopName", func(c echo.Context) error {
 		stopNameEncoded := c.PathParam("stopName")

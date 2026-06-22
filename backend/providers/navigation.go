@@ -364,6 +364,46 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		return JsonApiResponse(c, http.StatusOK, "", ReverseGeocodeResponse{Name: locationName})
 	})
 
+	navigationRoute.GET("/osrm/*", func(c echo.Context) error {
+		osrmURL := os.Getenv("OSRM_URL")
+		if osrmURL == "" {
+			return JsonApiResponse(c, http.StatusInternalServerError, "osrm not configured", nil, ResponseDetails("details", "OSRM_URL env var is not set"))
+		}
+
+		parsed, err := url.Parse(osrmURL)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "invalid osrm config", nil, ResponseDetails("error", err.Error()))
+		}
+		baseURL := parsed.Scheme + "://" + parsed.Host
+
+		proxyPath := c.PathParam("*")
+		if proxyPath == "" {
+			return JsonApiResponse(c, http.StatusBadRequest, "missing path", nil, ResponseDetails("details", "OSRM service path is required, e.g. /route/v1/foot/lon,lat;lon,lat"))
+		}
+
+		targetURL := baseURL + "/" + proxyPath
+		if c.QueryString() != "" {
+			targetURL += "?" + c.QueryString()
+		}
+
+		req, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, targetURL, nil)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		}
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadGateway, "osrm request failed", nil, ResponseDetails("error", err.Error()))
+		}
+		defer resp.Body.Close()
+
+		c.Response().Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+		c.Response().WriteHeader(resp.StatusCode)
+		io.Copy(c.Response(), resp.Body)
+		return nil
+	})
+
 }
 
 type VehicleDistanceResult struct {
@@ -525,13 +565,23 @@ type Coordinates struct {
 	Lat, Lon float64
 }
 
-// GeoJSON structure for the desired response format
 type GeoJSONResponse struct {
-	Type         string    `json:"type"`
-	Features     []Feature `json:"features"`
-	Instructions string    `json:"instructions"`
-	Duration     float64   `json:"duration"` // Duration in seconds
-	Distance     float64   `json:"distance"`
+	Type         string          `json:"type"`
+	Features     []Feature       `json:"features"`
+	Instructions string          `json:"instructions"`
+	Steps        []DirectionStep `json:"steps"`
+	Duration     float64         `json:"duration"`
+	Distance     float64         `json:"distance"`
+}
+
+type DirectionStep struct {
+	Instruction string  `json:"instruction"`
+	Modifier    string  `json:"modifier"`
+	Type        string  `json:"type"`
+	Name        string  `json:"name"`
+	Distance    float64 `json:"distance"`
+	Lat         float64 `json:"lat"`
+	Lon         float64 `json:"lon"`
 }
 
 type Feature struct {
@@ -545,10 +595,11 @@ type Geometry struct {
 	Coordinates [][]float64 `json:"coordinates"`
 }
 
-// Step struct for OSRM step details
 type Step struct {
 	Maneuver struct {
-		Modifier string `json:"modifier"`
+		Modifier string    `json:"modifier"`
+		Type     string    `json:"type"`
+		Location []float64 `json:"location"`
 	} `json:"maneuver"`
 	Name     string  `json:"name"`
 	Distance float64 `json:"distance"`
@@ -556,17 +607,12 @@ type Step struct {
 
 // Function to get the route from OSRM
 func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
-	// Base URL for OSRM
-	baseURL := os.Getenv("OSRM_URL")
+	baseURL := strings.TrimRight(os.Getenv("OSRM_URL"), "/")
 
-	// Construct the API query URL (lon,lat format)
 	query := fmt.Sprintf("%f,%f;%f,%f", start.Lon, start.Lat, end.Lon, end.Lat)
-
-	// Add GeoJSON output format
 	queryParams := "?overview=full&geometries=geojson&steps=true"
 
-	// Final URL
-	url := baseURL + query + queryParams
+	url := baseURL + "/route/v1/foot/" + query + queryParams
 
 	// Make HTTP request
 	resp, err := http.Get(url)
@@ -575,15 +621,13 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 	}
 	defer resp.Body.Close()
 
-	// Check if the request was successful
-	if resp.StatusCode != http.StatusOK {
-		return GeoJSONResponse{}, fmt.Errorf("failed to get route: status code %d", resp.StatusCode)
-	}
-
-	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return GeoJSONResponse{}, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return GeoJSONResponse{}, fmt.Errorf("osrm error (status %d, url %s): %s", resp.StatusCode, url, string(body))
 	}
 
 	// Parse the response to extract GeoJSON route
@@ -622,24 +666,48 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 		Distance: 0,
 	}
 
-	// Collect directions as text, filtering out empty instructions
 	var directions []string
+	var steps []DirectionStep
 	for _, step := range osrmResponse.Routes[0].Legs[0].Steps {
-		if step.Maneuver.Modifier != "" {
-			geoJSONResponse.Distance = geoJSONResponse.Distance + step.Distance
-			var direction string
-			if step.Name == "" {
-				direction = fmt.Sprintf("%s for %.1f meters", step.Maneuver.Modifier, step.Distance)
-			} else {
-				direction = fmt.Sprintf("%s onto %s for %.1f meters", step.Maneuver.Modifier, step.Name, step.Distance)
-			}
-
-			directions = append(directions, direction)
+		if step.Maneuver.Modifier == "" && step.Maneuver.Type != "depart" && step.Maneuver.Type != "arrive" {
+			continue
 		}
+		geoJSONResponse.Distance += step.Distance
+
+		var instruction string
+		switch {
+		case step.Maneuver.Type == "depart" && step.Name != "":
+			instruction = fmt.Sprintf("Head along %s for %.0fm", step.Name, step.Distance)
+		case step.Maneuver.Type == "depart":
+			instruction = fmt.Sprintf("Head straight for %.0fm", step.Distance)
+		case step.Maneuver.Type == "arrive":
+			instruction = "Arrive at destination"
+		case step.Name == "":
+			instruction = fmt.Sprintf("%s for %.0fm", step.Maneuver.Modifier, step.Distance)
+		default:
+			instruction = fmt.Sprintf("%s onto %s for %.0fm", step.Maneuver.Modifier, step.Name, step.Distance)
+		}
+
+		var lat, lon float64
+		if len(step.Maneuver.Location) >= 2 {
+			lon = step.Maneuver.Location[0]
+			lat = step.Maneuver.Location[1]
+		}
+
+		steps = append(steps, DirectionStep{
+			Instruction: instruction,
+			Modifier:    step.Maneuver.Modifier,
+			Type:        step.Maneuver.Type,
+			Name:        step.Name,
+			Distance:    step.Distance,
+			Lat:         lat,
+			Lon:         lon,
+		})
+		directions = append(directions, instruction)
 	}
 
-	// Join directions and assign to the GeoJSON response
 	geoJSONResponse.Instructions = strings.Join(directions, ", ")
+	geoJSONResponse.Steps = steps
 
 	if len(geoJSONResponse.Features) == 0 {
 		return GeoJSONResponse{}, errors.New("no route found")

@@ -22,6 +22,8 @@ interface MapProps {
     defaultZoom: [LatLng, LatLng] | [LatLng] | ["user", BackupLatLng]
     options?: MapOptions
     onMapClick?: (lat: number, lon: number) => void
+    onLocationUpdate?: (lat: number, lon: number) => void
+    followUser?: boolean
 }
 
 type ItemsOnMap = {
@@ -54,9 +56,15 @@ export default function MapComp({
     defaultZoom,
     line,
     options,
-    onMapClick
+    onMapClick,
+    onLocationUpdate,
+    followUser,
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
+    const onLocationUpdateRef = useRef(onLocationUpdate);
+    const followUserRef = useRef(followUser);
+    onLocationUpdateRef.current = onLocationUpdate;
+    followUserRef.current = followUser;
     const itemsOnMap = useRef<ItemsOnMap>({
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
@@ -296,6 +304,10 @@ export default function MapComp({
 
         startLocationUpdates((latLng) => {
             addUserMarker(activeMapItems.user, map, latLng, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
+            onLocationUpdateRef.current?.(latLng[0], latLng[1]);
+            if (followUserRef.current) {
+                map.panTo(latLng, { animate: true, duration: 0.5 });
+            }
         }).then((res) => {
             if (res) intervalId = res;
         });
