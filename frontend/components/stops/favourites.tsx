@@ -1,231 +1,215 @@
 "use client"
 
-import React, { useEffect, useState } from "react"
-import { Star } from "lucide-react"
+import React, { useEffect, useRef, useState } from "react"
+import { Star, X, Check } from "lucide-react"
 import { Button } from "../ui/button"
-import { Input } from "../ui/input"
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogFooter,
-} from "../ui/dialog"
 import { toast } from "sonner"
 import Link from "next/link"
 
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
-const MAX_FAVORITES = 6
+const MAX_FAVORITES = 8
 
-// ----------------------------
-// FAVORITES LIST
-// ----------------------------
+type Favorite = { stop: string; displayName: string }
+
+// ─── Storage helpers ──────────────────────────────────────────────────────────
+
+function getFavorites(): Favorite[] {
+    if (typeof window === "undefined") return []
+    try {
+        return JSON.parse(window.localStorage.getItem(localStorageKey) || "[]")
+    } catch {
+        return []
+    }
+}
+
+function saveFavorites(favs: Favorite[]) {
+    window.localStorage.setItem(localStorageKey, JSON.stringify(favs))
+    window.dispatchEvent(new CustomEvent(FAVORITES_UPDATED_EVENT))
+}
+
+function isFavorited(stopName: string) {
+    return getFavorites().some((f) => f.stop === stopName)
+}
+
+function makeDisplayName(stopName: string): string {
+    // Take up to 18 chars, prefer to break at a word boundary
+    if (stopName.length <= 18) return stopName
+    const truncated = stopName.slice(0, 18)
+    const lastSpace = truncated.lastIndexOf(" ")
+    return lastSpace > 8 ? truncated.slice(0, lastSpace) : truncated
+}
+
+// ─── Favorites list ───────────────────────────────────────────────────────────
+
 export default function Favorites({
-    grid,
     onClick,
 }: {
-    grid?: boolean
-    onClick?: (stop: string) => void
+    onClick?: () => void
 }) {
-    const [favorites, setFavorites] = useState<{ stop: string; displayName: string }[]>([])
+    const [favorites, setFavorites] = useState<Favorite[]>([])
+    const [editingStop, setEditingStop] = useState<string | null>(null)
+    const [editValue, setEditValue] = useState("")
+    const inputRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
-        const storedFavorites = getFavorites()
-        setFavorites(storedFavorites)
-
-        const updateFavorites = () => {
-            setFavorites(getFavorites())
-        }
-        window.addEventListener(FAVORITES_UPDATED_EVENT, updateFavorites)
-        return () => {
-            window.removeEventListener(FAVORITES_UPDATED_EVENT, updateFavorites)
-        }
+        setFavorites(getFavorites())
+        const handler = () => setFavorites(getFavorites())
+        window.addEventListener(FAVORITES_UPDATED_EVENT, handler)
+        return () => window.removeEventListener(FAVORITES_UPDATED_EVENT, handler)
     }, [])
 
+    useEffect(() => {
+        if (editingStop && inputRef.current) {
+            inputRef.current.focus()
+            inputRef.current.select()
+        }
+    }, [editingStop])
+
+    const startEditing = (fav: Favorite, e: React.MouseEvent) => {
+        e.preventDefault()
+        setEditingStop(fav.stop)
+        setEditValue(fav.displayName)
+    }
+
+    const commitEdit = (stop: string) => {
+        const trimmed = editValue.trim().slice(0, 18)
+        if (!trimmed) return cancelEdit()
+        const updated = getFavorites().map((f) =>
+            f.stop === stop ? { ...f, displayName: trimmed } : f
+        )
+        saveFavorites(updated)
+        setFavorites(updated)
+        setEditingStop(null)
+    }
+
+    const cancelEdit = () => setEditingStop(null)
+
+    const remove = (stop: string, e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        const updated = getFavorites().filter((f) => f.stop !== stop)
+        saveFavorites(updated)
+        setFavorites(updated)
+        toast.success("Removed from favourites")
+    }
+
+    if (favorites.length === 0) {
+        return (
+            <p className="text-xs text-muted-foreground py-1">
+                No favourites yet — star a stop to save it here.
+            </p>
+        )
+    }
+
     return (
-        <div
-            role="tablist"
-            aria-label="Favorite stops"
-            className={`flex flex-nowrap gap-2 items-center w-full overflow-x-auto p-1 ${grid ? "grid grid-cols-2 gap-2" : ""
-                }`}
-        >
-            {favorites.length > 0 ? (
-                favorites.map((favorite) => (
-                    <Link
-                        key={favorite.stop}
-                        role="tab"
-                        aria-selected="false"
-                        tabIndex={0}
-                        href={`/?s=${favorite.stop}`}
-                        onClick={() => onClick?.(favorite.stop)}
-                        className="text-xs text-nowrap text-center p-2 rounded bg-muted text-muted-foreground w-full sm:w-auto cursor-pointer hover:bg-accent hover:text-accent-foreground transition-all"
+        <div className="flex flex-wrap gap-1.5">
+            {favorites.map((fav) =>
+                editingStop === fav.stop ? (
+                    <div
+                        key={fav.stop}
+                        className="flex items-center gap-1 pl-2 pr-1 py-1 rounded-full bg-primary/10 border border-primary/30 text-xs"
                     >
-                        {favorite.displayName}
-                    </Link>
-                ))
-            ) : (
-                <div className="flex flex-col w-full text-gray-500 items-center gap-0 p-2 justify-center col-span-2">
-                    <p className="text-sm">No favorites saved</p>
-                </div>
+                        <input
+                            ref={inputRef}
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter") commitEdit(fav.stop)
+                                if (e.key === "Escape") cancelEdit()
+                            }}
+                            onBlur={() => commitEdit(fav.stop)}
+                            maxLength={18}
+                            className="bg-transparent outline-none text-foreground font-medium w-24"
+                        />
+                        <button
+                            onMouseDown={(e) => { e.preventDefault(); commitEdit(fav.stop) }}
+                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-primary/20"
+                        >
+                            <Check className="w-2.5 h-2.5 text-primary" />
+                        </button>
+                    </div>
+                ) : (
+                    <div
+                        key={fav.stop}
+                        className="group flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-full bg-muted hover:bg-accent transition-colors text-xs shrink-0"
+                    >
+                        <Star className="w-3 h-3 text-yellow-500 fill-yellow-500 shrink-0" />
+                        <Link
+                            href={`/?s=${encodeURIComponent(fav.stop)}`}
+                            onClick={onClick}
+                            className="font-medium text-foreground leading-none"
+                        >
+                            {fav.displayName}
+                        </Link>
+                        <button
+                            onDoubleClick={(e) => startEditing(fav, e)}
+                            onClick={(e) => remove(fav.stop, e)}
+                            title="Click to remove · Double-click to rename"
+                            className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-foreground/10 ml-0.5 transition-colors shrink-0"
+                        >
+                            <X className="w-2.5 h-2.5 text-muted-foreground" />
+                        </button>
+                    </div>
+                )
             )}
         </div>
     )
 }
 
-// ----------------------------
-// FAVORITES LOGIC HELPERS
-// ----------------------------
-function getFavorites(): { stop: string; displayName: string }[] {
-    if (typeof window === "undefined") return []
-    return JSON.parse(window.localStorage.getItem(localStorageKey) || "[]")
-}
+// ─── Add / remove button ──────────────────────────────────────────────────────
 
-function checkIfStopFavorited(stopName: string): boolean {
-    const favorites = getFavorites()
-    return favorites.some((fav) => fav.stop === stopName)
-}
-
-// ----------------------------
-// ADD / REMOVE FAVORITE BUTTON
-// ----------------------------
 export function AddToFavorites({ stopName }: { stopName: string }) {
-    const [isFavorited, setIsFavorited] = useState(false)
-    const [dialogOpen, setDialogOpen] = useState(false)
-    const [replaceDialogOpen, setReplaceDialogOpen] = useState(false)
-    const [customName, setCustomName] = useState(stopName)
-    const [favorites, setFavorites] = useState<{ stop: string; displayName: string }[]>([])
+    const [favorited, setFavorited] = useState(false)
 
     useEffect(() => {
-        const favs = getFavorites()
-        setFavorites(favs)
-        setIsFavorited(checkIfStopFavorited(stopName))
+        setFavorited(isFavorited(stopName))
+        const handler = () => setFavorited(isFavorited(stopName))
+        window.addEventListener(FAVORITES_UPDATED_EVENT, handler)
+        return () => window.removeEventListener(FAVORITES_UPDATED_EVENT, handler)
     }, [stopName])
 
-    const updateFavorites = (newFavs: { stop: string; displayName: string }[]) => {
-        window.localStorage.setItem(localStorageKey, JSON.stringify(newFavs))
-        window.dispatchEvent(new CustomEvent(FAVORITES_UPDATED_EVENT))
-        setFavorites(newFavs)
-    }
+    const handleToggle = () => {
+        const current = getFavorites()
 
-    const handleAddToFavorites = () => {
-        const currentFavorites = getFavorites()
-
-        // Remove if already favorited
-        if (currentFavorites.some((fav) => fav.stop === stopName)) {
-            const updated = currentFavorites.filter((fav) => fav.stop !== stopName)
-            updateFavorites(updated)
-            toast.success(`${stopName} removed from favorites`)
-            setIsFavorited(false)
+        if (current.some((f) => f.stop === stopName)) {
+            saveFavorites(current.filter((f) => f.stop !== stopName))
+            setFavorited(false)
+            toast.success("Removed from favourites")
             return
         }
 
-        // If full, show replace dialog
-        if (currentFavorites.length >= MAX_FAVORITES) {
-            toast.warning("Favorites full — select one to replace.")
-            setReplaceDialogOpen(true)
-            return
+        const displayName = makeDisplayName(stopName)
+        let updated: Favorite[]
+
+        if (current.length >= MAX_FAVORITES) {
+            // Replace the oldest (first in array)
+            updated = [...current.slice(1), { stop: stopName, displayName }]
+            toast.success("Added to favourites", {
+                description: `Replaced "${current[0].displayName}"`,
+            })
+        } else {
+            updated = [...current, { stop: stopName, displayName }]
+            toast.success("Added to favourites")
         }
 
-        // Otherwise, open naming dialog
-        setCustomName(stopName)
-        setDialogOpen(true)
-    }
-
-    const confirmAdd = () => {
-        const trimmedName = customName.trim().slice(0, 10)
-        const newFav = {
-            stop: stopName,
-            displayName: trimmedName || stopName,
-        }
-
-        const updated = [...favorites, newFav]
-        updateFavorites(updated)
-        toast.success(`${stopName} added to favorites`)
-        setIsFavorited(true)
-        setDialogOpen(false)
-    }
-
-    const handleReplace = (stopToReplace: string) => {
-        // Remove the selected favorite and open name input for new stop
-        const updated = favorites.filter((fav) => fav.stop !== stopToReplace)
-        updateFavorites(updated)
-
-        // Prefill the new name to the new stop
-        setCustomName(stopName)
-        setReplaceDialogOpen(false)
-        setDialogOpen(true)
+        saveFavorites(updated)
+        setFavorited(true)
     }
 
     return (
-        <>
-            {/* Star Toggle Button */}
-            <Button
-                aria-label="Favorite current stop toggle"
-                onClick={handleAddToFavorites}
-                disabled={!stopName}
-                variant="outline"
-            >
-                {isFavorited ? (
-                    <Star className="fill-yellow-500 text-yellow-500" />
-                ) : (
-                    <Star className="text-yellow-500" />
-                )}
-            </Button>
-
-            {/* Name Input Dialog */}
-            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Set a name for this stop</DialogTitle>
-                    </DialogHeader>
-
-                    <Input
-                        value={customName}
-                        maxLength={10}
-                        onChange={(e) => setCustomName(e.target.value)}
-                        placeholder="Enter name (max 10 chars)"
-                    />
-
-                    <DialogFooter>
-                        <Button onClick={confirmAdd}>Save</Button>
-                        <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* Replace Favorite Dialog */}
-            <Dialog open={replaceDialogOpen} onOpenChange={setReplaceDialogOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Favorites Full</DialogTitle>
-                        <p className="text-sm text-muted-foreground">
-                            You can only have 4 favorites. Choose one to replace with{" "}
-                            <span className="font-medium text-foreground">{stopName}</span>.
-                        </p>
-                    </DialogHeader>
-
-                    <div className="flex flex-col gap-2 py-2">
-                        {favorites.map((fav) => (
-                            <Button
-                                key={fav.stop}
-                                variant="outline"
-                                onClick={() => handleReplace(fav.stop)}
-                            >
-                                {fav.displayName}
-                            </Button>
-                        ))}
-                    </div>
-
-                    <DialogFooter>
-                        <Button variant="ghost" onClick={() => setReplaceDialogOpen(false)}>
-                            Cancel
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-        </>
+        <Button
+            aria-label={favorited ? "Remove from favourites" : "Add to favourites"}
+            onClick={handleToggle}
+            disabled={!stopName}
+            variant="outline"
+            size="icon"
+            className="flex-shrink-0"
+        >
+            <Star
+                className={`w-4 h-4 transition-colors ${favorited ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground"
+                    }`}
+            />
+        </Button>
     )
 }

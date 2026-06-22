@@ -1,16 +1,14 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
 import dynamic from "next/dynamic";
 import { Suspense, useEffect, useState } from "react";
+
 const LeafletMap = dynamic(() => import("../components/map/map"), {
     ssr: false,
 });
-
 
 export default function Stops() {
     return (
@@ -41,8 +39,14 @@ export interface Stop {
 
 const MAPID = "stops-amazing-map"
 
+type StopFilters = "bus" | "train" | "ferry" | "all";
 
-type StopFilters = "Bus" | "Train" | "Ferry" | "all";
+const STOP_FILTER_OPTIONS: { value: StopFilters; label: string }[] = [
+    { value: "all", label: "All Stops" },
+    { value: "bus", label: "Bus" },
+    { value: "train", label: "Train" },
+    { value: "ferry", label: "Ferry" },
+]
 
 export function StopsMap({
     customTailwindHeight,
@@ -56,14 +60,12 @@ export function StopsMap({
     const [error, setError] = useState<ApiError | null>()
     const { currentUrl } = useUrl()
 
-    // --- Fetch Stops once ---
     useEffect(() => {
         async function getData() {
             const req = await ApiFetch<Stop[]>(`stops?children=false&stop_type=${stopType}`, { method: "GET" })
             if (req.ok) {
                 setStops(req.data)
-            }
-            else {
+            } else {
                 setError(req)
             }
         }
@@ -73,41 +75,33 @@ export function StopsMap({
     if (error) {
         return (
             <ErrorScreen
-                errorTitle="An error has occurred"
+                errorTitle="Failed to load stops"
                 errorText={error.error}
                 traceId={error.trace_id}
             />
         )
     }
 
-    const finalHeight =
-        customTailwindHeight && customTailwindHeight !== ""
-            ? customTailwindHeight
-            : "h-full"
+    const finalHeight = customTailwindHeight && customTailwindHeight !== "" ? customTailwindHeight : "h-full"
 
     return (
         <>
-            <div className="flex items-center justify-between w-full mb-4">
-                <div className="flex flex-col items-start justify-center gap-2">
-                    <Label htmlFor="stopType">Filter stops by type:</Label>
-                    <Select
-                        value={stopType}
-                        onValueChange={(newValue) =>
-                            setStopType(newValue as StopFilters)
-                        }
+            <div className="flex flex-wrap gap-1.5 mb-3">
+                {STOP_FILTER_OPTIONS.map(({ value, label }) => (
+                    <button
+                        key={value}
+                        onClick={() => setStopType(value)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${
+                            stopType === value
+                                ? "bg-primary text-primary-foreground shadow-sm"
+                                : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                        }`}
                     >
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Stop type" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Stops</SelectItem>
-                            <SelectItem value="bus">Bus</SelectItem>
-                            <SelectItem value="train">Train</SelectItem>
-                            <SelectItem value="ferry">Ferry</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
+                        {label}
+                    </button>
+                ))}
             </div>
+
             <div className={`flex-grow flex flex-col ${finalHeight}`}>
                 <Suspense fallback={<LoadingSpinner description="Loading map..." height="100svh" />}>
                     <LeafletMap
@@ -118,7 +112,13 @@ export function StopsMap({
                             stops?.map((item) => ({
                                 lat: item.stop_lat,
                                 lon: item.stop_lon,
-                                icon: item.stop_type === "bus" ? "bus stop marker" : item.stop_type === "ferry" ? "ferry stop marker" : item.stop_type === "train" ? "train stop marker" : "dot",
+                                icon: item.stop_type === "bus"
+                                    ? "bus stop marker"
+                                    : item.stop_type === "ferry"
+                                    ? "ferry stop marker"
+                                    : item.stop_type === "train"
+                                    ? "train stop marker"
+                                    : "dot",
                                 id: `${item.stop_name} ${item.stop_code}`,
                                 routeID: "",
                                 description: {
@@ -128,9 +128,7 @@ export function StopsMap({
                                 zIndex: 1,
                                 type: "stop",
                                 onClick: () =>
-                                (window.location.href = `/?s=${encodeURIComponent(
-                                    `${item.stop_name} ${item.stop_code}`
-                                )}`),
+                                    (window.location.href = `/?s=${encodeURIComponent(`${item.stop_name} ${item.stop_code}`)}`),
                             })) ?? []
                         }
                         height="100%"

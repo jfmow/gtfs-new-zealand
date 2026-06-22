@@ -1,6 +1,6 @@
 import Link from 'next/link'
+import { useRouter } from 'next/router'
 import { Map, Settings2Icon, MenuIcon, X, Car, Siren, CalendarDays, Route } from 'lucide-react'
-import { Button, buttonVariants } from './ui/button'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { ReactNode, useEffect, useState } from 'react'
@@ -9,69 +9,42 @@ import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import Favorites from './stops/favourites'
 
-
-interface BaseNavRoute {
-    label: string;
-    description: string;
-    icon: React.ComponentType<{ className?: string }>;
-    description_short: string;
-    hidden?: boolean;
-}
-
-interface HrefNavRoute extends BaseNavRoute {
-    href: string;
-    component?: never;
-}
-
-interface ComponentNavRoute extends BaseNavRoute {
-    href?: never;
-    component: React.ComponentType<{ children?: ReactNode }>;
-}
-
-type NavRoute = HrefNavRoute | ComponentNavRoute;
-
-const NAV_ROUTES: NavRoute[] = [
+const NAV_ROUTES = [
     {
         href: '/',
         label: 'Live Schedule',
-        description: 'Find transportation options',
+        short: 'Schedule',
         icon: CalendarDays,
-        description_short: "Schedule"
     },
     {
         href: '/plan',
         label: 'Journey Planner',
-        description: 'Plan your trip',
+        short: 'Planner',
         icon: Route,
-        description_short: "Journey Planner"
     },
     {
         href: '/stops',
-        label: 'Find a stop',
-        description: 'Locate nearby stops',
+        label: 'Find a Stop',
+        short: 'Stops',
         icon: Map,
-        description_short: "Stops"
     },
     {
         href: '/vehicles',
         label: 'Track Vehicles',
-        description: 'View real-time vehicle locations',
+        short: 'Vehicles',
         icon: Car,
-        description_short: "Vehicles"
     },
     {
         href: '/alerts',
         label: 'Travel Alerts',
-        description: 'Travel advisories and alerts',
+        short: 'Alerts',
         icon: Siren,
-        description_short: "Alerts"
     },
     {
         href: '/settings',
         label: 'Settings',
-        description: 'Set app preferences and change region',
+        short: 'Settings',
         icon: Settings2Icon,
-        description_short: "Settings"
     },
 ]
 
@@ -79,6 +52,12 @@ export default function NavBar() {
     const { theme } = useTheme()
     const isMobile = useIsMobile()
     const [menuOpen, setMenuOpen] = useState(false)
+    const router = useRouter()
+
+    const logo = theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"
+
+    const isActive = (href: string) =>
+        href === '/' ? router.pathname === '/' : router.pathname.startsWith(href)
 
     useEffect(() => {
         if (menuOpen) {
@@ -86,183 +65,161 @@ export default function NavBar() {
         } else {
             document.body.style.overflow = ''
         }
-        return () => {
-            document.body.style.overflow = ''
-        }
+        return () => { document.body.style.overflow = '' }
     }, [menuOpen])
+
+    // Close drawer on route change
+    useEffect(() => {
+        setMenuOpen(false)
+    }, [router.pathname])
 
     return (
         <>
-            {isMobile ? (
-                <nav className='sticky top-0 bg-background/80 backdrop-blur-sm w-full py-4 px-2 flex items-center justify-between z-50'>
-                    <div className='flex items-center justify-between w-full'>
-                        <Link href='/'>
-                            <div className="flex items-center">
-                                <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
-                            </div>
+            {/* ── DESKTOP ──────────────────────────────────────────────── */}
+            {!isMobile && (
+                <div className="sticky top-0 z-50 bg-background/90 backdrop-blur-md">
+                    <nav className="max-w-[1400px] mx-auto px-4 h-12 flex items-center gap-4">
+                        <Link href='/' className="flex items-center shrink-0 mr-2">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={logo} alt="Logo" className="w-7 h-7" />
                         </Link>
-                        <Button onClick={() => setMenuOpen(!menuOpen)} variant={"ghost"}>
-                            <MenuIcon />
-                        </Button>
-                    </div>
-                    <AnimatePresence>
-                        {menuOpen && (
-                            <motion.div
-                                initial={{ opacity: 0 }}
-                                animate={{ opacity: 1 }}
-                                exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-50 flex flex-col h-screen w-screen bg-background bg-white dark:bg-black overflow-x-hidden"
-                            >
-                                <div className="flex justify-between items-center mt-4 mx-2 ml-auto">
-                                    <Button variant="ghost" onClick={() => setMenuOpen(false)}>
-                                        <X className="w-6 h-6" />
-                                    </Button>
-                                </div>
-                                <motion.div
-                                    variants={{
-                                        hidden: {},
-                                        show: {
-                                            transition: {
-                                                staggerChildren: 0.1,
-                                            },
-                                        },
-                                    }}
-                                    initial="hidden"
-                                    animate="show"
-                                    className='px-6 flex flex-col h-full flex-grow overflow-y-hidden overflow-x-hidden'>
-                                    <div className='flex items-center justify-start mb-4 mt-4'>
-                                        <p className='text-muted-foreground text-sm'>Menu</p>
-                                    </div>
-                                    <motion.ul
-                                        className="flex flex-col gap-3"
-                                        variants={{
-                                            hidden: {},
-                                            show: {
-                                                transition: {
-                                                    staggerChildren: 0.1,
-                                                },
-                                            },
-                                        }}
-                                    >
-                                        {NAV_ROUTES.map((item) => (
-                                            <motion.li
-                                                key={item.label}
-                                                variants={{
-                                                    hidden: { opacity: 0, x: -20 },
-                                                    show: { opacity: 1, x: 0 },
-                                                }}
-                                            >
-                                                {item.component ? (
-                                                    <item.component>
-                                                        <button
-                                                            className="flex items-center gap-2 w-full text-left"
-                                                        >
-                                                            <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
-                                                            <div className='flex flex-col'>
-                                                                <p className='font-medium text-primary font-semibold'>{item.label}</p>
-                                                                <p className='text-muted-foreground text-sm'>{item.description}</p>
-                                                            </div>
-                                                        </button>
-                                                    </item.component>
-                                                ) : (
-                                                    <Link
-                                                        className="flex items-center gap-2 w-full text-left"
-                                                        href={item.href}
-                                                        onClick={() => setMenuOpen(false)}
-                                                    >
-                                                        <item.icon className='w-12 h-12 text-primary border rounded-2xl p-3 shadow-sm bg-primary/5 border-primary/10' />
-                                                        <div className='flex flex-col'>
-                                                            <p className='font-medium text-primary font-semibold'>{item.label}</p>
-                                                            <p className='text-muted-foreground text-sm'>{item.description}</p>
-                                                        </div>
-                                                    </Link>
-                                                )}
-                                            </motion.li>
-                                        ))}
 
-                                    </motion.ul>
-                                    <motion.div
-                                        className='flex items-center justify-start my-4 pb-2'
-                                        variants={{
-                                            hidden: { opacity: 0, x: -20 },
-                                            show: { opacity: 1, x: 0 },
-                                        }}
-                                    >
-                                        <p className='text-muted-foreground text-sm'>Favorite stops</p>
-                                    </motion.div>
-                                    <motion.div
-                                        variants={{
-                                            hidden: { opacity: 0, x: -20 },
-                                            show: { opacity: 1, x: 0 },
-                                        }}
-                                        className='-m-1'
-                                    >
-                                        <Favorites grid onClick={() => setMenuOpen(false)} />
-                                    </motion.div>
-                                </motion.div>
-                                <div
-                                    className='mt-auto grid gap-2 p-4 mb-8'
-                                >
-                                    <FindCurrentVehicle />
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </nav>
-            ) : (
-                <nav className="sticky top-0 bg-background/80 backdrop-blur-sm mx-auto max-w-[1400px] w-full p-4 flex items-center justify-start z-50">
-                    <Link href='/'>
-                        <div className="flex items-center">
-                            <img src={theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"} alt="Logo" className="w-8 h-8 mr-2" />
-                        </div>
-                    </Link>
-                    <div className='flex items-center gap-2'>
-                        <ul className="flex font-medium text-sm items-center gap-0">
+                        <ul className="flex items-center gap-0.5 flex-1">
                             {NAV_ROUTES.map((item) => (
-                                <li key={item.label}>
-                                    {item.component ? (
-                                        <item.component>
-                                            <button className={cn(buttonVariants({ variant: 'ghost' }), 'flex items-center gap-2')}>
-                                                <item.icon className='w-6 h-6' />
-                                                <span>{item.description_short}</span>
-                                            </button>
-                                        </item.component>
-                                    ) : (
-                                        <Link
-                                            href={item.href}
-                                            className={cn(buttonVariants({ variant: 'ghost', }), 'flex items-center gap-2')}
-                                        >
-                                            <item.icon className='w-6 h-6' />
-                                            <span>{item.description_short}</span>
-                                        </Link>
-                                    )}
+                                <li key={item.href}>
+                                    <Link
+                                        href={item.href}
+                                        className={cn(
+                                            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                            isActive(item.href)
+                                                ? "bg-accent text-foreground"
+                                                : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                                        )}
+                                    >
+                                        <item.icon className="w-4 h-4 shrink-0" />
+                                        {item.short}
+                                    </Link>
                                 </li>
                             ))}
                         </ul>
+                    </nav>
+                </div>
+            )}
+
+            {/* ── MOBILE ───────────────────────────────────────────────── */}
+            {isMobile && (
+                <>
+                    <div className="sticky top-0 z-50 bg-background/90 backdrop-blur-md">
+                        <div className="flex items-center justify-between px-3 h-12">
+                            <Link href='/'>
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={logo} alt="Logo" className="w-7 h-7" />
+                            </Link>
+                            <button
+                                onClick={() => setMenuOpen(true)}
+                                aria-label="Open menu"
+                                className="w-9 h-9 flex items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors"
+                            >
+                                <MenuIcon className="w-5 h-5" />
+                            </button>
+                        </div>
                     </div>
-                </nav>
+
+                    <AnimatePresence>
+                        {menuOpen && (
+                            <>
+                                {/* Backdrop */}
+                                <motion.div
+                                    key="backdrop"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.2 }}
+                                    className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[2px]"
+                                    onClick={() => setMenuOpen(false)}
+                                />
+
+                                {/* Drawer */}
+                                <motion.div
+                                    key="drawer"
+                                    initial={{ x: "100%" }}
+                                    animate={{ x: 0 }}
+                                    exit={{ x: "100%" }}
+                                    transition={{ type: "spring", damping: 28, stiffness: 300 }}
+                                    className="fixed inset-y-0 right-0 z-50 w-72 bg-background shadow-2xl flex flex-col"
+                                >
+                                    {/* Drawer header */}
+                                    <div className="flex items-center justify-between px-4 h-12 border-b border-border shrink-0">
+                                        <Link href='/' onClick={() => setMenuOpen(false)}>
+                                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                                            <img src={logo} alt="Logo" className="w-7 h-7" />
+                                        </Link>
+                                        <button
+                                            onClick={() => setMenuOpen(false)}
+                                            aria-label="Close menu"
+                                            className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                                        >
+                                            <X className="w-4 h-4" />
+                                        </button>
+                                    </div>
+
+                                    {/* Scrollable body */}
+                                    <div className="flex-1 overflow-y-auto">
+                                        {/* Nav links */}
+                                        <nav className="p-2">
+                                            {NAV_ROUTES.map((item) => (
+                                                <Link
+                                                    key={item.href}
+                                                    href={item.href}
+                                                    onClick={() => setMenuOpen(false)}
+                                                    className={cn(
+                                                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                                                        isActive(item.href)
+                                                            ? "bg-accent text-foreground"
+                                                            : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                                                    )}
+                                                >
+                                                    <item.icon className="w-4 h-4 shrink-0" />
+                                                    {item.label}
+                                                </Link>
+                                            ))}
+                                        </nav>
+
+                                        {/* Favourites */}
+                                        <div className="px-4 py-3 border-t border-border">
+                                            <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
+                                                Favourites
+                                            </p>
+                                            <Favorites onClick={() => setMenuOpen(false)} />
+                                        </div>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="p-3 border-t border-border shrink-0">
+                                        <FindCurrentVehicle />
+                                    </div>
+                                </motion.div>
+                            </>
+                        )}
+                    </AnimatePresence>
+                </>
             )}
         </>
     )
 }
 
-
-
 export function Header({ title, children }: { title: string, children?: ReactNode }) {
     return (
         <Head>
             <title>{title}</title>
-
             <HeaderMeta />
-
             <meta name="description" content="Track public transport vehicles live!" />
-            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile"></meta>
-            <link rel="canonical" href="https://trains.suddsy.dev/"></link>
+            <meta name="keywords" content="at, auckland, auckland transport, transport, trains, bus, travel, car, fly, tracks, train tracks, track train, ferry, at mobile" />
+            <link rel="canonical" href="https://trains.suddsy.dev/" />
             <meta property="og:title" content="Live vehicle locations!" />
             <meta property="og:url" content="https://trains.suddsy.dev/" />
             <meta property="og:description" content="Auckland transports trains, buses and ferry's all in one easy to navigate place. Track, predict and prepare your journey." />
             <meta property="og:image" content="https://trains.suddsy.dev/rounded-icon.png" />
-
             {children}
         </Head>
     )
@@ -271,7 +228,6 @@ export function Header({ title, children }: { title: string, children?: ReactNod
 function HeaderMeta() {
     return (
         <>
-
             <link rel="manifest" href="/pwa/manifest.json" />
             <meta name="mobile-web-app-capable" content="yes" />
             <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -282,9 +238,9 @@ function HeaderMeta() {
             <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
             <meta name="msapplication-starturl" content="/" />
             <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
-            <link rel='icon' type='image/png' href={`/branding/Favicon.png`} />
-            <link rel="apple-touch-icon" href={`/branding/Favicon.png`} />
-            <link rel="shortcut icon" href={`/branding/Favicon.png`} />
+            <link rel='icon' type='image/png' href='/branding/Favicon.png' />
+            <link rel="apple-touch-icon" href='/branding/Favicon.png' />
+            <link rel="shortcut icon" href='/branding/Favicon.png' />
         </>
     )
 }

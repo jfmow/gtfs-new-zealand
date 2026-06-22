@@ -1,9 +1,5 @@
 import { useState } from "react"
-import { formatTextToNiceLookingWords } from "@/lib/formating"
-import { Info, ChevronDown, ChevronUp, Check, Copy } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { AlertCircle, Check, Copy, CalendarOff } from "lucide-react"
 
 export default function ErrorScreen({
     errorText,
@@ -25,26 +21,35 @@ export default function ErrorScreen({
     }
 
     return (
-        <div className="flex-grow w-full flex flex-col items-center justify-center p-4 bg-background">
-            <div className="w-full max-w-sm text-center space-y-3">
-                <h1 className="text-2xl font-semibold tracking-tight text-foreground">{errorTitle}</h1>
+        <div className="flex-grow w-full flex flex-col items-center justify-center p-6 min-h-[200px]">
+            <div className="w-full max-w-xs text-center space-y-4">
+                <div className="flex justify-center">
+                    <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                        <AlertCircle className="w-6 h-6 text-destructive" />
+                    </div>
+                </div>
 
-                <p className="text-sm text-foreground/70 leading-snug">{errorText}</p>
+                <div className="space-y-1.5">
+                    <h2 className="text-base font-semibold text-foreground">{errorTitle}</h2>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{errorText}</p>
+                </div>
 
                 {traceId && (
-                    <div className="pt-2 space-y-2">
-                        <p className="text-xs text-foreground/50 uppercase tracking-wide">Trace ID</p>
-                        <div className="flex items-center gap-2 bg-foreground/5 rounded p-2 border border-foreground/10">
-                            <code className="font-mono text-xs text-foreground/60 break-all flex-1">{traceId}</code>
+                    <div className="text-left space-y-1.5 pt-1">
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">Trace ID</p>
+                        <div className="flex items-center gap-2 bg-muted rounded-lg p-2.5">
+                            <code className="font-mono text-[11px] text-muted-foreground break-all flex-1 leading-relaxed">
+                                {traceId}
+                            </code>
                             <button
                                 onClick={handleCopyTraceId}
-                                className="flex-shrink-0 p-1.5 hover:bg-foreground/10 rounded transition-colors"
+                                className="shrink-0 p-1.5 rounded-md hover:bg-background transition-colors"
                                 aria-label="Copy trace ID"
                             >
                                 {copied ? (
-                                    <Check className="h-3.5 w-3.5 text-foreground/60" />
+                                    <Check className="h-3.5 w-3.5 text-green-600" />
                                 ) : (
-                                    <Copy className="h-3.5 w-3.5 text-foreground/60" />
+                                    <Copy className="h-3.5 w-3.5 text-muted-foreground" />
                                 )}
                             </button>
                         </div>
@@ -55,100 +60,20 @@ export default function ErrorScreen({
     )
 }
 
-
 export function InfoScreen({ infoText, infoTitle }: { infoText: string; infoTitle: string }) {
-    const [detailsExpanded, setDetailsExpanded] = useState(false)
-
-    const getInfoType = (infoText: string) => {
-        const lowerInfo = infoText.toLowerCase()
-        if (lowerInfo.includes("update") || lowerInfo.includes("new")) {
-            return { type: "update", label: "Update" }
-        }
-        if (lowerInfo.includes("maintenance") || lowerInfo.includes("scheduled")) {
-            return { type: "maintenance", label: "Maintenance" }
-        }
-        return { type: "info", label: "Information" }
-    }
-
-    const getBadgeVariant = (type: string) => {
-        switch (type) {
-            case "update":
-                return "default"
-            case "maintenance":
-                return "secondary"
-            default:
-                return "secondary"
-        }
-    }
-
-    const truncateText = (text: string, maxLength = 120) => {
-        if (text.length <= maxLength) return text
-        return text.slice(0, maxLength) + "..."
-    }
-
-    const infoType = getInfoType(infoText)
-    const formattedInfo = formatTextToNiceLookingWords(infoText, true)
-
     return (
-        <div className="flex-grow w-full flex items-center justify-center p-4">
-            <Card className="w-full max-w-lg mx-auto">
-                <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-lg leading-tight flex items-center gap-2">
-                            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                            {infoTitle}
-                        </CardTitle>
-                        <Badge
-                            variant={getBadgeVariant(infoType.type)}
-                            className="shrink-0 bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                        >
-                            {infoType.label}
-                        </Badge>
+        <div className="flex-grow w-full flex flex-col items-center justify-center p-6 min-h-[200px]">
+            <div className="w-full max-w-xs text-center space-y-4">
+                <div className="flex justify-center">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+                        <CalendarOff className="w-6 h-6 text-muted-foreground" />
                     </div>
-                </CardHeader>
-
-                <CardContent className="space-y-4 flex-grow">
-
-                    <div className="space-y-2">
-                        <Collapsible open={detailsExpanded} onOpenChange={setDetailsExpanded}>
-                            <div className="text-sm leading-relaxed">
-                                {detailsExpanded ? (
-                                    <div className="rounded-md border bg-blue-50/30 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-800/50 p-4">
-                                        <p className="text-foreground whitespace-pre-wrap">{formattedInfo}</p>
-                                    </div>
-                                ) : (
-                                    <p className="mb-2 text-muted-foreground">{truncateText(formattedInfo)}</p>
-                                )}
-                            </div>
-                            {formattedInfo.length > 120 && (
-                                <CollapsibleTrigger className="flex items-center gap-1 text-sm font-medium text-primary hover:underline mt-2">
-                                    {detailsExpanded ? (
-                                        <>
-                                            <ChevronUp className="h-4 w-4" />
-                                            Show less
-                                        </>
-                                    ) : (
-                                        <>
-                                            <ChevronDown className="h-4 w-4" />
-                                            Read more
-                                        </>
-                                    )}
-                                </CollapsibleTrigger>
-                            )}
-                        </Collapsible>
-                    </div>
-                </CardContent>
-
-                <CardFooter className="pt-0">
-                    <div className="flex flex-wrap items-center gap-2 justify-between w-full">
-                        <Badge variant="secondary" className="flex items-center gap-1">
-                            <Info className="h-4 w-4" />
-                            System Notice
-                        </Badge>
-                        <Badge variant="outline">Informational</Badge>
-                    </div>
-                </CardFooter>
-            </Card>
+                </div>
+                <div className="space-y-1.5">
+                    <h2 className="text-base font-semibold text-foreground">{infoTitle}</h2>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{infoText}</p>
+                </div>
+            </div>
         </div>
     )
 }

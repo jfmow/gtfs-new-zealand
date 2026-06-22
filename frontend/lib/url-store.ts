@@ -7,13 +7,21 @@ export type UrlOption = {
     defaultMapCenter: LatLng
 }
 
-export const urlOptions: UrlOption[] = [
+const productionOptions: UrlOption[] = [
     { url: "https://trainapi.suddsy.dev/at", displayName: "Auckland Transport", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342] },
-    { url: "https://trainapi.suddsy.dev/wel", displayName: "Wellington - Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
-    { url: "https://trainapi.suddsy.dev/christ", displayName: "Christchurch - Metro", logoUrl: "/provider logos/metro.png", textColor: "#2a286b", defaultMapCenter: [-43.530792707375035, 172.6366263226067] },
-    { url: "http://localhost:8090/at", displayName: "Dev", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342] },
-    { url: "http://localhost:8090/wel", displayName: "Dev", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
+    { url: "https://trainapi.suddsy.dev/wel", displayName: "Wellington – Metlink", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
+    { url: "https://trainapi.suddsy.dev/christ", displayName: "Christchurch – Metro", logoUrl: "/provider logos/metro.png", textColor: "#2a286b", defaultMapCenter: [-43.530792707375035, 172.6366263226067] },
 ]
+
+const devOptions: UrlOption[] = [
+    { url: "http://localhost:8090/at", displayName: "Dev – Auckland", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342] },
+    { url: "http://localhost:8090/wel", displayName: "Dev – Wellington", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084] },
+]
+
+export const urlOptions: UrlOption[] =
+    process.env.NODE_ENV === "development"
+        ? [...productionOptions, ...devOptions]
+        : productionOptions
 
 class UrlStore {
     private static instance: UrlStore
@@ -21,15 +29,21 @@ class UrlStore {
     private listeners: Set<(url: UrlOption) => void> = new Set()
 
     private constructor() {
+        let url: UrlOption = urlOptions[0]
 
-        let url: UrlOption
-        url = urlOptions[0]
-
-        // Initialize with saved URL or default
-        const savedUrl = typeof window !== "undefined" ? localStorage.getItem("selectedUrl") : null
-        if (savedUrl && Object.keys(JSON.parse(savedUrl)).length === Object.keys(url).length) {
-            url = JSON.parse(savedUrl)
+        if (typeof window !== "undefined") {
+            const raw = localStorage.getItem("selectedUrl")
+            if (raw) {
+                try {
+                    const parsed = JSON.parse(raw) as UrlOption
+                    const match = urlOptions.find((o) => o.url === parsed.url)
+                    if (match) url = match
+                } catch {
+                    // ignore malformed saved value
+                }
+            }
         }
+
         this._currentUrl = url
     }
 
@@ -65,4 +79,3 @@ class UrlStore {
 }
 
 export const urlStore = UrlStore.getInstance()
-

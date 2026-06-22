@@ -24,6 +24,8 @@ export function DatePicker({ onChange, defaultValue }: { onChange: (date: Date |
                 <Button
                     variant={"outline"}
                     aria-label="Service calendar picker"
+                    size="icon"
+                    className="flex-shrink-0"
                 >
                     <CalendarIcon className="h-4 w-4" />
                 </Button>

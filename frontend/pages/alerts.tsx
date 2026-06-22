@@ -1,8 +1,6 @@
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
-import { BellDot, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse } from "lucide-react"
+import { BellDot, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse, ChevronDown, ChevronUp } from "lucide-react"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -10,10 +8,9 @@ import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 import { Header } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
-import { Collapsible, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 interface AlertResponse {
@@ -85,43 +82,40 @@ function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
     const routes = Object.keys(alerts)
     const [openRoute, setOpenRoute] = useState<string>(routes[0] ?? "")
 
-    return (
-        <div className="w-full bg-muted/50 p-6 rounded-xl shadow-xl">
-            <h2 className="mb-2 font-semibold">Alerts by Route</h2>
-            {routes.length === 0 ? (
-                <Alert>
-                    <AlertCircle className="w-5 h-5" />
-                    <AlertTitle>No Alerts</AlertTitle>
-                    <AlertDescription>No travel alerts or warnings were found for the selected stop.</AlertDescription>
-                </Alert>
-            ) : (
-                <Tabs value={openRoute} onValueChange={setOpenRoute}>
-                    <TabsList className="flex flex-wrap h-auto mb-6 w-fit">
-                        {routes.map((route) => (
-                            <TabsTrigger
-                                key={route}
-                                value={route}
-                                className="flex items-center gap-2"
-                            >
-                                {route}
-                                <Badge variant="secondary">
-                                    {alerts[route].length}
-                                </Badge>
-                            </TabsTrigger>
-                        ))}
-                    </TabsList>
+    if (routes.length === 0) {
+        return (
+            <div className="py-12 text-center">
+                <p className="text-sm text-muted-foreground">No travel alerts found for this stop.</p>
+            </div>
+        )
+    }
 
+    return (
+        <div className="space-y-4">
+            <Tabs value={openRoute} onValueChange={setOpenRoute}>
+                <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0 mb-4">
                     {routes.map((route) => (
-                        <TabsContent key={route} value={route}>
-                            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                {alerts[route].map((alert, i) => (
-                                    <AlertCard key={i} alert={alert} />
-                                ))}
-                            </div>
-                        </TabsContent>
+                        <TabsTrigger
+                            key={route}
+                            value={route}
+                            className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-full px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground"
+                        >
+                            {route}
+                            <span className="text-[10px] opacity-70">{alerts[route].length}</span>
+                        </TabsTrigger>
                     ))}
-                </Tabs>
-            )}
+                </TabsList>
+
+                {routes.map((route) => (
+                    <TabsContent key={route} value={route}>
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                            {alerts[route].map((alert, i) => (
+                                <AlertCard key={i} alert={alert} />
+                            ))}
+                        </div>
+                    </TabsContent>
+                ))}
+            </Tabs>
         </div>
     )
 }
@@ -129,216 +123,89 @@ function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
 
 
 function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent?: boolean }) {
-    const [descriptionExpanded, setDescriptionExpanded] = useState(false)
-
-    const getDaysUntil = (timestamp: number) => {
-        const now = new Date()
-        const startDate = new Date(timestamp * 1000)
-
-        // Clear times for accurate day difference
-        const nowUTC = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
-        const startUTC = Date.UTC(startDate.getFullYear(), startDate.getMonth(), startDate.getDate())
-
-        const diffDays = Math.round((startUTC - nowUTC) / (1000 * 60 * 60 * 24))
-        return diffDays
-    }
+    const [expanded, setExpanded] = useState(false)
+    const canExpand = alert.description.length > 140
 
     const getAlertStatus = (alert: AlertType) => {
         const now = Date.now() / 1000
-        const oneDayInSeconds = 24 * 60 * 60
-
-        const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + oneDayInSeconds
-
-        // Active if it’s ongoing or missing end_date
-        if (alert.start_date <= now && endDate >= now) {
-            return { status: "active", label: "Active" }
-        }
-
-        // Upcoming (future start)
+        const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + 86400
+        if (alert.start_date <= now && endDate >= now) return { status: "active", label: "Active" }
         if (alert.start_date > now) {
-            const daysUntil = getDaysUntil(alert.start_date)
-
+            const daysUntil = Math.round((alert.start_date - now) / 86400)
             if (daysUntil === 0) return { status: "soon", label: "Today" }
             if (daysUntil === 1) return { status: "soon", label: "Tomorrow" }
-            if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil} days` }
-
-            return { status: "inactive", label: "Inactive" }
+            if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil}d` }
+            return { status: "inactive", label: "Upcoming" }
         }
-
-        // Otherwise, it’s in the past
-        return { status: "inactive", label: "Inactive" }
+        return { status: "inactive", label: "Ended" }
     }
 
-
-
-    const getBadgeVariant = (status: string) => {
-        switch (status) {
-            case "active":
-                return "destructive"
-            case "soon":
-                return "default"
-            case "inactive":
-            default:
-                return "secondary"
-        }
-    }
-
-    const truncateText = (text: string, maxLength = 150) => {
-        if (text.length <= maxLength) return text
-        return text.slice(0, maxLength) + "..."
-    }
-
-    const getDescriptionPreview = (description: string) => {
-        const lines = description.split("\n").filter((line) => line.trim() !== "")
-        const fullText = lines.join(" ").trim()
-        return truncateText(fullText)
-    }
-
-    const formatDescription = (description: string) => {
-        const lines = description.split("\n").filter((line) => line.trim() !== "")
-
-        return lines.map((line, index) => {
-            const bulletMatch = line.match(/^\s*(•|-)\s?(.*)/)
-            if (bulletMatch) {
-                return (
-                    <li key={index} className="ml-4 mb-2">
-                        {bulletMatch[2]}
-                    </li>
-                )
-            }
-            return (
-                <p key={index} className="mb-2">
-                    {line.trim()}
-                </p>
-            )
-        })
-    }
-
-    const formatAlertDuration = (start: number, end: number) => {
-        const startDate = new Date(start * 1000)
-        const endDate = new Date(end * 1000)
-
-        const sameDay =
-            startDate.getFullYear() === endDate.getFullYear() &&
-            startDate.getMonth() === endDate.getMonth() &&
-            startDate.getDate() === endDate.getDate()
-
-        const dateOptions: Intl.DateTimeFormatOptions = {
-            day: "2-digit",
-            month: "2-digit",
-            year: "2-digit",
-            hour: "numeric",
-            minute: "2-digit",
-        }
-
+    const formatDuration = (start: number, end: number) => {
+        const s = new Date(start * 1000)
+        const e = new Date(end * 1000)
+        const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }
+        const sameDay = s.toDateString() === e.toDateString()
         if (sameDay) {
-            const dayStr = startDate.toLocaleDateString("en-NZ", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "2-digit",
-            })
-            const startTime = startDate.toLocaleTimeString("en-NZ", {
-                hour: "numeric",
-                minute: "2-digit",
-            })
-            const endTime = endDate.toLocaleTimeString("en-NZ", {
-                hour: "numeric",
-                minute: "2-digit",
-            })
-
-            return `${dayStr} ${startTime} to ${endTime}`
-        } else {
-            return `From: ${startDate.toLocaleString("en-NZ", dateOptions)}\nUntil: ${endDate.toLocaleString(
-                "en-NZ",
-                dateOptions
-            )}`
+            return `${s.toLocaleDateString("en-NZ", { day: "numeric", month: "short" })} · ${s.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })} – ${e.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}`
         }
+        return `${s.toLocaleDateString("en-NZ", opts)} – ${e.toLocaleDateString("en-NZ", opts)}`
     }
+
+    const cleanDescription = (text: string) => text.split("\n").filter(l => l.trim()).join(" ").trim()
+
+    const alertStatus = getAlertStatus(alert)
+    const causeInfo = causeSeverityMap[alert.cause] || causeSeverityMap.UNKNOWN_CAUSE
+    const CauseIcon = causeInfo.icon
+
+    const statusBadgeClass = alertStatus.status === "active"
+        ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+        : alertStatus.status === "soon"
+        ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+        : "bg-muted text-muted-foreground"
 
     return (
-        <Card className="relative flex flex-col">
-            <CardHeader className="pb-3">
+        <Card className="flex flex-col">
+            <CardHeader className="p-4 pb-2">
                 <div className="flex items-start justify-between gap-2">
-                    <CardTitle className="text-lg leading-tight">{alert.title}</CardTitle>
-                    {(() => {
-                        const alertStatus = getAlertStatus(alert)
-                        return (
-                            <Badge variant={getBadgeVariant(alertStatus.status)} className="shrink-0">
-                                {alertStatus.label}
-                            </Badge>
-                        )
-                    })()}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                        <CauseIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusBadgeClass}`}>
+                            {alertStatus.label}
+                        </span>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground">
+                        {formatTextToNiceLookingWords(alert.effect.replace(/_/g, " ").toLowerCase(), true)}
+                    </span>
                 </div>
+                <CardTitle className="text-sm font-semibold leading-snug mt-2">{alert.title}</CardTitle>
             </CardHeader>
 
-            <CardContent className="space-y-4 flex-grow">
-                {reducedContent ? null : (
-                    <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-medium">Duration</span>
-                        </div>
-                        <div className="pl-6 space-y-1 text-sm text-muted-foreground">
-                            {formatAlertDuration(alert.start_date, alert.end_date)}
-                            {(() => {
-                                const alertStatus = getAlertStatus(alert)
-                                if (alertStatus.status === "soon") {
-                                    const now = Date.now() / 1000
-                                    const timeUntilStart = alert.start_date - now
-                                    const daysUntil = Math.ceil(timeUntilStart / (24 * 60 * 60))
-
-                                    if (daysUntil === 1) {
-                                        return <div className="text-amber-600 font-medium">Starts tomorrow</div>
-                                    } else if (daysUntil <= 7) {
-                                        return <div className="text-amber-600 font-medium">Starts in {daysUntil} days</div>
-                                    }
-                                }
-                                return null
-                            })()}
-                        </div>
-                    </div>
+            <CardContent className="px-4 pb-4 pt-0 flex-grow flex flex-col gap-2">
+                {!reducedContent && alert.start_date > 0 && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 shrink-0" />
+                        {formatDuration(alert.start_date, alert.end_date)}
+                    </p>
                 )}
 
-                <div className="space-y-2">
-                    <Collapsible
-                        open={descriptionExpanded}
-                        onOpenChange={setDescriptionExpanded}
+                <div className="text-xs text-muted-foreground leading-relaxed">
+                    {expanded || !canExpand
+                        ? cleanDescription(alert.description)
+                        : cleanDescription(alert.description).slice(0, 140) + "…"}
+                </div>
+
+                {canExpand && (
+                    <button
+                        onClick={() => setExpanded(!expanded)}
+                        className="flex items-center gap-1 text-xs font-medium text-primary hover:underline self-start mt-auto pt-1"
                     >
-                        <div className="text-sm leading-relaxed">
-                            {descriptionExpanded ? (
-                                formatDescription(alert.description)
-                            ) : (
-                                <p className="mb-2">{getDescriptionPreview(alert.description)}</p>
-                            )}
-                        </div>
-                        {alert.description.length > 150 && (
-                            <CollapsibleTrigger className="text-sm font-medium text-primary hover:underline mt-2">
-                                {descriptionExpanded ? "Show less" : "Read more"}
-                            </CollapsibleTrigger>
-                        )}
-                    </Collapsible>
-                </div>
-
+                        {expanded
+                            ? <><ChevronUp className="w-3 h-3" /> Show less</>
+                            : <><ChevronDown className="w-3 h-3" /> Read more</>
+                        }
+                    </button>
+                )}
             </CardContent>
-
-            <CardFooter className="pt-0">
-                <div className="flex flex-wrap items-center gap-2 justify-between w-full">
-                    {(() => {
-                        const causeInfo = causeSeverityMap[alert.cause] || causeSeverityMap.UNKNOWN_CAUSE
-                        const Icon = causeInfo.icon
-                        return (
-                            <Badge variant={causeInfo.variant} className="flex items-center gap-1">
-                                <Icon className="h-4 w-4" />
-                                {causeInfo.label}
-                            </Badge>
-                        )
-                    })()}
-
-                    <Badge variant="outline">
-                        {formatTextToNiceLookingWords(alert.effect.replace("_", " ").toLowerCase(), true)}
-                    </Badge>
-                </div>
-            </CardFooter>
         </Card>
     )
 }

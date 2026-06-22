@@ -345,7 +345,7 @@ export default function MapComp({
                 width: "100%",
                 maxHeight: height ? "" : "50vh",
                 zIndex: 1,
-                borderRadius: "16px",
+                borderRadius: "var(--radius)",
                 overflow: "hidden",
                 flexGrow: 1,
             }}
