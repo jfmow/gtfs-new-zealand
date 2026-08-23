@@ -1,0 +1,19 @@
+type: http_request
+model: http_request
+id: rq_U7PP94Rz5J
+createdAt: 2026-08-05T05:23:37.463536
+updatedAt: 2026-08-05T05:31:09.549497
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication:
+  token: eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6Ilk4RVlNS1o5R0ZUMyJ9.eyJpYXQiOjE3ODU5OTM2ODYsImF1ZCI6ImFwcHN0b3JlY29ubmVjdC12MSIsInN1YiI6InVzZXIiLCJleHAiOjE3ODU5OTQ4ODZ9.V9Jl_qjwab_VKihul8I65immFZoprhGarkbGDCWeKwTzZjjHfBnRQIlYv3NhMeo1UAcriFG-FfK6B-0oZhFwYw
+authenticationType: bearer
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: DELETE
+name: ''
+sortPriority: 0.001
+url: https://api.appstoreconnect.apple.com/v2/inAppPurchases/6797699530
+urlParameters: []

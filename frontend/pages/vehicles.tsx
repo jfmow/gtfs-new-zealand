@@ -2,14 +2,18 @@ import LoadingSpinner from "@/components/loading-spinner";
 import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
+import ServiceTrackerPanel from "@/components/services/tracker/panel";
+import VehicleList from "@/components/vehicles/vehicle-list";
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { useQueryParams } from "@/lib/url-params";
+import { useIsMobile } from "@/lib/utils";
 import { MapItem } from "@/components/map/markers/create";
 import { Stop } from "./stops";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { useUserLocation } from "@/lib/userLocation";
 
 const LeafletMap = dynamic(() => import("../components/map/map"), {
     ssr: false,
@@ -33,10 +37,12 @@ export default function Vehicles() {
     const [error, setError] = useState<ApiError | null>();
     const [vehicleType, setVehicleType] = useState<VehicleFilters>("all");
     const { currentUrl } = useUrl();
+    const isMobile = useIsMobile();
     const { selectedVehicle } = useQueryParams({
         selectedVehicle: { keys: ["tripId"], type: "string", default: "" },
     });
     const [showStops, setShowStops] = useState(false)
+    const { location: userLocation, locationFound } = useUserLocation()
 
     useEffect(() => {
         async function getData() {
@@ -85,7 +91,7 @@ export default function Vehicles() {
     return (
         <>
             <Header title="Vehicle tracker" />
-            <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 flex-grow h-full">
+            <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 h-[calc(100svh-3rem)]">
                 {/* Filter bar */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                     <div className="flex flex-wrap gap-1.5">
@@ -116,7 +122,7 @@ export default function Vehicles() {
                     </div>
                 </div>
 
-                {selectedVehicle.found && selectedVehicle.value !== "" && (
+                {selectedVehicle.found && selectedVehicle.value !== "" && isMobile && (
                     <ServiceTrackerModal
                         loaded
                         defaultOpen
@@ -126,49 +132,84 @@ export default function Vehicles() {
                     />
                 )}
 
-                <div className="flex flex-col flex-grow h-full">
-                    <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
-                        <LeafletMap
-                            defaultZoom={["user", currentUrl.defaultMapCenter]}
-                            mapItems={[
-                                ...vehicles.filter((v) => v.route.id !== "").map(
-                                    (vehicle) => ({
-                                        lat: vehicle.position.lat,
-                                        lon: vehicle.position.lon,
-                                        icon: vehicle.type,
-                                        id: vehicle.trip_id,
-                                        routeID: vehicle.route.id,
-                                        description: {
-                                            text: vehicle.route.name,
-                                            alwaysShow: true,
-                                        },
-                                        zIndex: 1,
-                                        type: "vehicle",
-                                        onClick: () => selectedVehicle.set(vehicle.trip_id),
-                                    }) as MapItem
-                                ),
-                                ...stops.map((item) => ({
-                                    lat: item.stop_lat,
-                                    lon: item.stop_lon,
-                                    icon: item.stop_type === "bus"
-                                        ? "bus stop marker"
-                                        : item.stop_type === "ferry"
-                                        ? "ferry stop marker"
-                                        : item.stop_type === "train"
-                                        ? "train stop marker"
-                                        : "dot",
-                                    id: item.stop_name + " " + item.stop_code,
-                                    routeID: "",
-                                    description: { text: item.stop_name + " " + item.stop_code, alwaysShow: false },
-                                    zIndex: 1,
-                                    type: "stop",
-                                    onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.stop_name + " " + item.stop_code)}`),
-                                } as MapItem)),
-                            ]}
-                            map_id={MAPID}
-                            height="100%"
+                <div className="flex flex-row flex-grow h-full min-h-0 gap-3">
+                    <div className="hidden lg:flex lg:flex-col w-56 shrink-0 border border-border rounded-md overflow-hidden min-h-0">
+                        <VehicleList
+                            vehicles={vehicles}
+                            selectedTripId={selectedVehicle.value}
+                            onSelect={(tripId) => selectedVehicle.set(tripId)}
+                            userLocation={userLocation}
+                            locationFound={locationFound}
                         />
-                    </Suspense>
+                    </div>
+
+                    <div className="flex flex-col flex-grow min-w-0">
+                        <Suspense fallback={<LoadingSpinner description="Loading vehicles..." height="100svh" />}>
+                            <LeafletMap
+                                defaultZoom={["user", currentUrl.defaultMapCenter]}
+                                followMarkerId={selectedVehicle.value || undefined}
+                                clusterOptions={{ threshold: 50 }}
+                                mapItems={[
+                                    ...vehicles.filter((v) => v.route.id !== "").map(
+                                        (vehicle) => {
+                                            const isSelected = selectedVehicle.value === vehicle.trip_id
+                                            const isFocused = selectedVehicle.value !== ""
+                                            return {
+                                                lat: vehicle.position.lat,
+                                                lon: vehicle.position.lon,
+                                                icon: vehicle.type,
+                                                bearing: vehicle.position.bearing,
+                                                opacity: isFocused && !isSelected ? 0.35 : 1,
+                                                id: vehicle.trip_id,
+                                                routeID: vehicle.route.id,
+                                                description: {
+                                                    text: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
+                                                    alwaysShow: false,
+                                                },
+                                                zIndex: isSelected ? 10 : 1,
+                                                type: "vehicle",
+                                                onClick: () => selectedVehicle.set(vehicle.trip_id),
+                                            } as MapItem
+                                        }
+                                    ),
+                                    ...stops.map((item) => {
+                                        const stopId = item.stop_name + " " + item.stop_code
+                                        return {
+                                            lat: item.stop_lat,
+                                            lon: item.stop_lon,
+                                            icon: item.stop_type === "bus"
+                                                ? "bus stop marker"
+                                                : item.stop_type === "ferry"
+                                                ? "ferry stop marker"
+                                                : item.stop_type === "train"
+                                                ? "train stop marker"
+                                                : "dot",
+                                            id: stopId,
+                                            routeID: "",
+                                            description: { text: stopId, alwaysShow: false },
+                                            zIndex: 1,
+                                            type: "stop",
+                                            onClick: () => {},
+                                            popup: {
+                                                title: stopId,
+                                                linkText: "View departures",
+                                                linkHref: `/?s=${encodeURIComponent(stopId)}`,
+                                            },
+                                        } as MapItem
+                                    }),
+                                ]}
+                                map_id={MAPID}
+                                height="100%"
+                            />
+                        </Suspense>
+                    </div>
+
+                    {selectedVehicle.found && selectedVehicle.value !== "" && !isMobile && (
+                        <ServiceTrackerPanel
+                            tripId={selectedVehicle.value}
+                            onClose={() => selectedVehicle.set("")}
+                        />
+                    )}
                 </div>
             </div>
         </>

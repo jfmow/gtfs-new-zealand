@@ -24,6 +24,10 @@ interface MapProps {
     onMapClick?: (lat: number, lon: number) => void
     onLocationUpdate?: (lat: number, lon: number) => void
     followUser?: boolean
+    /** Tune when markers of a given type start clustering together, and how tightly. */
+    clusterOptions?: { threshold?: number; maxClusterRadius?: number }
+    /** Auto-pan the map to keep this marker id in view as it moves. */
+    followMarkerId?: string
 }
 
 type ItemsOnMap = {
@@ -59,6 +63,8 @@ export default function MapComp({
     onMapClick,
     onLocationUpdate,
     followUser,
+    clusterOptions,
+    followMarkerId,
 }: MapProps) {
     const mapRef = useRef<leaflet.Map | null>(null);
     const onLocationUpdateRef = useRef(onLocationUpdate);
@@ -157,12 +163,12 @@ export default function MapComp({
         });
 
         Object.entries(groupedByType).forEach(([type, items]) => {
-            const useCluster = items.length >= 100;
+            const useCluster = items.length >= (clusterOptions?.threshold ?? 100);
             const updatedMarkers: typeof activeMapItems.mapItems.markers = [];
 
             let clusterGroup: MarkerClusterGroup | null = null;
             if (useCluster) {
-                clusterGroup = createMapClusterGroup();
+                clusterGroup = createMapClusterGroup(clusterOptions?.maxClusterRadius);
                 activeMapItems.mapItems.clusters[type] = clusterGroup;
             }
 
@@ -183,6 +189,10 @@ export default function MapComp({
                 }
 
                 updatedMarkers.push({ id: item.id, marker });
+
+                if (followMarkerId && item.id === followMarkerId) {
+                    map.panTo([item.lat, item.lon], { animate: true, duration: 0.5 });
+                }
 
                 if (oldZoomControls[item.id]) {
                     map.removeControl(oldZoomControls[item.id]);
@@ -313,7 +323,7 @@ export default function MapComp({
         });
 
         return () => clearInterval(intervalId);
-    }, [mapItems, options?.buttonPosition]);
+    }, [mapItems, options?.buttonPosition, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId]);
 
     useEffect(() => {
         const activeMapItems = itemsOnMap.current;

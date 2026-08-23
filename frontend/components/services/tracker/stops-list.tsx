@@ -25,7 +25,8 @@ export default function StopsList({
     const nextStopRef = useRef<HTMLDivElement>(null)
 
     const [isSelectingReminder, setIsSelectingReminder] = useState(false)
-    const [reminderType, setReminderType] = useState<"get_off" | "arrival" | null>(null)
+    const [reminderType, setReminderType] = useState<"get_off" | "arrival" | "n_stops_away" | null>(null)
+    const [nStopsAway, setNStopsAway] = useState(1)
 
     useEffect(() => {
         nextStopRef?.current?.scrollIntoView({
@@ -81,13 +82,20 @@ export default function StopsList({
     const handleStopSelection = async (stop: ServicesStop) => {
         if (!isSelectingReminder || !tripId || !reminderType) return
 
-        const ok = await notification.addReminder(stop.parent_stop_id, tripId, reminderType)
+        const ok = await notification.addReminder(
+            stop.parent_stop_id,
+            tripId,
+            reminderType,
+            reminderType === "n_stops_away" ? nStopsAway : undefined,
+        )
 
         if (ok) {
             toast.success(
                 reminderType === "get_off"
                     ? "Reminder added! You'll get a notification when your stop is next"
-                    : "Arrival reminder set! You'll get a notification when approaching this stop",
+                    : reminderType === "n_stops_away"
+                        ? `Reminder set! You'll get a notification when the vehicle is ${nStopsAway} stop${nStopsAway === 1 ? "" : "s"} away`
+                        : "Arrival reminder set! You'll get a notification when approaching this stop",
                 { duration: 8000 },
             )
         } else {
@@ -98,7 +106,7 @@ export default function StopsList({
         setReminderType(null)
     }
 
-    const toggleReminder = (type: "get_off" | "arrival") => {
+    const toggleReminder = (type: "get_off" | "arrival" | "n_stops_away") => {
         if (isSelectingReminder && reminderType === type) {
             setIsSelectingReminder(false)
             setReminderType(null)
@@ -301,6 +309,36 @@ export default function StopsList({
                         </>
                     )}
                 </Button>
+
+                <div className="flex gap-2 flex-1">
+                    <input
+                        type="number"
+                        min={1}
+                        max={20}
+                        value={nStopsAway}
+                        disabled={isSelectingReminder}
+                        onChange={(e) => setNStopsAway(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+                        aria-label="Number of stops away"
+                        className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-center disabled:opacity-50"
+                    />
+                    <Button
+                        onClick={() => toggleReminder("n_stops_away")}
+                        className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
+                        variant={isSelectingReminder && reminderType === "n_stops_away" ? "outline" : "default"}
+                    >
+                        {isSelectingReminder && reminderType === "n_stops_away" ? (
+                            <>
+                                <X className="w-4 h-4 mr-2" />
+                                Cancel Selection
+                            </>
+                        ) : (
+                            <>
+                                <Bell className="w-4 h-4 mr-2" />
+                                Notify me {nStopsAway} stop{nStopsAway === 1 ? "" : "s"} away
+                            </>
+                        )}
+                    </Button>
+                </div>
             </div>
         </>
     )

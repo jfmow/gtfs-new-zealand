@@ -167,7 +167,7 @@ export async function getCurrentPushSubscription(): Promise<{
     };
 }
 
-export async function addReminder(stopId: string, tripId: string, type: "arrival" | "get_off") {
+export async function addReminder(stopId: string, tripId: string, type: "arrival" | "get_off" | "n_stops_away", offset?: number) {
     // eslint-disable-next-line prefer-const
     let subscription = await getCurrentPushSubscription();
 
@@ -192,6 +192,9 @@ export async function addReminder(stopId: string, tripId: string, type: "arrival
     form.set("stopId", stopId);
     form.set("tripId", tripId)
     form.set("type", type)
+    if (type === "n_stops_away" && offset !== undefined) {
+        form.set("offset", String(offset))
+    }
 
     // Send subscription to the backend
     try {

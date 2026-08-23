@@ -9,16 +9,31 @@ export interface MapItem {
     routeID: string;
     zIndex: number;
     onClick: (id: string) => void;
+    /**
+     * Tooltip policy: `alwaysShow: false` (hover-only) is the default everywhere.
+     * Only use `alwaysShow: true` for a map showing many unrelated vehicles at once
+     * with no side list to cross-reference (e.g. the /vehicles overview map).
+     */
     description: {
         text: string;
         alwaysShow: boolean;
+    }
+    /** Direction of travel in degrees (0-360). Vehicles only; rotates the icon. */
+    bearing?: number;
+    /** Dim a marker (0-1) e.g. to de-emphasise non-selected vehicles in focused mode. */
+    opacity?: number;
+    /** Click opens an in-place Leaflet popup instead of navigating away. */
+    popup?: {
+        title: string;
+        linkText?: string;
+        linkHref?: string;
     }
     type: 'stop' | 'vehicle' | 'waypoint'
     zoomButton?: string
 }
 
 export function createNewMarker(MapItem: MapItem): leaflet.Marker {
-    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.description.text, MapItem.description.alwaysShow);
+    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.description.text, MapItem.description.alwaysShow, MapItem.bearing, MapItem.opacity);
 
     const marker = leaflet.marker([MapItem.lat, MapItem.lon], { icon: customIcon, zIndexOffset: MapItem.zIndex });
 
@@ -37,6 +52,10 @@ export function createNewMarker(MapItem: MapItem): leaflet.Marker {
         });
     }
 
+    if (MapItem.popup) {
+        marker.bindPopup(createPopupHtml(MapItem.popup));
+    }
+
     return marker
 }
 
@@ -45,7 +64,9 @@ export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): 
         MapItem.routeID,
         MapItem.icon,
         MapItem.description.text,
-        MapItem.description.alwaysShow
+        MapItem.description.alwaysShow,
+        MapItem.bearing,
+        MapItem.opacity
     );
 
 
@@ -77,14 +98,37 @@ export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): 
         });
     }
 
+    // Re-bind popup if necessary
+    marker.unbindPopup();
+    if (MapItem.popup) {
+        marker.bindPopup(createPopupHtml(MapItem.popup));
+    }
+
     // Update position
     animateMarkerTo(marker, MapItem.lat, MapItem.lon)
 
     return marker;
 }
 
+function escapeHtml(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
 
-function createMarkerIcon(routeId: string, icon: string, description: string, alwaysShowDiscription: boolean): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
+function createPopupHtml(popup: NonNullable<MapItem["popup"]>): string {
+    const title = `<div style="font-weight:600;margin-bottom:4px;">${escapeHtml(popup.title)}</div>`
+    const link = popup.linkHref
+        ? `<a href="${escapeHtml(popup.linkHref)}" style="color:#2563eb;text-decoration:underline;font-size:12px;">${escapeHtml(popup.linkText || "View departures")}</a>`
+        : ""
+    return `<div style="font-size:13px;min-width:120px;">${title}${link}</div>`
+}
+
+
+function createMarkerIcon(routeId: string, icon: string, description: string, alwaysShowDiscription: boolean, bearing?: number, opacity?: number): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
     if (!icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
     }
@@ -100,13 +144,19 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
         ? `/route_icons/${routeId}.png`
         : getIconUrl(icon);
 
+    // Bearing 0 is indistinguishable from "no data" (proto3 default) - only
+    // custom route logos are skipped, since rotating a logo looks wrong.
+    const rotation = bearing !== undefined && bearing !== 0 && !routesWithIcons.includes(routeId)
+        ? `rotate(${bearing}deg)`
+        : ""
+
     let customIcon
 
     if (alwaysShowDiscription) {
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: max-content; height: 46px;">
+            <div style="position: relative; width: max-content; height: 46px; opacity: ${opacity ?? 1};">
             <span
               style="
                 position: absolute;
@@ -128,7 +178,7 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
             </span>
             <img
               src="${iconUrl}" alt=""
-              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%); width: 28px; height: 28px; border-radius: 9999px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
+              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%) ${rotation}; width: 28px; height: 28px; border-radius: 9999px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
             />
             </div>
         `,
@@ -138,10 +188,10 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
-            <div style="position: relative; width: 28px; height: 28px;">
+            <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
                 <img
                   src="${iconUrl}" alt=""
-                  style="width: 24px; height: 24px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);"
+                  style="width: 24px; height: 24px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22); transform: ${rotation};"
                 />
             </div>
         `,
@@ -176,9 +226,9 @@ function getIconUrl(icon: string): string {
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }
 
-export function createMapClusterGroup(): MarkerClusterGroup {
+export function createMapClusterGroup(maxClusterRadius = 50): MarkerClusterGroup {
     return leaflet.markerClusterGroup({
-        maxClusterRadius: 50, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion. 
+        maxClusterRadius, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion.
         iconCreateFunction: function (cluster) {
             // Define a custom cluster icon using /blank.png and the number of markers
             const count = cluster.getChildCount();

@@ -4,17 +4,32 @@ import LoadingSpinner from "../../loading-spinner"
 import { formatUnixTime } from "@/lib/formating"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 import StopsList from "./stops-list"
+import RaceTheBus from "./race-the-bus"
 import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2 } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { fullyEncodeURIComponent } from "@/lib/utils"
+import { getRegionSlug, urlStore } from "@/lib/url-store"
+import { toast } from "sonner"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
 const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>`
+
+interface RouteAlert {
+    route_id?: string
+    start_date: number
+    end_date: number
+    cause: string
+    effect: string
+    title: string
+    description: string
+    severity: string
+}
 
 interface ServiceTrackerContentProps {
     vehicle?: VehiclesResponse
@@ -62,10 +77,14 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         }
     }, [tabValue, vehicle?.trip.next_stop.parent_stop_id, vehicle?.trip.next_stop.platform])
 
+    // Keyed on tripId + routeId (primitives) rather than the whole vehicle object,
+    // which is a new reference every ~10s poll - this fetches once instead of on every poll,
+    // and no longer waits for a resolved vehicle to start loading the route line.
+    const routeId = vehicle?.route.id
     useEffect(() => {
         const getRouteLine = async () => {
             try {
-                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes?tripId=${fullyEncodeURIComponent(tripId)}&routeId=${fullyEncodeURIComponent(vehicle?.route.id || "")}`, {
+                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes?tripId=${fullyEncodeURIComponent(tripId)}&routeId=${fullyEncodeURIComponent(routeId || "")}`, {
                     method: "GET",
                 })
 
@@ -88,7 +107,48 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                 setRouteLine(res)
             }
         })
-    }, [tripId, vehicle])
+    }, [tripId, routeId])
+
+    const activeRouteId = vehicle?.route.id || previewData?.route_id
+    const [routeAlerts, setRouteAlerts] = useState<RouteAlert[]>([])
+    const [dismissedAlerts, setDismissedAlerts] = useState<Set<string>>(new Set())
+
+    useEffect(() => {
+        if (!activeRouteId) {
+            setRouteAlerts([])
+            return
+        }
+        let cancelled = false
+        ApiFetch<RouteAlert[]>(`realtime/alerts/route/${fullyEncodeURIComponent(activeRouteId)}`, { method: "GET" }).then((res) => {
+            if (cancelled) return
+            setRouteAlerts(res.ok ? res.data : [])
+        })
+        return () => {
+            cancelled = true
+        }
+    }, [activeRouteId])
+
+    const visibleAlerts = routeAlerts.filter((alert) => !dismissedAlerts.has(alert.title))
+    const dismissAlert = (title: string) => setDismissedAlerts((prev) => new Set(prev).add(title))
+
+    const handleShare = async () => {
+        const region = getRegionSlug(urlStore.currentUrl)
+        const url = `${window.location.origin}/trip?tripId=${fullyEncodeURIComponent(tripId)}&region=${region}`
+        if (navigator.share) {
+            try {
+                await navigator.share({ title: vehicle ? `${vehicle.route.name} - ${vehicle.trip.headsign}` : "Track this trip", url })
+            } catch {
+                // user dismissed the share sheet - not an error
+            }
+        } else {
+            try {
+                await navigator.clipboard.writeText(url)
+                toast.success("Link copied to clipboard")
+            } catch {
+                toast.error("Couldn't copy link - clipboard access was denied")
+            }
+        }
+    }
 
     // Vehicle tracking mode
     if (vehicle) {
@@ -124,9 +184,16 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     )?.arrival_time || 0
                 )
                 : "";
+
+        const currentStopArrivalMs = currentStop
+            ? stopTimes?.find((st) => st.parent_stop_id === currentStop.id || st.child_stop_id === currentStop.id)?.arrival_time
+            : undefined
+
         return (
             <div className="space-y-3">
                 <div>
+                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} />
+
                     {vehicle.off_course && (
                         <Card className="border-destructive bg-destructive/5 mb-4">
                             <CardContent className="flex items-center gap-2 p-3 sm:p-4">
@@ -154,11 +221,21 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                 {vehicle.trip.headsign}
                             </h1>
                         </div>
-                        {refreshing && (
-                            <div className="flex items-center gap-2 text-muted-foreground flex-shrink-0">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            </div>
-                        )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            {refreshing && (
+                                <div className="flex items-center gap-2 text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                </div>
+                            )}
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Share this trip"
+                                onClick={handleShare}
+                            >
+                                <Share2 className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
 
                     <div className="grid gap-3 sm:gap-4 mt-4">
@@ -170,6 +247,12 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                             arrivalTime={stopStatusArrivalTime}
                         />
                     </div>
+
+                    {currentStop && (
+                        <div className="mt-4">
+                            <RaceTheBus currentStop={currentStop} vehicleArrivalMs={currentStopArrivalMs} />
+                        </div>
+                    )}
                 </div>
 
                 <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
@@ -223,13 +306,19 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                         },
                                                         type: "stop",
                                                         zIndex: 1,
-                                                        onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
+                                                        onClick: () => {},
+                                                        popup: {
+                                                            title: item.name,
+                                                            linkText: "View departures",
+                                                            linkHref: `/?s=${encodeURIComponent(item.name)}`,
+                                                        },
                                                     }) as MapItem,
                                             ),
                                             {
                                                 lat: vehicle.position.lat,
                                                 lon: vehicle.position.lon,
                                                 icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
+                                                bearing: vehicle.position.bearing,
                                                 id: vehicle.trip_id,
                                                 routeID: vehicle.route.id,
                                                 description: { text: "Vehicle you're tracking", alwaysShow: false },
@@ -244,6 +333,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                                 lat: vehicle.position.lat,
                                                 lon: vehicle.position.lon,
                                                 icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
+                                                bearing: vehicle.position.bearing,
                                                 id: vehicle.trip_id,
                                                 routeID: vehicle.route.id,
                                                 description: { text: "Vehicle you're tracking", alwaysShow: false },
@@ -302,6 +392,8 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
         return (
             <div className="space-y-3 relative">
                 <div>
+                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} />
+
                     <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
                             <div className="flex items-center w-full flex-nowrap gap-3 mb-4">
@@ -381,7 +473,12 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                             },
                                             zIndex: 1,
                                             type: "stop",
-                                            onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
+                                            onClick: () => {},
+                                            popup: {
+                                                title: item.name,
+                                                linkText: "View departures",
+                                                linkHref: `/?s=${encodeURIComponent(item.name)}`,
+                                            },
                                         }) as MapItem,
                                 )}
                                 map_id={"tracker preview" + Math.random()}
@@ -403,6 +500,41 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
 export default ServiceTrackerContent
 
+
+const RouteAlertsBanner = memo(function RouteAlertsBanner({
+    alerts,
+    onDismiss,
+}: {
+    alerts: RouteAlert[]
+    onDismiss: (title: string) => void
+}) {
+    if (alerts.length === 0) return null
+
+    return (
+        <div className="space-y-2 mb-4">
+            {alerts.map((alert) => (
+                <Card key={alert.title} className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                    <CardContent className="flex items-start gap-2 p-3 sm:p-4">
+                        <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{alert.title}</p>
+                            {alert.description && (
+                                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-3">{alert.description}</p>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => onDismiss(alert.title)}
+                            aria-label="Dismiss alert"
+                            className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 flex-shrink-0"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </CardContent>
+                </Card>
+            ))}
+        </div>
+    )
+})
 
 const StopStatusCard = memo(function StopStatusCard({
     title,

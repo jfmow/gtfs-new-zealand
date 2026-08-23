@@ -167,7 +167,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				TripId:       tripIDCur,
 				Route:        *routeData,
 				VehicleType:  strings.ToLower(routeData.VehicleType),
-				Position:     VehiclesPosition{Lat: pos.GetLatitude(), Lon: pos.GetLongitude()},
+				Position:     VehiclesPosition{Lat: pos.GetLatitude(), Lon: pos.GetLongitude(), Bearing: pos.GetBearing()},
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 			}
@@ -357,6 +357,67 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", response)
+	})
+
+	//Returns alerts from AT for a single route (used to show an inline alert banner on a trip/service view)
+	realtimeRoute.GET("/alerts/route/:routeId", func(c echo.Context) error {
+		routeIdEncoded := c.PathParam("routeId")
+		routeId, err := url.PathUnescape(routeIdEncoded)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid route id", nil, ResponseDetails("routeId", routeIdEncoded, "details", "Invalid route ID format", "error", err.Error()))
+		}
+
+		alerts, err := realtime.GetAlerts()
+		if err != nil {
+			return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("routeId", routeId, "details", "No alerts found for the given route", "error", err.Error()))
+		}
+
+		alertsForRoute, err := alerts.FindAlertsByRouteId(routeId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("routeId", routeId, "details", "No alerts found for the given route"))
+		}
+
+		var result []AlertResponseData
+
+		for _, alert := range alertsForRoute {
+			activePeriods := alert.GetActivePeriod()
+			if len(activePeriods) == 0 {
+				continue
+			}
+
+			smallestStart := activePeriods[0].GetStart()
+			biggestEnd := activePeriods[0].GetEnd()
+
+			for _, period := range activePeriods {
+				if period.GetStart() < smallestStart {
+					smallestStart = period.GetStart()
+				}
+				if period.GetEnd() > biggestEnd {
+					biggestEnd = period.GetEnd()
+				}
+			}
+
+			result = append(result, AlertResponseData{
+				RouteId:     routeId,
+				StartDate:   int(smallestStart),
+				EndDate:     int(biggestEnd),
+				Cause:       alert.GetCause().String(),
+				Effect:      alert.GetEffect().String(),
+				Title:       alert.GetHeaderText().GetTranslation()[0].GetText(),
+				Description: alert.GetDescriptionText().GetTranslation()[0].GetText(),
+				Severity:    alert.GetSeverityLevel().String(),
+			})
+		}
+
+		if len(result) == 0 {
+			return JsonApiResponse(c, http.StatusNotFound, "no alerts found", nil, ResponseDetails("routeId", routeId, "details", "No alerts found for the given route"))
+		}
+
+		sort.Slice(result, func(i, j int) bool {
+			return result[i].StartDate < result[j].StartDate
+		})
+
+		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 
 	realtimeRoute.GET("/stop-times", func(c echo.Context) error {
@@ -826,6 +887,10 @@ type VehiclesTrip struct {
 type VehiclesPosition struct {
 	Lat float32 `json:"lat"`
 	Lon float32 `json:"lon"`
+	// Bearing is the vehicle's direction of travel in degrees (0-360, 0 = north).
+	// Optional per GTFS-RT feed: absent data and due-north are indistinguishable
+	// here (both serialize as 0), so treat this as best-effort/decorative only.
+	Bearing float32 `json:"bearing"`
 }
 
 // Alerts response
@@ -835,6 +900,7 @@ type AlertResponse struct {
 }
 
 type AlertResponseData struct {
+	RouteId     string `json:"route_id,omitempty"`
 	StartDate   int    `json:"start_date"`
 	EndDate     int    `json:"end_date"`
 	Cause       string `json:"cause"`

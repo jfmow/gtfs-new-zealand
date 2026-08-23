@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
@@ -169,6 +170,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 							} else {
 								body = "Your selected stop is now (or has just passed)."
 							}
+						case "n_stops_away":
+							title = "Your stop is coming up!"
+							body = "The vehicle is getting close to your selected stop."
 						default:
 							notificationDB.DeleteReminder(reminder.ClientId, reminder.Type)
 							continue // unknown type
@@ -465,12 +469,22 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		stopId := c.FormValue("stopId")
 		typeOfReminder := c.FormValue("type")
 
-		if typeOfReminder != "get_off" && typeOfReminder != "arrival" {
+		if typeOfReminder != "get_off" && typeOfReminder != "arrival" && typeOfReminder != "n_stops_away" {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
 				Message: "invalid type of reminder",
 				Data:    nil,
 			})
+		}
+
+		// Only meaningful for n_stops_away: how many stops before the target stop to fire the reminder.
+		// Missing/invalid/negative values fall back to 1 stop early.
+		var stopsAwayOffset int
+		if typeOfReminder == "n_stops_away" {
+			stopsAwayOffset = 1
+			if parsed, err := strconv.Atoi(c.FormValue("offset")); err == nil && parsed >= 0 {
+				stopsAwayOffset = parsed
+			}
 		}
 
 		client, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
@@ -531,7 +545,12 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		if err := notificationDB.AddReminder(client.Id, tripId, sequenceNumber-lowestSequence, typeOfReminder); err != nil {
+		targetStopSequence := sequenceNumber - lowestSequence - stopsAwayOffset
+		if targetStopSequence < 0 {
+			targetStopSequence = 0
+		}
+
+		if err := notificationDB.AddReminder(client.Id, tripId, targetStopSequence, typeOfReminder); err != nil {
 			fmt.Println(err)
 			return c.JSON(http.StatusInternalServerError, Response{
 				Code:    http.StatusInternalServerError,

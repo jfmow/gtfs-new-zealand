@@ -1,12 +1,11 @@
-import { memo, useEffect, useState } from "react"
+import { memo, useState } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "../../ui/button"
 import { Eye, Loader2, Navigation } from "lucide-react"
-import { getStopsForTrip } from "../stops"
-import { ApiFetch } from "@/lib/url-context"
 import ServiceTrackerContent from "./body"
-import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
+import { useIsMobile } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet"
+import { useServiceTracker } from "./use-service-tracker"
 
 interface ServiceTrackerModalProps {
     tripId: string
@@ -43,8 +42,6 @@ export interface StopTimes {
     dist: number
 }
 
-const REFRESH_INTERVAL = 10 // Refresh interval in seconds
-
 const ServiceTrackerModal = memo(function ServiceTrackerModal({
     loaded,
     tripId,
@@ -54,92 +51,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     onOpenChange,
     previewData,
 }: ServiceTrackerModalProps) {
-    const [stops, setStops] = useState<ServicesStop[] | null>(null)
-    const [stopTimes, setStopTimes] = useState<StopTimes[]>([])
     const [open, setOpen] = useState(defaultOpen)
-    const [vehicle, setVehicle] = useState<VehiclesResponse>()
-    const [initialLoading, setInitialLoading] = useState(false)
-    const [refreshing, setRefreshing] = useState(false)
     const isMobile = useIsMobile()
-
-    useEffect(() => {
-        async function getData(isRefresh = false) {
-            if (isRefresh) {
-                setRefreshing(true)
-            }
-
-            try {
-                if (!has) {
-                    const stopsData = await getStopsForTrip(tripId)
-                    if (stopsData) {
-                        setStops(stopsData)
-                    }
-                } else {
-                    const res = await ApiFetch<VehiclesResponse[]>(`realtime/live?tripId=${fullyEncodeURIComponent(tripId)}`, {
-                        method: "GET"
-                    })
-                    if (!res.ok) {
-                        console.error(res.error)
-                        return
-                    } else {
-                        if (res.data && res.data.length >= 1) {
-                            const vehicle = res.data[0]
-                            setVehicle(vehicle)
-                            const stopsData = await getStopsForTrip(tripId)
-                            if (stopsData) {
-                                setStops(stopsData)
-                            }
-                        } else {
-                            const stopsData = await getStopsForTrip(tripId)
-                            if (stopsData) {
-                                setStops(stopsData)
-                            }
-                        }
-                    }
-                }
-
-                const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${fullyEncodeURIComponent(tripId)}`, {
-                    method: "GET",
-                })
-                if (stopTimesRes.ok) {
-                    setStopTimes(stopTimesRes.data)
-                }
-            } catch (error) {
-                console.error("Error fetching service tracker data:", error)
-            } finally {
-                if (isRefresh) {
-                    setRefreshing(false)
-                }
-            }
-        }
-
-        let intervalId: NodeJS.Timeout | null
-
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === "visible") {
-                getData(true) // Mark as refresh when visibility changes
-                intervalId = setInterval(() => getData(true), REFRESH_INTERVAL * 1000)
-            } else if (document.visibilityState === "hidden") {
-                if (intervalId) {
-                    clearInterval(intervalId)
-                }
-            }
-        }
-
-        if (open) {
-            setInitialLoading(true)
-            getData().then(() => setInitialLoading(false))
-            handleVisibilityChange()
-            document.addEventListener("visibilitychange", handleVisibilityChange)
-        }
-
-        return () => {
-            document.removeEventListener("visibilitychange", handleVisibilityChange)
-            if (intervalId) {
-                clearInterval(intervalId)
-            }
-        }
-    }, [has, open, tripId])
+    const { stops, stopTimes, vehicle, initialLoading, refreshing } = useServiceTracker(tripId, has, !!open)
 
     const handleOpenChange = (v: boolean) => {
         setOpen(v)
@@ -225,6 +139,7 @@ export interface VehiclesResponse {
 export interface Position {
     lat: number
     lon: number
+    bearing: number
 }
 
 export interface Route {

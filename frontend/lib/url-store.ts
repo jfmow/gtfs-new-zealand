@@ -23,6 +23,20 @@ export const urlOptions: UrlOption[] =
         ? [...productionOptions, ...devOptions]
         : productionOptions
 
+/**
+ * A UrlOption's `url` already ends in its region path segment (…/at, …/wel, …/christ),
+ * which is already unique per region - reuse it as a stable, shareable slug instead of
+ * introducing a second identifier that could drift out of sync.
+ */
+export function getRegionSlug(option: UrlOption): string {
+    const parts = option.url.split("/").filter(Boolean)
+    return parts[parts.length - 1] || ""
+}
+
+export function getUrlOptionBySlug(slug: string): UrlOption | undefined {
+    return urlOptions.find((o) => getRegionSlug(o) === slug)
+}
+
 class UrlStore {
     private static instance: UrlStore
     private _currentUrl: UrlOption
