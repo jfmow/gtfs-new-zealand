@@ -129,6 +129,7 @@ export default function Vehicles() {
                         onOpenChange={(v) => (!v ? selectedVehicle.set("") : null)}
                         has={true}
                         tripId={selectedVehicle.value}
+                        hideMap
                     />
                 )}
 

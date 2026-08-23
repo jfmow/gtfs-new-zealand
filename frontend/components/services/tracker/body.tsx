@@ -44,6 +44,8 @@ interface ServiceTrackerContentProps {
         name: string
     }
     refreshing: boolean
+    /** Suppress the internal mini map - use when a caller already shows this trip on a bigger map alongside. */
+    hideMap?: boolean
 }
 
 
@@ -56,10 +58,11 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
     currentStop,
     stopTimes,
     refreshing,
+    hideMap,
 }: ServiceTrackerContentProps) {
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
-    const [tabValue, setTabValue] = useState("track")
+    const [tabValue, setTabValue] = useState(hideMap ? "stops" : "track")
     const [routeLine, setRouteLine] = useState<{ color: string; line: GeoJSON } | null>(null)
 
     // Auto-scroll to next stop when it changes or when switching to stops tab
@@ -255,6 +258,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                     )}
                 </div>
 
+                {hideMap ? (
+                    <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
+                ) : (
                 <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
                     <TabsList className="w-full">
                         <TabsTrigger disabled={stops?.length === 0} className="w-full" value="stops">
@@ -354,6 +360,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
                     </TabsContent>
                 </Tabs>
+                )}
             </div >
         )
     }
@@ -444,6 +451,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
 
                 </div>
 
+                {hideMap ? (
+                    <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} />
+                ) : (
                 <Tabs defaultValue="track" className="w-full">
                     <TabsList className="w-full">
                         <TabsTrigger className="w-full" value="stops">
@@ -491,6 +501,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                         <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} />
                     </TabsContent>
                 </Tabs>
+                )}
             </div>
         )
     }

@@ -20,6 +20,8 @@ interface ServiceTrackerModalProps {
     loaded: boolean
     has: boolean
     previewData?: PreviewData
+    /** Suppress the internal mini map - use when the caller already shows this trip on a bigger map alongside. */
+    hideMap?: boolean
 }
 
 export interface PreviewData {
@@ -50,6 +52,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     defaultOpen,
     onOpenChange,
     previewData,
+    hideMap,
 }: ServiceTrackerModalProps) {
     const [open, setOpen] = useState(defaultOpen)
     const isMobile = useIsMobile()
@@ -96,6 +99,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
             currentStop={currentStop}
             stopTimes={stopTimes}
             refreshing={refreshing}
+            hideMap={hideMap}
         />
     )
 
@@ -114,8 +118,8 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
         <Sheet open={open} onOpenChange={handleOpenChange}>
             {triggerButton && <SheetTrigger asChild>{triggerButton}</SheetTrigger>}
             {open && (vehicle || (!has && previewData && stops)) && (
-                <SheetContent side={"bottom"} className="max-h-[90vh] rounded-t-lg">
-                    <div className="mx-auto w-full max-w-sm overflow-y-auto">{content}</div>
+                <SheetContent side={"bottom"} className="max-h-[90vh] overflow-y-auto rounded-t-lg">
+                    <div className="mx-auto w-full max-w-sm">{content}</div>
                 </SheetContent>
             )}
         </Sheet>

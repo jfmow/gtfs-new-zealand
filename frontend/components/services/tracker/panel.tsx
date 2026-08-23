@@ -41,6 +41,7 @@ const ServiceTrackerPanel = memo(function ServiceTrackerPanel({ tripId, currentS
                         currentStop={currentStop}
                         stopTimes={stopTimes}
                         refreshing={refreshing}
+                        hideMap
                     />
                 ) : (
                     <LoadingSpinner description="Loading vehicle..." height="200px" />

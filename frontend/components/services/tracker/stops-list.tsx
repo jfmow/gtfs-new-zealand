@@ -291,7 +291,7 @@ export default function StopsList({
                     })}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 mt-4">
+            <div className="flex flex-col gap-2 mt-4">
                 <Button
                     onClick={() => toggleReminder("get_off")}
                     className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
