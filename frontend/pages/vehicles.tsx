@@ -91,7 +91,7 @@ export default function Vehicles() {
     return (
         <>
             <Header title="Vehicle tracker" />
-            <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 h-[calc(100svh-3rem)]">
+            <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 h-[calc(100svh-4rem)]">
                 {/* Filter bar */}
                 <div className="flex flex-wrap items-center gap-2 mb-3">
                     <div className="flex flex-wrap gap-1.5">
@@ -99,7 +99,7 @@ export default function Vehicles() {
                             <button
                                 key={value}
                                 onClick={() => setVehicleType(value)}
-                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${
+                                className={`px-3 py-1.5 rounded-md font-display text-xs font-semibold uppercase tracking-wide transition-all duration-150 ${
                                     vehicleType === value
                                         ? "bg-primary text-primary-foreground shadow-sm"
                                         : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"

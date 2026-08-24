@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from "react"
 import type { VehiclesResponse } from "@/components/services/tracker"
 import { cn, formatDistance, haversineDistance } from "@/lib/utils"
 import { SearchInput } from "@/components/ui/input"
+import { LiveValue } from "@/components/ui/live-value"
 
 interface VehicleListProps {
     vehicles: VehiclesResponse[]
@@ -57,7 +58,8 @@ const VehicleList = memo(function VehicleList({ vehicles, selectedTripId, onSele
             </div>
 
             {!isSearching && (
-                <div className="px-3 py-1.5 text-xs text-muted-foreground shrink-0 border-b border-border">
+                <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-display uppercase tracking-wide text-muted-foreground shrink-0 border-b border-border">
+                    {locationFound && <span className="live-dot h-1.5 w-1.5 rounded-full bg-primary shrink-0" aria-hidden />}
                     {locationFound ? "Nearest to you" : "All vehicles"}
                 </div>
             )}
@@ -80,7 +82,7 @@ const VehicleList = memo(function VehicleList({ vehicles, selectedTripId, onSele
                                 )}
                             >
                                 <span
-                                    className="shrink-0 px-2 py-0.5 rounded text-white dark:text-gray-100 text-xs font-medium"
+                                    className="shrink-0 px-2 py-0.5 rounded text-white dark:text-gray-100 text-xs font-display font-medium"
                                     style={{
                                         background: "#" + (vehicle.route.color !== "" ? vehicle.route.color : "000000"),
                                         filter: "brightness(0.9) contrast(1.1)",
@@ -90,7 +92,7 @@ const VehicleList = memo(function VehicleList({ vehicles, selectedTripId, onSele
                                 </span>
                                 <span className="text-muted-foreground text-xs capitalize truncate">{vehicle.type}</span>
                                 <span className="ml-auto text-muted-foreground text-xs shrink-0">
-                                    {distance !== null ? formatDistance(distance) : vehicle.license_plate}
+                                    {distance !== null ? <LiveValue value={formatDistance(distance)} /> : vehicle.license_plate}
                                 </span>
                             </button>
                         )

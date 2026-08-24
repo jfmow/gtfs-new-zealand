@@ -12,6 +12,7 @@ import { ApiFetch } from "@/lib/url-context"
 import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { getRegionSlug, urlStore } from "@/lib/url-store"
 import { toast } from "sonner"
@@ -220,7 +221,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                     {vehicle.route.name}
                                 </span>
                             </div>
-                            <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
+                            <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-tight">
                                 {vehicle.trip.headsign}
                             </h1>
                         </div>
@@ -416,7 +417,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent({
                                         {previewData.route_name}
                                     </span>
                                 </div>
-                                <h1 className="text-xl sm:text-2xl font-bold text-foreground leading-tight">
+                                <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-tight">
                                     {previewData.tripHeadsign}
                                 </h1>
                             </div>
@@ -521,28 +522,44 @@ const RouteAlertsBanner = memo(function RouteAlertsBanner({
 }) {
     if (alerts.length === 0) return null
 
+    const renderAlert = (alert: RouteAlert) => (
+        <Card key={alert.title} className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+            <CardContent className="flex items-start gap-2 p-3 sm:p-4">
+                <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{alert.title}</p>
+                    {alert.description && (
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-3">{alert.description}</p>
+                    )}
+                </div>
+                <button
+                    onClick={() => onDismiss(alert.title)}
+                    aria-label="Dismiss alert"
+                    className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 flex-shrink-0"
+                >
+                    <X className="h-4 w-4" />
+                </button>
+            </CardContent>
+        </Card>
+    )
+
+    if (alerts.length === 1) {
+        return <div className="mb-4">{renderAlert(alerts[0])}</div>
+    }
+
     return (
-        <div className="space-y-2 mb-4">
-            {alerts.map((alert) => (
-                <Card key={alert.title} className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
-                    <CardContent className="flex items-start gap-2 p-3 sm:p-4">
-                        <TriangleAlertIcon className="h-4 w-4 sm:h-5 sm:w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                        <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-amber-800 dark:text-amber-300">{alert.title}</p>
-                            {alert.description && (
-                                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 line-clamp-3">{alert.description}</p>
-                            )}
-                        </div>
-                        <button
-                            onClick={() => onDismiss(alert.title)}
-                            aria-label="Dismiss alert"
-                            className="text-amber-600 dark:text-amber-400 hover:text-amber-800 dark:hover:text-amber-200 flex-shrink-0"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
-                    </CardContent>
-                </Card>
-            ))}
+        <div className="mb-4">
+            <Popover>
+                <PopoverTrigger asChild>
+                    <button className="flex w-full items-center gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-left text-sm font-medium text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300 dark:hover:bg-amber-900">
+                        <TriangleAlertIcon className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                        {alerts.length} alerts on this route
+                    </button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-[min(24rem,90vw)] max-h-80 overflow-y-auto space-y-2 p-2">
+                    {alerts.map(renderAlert)}
+                </PopoverContent>
+            </Popover>
         </div>
     )
 })
@@ -610,7 +627,7 @@ const StopStatusCard = memo(function StopStatusCard({
                         <p className={`text-xs text-nowrap font-medium ${getTitleColor()}`}>{title.replace(":", "")}:</p>
                         <p className="text-xs font-semibold text-foreground truncate">{stopName}</p>
                         {arrivalTime && (
-                            <p className="text-xs font-semibold text-foreground text-nowrap">@ {arrivalTime}</p>
+                            <p className="text-xs font-mono tabular-nums font-semibold text-foreground text-nowrap">@ {arrivalTime}</p>
                         )}
                     </div>
                 </div>

@@ -77,27 +77,30 @@ export default function NavBar() {
         <>
             {/* ── DESKTOP ──────────────────────────────────────────────── */}
             {!isMobile && (
-                <div className="sticky top-0 z-50 bg-background/90 backdrop-blur-md">
+                <div className="sticky top-0 z-50 mb-4 bg-background/90 backdrop-blur-md border-b border-border">
                     <nav className="max-w-[1400px] mx-auto px-4 h-12 flex items-center gap-4">
                         <Link href='/' className="flex items-center shrink-0 mr-2">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={logo} alt="Logo" className="w-7 h-7" />
                         </Link>
 
-                        <ul className="flex items-center gap-0.5 flex-1">
+                        <ul className="flex items-center gap-1 flex-1 h-full">
                             {NAV_ROUTES.map((item) => (
-                                <li key={item.href}>
+                                <li key={item.href} className="h-full">
                                     <Link
                                         href={item.href}
                                         className={cn(
-                                            "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                                            "relative flex items-center gap-1.5 px-3 h-full font-display text-sm font-medium uppercase tracking-wide transition-colors",
                                             isActive(item.href)
-                                                ? "bg-accent text-foreground"
-                                                : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                                                ? "text-foreground"
+                                                : "text-muted-foreground hover:text-foreground"
                                         )}
                                     >
                                         <item.icon className="w-4 h-4 shrink-0" />
                                         {item.short}
+                                        {isActive(item.href) && (
+                                            <span className="absolute inset-x-3 -bottom-px h-0.5 bg-primary rounded-full" />
+                                        )}
                                     </Link>
                                 </li>
                             ))}
@@ -109,7 +112,7 @@ export default function NavBar() {
             {/* ── MOBILE ───────────────────────────────────────────────── */}
             {isMobile && (
                 <>
-                    <div className="sticky top-0 z-50 bg-background/90 backdrop-blur-md">
+                    <div className="sticky top-0 z-50 mb-4 bg-background/90 backdrop-blur-md border-b border-border">
                         <div className="flex items-center justify-between px-3 h-12">
                             <Link href='/'>
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -173,10 +176,10 @@ export default function NavBar() {
                                                     href={item.href}
                                                     onClick={() => setMenuOpen(false)}
                                                     className={cn(
-                                                        "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                                                        "flex items-center gap-3 pl-3 pr-3 py-2.5 border-l-2 font-display text-sm font-medium uppercase tracking-wide transition-colors",
                                                         isActive(item.href)
-                                                            ? "bg-accent text-foreground"
-                                                            : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                                                            ? "border-primary bg-accent text-foreground"
+                                                            : "border-transparent text-muted-foreground hover:text-foreground hover:bg-accent/60"
                                                     )}
                                                 >
                                                     <item.icon className="w-4 h-4 shrink-0" />
