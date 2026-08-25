@@ -93,6 +93,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     useEffect(() => {
         if (stopName === "") return
 
+        // A request fired for the previous stopName/filterDate can still resolve
+        // after this effect re-runs for a new one - `cancelled` stops it from
+        // clobbering the new stop's services with the old stop's response.
+        let cancelled = false
+
         setServices([])
         setPlatformFilter({ type: 'platforms', value: "all" })
         setIsInitialLoading(true)
@@ -103,6 +108,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                     `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=200"}`,
                 ),
             )
+            if (cancelled) return
             if (req.ok) {
                 setServices(req.data)
                 setIsInitialLoading(false)
@@ -140,6 +146,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         document.addEventListener("visibilitychange", handleVisibilityChange)
 
         return () => {
+            cancelled = true
             if (intervalId) clearInterval(intervalId)
             document.removeEventListener("visibilitychange", handleVisibilityChange)
         }
@@ -530,11 +537,11 @@ function getOccupancyLabel(value: number): string {
         case 1:
             return "Seats available"
         case 2:
-            return "Standing room only"
+            return "Some seats still available"
         case 3:
-            return "Very full"
+            return "Likely standing room only"
         case 4:
-            return "No room"
+            return "Likely full, standing only"
         default:
             return ""
     }

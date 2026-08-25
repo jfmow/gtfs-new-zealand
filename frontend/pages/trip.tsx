@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { Header } from "@/components/nav"
 import { useQueryParams } from "@/lib/url-params"
-import { useServiceTracker } from "@/components/services/tracker/use-service-tracker"
+import { useServiceTracker, ServiceTrackerProvider } from "@/components/services/tracker/use-service-tracker"
 import ServiceTrackerContent from "@/components/services/tracker/body"
 import StopsList from "@/components/services/tracker/stops-list"
 import LoadingSpinner from "@/components/loading-spinner"
@@ -50,13 +50,11 @@ export default function TripPage() {
                 {!regionResolved || initialLoading ? (
                     <LoadingSpinner description="Loading trip..." height="60vh" />
                 ) : vehicle ? (
-                    <ServiceTrackerContent
-                        vehicle={vehicle}
-                        stops={stops}
-                        tripId={tripId.value}
-                        stopTimes={stopTimes}
-                        refreshing={refreshing}
-                    />
+                    <ServiceTrackerProvider
+                        value={{ vehicle, stops, stopTimes, tripId: tripId.value, refreshing }}
+                    >
+                        <ServiceTrackerContent />
+                    </ServiceTrackerProvider>
                 ) : stops ? (
                     <div className="space-y-3">
                         <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">

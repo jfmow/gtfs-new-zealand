@@ -99,11 +99,10 @@ export default function Vehicles() {
                             <button
                                 key={value}
                                 onClick={() => setVehicleType(value)}
-                                className={`px-3 py-1.5 rounded-md font-display text-xs font-semibold uppercase tracking-wide transition-all duration-150 ${
-                                    vehicleType === value
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                                }`}
+                                className={`px-3 py-1.5 rounded-md font-display text-xs font-semibold uppercase tracking-wide transition-all duration-150 ${vehicleType === value
+                                    ? "bg-primary text-primary-foreground shadow-sm"
+                                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                                    }`}
                             >
                                 {label}
                             </button>
@@ -163,10 +162,7 @@ export default function Vehicles() {
                                                 opacity: isFocused && !isSelected ? 0.35 : 1,
                                                 id: vehicle.trip_id,
                                                 routeID: vehicle.route.id,
-                                                description: {
-                                                    text: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
-                                                    alwaysShow: false,
-                                                },
+                                                visibleLabel: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
                                                 zIndex: isSelected ? 10 : 1,
                                                 type: "vehicle",
                                                 onClick: () => selectedVehicle.set(vehicle.trip_id),
@@ -181,16 +177,15 @@ export default function Vehicles() {
                                             icon: item.stop_type === "bus"
                                                 ? "bus stop marker"
                                                 : item.stop_type === "ferry"
-                                                ? "ferry stop marker"
-                                                : item.stop_type === "train"
-                                                ? "train stop marker"
-                                                : "dot",
+                                                    ? "ferry stop marker"
+                                                    : item.stop_type === "train"
+                                                        ? "train stop marker"
+                                                        : "dot",
                                             id: stopId,
                                             routeID: "",
-                                            description: { text: stopId, alwaysShow: false },
                                             zIndex: 1,
                                             type: "stop",
-                                            onClick: () => {},
+                                            onClick: () => { },
                                             popup: {
                                                 title: stopId,
                                                 linkText: "View departures",

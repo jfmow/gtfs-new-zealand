@@ -5,7 +5,7 @@ import { Eye, Loader2, Navigation } from "lucide-react"
 import ServiceTrackerContent from "./body"
 import { useIsMobile } from "@/lib/utils"
 import { Sheet, SheetContent, SheetTrigger } from "../../ui/sheet"
-import { useServiceTracker } from "./use-service-tracker"
+import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker"
 
 interface ServiceTrackerModalProps {
     tripId: string
@@ -91,16 +91,11 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     ) : null
 
     const content = (
-        <ServiceTrackerContent
-            vehicle={vehicle}
-            stops={stops}
-            previewData={previewData}
-            tripId={tripId}
-            currentStop={currentStop}
-            stopTimes={stopTimes}
-            refreshing={refreshing}
-            hideMap={hideMap}
-        />
+        <ServiceTrackerProvider
+            value={{ vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap }}
+        >
+            <ServiceTrackerContent />
+        </ServiceTrackerProvider>
     )
 
     if (!isMobile) {

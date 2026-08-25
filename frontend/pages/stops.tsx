@@ -1,4 +1,5 @@
 import LoadingSpinner from "@/components/loading-spinner";
+import { MapItem } from "@/components/map/markers/create";
 import { Header } from "@/components/nav";
 import ErrorScreen from "@/components/ui/error-screen";
 import { formatTextToNiceLookingWords } from "@/lib/formating";
@@ -91,11 +92,10 @@ export function StopsMap({
                     <button
                         key={value}
                         onClick={() => setStopType(value)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${
-                            stopType === value
-                                ? "bg-primary text-primary-foreground shadow-sm"
-                                : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                        }`}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${stopType === value
+                            ? "bg-primary text-primary-foreground shadow-sm"
+                            : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                            }`}
                     >
                         {label}
                     </button>
@@ -115,21 +115,20 @@ export function StopsMap({
                                 icon: item.stop_type === "bus"
                                     ? "bus stop marker"
                                     : item.stop_type === "ferry"
-                                    ? "ferry stop marker"
-                                    : item.stop_type === "train"
-                                    ? "train stop marker"
-                                    : "dot",
+                                        ? "ferry stop marker"
+                                        : item.stop_type === "train"
+                                            ? "train stop marker"
+                                            : "dot",
                                 id: `${item.stop_name} ${item.stop_code}`,
                                 routeID: "",
-                                description: {
-                                    text: `${item.stop_name} ${item.stop_code} | ${formatTextToNiceLookingWords(item.stop_type)}`,
-                                    alwaysShow: false,
+                                popup: {
+                                    title: `${item.stop_name} ${item.stop_code} | ${formatTextToNiceLookingWords(item.stop_type)}`,
+                                    linkText: "View stop schedule",
+                                    linkHref: `/?s=${encodeURIComponent(`${item.stop_name} ${item.stop_code}`)}`,
                                 },
                                 zIndex: 1,
                                 type: "stop",
-                                onClick: () =>
-                                    (window.location.href = `/?s=${encodeURIComponent(`${item.stop_name} ${item.stop_code}`)}`),
-                            })) ?? []
+                            } as MapItem)) ?? []
                         }
                         height="100%"
                     />

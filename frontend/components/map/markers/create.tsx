@@ -10,14 +10,11 @@ export interface MapItem {
     zIndex: number;
     onClick: (id: string) => void;
     /**
-     * Tooltip policy: `alwaysShow: false` (hover-only) is the default everywhere.
-     * Only use `alwaysShow: true` for a map showing many unrelated vehicles at once
-     * with no side list to cross-reference (e.g. the /vehicles overview map).
+     * Always-visible label under the marker. Only use for a map showing many
+     * unrelated vehicles at once with no side list to cross-reference (e.g. the
+     * /vehicles overview map) - everywhere else, use `popup` instead.
      */
-    description: {
-        text: string;
-        alwaysShow: boolean;
-    }
+    visibleLabel?: string;
     /** Direction of travel in degrees (0-360). Vehicles only; rotates the icon. */
     bearing?: number;
     /** Dim a marker (0-1) e.g. to de-emphasise non-selected vehicles in focused mode. */
@@ -25,31 +22,24 @@ export interface MapItem {
     /** Click opens an in-place Leaflet popup instead of navigating away. */
     popup?: {
         title: string;
+        /** Secondary line below the title, e.g. an arrival time. */
+        subtitle?: string;
         linkText?: string;
         linkHref?: string;
     }
+    /** Speed at this point, used to color waypoint line segments. */
+    speedKmh?: number;
     type: 'stop' | 'vehicle' | 'waypoint'
     zoomButton?: string
 }
 
 export function createNewMarker(MapItem: MapItem): leaflet.Marker {
-    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.description.text, MapItem.description.alwaysShow, MapItem.bearing, MapItem.opacity);
+    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.visibleLabel, MapItem.bearing, MapItem.opacity);
 
     const marker = leaflet.marker([MapItem.lat, MapItem.lon], { icon: customIcon, zIndexOffset: MapItem.zIndex });
 
     if (typeof MapItem.onClick === 'function' && MapItem.id !== "") {
         marker.on('click', () => MapItem.onClick(MapItem.id));
-    }
-
-    // Add a hover message (tooltip) above the marker
-    if (MapItem.description.text !== "" && !MapItem.description.alwaysShow) {
-        marker.bindTooltip(MapItem.description.text, {
-            direction: 'top',       // Positions the tooltip above the marker
-            offset: [0, -24],       // Adjusts the tooltip position
-            permanent: false,       // Tooltip only appears on hover
-            opacity: 0.9,           // Adjust opacity if needed
-            className: 'custom-tooltip' // Optional: Add a custom class for styling
-        });
     }
 
     if (MapItem.popup) {
@@ -63,8 +53,7 @@ export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): 
     const customIcon = createMarkerIcon(
         MapItem.routeID,
         MapItem.icon,
-        MapItem.description.text,
-        MapItem.description.alwaysShow,
+        MapItem.visibleLabel,
         MapItem.bearing,
         MapItem.opacity
     );
@@ -82,20 +71,6 @@ export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): 
     // Update click handler
     if (typeof MapItem.onClick === 'function' && MapItem.id !== "") {
         marker.on('click', () => MapItem.onClick(MapItem.id));
-    }
-
-    // Remove existing tooltip if any
-    marker.unbindTooltip();
-
-    // Re-bind tooltip if necessary
-    if (MapItem.description.text !== "" && !MapItem.description.alwaysShow) {
-        marker.bindTooltip(MapItem.description.text, {
-            direction: 'top',
-            offset: [0, -24],
-            permanent: false,
-            opacity: 0.9,
-            className: 'custom-tooltip',
-        });
     }
 
     // Re-bind popup if necessary
@@ -121,14 +96,17 @@ function escapeHtml(value: string): string {
 
 function createPopupHtml(popup: NonNullable<MapItem["popup"]>): string {
     const title = `<div style="font-weight:600;margin-bottom:4px;">${escapeHtml(popup.title)}</div>`
+    const subtitle = popup.subtitle
+        ? `<div style="color:#64748b;margin-bottom:4px;">${escapeHtml(popup.subtitle)}</div>`
+        : ""
     const link = popup.linkHref
         ? `<a href="${escapeHtml(popup.linkHref)}" style="color:#2563eb;text-decoration:underline;font-size:12px;">${escapeHtml(popup.linkText || "View departures")}</a>`
         : ""
-    return `<div style="font-size:13px;min-width:120px;">${title}${link}</div>`
+    return `<div style="font-size:13px;min-width:120px;">${title}${subtitle}${link}</div>`
 }
 
 
-function createMarkerIcon(routeId: string, icon: string, description: string, alwaysShowDiscription: boolean, bearing?: number, opacity?: number): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
+function createMarkerIcon(routeId: string, icon: string, visibleLabel: string | undefined, bearing?: number, opacity?: number): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
     if (!icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
     }
@@ -152,7 +130,7 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
 
     let customIcon
 
-    if (alwaysShowDiscription) {
+    if (visibleLabel) {
         customIcon = leaflet.divIcon({
             className: "flex items-center justify-center",
             html: `
@@ -174,7 +152,7 @@ function createMarkerIcon(routeId: string, icon: string, description: string, al
                 box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
               "
             >
-              ${description}
+              ${visibleLabel}
             </span>
             <img
               src="${iconUrl}" alt=""

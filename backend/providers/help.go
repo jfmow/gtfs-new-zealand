@@ -35,6 +35,23 @@ func haversine(lat1, lon1, lat2, lon2 float64) float64 {
 	return R * c
 }
 
+// atStopProximityMeters is how close a vehicle's live GPS position must be to a
+// stop before a predicted-time-only "AtStop" is trusted. Predicted arrival times
+// can pass before a delayed vehicle's real position gets there.
+const atStopProximityMeters = 100.0
+
+// isNearStop reports whether the vehicle is within atStopProximityMeters of the
+// stop at stopIndex in stopsForTrip. Returns true (trusting the caller's time-based
+// prediction) whenever position data isn't available to check against, so callers
+// without a live vehicle position keep their existing behavior.
+func isNearStop(stopsForTrip []gtfs.Stop, stopIndex int, vehicleLat, vehicleLon float64) bool {
+	if (vehicleLat == 0 && vehicleLon == 0) || stopIndex < 0 || stopIndex >= len(stopsForTrip) {
+		return true
+	}
+	stop := stopsForTrip[stopIndex]
+	return haversine(vehicleLat, vehicleLon, stop.StopLat, stop.StopLon) <= atStopProximityMeters
+}
+
 type RealtimeTripData struct {
 	TripID string
 
@@ -91,9 +108,14 @@ func GetRealtimeTripData(
 		result.TimeTillArrival = int(defaultArrivalTime.Sub(now).Minutes())
 	}
 
+	var vehicleLat, vehicleLon float64
 	if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
 		result.LocationTracking = true
 		result.Occupancy = int(foundVehicle.GetOccupancyStatus().Number())
+
+		if pos := foundVehicle.GetPosition(); pos != nil {
+			vehicleLat, vehicleLon = float64(pos.GetLatitude()), float64(pos.GetLongitude())
+		}
 
 		if foundVehicle.GetTrip().GetScheduleRelationship() == 3 {
 			result.Canceled = true
@@ -123,9 +145,9 @@ func GetRealtimeTripData(
 			result.TimeTillArrival = int(predictedArrival.ArrivalTime.Sub(now).Minutes())
 		}
 
-		_, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
+		stopsForTrip, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 		if err == nil {
-			nextStopSeq, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone)
+			nextStopSeq, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone, stopsForTrip, vehicleLat, vehicleLon)
 			result.StopsAway = service.StopData.Sequence - lowestSequence - nextStopSeq
 			result.StopState = simpleState
 		}

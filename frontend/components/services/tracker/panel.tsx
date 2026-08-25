@@ -3,7 +3,7 @@ import { X } from "lucide-react"
 import { Button } from "../../ui/button"
 import LoadingSpinner from "../../loading-spinner"
 import ServiceTrackerContent from "./body"
-import { useServiceTracker } from "./use-service-tracker"
+import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker"
 
 interface ServiceTrackerPanelProps {
     tripId: string
@@ -34,15 +34,11 @@ const ServiceTrackerPanel = memo(function ServiceTrackerPanel({ tripId, currentS
             </div>
             <div className="p-4">
                 {vehicle ? (
-                    <ServiceTrackerContent
-                        vehicle={vehicle}
-                        stops={stops}
-                        tripId={tripId}
-                        currentStop={currentStop}
-                        stopTimes={stopTimes}
-                        refreshing={refreshing}
-                        hideMap
-                    />
+                    <ServiceTrackerProvider
+                        value={{ vehicle, stops, stopTimes, tripId, currentStop, refreshing, hideMap: true }}
+                    >
+                        <ServiceTrackerContent />
+                    </ServiceTrackerProvider>
                 ) : (
                     <LoadingSpinner description="Loading vehicle..." height="200px" />
                 )}

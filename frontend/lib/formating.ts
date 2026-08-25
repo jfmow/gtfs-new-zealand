@@ -98,6 +98,32 @@ export function timeTillArrivalString(arrivalTime: string): string {
 
 
 
+/** Like `timeTillArrivalString`, but for an arrival time already expressed as epoch ms. */
+export function timeTillArrivalMsString(arrivalMs: number): string {
+    const nowInNZ = moment().tz('Pacific/Auckland');
+    const target = moment.tz(arrivalMs, 'Pacific/Auckland');
+
+    const diffInMinutes = target.diff(nowInNZ, 'minutes');
+    const diffInHours = target.diff(nowInNZ, 'hours');
+    const diffInDays = target.diff(nowInNZ, 'days');
+
+    if (diffInMinutes < 0) {
+        return "Departed";
+    }
+    if (diffInMinutes === 0) {
+        return "Now";
+    }
+    if (diffInMinutes < 60) {
+        return `${diffInMinutes} min`;
+    } else if (diffInHours < 24) {
+        const hours = Math.floor(diffInMinutes / 60);
+        const minutes = diffInMinutes % 60;
+        return `${hours} hr${hours > 1 ? 's' : ''}${minutes > 0 ? ` ${minutes} min` : ''}`;
+    } else {
+        return `${diffInDays} day${diffInDays > 1 ? 's' : ''}`;
+    }
+}
+
 export function formatTextToNiceLookingWords(words: string, retainDigits: boolean = false): string {
     if (!retainDigits) {
         try {

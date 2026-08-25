@@ -197,6 +197,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					tripUpdate.GetStopTimeUpdate(),
 					stopsData.LowestSequence,
 					localTimeZone,
+					stopsData.Stops,
+					lat,
+					lng,
 				)
 
 				resp.State = state
@@ -471,10 +474,15 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					updatesForTrip.GetStopTimeUpdate(),
 					localTimeZone,
 				)
+				// No live vehicle position is on hand at this point yet, so this
+				// falls back to trusting the prediction (see isNearStop).
 				nextStopSequenceNumber, _, _ = getNextStopSequence(
 					updatesForTrip.GetStopTimeUpdate(),
 					lowestSequence,
 					localTimeZone,
+					nil,
+					0,
+					0,
 				)
 				tripDelay = updatesForTrip.GetDelay()
 			}
@@ -649,7 +657,13 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 // state string. It does not assume the first item is the current stop; instead
 // it uses timestamps to find the first upcoming event. If no future event is
 // found it returns the sequence after the most recently departed stop.
-func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string) {
+//
+// stopsForTrip and the vehicle's live lat/lon are used to confirm a predicted
+// "AtStop" against the vehicle's actual position - a stale or early prediction
+// otherwise reports "AtStop" (and "Current Stop" in the UI) while the vehicle is
+// still visibly approaching. Pass a nil slice / zero lat,lon to skip this check
+// and fall back to trusting the prediction, e.g. when no live position is available.
+func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location, stopsForTrip []gtfs.Stop, vehicleLat, vehicleLon float64) (int, *time.Time, string) {
 	if len(stopUpdates) == 0 {
 		return 0, nil, "Unknown"
 	}
@@ -681,12 +695,17 @@ func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestS
 		// Approaching if arrival is in the future
 		if arrivalTs > 0 {
 			at := time.Unix(arrivalTs, 0).In(localTimeZone)
+			idx := int(update.GetStopSequence()) - lowestSequence
 			if now.Before(at) {
-				seq := int(update.GetStopSequence())
-				return seq - lowestSequence, &at, "Approaching"
+				return idx, &at, "Approaching"
 			} else if now.After(at) {
-				seq := int(update.GetStopSequence()) + 1
-				return seq - lowestSequence, &at, "AtStop"
+				// The predicted arrival time has passed - only report AtStop once
+				// the vehicle's live position confirms it, otherwise it's still
+				// approaching (a delayed vehicle can run behind its prediction).
+				if isNearStop(stopsForTrip, idx, vehicleLat, vehicleLon) {
+					return idx + 1, &at, "AtStop"
+				}
+				return idx, &at, "Approaching"
 			}
 		}
 

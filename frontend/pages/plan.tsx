@@ -344,10 +344,7 @@ export default function Page() {
             routeID: "",
             zIndex: 200,
             onClick: () => { },
-            description: {
-                text: `<strong>Start</strong>`,
-                alwaysShow: true
-            },
+            visibleLabel: "Start",
             type: "stop" as const
         })
     }
@@ -361,10 +358,7 @@ export default function Page() {
             routeID: "",
             zIndex: 200,
             onClick: () => { },
-            description: {
-                text: `<strong>End</strong>`,
-                alwaysShow: true
-            },
+            visibleLabel: "End",
             type: "stop" as const
         })
     }
@@ -380,9 +374,8 @@ export default function Page() {
                     routeID: '',
                     zIndex: 100,
                     onClick: () => { },
-                    description: {
-                        text: `<strong>${leg.FromStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `Catch ${leg.Route?.route_short_name} - ${formatTime(leg.DepartureTime)}` : 'Start Walking'}`,
-                        alwaysShow: false
+                    popup: {
+                        title: `${leg.FromStop?.stop_name} - ${leg.Mode === 'transit' ? `Catch ${leg.Route?.route_short_name} - ${formatTime(leg.DepartureTime)}` : 'Start Walking'}`,
                     },
                     type: "stop" as const
                 })
@@ -396,9 +389,8 @@ export default function Page() {
                     routeID: '',
                     zIndex: 100,
                     onClick: () => { },
-                    description: {
-                        text: `<strong>${leg.ToStop?.stop_name}</strong><br/>${leg.Mode === 'transit' ? `Get off ${leg.Route?.route_short_name} - ${formatTime(leg.ArrivalTime)}` : 'Stop Walking'}`,
-                        alwaysShow: false
+                    popup: {
+                        title: `${leg.ToStop?.stop_name} - ${leg.Mode === 'transit' ? `Get off ${leg.Route?.route_short_name} - ${formatTime(leg.ArrivalTime)}` : 'Stop Walking'}`,
                     },
                     type: "stop" as const
                 })

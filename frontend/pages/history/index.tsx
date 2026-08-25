@@ -271,7 +271,9 @@ export default function VehicleDataPage() {
                                                             routeID: "",
                                                             zIndex: index === 0 || index === positions.length - 1 ? positions.length : index,
                                                             type: "waypoint",
-                                                            description: { text: `${index === 0 ? "End |" : index === positions.length - 1 ? "Start |" : ""} Speed ${vehicle.Speed}kmh`, alwaysShow: false },
+                                                            onClick: () => { },
+                                                            speedKmh: vehicle.Speed,
+                                                            popup: { title: `${index === 0 ? "End | " : index === positions.length - 1 ? "Start | " : ""}Speed ${vehicle.Speed}kmh` },
                                                         }) as MapItem
                                                 ),
                                                 ...(showStops ? stops.map(
@@ -282,13 +284,14 @@ export default function VehicleDataPage() {
                                                             icon: "dot",
                                                             id: item.name,
                                                             routeID: "",
-                                                            description: {
-                                                                text: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
-                                                                alwaysShow: false,
+                                                            popup: {
+                                                                title: `${item.name} ${item.platform ? `| Platform ${item.platform}` : ""}`,
+                                                                linkText: "View departures",
+                                                                linkHref: `/?s=${encodeURIComponent(item.name)}`,
                                                             },
                                                             type: "stop",
                                                             zIndex: 2,
-                                                            onClick: () => (window.location.href = `/?s=${encodeURIComponent(item.name)}`),
+                                                            onClick: () => { },
                                                         }) as MapItem,
                                                 ) : [])
                                             ]}

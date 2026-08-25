@@ -241,10 +241,7 @@ export default function MapComp({
                         const point1 = sortedItems[i];
                         const point2 = sortedItems[i + 1];
 
-                        // Get speed values from description text
-                        const speed1 = parseInt(point1.description.text.match(/Speed (\d+)kmh/)?.[1] || "0");
-                        const speed2 = parseInt(point2.description.text.match(/Speed (\d+)kmh/)?.[1] || "0");
-                        const avgSpeed = (speed1 + speed2) / 2;
+                        const avgSpeed = ((point1.speedKmh ?? 0) + (point2.speedKmh ?? 0)) / 2;
 
                         // Calculate color based on speed
                         // Green (slow) to Yellow (medium) to Red (fast)

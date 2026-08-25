@@ -89,13 +89,13 @@ export default function Navigate({ start, end, liveMode = false }: NavigateProps
         {
             lat: start.lat, lon: start.lon, icon: "start marker",
             id: "nav-start", routeID: "", zIndex: 100,
-            description: { text: `<strong>Start</strong>`, alwaysShow: true },
+            visibleLabel: "Start",
             onClick: () => { }, type: "stop"
         },
         {
             lat: end.lat, lon: end.lon, icon: "end marker",
             id: "nav-end", routeID: "", zIndex: 100,
-            description: { text: `<strong>${end.name}</strong>`, alwaysShow: true },
+            visibleLabel: end.name,
             onClick: () => { }, type: "stop"
         },
     ]
@@ -109,7 +109,7 @@ export default function Navigate({ start, end, liveMode = false }: NavigateProps
                 lat: step.lat, lon: step.lon,
                 icon: isPassed ? "dot gray" : "dot",
                 id: `step-${i}`, routeID: "", zIndex: 50,
-                description: { text: step.instruction, alwaysShow: false },
+                popup: { title: step.instruction },
                 onClick: () => !liveMode && setActiveStep(i),
                 type: "stop"
             })
