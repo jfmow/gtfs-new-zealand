@@ -26,7 +26,7 @@ export default function Home() {
       <Header title="Train, Bus, Ferry — Find your next journey" />
 
       {selectedStop === "" ? (
-        <div className="flex flex-col h-[calc(100svh-4rem)] overflow-hidden md:h-auto md:overflow-visible">
+        <div className="flex flex-col flex-grow h-[calc(100svh-4rem)] overflow-hidden md:h-auto md:overflow-visible">
           <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 shrink-0">
             <div className="flex gap-2 items-center w-full">
               <SearchForStop />
