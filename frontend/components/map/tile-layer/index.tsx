@@ -5,8 +5,8 @@ import { useState } from "react";
 import ReactDOM from "react-dom/client";
 
 const SATELLITE_TILELAYER = "https://trainapi.suddsy.dev/nz/tiles/{z}/{x}/{y}"
-const PLAIN_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
-const LABELS_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png"
+const PLAIN_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png?key=cb1_2egp_1_6ae440edc2c624dffc42e0c4"
+const LABELS_TILELAYER = "https://{s}.basemaps.cartocdn.com/rastertiles/light_only_labels/{z}/{x}/{y}{r}.png?key=cb1_2egp_1_6ae440edc2c624dffc42e0c4"
 
 type MapVariant = "satellite" | "default" | "auto"
 
