@@ -7,7 +7,7 @@ import { ReactNode, useEffect, useState } from 'react'
 import Head from 'next/head'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
-import Favorites from './stops/favourites'
+import { FavoritesChips } from './stops/favourites'
 
 const NAV_ROUTES = [
     {
@@ -193,7 +193,7 @@ export default function NavBar() {
                                             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">
                                                 Favourites
                                             </p>
-                                            <Favorites onClick={() => setMenuOpen(false)} />
+                                            <FavoritesChips onClick={() => setMenuOpen(false)} />
                                         </div>
                                     </div>
 

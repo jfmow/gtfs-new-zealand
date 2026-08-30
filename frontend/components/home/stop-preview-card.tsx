@@ -16,7 +16,8 @@ interface StopPreviewCardProps {
     className?: string
 }
 
-export function StopPreviewCard({ stopId, label, code, meta, className }: StopPreviewCardProps) {
+/** Fetches the soonest upcoming departures for a stop, sorted and capped to `limit`. */
+export function useNextDepartures(stopId: string, limit = 2) {
     const [services, setServices] = useState<Service[] | null>(null)
     const [error, setError] = useState(false)
 
@@ -31,7 +32,7 @@ export function StopPreviewCard({ stopId, label, code, meta, className }: StopPr
                 const upcoming = res.data
                     .filter((service) => service.time_till_arrival >= 0)
                     .sort((a, b) => a.time_till_arrival - b.time_till_arrival)
-                    .slice(0, 2)
+                    .slice(0, limit)
                 setServices(upcoming)
             }
             else if (res.status_code === 404) setServices([])
@@ -41,7 +42,13 @@ export function StopPreviewCard({ stopId, label, code, meta, className }: StopPr
         return () => {
             cancelled = true
         }
-    }, [stopId])
+    }, [stopId, limit])
+
+    return { services, error }
+}
+
+export function StopPreviewCard({ stopId, label, code, meta, className }: StopPreviewCardProps) {
+    const { services, error } = useNextDepartures(stopId, 2)
 
     return (
         <Link

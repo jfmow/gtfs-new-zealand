@@ -4,10 +4,9 @@ import LoadingSpinner from "../../loading-spinner"
 import { formatUnixTime, timeTillArrivalMsString } from "@/lib/formating"
 import StopsList from "./stops-list"
 import RaceTheBus from "./race-the-bus"
-import { useServiceTrackerContext } from "./use-service-tracker"
+import { useServiceTrackerContext, useRouteLine } from "./use-service-tracker"
 import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
-import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import { ApiFetch } from "@/lib/url-context"
 import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -37,7 +36,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [tabValue, setTabValue] = useState(hideMap ? "stops" : "track")
-    const [routeLine, setRouteLine] = useState<{ color: string; line: GeoJSON } | null>(null)
 
     // Auto-scroll to next stop when it changes or when switching to stops tab
     useEffect(() => {
@@ -54,37 +52,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
         }
     }, [tabValue, vehicle?.trip.next_stop.parent_stop_id, vehicle?.trip.next_stop.platform])
 
-    // Keyed on tripId + routeId (primitives) rather than the whole vehicle object,
-    // which is a new reference every ~10s poll - this fetches once instead of on every poll,
-    // and no longer waits for a resolved vehicle to start loading the route line.
-    const routeId = vehicle?.route.id
-    useEffect(() => {
-        const getRouteLine = async () => {
-            try {
-                const response = await ApiFetch<ShapesResponse>(`map/geojson/shapes?tripId=${fullyEncodeURIComponent(tripId)}&routeId=${fullyEncodeURIComponent(routeId || "")}`, {
-                    method: "GET",
-                })
-
-                if (!response.ok) {
-                    console.error(response.error)
-                    return
-                }
-
-                return {
-                    color: response.data.color ? `#${response.data.color}` : "#393939",
-                    line: response.data.geojson,
-                }
-            } catch (error) {
-                console.error(error)
-            }
-        }
-
-        getRouteLine().then((res) => {
-            if (res) {
-                setRouteLine(res)
-            }
-        })
-    }, [tripId, routeId])
+    const routeLine = useRouteLine(tripId, vehicle?.route.id)
 
     const activeRouteId = vehicle?.route.id || previewData?.route_id
     const [routeAlerts, setRouteAlerts] = useState<RouteAlert[]>([])

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { ApiFetch } from "@/lib/url-context"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { getStopsForTrip } from "../stops"
+import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 
 const REFRESH_INTERVAL = 10 // Refresh interval in seconds
@@ -152,4 +153,41 @@ export function useServiceTracker(tripId: string, has: boolean, active: boolean)
     }, [has, active, tripId])
 
     return { stops, stopTimes, vehicle, initialLoading, refreshing }
+}
+
+/**
+ * Fetches the route shape (the polyline drawn on the map) for a trip.
+ * Keyed on tripId + routeId (primitives) rather than a vehicle object, which is a
+ * new reference every ~10s poll - this fetches once instead of on every poll.
+ */
+export function useRouteLine(tripId: string, routeId?: string) {
+    const [routeLine, setRouteLine] = useState<{ color: string; line: GeoJSON } | null>(null)
+
+    useEffect(() => {
+        if (!tripId) {
+            setRouteLine(null)
+            return
+        }
+
+        let cancelled = false
+        ApiFetch<ShapesResponse>(`map/geojson/shapes?tripId=${fullyEncodeURIComponent(tripId)}&routeId=${fullyEncodeURIComponent(routeId || "")}`, {
+            method: "GET",
+        }).then((response) => {
+            if (cancelled) return
+            if (!response.ok) {
+                console.error(response.error)
+                return
+            }
+            setRouteLine({
+                color: response.data.color ? `#${response.data.color}` : "#393939",
+                line: response.data.geojson,
+            })
+        })
+
+        return () => {
+            cancelled = true
+        }
+    }, [tripId, routeId])
+
+    return routeLine
 }

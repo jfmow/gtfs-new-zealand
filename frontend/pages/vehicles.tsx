@@ -3,6 +3,7 @@ import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
 import ServiceTrackerPanel from "@/components/services/tracker/panel";
+import { useRouteLine, useServiceTracker } from "@/components/services/tracker/use-service-tracker";
 import VehicleList from "@/components/vehicles/vehicle-list";
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
 import { Header } from "@/components/nav";
@@ -78,6 +79,16 @@ export default function Vehicles() {
         }
     }, [showStops])
 
+    // Reuse the same hook the tracker panel/modal use - the vehicle list's own
+    // entries can have an unresolved `trip`, but this fetches the single tracked
+    // trip directly so `trip` (and its stops) are always fully populated.
+    const { vehicle: trackedVehicle, stops: tripStops } = useServiceTracker(
+        selectedVehicle.value,
+        true,
+        selectedVehicle.value !== ""
+    )
+    const routeLine = useRouteLine(selectedVehicle.value, trackedVehicle?.route.id)
+
     if (error) {
         return (
             <ErrorScreen
@@ -149,6 +160,7 @@ export default function Vehicles() {
                                 defaultZoom={["user", currentUrl.defaultMapCenter]}
                                 followMarkerId={selectedVehicle.value || undefined}
                                 clusterOptions={{ threshold: 50 }}
+                                line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
                                 mapItems={[
                                     ...vehicles.filter((v) => v.route.id !== "").map(
                                         (vehicle) => {
@@ -193,6 +205,38 @@ export default function Vehicles() {
                                             },
                                         } as MapItem
                                     }),
+                                    ...(trackedVehicle && tripStops
+                                        ? tripStops.map((stop) => {
+                                            const trip = trackedVehicle.trip
+                                            const icon =
+                                                trip.final_stop.parent_stop_id === stop.parent_stop_id || trip.final_stop.child_stop_id === stop.child_stop_id
+                                                    ? "end marker"
+                                                    : trip.next_stop.parent_stop_id === stop.parent_stop_id || trip.next_stop.child_stop_id === stop.child_stop_id
+                                                        ? "next stop marker"
+                                                        : trip.current_stop.parent_stop_id === stop.parent_stop_id || trip.current_stop.child_stop_id === stop.child_stop_id
+                                                            ? "current stop marker"
+                                                            : trip.first_stop.parent_stop_id === stop.parent_stop_id
+                                                                ? "start marker"
+                                                                : trip.current_stop.sequence > stop.sequence
+                                                                    ? "dot gray"
+                                                                    : "dot"
+                                            return {
+                                                lat: stop.lat,
+                                                lon: stop.lon,
+                                                icon,
+                                                id: "trip-stop-" + stop.name + stop.sequence,
+                                                routeID: "",
+                                                zIndex: 1,
+                                                type: "stop",
+                                                onClick: () => { },
+                                                popup: {
+                                                    title: `${stop.name}${stop.platform ? ` | Platform ${stop.platform}` : ""}`,
+                                                    linkText: "View departures",
+                                                    linkHref: `/?s=${encodeURIComponent(stop.name)}`,
+                                                },
+                                            } as MapItem
+                                        })
+                                        : []),
                                 ]}
                                 map_id={MAPID}
                                 height="100%"
