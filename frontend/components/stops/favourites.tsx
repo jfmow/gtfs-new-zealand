@@ -23,23 +23,13 @@ import { Input } from "../ui/input"
 import { toast } from "sonner"
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { SWATCH_COLORS as FAVORITE_COLORS } from "@/lib/colors"
 import { timeTillArrivalString } from "@/lib/formating"
 import { useNextDepartures } from "../home/stop-preview-card"
 
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
 const MAX_FAVORITES = 8
-
-const FAVORITE_COLORS = [
-    { name: "Amber", value: "#f59e0b" },
-    { name: "Rose", value: "#f43f5e" },
-    { name: "Sky", value: "#0ea5e9" },
-    { name: "Emerald", value: "#10b981" },
-    { name: "Violet", value: "#8b5cf6" },
-    { name: "Orange", value: "#f97316" },
-    { name: "Cyan", value: "#06b6d4" },
-    { name: "Fuchsia", value: "#d946ef" },
-]
 
 type Favorite = { stop: string; displayName: string; color: string }
 

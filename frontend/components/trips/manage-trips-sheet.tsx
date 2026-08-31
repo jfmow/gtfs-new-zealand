@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { Reorder, useDragControls } from "framer-motion"
 import {
   Sheet,
   SheetContent,
@@ -8,12 +9,25 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet"
 import {
+  Drawer,
+  DrawerContent,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer"
+import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -23,24 +37,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Trash2, Pencil, Check } from "lucide-react"
-
-interface Location {
-  lat: number
-  lon: number
-  label: string
-}
-
-export interface SavedTrip {
-  id: string
-  name: string
-  startLocation: Location
-  endLocation: Location
-  savedAt: string
-  maxWalkKm: string
-  walkSpeed: string
-  maxTransfers: string
-}
+import { GripVertical, MoreVertical, Pencil, Trash2, Check } from "lucide-react"
+import { toast } from "sonner"
+import { useIsMobile } from "@/lib/utils"
+import { SWATCH_COLORS } from "@/lib/colors"
+import type { SavedTrip } from "@/components/journey/use-saved-trips"
 
 interface ManageTripsSheetProps {
   open: boolean
@@ -49,6 +50,7 @@ interface ManageTripsSheetProps {
   onLoadTrip: (trip: SavedTrip) => void
   onDeleteTrip: (id: string) => void
   onUpdateTrip: (trip: SavedTrip) => void
+  onReorderTrips: (trips: SavedTrip[]) => void
 }
 
 function EditTripDialog({
@@ -63,13 +65,15 @@ function EditTripDialog({
   onSave: (updated: SavedTrip) => void
 }) {
   const [name, setName] = useState(trip.name)
+  const [color, setColor] = useState(trip.color)
   const [maxWalkKm, setMaxWalkKm] = useState(trip.maxWalkKm)
   const [walkSpeed, setWalkSpeed] = useState(trip.walkSpeed)
   const [maxTransfers, setMaxTransfers] = useState(trip.maxTransfers)
 
   const handleSave = () => {
-    onSave({ ...trip, name: name.trim() || trip.name, maxWalkKm, walkSpeed, maxTransfers })
+    onSave({ ...trip, name: name.trim() || trip.name, color, maxWalkKm, walkSpeed, maxTransfers })
     onOpenChange(false)
+    toast.success("Trip updated")
   }
 
   return (
@@ -87,6 +91,23 @@ function EditTripDialog({
             className="h-9"
             autoFocus
           />
+
+          <div className="space-y-1">
+            <p className="text-[11px] text-muted-foreground">Colour</p>
+            <div className="flex flex-wrap gap-1.5">
+              {SWATCH_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  aria-label={c.name}
+                  onClick={() => setColor(c.value)}
+                  className={`w-6 h-6 rounded-full transition-transform hover:scale-110 ${color === c.value ? "ring-2 ring-offset-1 ring-offset-background ring-foreground/50" : ""
+                    }`}
+                  style={{ background: c.value }}
+                />
+              ))}
+            </div>
+          </div>
 
           <div className="grid grid-cols-3 gap-2">
             <div className="space-y-1">
@@ -149,90 +170,122 @@ function EditTripDialog({
   )
 }
 
-export function ManageTripsSheet({
-  open,
-  onOpenChange,
+function TripRow({
+  trip,
+  onLoad,
+  onEdit,
+  onDelete,
+  onDragEnd,
+}: {
+  trip: SavedTrip
+  onLoad: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onDragEnd: () => void
+}) {
+  const controls = useDragControls()
+
+  return (
+    <Reorder.Item
+      value={trip}
+      dragListener={false}
+      dragControls={controls}
+      onDragEnd={onDragEnd}
+      as="li"
+      className="flex items-center gap-2 px-4 py-3 bg-background"
+      style={{ borderLeft: `3px solid ${trip.color}` }}
+    >
+      <button
+        onPointerDown={(e) => controls.start(e)}
+        aria-label="Drag to reorder"
+        className="flex items-center justify-center w-6 h-6 shrink-0 rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors cursor-grab active:cursor-grabbing touch-none"
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+
+      <button type="button" className="flex-1 text-left min-w-0" onClick={onLoad}>
+        <p className="text-sm font-medium truncate">{trip.name}</p>
+        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+          {trip.startLocation.label} → {trip.endLocation.label}
+        </p>
+        <p className="text-[11px] text-muted-foreground/60 mt-0.5">
+          {trip.maxWalkKm} km &middot;{" "}
+          {trip.walkSpeed === "3" ? "Slow" : trip.walkSpeed === "4.8" ? "Normal" : "Brisk"} &middot;{" "}
+          {trip.maxTransfers === "0" ? "Direct" : `≤${trip.maxTransfers} transfers`}
+        </p>
+      </button>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            aria-label={`Options for ${trip.name}`}
+            className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-foreground/10 transition-colors shrink-0"
+          >
+            <MoreVertical className="h-3.5 w-3.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onSelect={onEdit}>
+            <Pencil className="h-3.5 w-3.5" />
+            Edit
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem
+            onSelect={onDelete}
+            className="text-destructive focus:text-destructive focus:bg-destructive/10"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </Reorder.Item>
+  )
+}
+
+function ManageTripsBody({
   savedTrips,
   onLoadTrip,
   onDeleteTrip,
   onUpdateTrip,
-}: ManageTripsSheetProps) {
+  onReorderTrips,
+  onClose,
+}: Omit<ManageTripsSheetProps, "open" | "onOpenChange"> & { onClose: () => void }) {
+  const [order, setOrder] = useState<SavedTrip[]>(savedTrips)
   const [editingTrip, setEditingTrip] = useState<SavedTrip | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const orderRef = useRef<SavedTrip[]>(savedTrips)
+
+  useEffect(() => setOrder(savedTrips), [savedTrips])
+  useEffect(() => {
+    orderRef.current = order
+  }, [order])
 
   return (
     <>
-      <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent side="right" className="w-full sm:max-w-sm flex flex-col p-0">
-          <SheetHeader className="px-4 py-3 border-b">
-            <SheetTitle className="text-sm">
-              Saved trips
-              {savedTrips.length > 0 && (
-                <span className="ml-1.5 text-muted-foreground font-normal">
-                  ({savedTrips.length})
-                </span>
-              )}
-            </SheetTitle>
-          </SheetHeader>
-
-          <div className="flex-1 overflow-y-auto">
-            {savedTrips.length === 0 ? (
-              <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                No saved trips yet.
-              </p>
-            ) : (
-              <ul className="divide-y">
-                {savedTrips.map((trip) => (
-                  <li key={trip.id} className="group flex items-center gap-2 px-4 py-3">
-                    {/* Load on click */}
-                    <button
-                      type="button"
-                      className="flex-1 text-left min-w-0"
-                      onClick={() => {
-                        onLoadTrip(trip)
-                        onOpenChange(false)
-                      }}
-                    >
-                      <p className="text-sm font-medium truncate">{trip.name}</p>
-                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                        {trip.startLocation.label} → {trip.endLocation.label}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground/60 mt-0.5">
-                        {trip.maxWalkKm} km &middot;{" "}
-                        {trip.walkSpeed === "3" ? "Slow" : trip.walkSpeed === "4.8" ? "Normal" : "Brisk"}{" "}
-                        &middot;{" "}
-                        {trip.maxTransfers === "0" ? "Direct" : `≤${trip.maxTransfers} transfers`}
-                      </p>
-                    </button>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity shrink-0">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground"
-                        onClick={() => setEditingTrip(trip)}
-                        aria-label="Edit trip"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                        onClick={() => setDeleteConfirmId(trip.id)}
-                        aria-label="Delete trip"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      <div className="flex-1 overflow-y-auto">
+        {savedTrips.length === 0 ? (
+          <p className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No saved trips yet.
+          </p>
+        ) : (
+          <Reorder.Group as="ul" axis="y" values={order} onReorder={setOrder} className="divide-y list-none">
+            {order.map((trip) => (
+              <TripRow
+                key={trip.id}
+                trip={trip}
+                onLoad={() => {
+                  onLoadTrip(trip)
+                  onClose()
+                }}
+                onEdit={() => setEditingTrip(trip)}
+                onDelete={() => setDeleteConfirmId(trip.id)}
+                onDragEnd={() => onReorderTrips(orderRef.current)}
+              />
+            ))}
+          </Reorder.Group>
+        )}
+      </div>
 
       {editingTrip && (
         <EditTripDialog
@@ -265,7 +318,10 @@ export function ManageTripsSheet({
               variant="destructive"
               size="sm"
               onClick={() => {
-                if (deleteConfirmId) onDeleteTrip(deleteConfirmId)
+                if (deleteConfirmId) {
+                  onDeleteTrip(deleteConfirmId)
+                  toast.success("Trip deleted")
+                }
                 setDeleteConfirmId(null)
               }}
             >
@@ -275,5 +331,63 @@ export function ManageTripsSheet({
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+export function ManageTripsSheet({
+  open,
+  onOpenChange,
+  savedTrips,
+  onLoadTrip,
+  onDeleteTrip,
+  onUpdateTrip,
+  onReorderTrips,
+}: ManageTripsSheetProps) {
+  const isMobile = useIsMobile()
+  const title = (
+    <>
+      Saved trips
+      {savedTrips.length > 0 && (
+        <span className="ml-1.5 text-muted-foreground font-normal">({savedTrips.length})</span>
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <Drawer open={open} onOpenChange={onOpenChange}>
+        <DrawerContent className="max-h-[85vh] flex flex-col">
+          <DrawerHeader className="px-4 py-3 border-b text-left">
+            <DrawerTitle className="text-sm">{title}</DrawerTitle>
+          </DrawerHeader>
+          <ManageTripsBody
+            savedTrips={savedTrips}
+            onLoadTrip={onLoadTrip}
+            onDeleteTrip={onDeleteTrip}
+            onUpdateTrip={onUpdateTrip}
+            onReorderTrips={onReorderTrips}
+            onClose={() => onOpenChange(false)}
+          />
+        </DrawerContent>
+      </Drawer>
+    )
+  }
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="w-full sm:max-w-sm flex flex-col p-0">
+        <SheetHeader className="px-4 py-3 border-b">
+          <SheetTitle className="text-sm">{title}</SheetTitle>
+        </SheetHeader>
+        <ManageTripsBody
+          savedTrips={savedTrips}
+          onLoadTrip={onLoadTrip}
+          onDeleteTrip={onDeleteTrip}
+          onUpdateTrip={onUpdateTrip}
+          onReorderTrips={onReorderTrips}
+          onClose={() => onOpenChange(false)}
+        />
+      </SheetContent>
+    </Sheet>
   )
 }

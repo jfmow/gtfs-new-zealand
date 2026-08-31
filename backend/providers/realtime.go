@@ -31,10 +31,20 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// Read and decode query parameters
 		// ==================================================================
 		// All params are URL-escaped by default, so unescape first.
-		tripID, err := url.PathUnescape(c.QueryParam("tripId"))
+		// tripId accepts a single trip ID (legacy) or a comma-separated list of
+		// trip IDs (e.g. all transit legs of a planned journey) - both filter to
+		// exactly the given set of trips, matched by ID membership.
+		tripIDParam, err := url.PathUnescape(c.QueryParam("tripId"))
 		if err != nil {
 			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil,
 				ResponseDetails("tripId", c.QueryParam("tripId"), "error", err.Error()))
+		}
+
+		tripIDs := make(map[string]bool)
+		for _, id := range strings.Split(tripIDParam, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				tripIDs[id] = true
+			}
 		}
 
 		vehicleTypeFilter, err := url.PathUnescape(c.QueryParam("type"))
@@ -127,8 +137,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				continue
 			}
 
-			// If a specific trip is requested, only include that trip
-			if tripID != "" && tripIDCur != tripID {
+			// If specific trips are requested, only include those trips
+			if len(tripIDs) > 0 && !tripIDs[tripIDCur] {
 				continue
 			}
 
@@ -173,10 +183,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			// ------------------------------------------------------------------
-			// Detailed trip information (only when a single trip is requested)
+			// Detailed trip information (only when specific trip(s) are requested)
 			// ------------------------------------------------------------------
-			// This is intentionally skipped for list views for performance.
-			if tripID != "" {
+			// Skipped for the unfiltered/bounds-based list view (could be many
+			// vehicles) for performance. Safe to always populate here since a
+			// trip-ID filter bounds this to at most a handful of vehicles (e.g.
+			// the legs of one planned journey), and the lookups below are cheap
+			// cache/map hits.
+			if len(tripIDs) > 0 {
 				currentTrip, err := gtfsData.GetTripByID(tripIDCur)
 				if err != nil {
 					continue

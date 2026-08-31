@@ -10,12 +10,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-
-interface Location {
-  lat: number
-  lon: number
-  label: string
-}
+import type { Location } from "@/components/journey/types"
 
 interface SaveTripDialogProps {
   open: boolean
