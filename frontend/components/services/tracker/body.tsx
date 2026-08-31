@@ -15,21 +15,15 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { getRegionSlug, urlStore } from "@/lib/url-store"
 import { toast } from "sonner"
+import type { AlertResponseData } from "@/lib/alert-causes"
+import RouteNotifications from "@/components/notifications/route-notifications"
+import { BellIcon } from "lucide-react"
 
 const LeafletMap = lazy(() => import("../../map/map"))
 
 const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>`
 
-interface RouteAlert {
-    route_id?: string
-    start_date: number
-    end_date: number
-    cause: string
-    effect: string
-    title: string
-    description: string
-    severity: string
-}
+type RouteAlert = AlertResponseData
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const { vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap } = useServiceTrackerContext()
@@ -137,7 +131,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
         return (
             <div className="space-y-3">
                 <div>
-                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} />
+                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} routeId={activeRouteId} />
 
                     {vehicle.off_course && (
                         <Card className="border-destructive bg-destructive/5 mb-4">
@@ -340,7 +334,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
         return (
             <div className="space-y-3 relative">
                 <div>
-                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} />
+                    <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} routeId={activeRouteId} />
 
                     <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
@@ -457,9 +451,11 @@ export default ServiceTrackerContent
 const RouteAlertsBanner = memo(function RouteAlertsBanner({
     alerts,
     onDismiss,
+    routeId,
 }: {
     alerts: RouteAlert[]
     onDismiss: (title: string) => void
+    routeId?: string
 }) {
     if (alerts.length === 0) return null
 
@@ -484,8 +480,25 @@ const RouteAlertsBanner = memo(function RouteAlertsBanner({
         </Card>
     )
 
+    const notifyMeRow = routeId ? (
+        <RouteNotifications routeId={routeId}>
+            <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-md border px-2.5 py-1.5 text-xs hover:bg-accent/50 transition-colors"
+            >
+                <span>Notify me about route {routeId}</span>
+                <BellIcon className="h-3 w-3 text-muted-foreground" />
+            </button>
+        </RouteNotifications>
+    ) : null
+
     if (alerts.length === 1) {
-        return <div className="mb-4">{renderAlert(alerts[0])}</div>
+        return (
+            <div className="mb-4 space-y-1.5">
+                {renderAlert(alerts[0])}
+                {notifyMeRow}
+            </div>
+        )
     }
 
     return (
@@ -497,8 +510,9 @@ const RouteAlertsBanner = memo(function RouteAlertsBanner({
                         {alerts.length} alerts on this route
                     </button>
                 </PopoverTrigger>
-                <PopoverContent align="start" className="w-[min(24rem,90vw)] max-h-80 overflow-y-auto space-y-2 p-2">
+                <PopoverContent align="start" className="w-[min(24rem,90vw)] max-h-80 overflow-y-auto overscroll-contain space-y-2 p-2">
                     {alerts.map(renderAlert)}
+                    {notifyMeRow}
                 </PopoverContent>
             </Popover>
         </div>

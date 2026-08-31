@@ -20,6 +20,7 @@ import {
     Share2,
 } from "lucide-react"
 import { useIsMobile } from "@/lib/utils"
+import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
@@ -41,6 +42,11 @@ interface RouteDetailSheetProps {
     autoTrack?: boolean
 }
 
+// How far past its delay-adjusted departure the earliest pending transit leg
+// must be - while still showing no live vehicle - before tracking is allowed to
+// skip ahead to a later leg that does have one.
+const OVERDUE_SKIP_MS = 5 * 60 * 1000
+
 function journeyStopCount(route: JourneyType): number {
     return route.Legs.reduce((sum, leg) => {
         if (leg.Mode !== 'transit' || !leg.FromStop || !leg.ToStop) return sum
@@ -54,6 +60,22 @@ function journeyHeadsign(route: JourneyType): string | null {
     return lastLeg?.ToStop?.stop_headsign || null
 }
 
+/** Last transit leg's realtime delay (seconds, negative if early) - a plan-time snapshot, not itself live, but the best delay signal already on hand without a new fetch. */
+function journeyDelaySeconds(route: JourneyType): number {
+    const transitLegs = route.Legs.filter(l => l.Mode === 'transit')
+    return transitLegs[transitLegs.length - 1]?.delay_seconds ?? 0
+}
+
+/** Ticks every `intervalMs` so callers can derive "time remaining" style displays that count down live. */
+function useNow(intervalMs: number): Date {
+    const [now, setNow] = useState(() => new Date())
+    useEffect(() => {
+        const id = setInterval(() => setNow(new Date()), intervalMs)
+        return () => clearInterval(id)
+    }, [intervalMs])
+    return now
+}
+
 export function RouteDetailSheet({
     open,
     onOpenChange,
@@ -64,9 +86,16 @@ export function RouteDetailSheet({
     onShowAlternates,
     autoTrack,
 }: RouteDetailSheetProps) {
-    const isMobile = useIsMobile()
+    // immediate: true - resolve mobile vs desktop synchronously on the first
+    // client render. This component renders no DOM until `open` (always false at
+    // hydration), so there's no mismatch; and it prevents a one-frame render of
+    // the modal Radix <Dialog> branch that, when swapped out for the <Drawer> as
+    // the mount effect corrects isMobile, would strand body{pointer-events:none}
+    // and kill the whole page.
+    const isMobile = useIsMobile({ immediate: true })
     const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(0.4)
     const [journeyStarted, setJourneyStarted] = useState(false)
+    const now = useNow(20000)
 
     // Captured via ref (not a dependency) so autoTrack flipping back to false
     // right after being consumed doesn't re-run this effect and undo tracking.
@@ -79,16 +108,128 @@ export function RouteDetailSheet({
         setActiveSnapPoint(0.4)
     }, [route?.ID])
 
+    // The drawer runs non-modal (modal={false}, so the map stays interactive
+    // behind it) which means vaul doesn't lock background scroll the way it
+    // would in modal mode. Without this, a touch-drag over the itinerary can
+    // fall through and scroll the results list behind instead of the drawer's
+    // own content.
+    useEffect(() => {
+        if (!isMobile || !open || !route) return
+        document.body.style.overflow = "hidden"
+        // Restore to "" (not the captured previous value) - if this effect ever
+        // re-runs with "hidden" already set, capturing it would strand the lock.
+        return () => {
+            document.body.style.overflow = ""
+        }
+    }, [isMobile, open, route])
+
+    // vaul renders a *modal* Radix Dialog underneath even with modal={false}, so
+    // its dismissable-layer sets `pointer-events: none` on <body>. vaul's own
+    // workaround that re-enables it only fires on internal state changes - never
+    // for our prop-controlled, dismissible={false} drawer - and opening a new
+    // sheet while the previous one's exit animation is still running makes
+    // Radix's shared layer miss its restore entirely, stranding the lock and
+    // killing the whole page (drawer included). On mobile the map behind is
+    // meant to stay interactive anyway, so just keep <body> unlocked the whole
+    // time the sheet is open, re-forcing it past the animation race.
+    useEffect(() => {
+        if (!isMobile || !open) return
+        const unlock = () => { document.body.style.pointerEvents = "" }
+        unlock()
+        const raf = requestAnimationFrame(unlock)
+        const timer = setTimeout(unlock, 400)
+        return () => {
+            cancelAnimationFrame(raf)
+            clearTimeout(timer)
+        }
+    }, [isMobile, open])
+
+    // Belt-and-braces: clear both locks whenever the sheet is closed (covers the
+    // desktop modal Dialog too) and on unmount, in case a branch swap or a
+    // toggle-during-animation left one stranded.
+    useEffect(() => {
+        if (open) return
+        document.body.style.pointerEvents = ""
+        document.body.style.overflow = ""
+    }, [open])
+    useEffect(() => () => {
+        document.body.style.pointerEvents = ""
+        document.body.style.overflow = ""
+    }, [])
+
     const tripIds = useMemo(() => (route ? getTransitTripIds(route) : []), [route])
     const { vehiclesByTripId } = useJourneyVehicles(tripIds, open && journeyStarted)
 
-    // The trip currently in service among this journey's legs - there's normally
-    // at most one at a time, since transit legs run sequentially.
-    const trackedTripId = journeyStarted ? tripIds.find((id) => vehiclesByTripId[id]) : undefined
+    // Which leg the rider is on right now, by delay-adjusted schedule: the first
+    // leg whose adjusted arrival is still in the future. Before departure that's
+    // leg 0; once every leg's arrival has passed, the last leg.
+    const currentLegIndex = useMemo(() => {
+        if (!route) return -1
+        const nowMs = now.getTime()
+        const idx = route.Legs.findIndex(
+            (l) => nowMs < new Date(l.ArrivalTime).getTime() + (l.delay_seconds ?? 0) * 1000
+        )
+        return idx === -1 ? route.Legs.length - 1 : idx
+    }, [route, now])
+    const currentLeg = currentLegIndex >= 0 ? route?.Legs[currentLegIndex] : undefined
+
+    // The transit leg to track: the current leg if it's transit, otherwise the
+    // next transit leg coming up - always in journey order, so a later bus that
+    // happens to have realtime can't be jumped ahead of an earlier one that
+    // doesn't. Exception: if the earliest pending transit leg is well past its
+    // adjusted departure and still shows no live vehicle, allow skipping to a
+    // later leg that does (bad schedule data / a cancelled-but-not-flagged run).
+    const activeTransitLeg = useMemo(() => {
+        if (!route || currentLegIndex < 0) return undefined
+        const upcoming = route.Legs
+            .map((l, i) => ({ l, i }))
+            .filter(({ l, i }) => i >= currentLegIndex && l.Mode === "transit")
+        if (upcoming.length === 0) return undefined
+        const first = upcoming[0].l
+        const firstOverdueMs =
+            now.getTime() - (new Date(first.DepartureTime).getTime() + (first.delay_seconds ?? 0) * 1000)
+        if (!vehiclesByTripId[first.TripID] && firstOverdueMs > OVERDUE_SKIP_MS) {
+            const live = upcoming.find(({ l }) => vehiclesByTripId[l.TripID])
+            if (live) return live.l
+        }
+        return first
+    }, [route, currentLegIndex, vehiclesByTripId, now])
+
+    const trackedTripId =
+        journeyStarted && activeTransitLeg && vehiclesByTripId[activeTransitLeg.TripID]
+            ? activeTransitLeg.TripID
+            : undefined
     const trackedVehicle = trackedTripId ? vehiclesByTripId[trackedTripId] : undefined
     const trackedStops = useTrackedTripStops(trackedTripId ?? null)
     const trackedRouteLine = useRouteLine(trackedTripId ?? "", trackedVehicle?.route.id)
     const followMarkerId = trackedVehicle ? `vehicle-${trackedVehicle.trip_id}` : undefined
+
+    // The leg whose board/alight stops + walk-to-stop indicator the map should
+    // show: the tracked vehicle's leg, or - before any vehicle is live - the
+    // current/next transit leg (so the walking-to-the-first-stop indicator
+    // doesn't depend on a vehicle having been assigned yet).
+    const trackedLeg =
+        (trackedTripId && route?.Legs.find((l) => l.TripID === trackedTripId)) ||
+        (journeyStarted ? activeTransitLeg : undefined)
+    const trackedBoardStop = trackedLeg?.FromStop ?? undefined
+    const trackedAlightStop = trackedLeg?.ToStop ?? undefined
+
+    // If there's a walk leg immediately before the tracked one, the rider may
+    // still be walking there - LiveMap shows that (hidden once their live
+    // location is close enough to the boarding stop). FromStop null on that
+    // walk leg means it's the very first leg, starting from startLocation.
+    const trackedLegIndex = trackedLeg && route ? route.Legs.indexOf(trackedLeg) : -1
+    const precedingWalkLeg = trackedLegIndex > 0 ? route?.Legs[trackedLegIndex - 1] : undefined
+    const walkingToStopFrom = precedingWalkLeg?.Mode === 'walk'
+        ? (precedingWalkLeg.FromStop
+            ? { lat: precedingWalkLeg.FromStop.stop_lat, lon: precedingWalkLeg.FromStop.stop_lon }
+            : startLocation ? { lat: startLocation.lat, lon: startLocation.lon } : undefined)
+        : undefined
+
+    const defaultZoom = useMemo<[LatLng, LatLng]>(() => [
+        [route?.StartLat ?? 0, route?.StartLon ?? 0],
+        [route?.EndLat ?? 0, route?.EndLon ?? 0],
+    ], [route?.StartLat, route?.StartLon, route?.EndLat, route?.EndLon])
 
     if (!route) return null
 
@@ -115,7 +256,7 @@ export function RouteDetailSheet({
         <LiveMap
             mapId="journey-planner-route-map"
             height="100%"
-            defaultZoom={[[route.StartLat, route.StartLon], [route.EndLat, route.EndLon]]}
+            defaultZoom={defaultZoom}
             startLocation={startLocation}
             endLocation={endLocation}
             selectedRoute={route}
@@ -124,6 +265,10 @@ export function RouteDetailSheet({
             trackedVehicle={trackedVehicle}
             trackedStops={trackedStops}
             trackedRouteLine={trackedRouteLine}
+            trackedBoardStop={trackedBoardStop}
+            trackedAlightStop={trackedAlightStop}
+            walkingToStopFrom={walkingToStopFrom}
+            followUser={journeyStarted && !trackedVehicle && currentLeg?.Mode === "walk"}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
@@ -157,7 +302,7 @@ export function RouteDetailSheet({
 
     return (
         <>
-            {open && (
+            {isMobile && open && (
                 <div className="fixed inset-0 z-40">
                     {map}
                 </div>
@@ -166,13 +311,33 @@ export function RouteDetailSheet({
                 open={open}
                 onOpenChange={onOpenChange}
                 modal={false}
+                // Non-modal already means the map behind stays interactive -
+                // vaul's background-scale wrapper is meant for the modal
+                // case and, combined with modal={false}, was fighting the
+                // drag gesture (choppy swipes, and eating pointer events on
+                // the map/buttons behind it even at rest).
+                shouldScaleBackground={false}
+                // Without this, dragging down past the lowest snap point
+                // (0.4 - the "peek" height showing the map) is read by vaul
+                // as a dismiss gesture and closes the whole sheet instead of
+                // just resting at the peek height. There's no swipe-to-
+                // dismiss affordance shown to the user, so closing should
+                // only happen via onShowAlternates/onOpenChange, not a drag.
+                dismissible={false}
                 snapPoints={[0.4, 0.85]}
                 activeSnapPoint={activeSnapPoint}
                 setActiveSnapPoint={setActiveSnapPoint}
             >
-                <DrawerContent overlayClassName="hidden" className="z-50">
+                {/* h-[85vh] (a fixed height, not max-h): vaul computes snap-point
+                    offsets as a fraction of the viewport, so at snap 0.4 it
+                    translates the sheet down by 60vh. With h-auto content shorter
+                    than the viewport that pushes the whole sheet off-screen; a
+                    fixed 85vh sheet leaves a ~25vh "peek" visible at snap 0.4. */}
+                <DrawerContent overlayClassName="hidden" className="z-50 h-[85vh]">
                     <DrawerTitle className="sr-only">Route details</DrawerTitle>
-                    <div className="overflow-y-auto px-4 pb-4 space-y-4">
+                    {/* flex-1 + min-h-0 (not just overflow-y-auto) - gives the
+                        scroll container a bounded height to overflow against. */}
+                    <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-4">
                         {summary}
                         <RouteItinerary route={route} />
                     </div>
@@ -197,6 +362,15 @@ function JourneySummary({
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
 
+    // Delay-adjusted arrival, and a live "time remaining" countdown against it -
+    // ticks down as real time passes, and runs longer than the planned duration
+    // whenever the last transit leg is running late.
+    const now = useNow(30000)
+    const delaySeconds = journeyDelaySeconds(route)
+    const adjustedArrival = new Date(new Date(route.ArrivalTime).getTime() + delaySeconds * 1000)
+    const remainingMs = adjustedArrival.getTime() - now.getTime()
+    const remainingLabel = remainingMs <= 30000 ? "Arrived" : formatDuration(remainingMs * 1_000_000)
+
     return (
         <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">
@@ -220,8 +394,11 @@ function JourneySummary({
                     </div>
                 </div>
                 <div className="text-right shrink-0">
-                    <p className="text-lg font-bold leading-none">{formatDuration(route.TotalDuration)}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{formatTime(route.DepartureTime)} - {formatTime(route.ArrivalTime)}</p>
+                    <p className="text-lg font-bold leading-none">{remainingLabel}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                        {formatTime(route.DepartureTime)} - {formatTime(adjustedArrival)}
+                        {delaySeconds > 30 && <span className="text-amber-500"> (delayed)</span>}
+                    </p>
                 </div>
             </div>
 

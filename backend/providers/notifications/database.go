@@ -95,6 +95,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             clientId INTEGER NOT NULL,
             parent_stop TEXT NOT NULL,
             routes TEXT,
+            causes TEXT,
+            min_severity TEXT NOT NULL DEFAULT '',
+            notify_cancellations INTEGER NOT NULL DEFAULT 1,
             UNIQUE(clientId, parent_stop),
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
@@ -108,6 +111,16 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             UNIQUE(clientId, type),
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
+		`CREATE TABLE IF NOT EXISTS route_subscriptions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER NOT NULL,
+            route_id TEXT NOT NULL,
+            causes TEXT,
+            min_severity TEXT NOT NULL DEFAULT '',
+            notify_cancellations INTEGER NOT NULL DEFAULT 1,
+            UNIQUE(clientId, route_id),
+            FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
+        );`,
 	}
 
 	for _, stmt := range stmts {
@@ -116,7 +129,58 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		}
 	}
 
+	// stops predates causes/min_severity/notify_cancellations - CREATE TABLE IF
+	// NOT EXISTS above is a no-op for anyone with an existing DB file, so those
+	// three columns are added here instead. ALTER TABLE ADD COLUMN has no
+	// "IF NOT EXISTS" form in SQLite, so each is guarded by checking
+	// PRAGMA table_info first rather than by ignoring a "duplicate column" error.
+	existingColumns, err := d.columnNames(ctx, "stops")
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	migrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"causes", `ALTER TABLE stops ADD COLUMN causes TEXT;`},
+		{"min_severity", `ALTER TABLE stops ADD COLUMN min_severity TEXT NOT NULL DEFAULT '';`},
+		{"notify_cancellations", `ALTER TABLE stops ADD COLUMN notify_cancellations INTEGER NOT NULL DEFAULT 1;`},
+	}
+	for _, m := range migrations {
+		if existingColumns[m.column] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
+			return fmt.Errorf("ensure schema: migrate stops.%s: %w", m.column, err)
+		}
+	}
+
 	return nil
+}
+
+func (d *Database) columnNames(ctx context.Context, table string) (map[string]bool, error) {
+	rows, err := d.db.QueryContext(ctx, fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return nil, fmt.Errorf("read schema for %s: %w", table, err)
+	}
+	defer rows.Close()
+
+	columns := make(map[string]bool)
+	for rows.Next() {
+		var (
+			cid        int
+			name       string
+			ctype      string
+			notNull    int
+			defaultVal sql.NullString
+			pk         int
+		)
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &defaultVal, &pk); err != nil {
+			return nil, fmt.Errorf("read schema for %s: %w", table, err)
+		}
+		columns[name] = true
+	}
+	return columns, rows.Err()
 }
 
 type Notification struct {
@@ -141,6 +205,11 @@ type Reminder struct {
 type RecentNotificationEntry struct {
 	ID     string `json:"id"`
 	SeenAt int64  `json:"seen_at,omitempty"`
+	// Title/Body are the actual push content, kept alongside the dedup id so
+	// the in-app notification history has something readable to show -
+	// omitted for legacy entries written before these fields existed.
+	Title string `json:"title,omitempty"`
+	Body  string `json:"body,omitempty"`
 }
 
 func decodeRecentNotifications(raw sql.NullString) ([]RecentNotificationEntry, error) {

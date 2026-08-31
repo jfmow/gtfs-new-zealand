@@ -25,6 +25,39 @@ const (
 	maxRecentNotificationEntries = 64
 )
 
+// See providers.firstTranslation - same guard, duplicated because this is a
+// separate package (providers imports notifications, not the reverse).
+func firstTranslation(ts *proto.TranslatedString) string {
+	translations := ts.GetTranslation()
+	if len(translations) == 0 {
+		return ""
+	}
+	return translations[0].GetText()
+}
+
+// severityRank returns the ordinal rank of a GTFS-RT severity string (as
+// produced by Alert_SeverityLevel.String()), or 0 if unknown/empty - lower
+// than every real severity, so an empty/invalid minSeverity filter never
+// excludes anything.
+func severityRank(severity string) int32 {
+	return proto.Alert_SeverityLevel_value[severity]
+}
+
+// clientWantsAlert checks a client's cause/severity filters against an
+// alert - shared by both the stop-based and route-based delivery paths in
+// NotifyAlerts so the two can't drift. Trip cancellations use
+// client.NotifyCancellations directly (checked at the call site) since
+// they have no cause/severity of their own.
+func clientWantsAlert(client NotificationClient, alert *proto.Alert) bool {
+	if len(client.Causes) > 0 && !slices.Contains(client.Causes, alert.GetCause().String()) {
+		return false
+	}
+	if client.MinSeverity != "" && severityRank(alert.GetSeverityLevel().String()) < severityRank(client.MinSeverity) {
+		return false
+	}
+	return true
+}
+
 func (v *Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB gtfs.Database, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
 	var (
 		cachedParentStops = parentStopsCache()
@@ -96,6 +129,55 @@ func (v *Database) NotifyTripUpdates(tripUpdates realtime.TripUpdatesMap, gtfsDB
 
 				}
 			}
+
+			// Route-only subscribers aren't tied to any one stop, so they're
+			// notified once per trip here rather than once per stop above -
+			// same dedup (updateUID) means a client who also matched a stop
+			// above (if they happen to have both kinds of subscription)
+			// won't be double-notified.
+			if len(routesArray) > 0 && len(stopsForTrip.Stops) > 0 {
+				originStop := stopsForTrip.Stops[0]
+				service, err := gtfsDB.GetServiceByTripAndStop(tripId, originStop.StopId, currentTime)
+				if err == nil {
+					if parsedTime, err := time.Parse("15:04:05", service.ArrivalTime); err == nil {
+						serviceTime := time.Date(now.Year(), now.Month(), now.Day(),
+							parsedTime.Hour(), parsedTime.Minute(), parsedTime.Second(), 0, v.timeZone)
+						if !serviceTime.Before(now) {
+							formattedTime := parsedTime.Format("3:04pm")
+							body := fmt.Sprintf("The %s to %s has been canceled. (%s)",
+								formattedTime, service.StopHeadsign, service.TripData.RouteID)
+							title := fmt.Sprintf("%s service cancelled", service.TripData.RouteID)
+							data := map[string]string{
+								"url": fmt.Sprintf("/vehicles?tripId=%s", tripId),
+							}
+
+							for _, routeId := range routesArray {
+								offset := 0
+								limit := 500
+								for {
+									clients, err := v.GetRouteSubscriptionClients(routeId, updateUID, limit, offset)
+									if err != nil || len(clients) == 0 {
+										break
+									}
+									offset += limit
+
+									var enabledClients []NotificationClient
+									for _, c := range clients {
+										if c.NotifyCancellations {
+											enabledClients = append(enabledClients, c)
+										}
+									}
+									if len(enabledClients) == 0 {
+										continue
+									}
+
+									v.SendNotificationsInBatches(enabledClients, body, title, data, updateUID, "normal")
+								}
+							}
+						}
+					}
+				}
+			}
 		}
 	}
 }
@@ -110,6 +192,8 @@ func (v *Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, 
 			alertDay := startTime.In(v.timeZone).YearDay()
 			nowDay := time.Now().In(v.timeZone).YearDay()
 			if alertDay == nowDay || alertDay <= nowDay+3 {
+				body := fmt.Sprintf("%s\n%s", firstTranslation(alert.GetHeaderText()), firstTranslation(alert.GetDescriptionText()))
+
 				stopsToInform := getStopsForAlert(alert, cachedStops, gtfsDB)
 				for _, ae := range stopsToInform {
 					offset := 0
@@ -123,7 +207,7 @@ func (v *Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, 
 
 						var enabledClients []NotificationClient
 						for _, c := range clients {
-							if len(c.Routes) == 0 || slices.Contains(c.Routes, ae.RouteId) {
+							if (len(c.Routes) == 0 || slices.Contains(c.Routes, ae.RouteId)) && clientWantsAlert(c, alert) {
 								enabledClients = append(enabledClients, c)
 							}
 						}
@@ -138,19 +222,68 @@ func (v *Database) NotifyAlerts(alerts realtime.AlertMap, gtfsDB gtfs.Database, 
 							"url": fmt.Sprintf("/alerts?s=%s", ae.Stop.StopName+" "+ae.Stop.StopCode),
 						}
 						title := ae.Stop.StopName + " " + ae.Stop.StopCode
-						body := fmt.Sprintf("%s\n%s",
-							alert.GetHeaderText().GetTranslation()[0].GetText(),
-							alert.GetDescriptionText().GetTranslation()[0].GetText(),
-						)
 
 						// Send notifications in batches only to enabled clients
 						v.SendNotificationsInBatches(enabledClients, body, title, data, alertId, "normal")
 					}
 
 				}
+
+				// Route-only subscribers - notified directly off the alert's
+				// own InformedEntity route ids rather than fanned out through
+				// every stop the route serves (which is what stopsToInform
+				// above already does for stop subscribers). Same hasSeenId
+				// (alertId) dedup means a client who also matches a stop
+				// above won't be double-notified.
+				for _, routeId := range routeIdsForAlert(alert) {
+					offset := 0
+					limit := 500
+					for {
+						clients, err := v.GetRouteSubscriptionClients(routeId, alertId, limit, offset)
+						if err != nil || len(clients) == 0 {
+							break
+						}
+						offset += limit
+
+						var enabledClients []NotificationClient
+						for _, c := range clients {
+							if clientWantsAlert(c, alert) {
+								enabledClients = append(enabledClients, c)
+							}
+						}
+						if len(enabledClients) == 0 {
+							continue
+						}
+
+						data := map[string]string{
+							"url": fmt.Sprintf("/alerts/route/%s", routeId),
+						}
+
+						v.SendNotificationsInBatches(enabledClients, body, routeId, data, alertId, "normal")
+					}
+				}
 			}
 		}
 	}
+}
+
+// routeIdsForAlert returns the unique route ids an alert's InformedEntity
+// directly names (not fanned out to stops - see getStopsForAlert for that).
+func routeIdsForAlert(alert *proto.Alert) []string {
+	seen := make(map[string]struct{})
+	var routeIds []string
+	for _, entity := range alert.InformedEntity {
+		routeId := entity.GetRouteId()
+		if routeId == "" {
+			continue
+		}
+		if _, exists := seen[routeId]; exists {
+			continue
+		}
+		seen[routeId] = struct{}{}
+		routeIds = append(routeIds, routeId)
+	}
+	return routeIds
 }
 
 /*
@@ -205,8 +338,12 @@ Subscribe a client to stops
 Routes must contain all routes they want, it will fully replace what is currently set.
 
 If not routes are set, the client will be notified for every route.
+
+filters controls which alert causes/severities are pushed, and whether trip
+cancellations are included - the zero value (SubscriptionFilters{}) means
+"unfiltered", matching the behavior every existing subscription already has.
 */
-func (client NotificationClient) SubscribeToStop(parentStopId string, routes []string) error {
+func (client NotificationClient) SubscribeToStop(parentStopId string, routes []string, filters SubscriptionFilters) error {
 	if parentStopId == "" {
 		return errors.New("missing parent stop id")
 	}
@@ -214,19 +351,81 @@ func (client NotificationClient) SubscribeToStop(parentStopId string, routes []s
 	if err != nil {
 		return errors.New("failed to marshal updated notifications")
 	}
+	marshalledCauses, err := encodeRoutes(filters.Causes)
+	if err != nil {
+		return errors.New("failed to marshal updated notifications")
+	}
 
 	_, execErr := client.db.execContext(
-		`INSERT INTO stops (clientId, parent_stop, routes) VALUES (?, ?, ?) 
-                ON CONFLICT(clientId, parent_stop) DO UPDATE SET routes = excluded.routes;`,
+		`INSERT INTO stops (clientId, parent_stop, routes, causes, min_severity, notify_cancellations) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(clientId, parent_stop) DO UPDATE SET routes = excluded.routes, causes = excluded.causes, min_severity = excluded.min_severity, notify_cancellations = excluded.notify_cancellations;`,
 		client.Id,
 		parentStopId,
 		marshalledRoutes,
+		marshalledCauses,
+		filters.MinSeverity,
+		boolToInt(filters.NotifyCancellations),
 	)
 	if execErr != nil {
 		return execErr
 	}
 
 	return nil
+}
+
+/*
+Subscribe a client to a route directly, independent of any stop - they'll be
+notified about this route's alerts and (if filters.NotifyCancellations)
+cancellations no matter which stop is affected.
+*/
+func (client NotificationClient) SubscribeToRoute(routeId string, filters SubscriptionFilters) error {
+	if routeId == "" {
+		return errors.New("missing route id")
+	}
+	marshalledCauses, err := encodeRoutes(filters.Causes)
+	if err != nil {
+		return errors.New("failed to marshal updated notifications")
+	}
+
+	_, execErr := client.db.execContext(
+		`INSERT INTO route_subscriptions (clientId, route_id, causes, min_severity, notify_cancellations) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(clientId, route_id) DO UPDATE SET causes = excluded.causes, min_severity = excluded.min_severity, notify_cancellations = excluded.notify_cancellations;`,
+		client.Id,
+		routeId,
+		marshalledCauses,
+		filters.MinSeverity,
+		boolToInt(filters.NotifyCancellations),
+	)
+	if execErr != nil {
+		return execErr
+	}
+
+	return nil
+}
+
+/*
+Delete a route subscription
+
+routeId can be "" (to delete all route subscriptions for this client)
+*/
+func (client NotificationClient) DeleteRouteSubscription(routeId string) error {
+	if routeId == "" {
+		if _, err := client.db.execContext(`DELETE FROM route_subscriptions WHERE clientId = ?`, client.Id); err != nil {
+			return errors.New("failed to delete route subscriptions")
+		}
+	} else {
+		if _, err := client.db.execContext(`DELETE FROM route_subscriptions WHERE clientId = ? AND route_id = ?`, client.Id, routeId); err != nil {
+			return errors.New("failed to delete route subscription")
+		}
+	}
+	return nil
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
 }
 
 /*
@@ -272,7 +471,10 @@ SELECT
                         n.recent_notifications,
                         n.created,
                         n.expiry_warning_sent,
-                        s.routes
+                        s.routes,
+                        s.causes,
+                        s.min_severity,
+                        s.notify_cancellations
                 FROM
                         notifications n
                 JOIN
@@ -301,6 +503,9 @@ SELECT
 		var notification Notification
 		var recent sql.NullString
 		var routesStr sql.NullString
+		var causesStr sql.NullString
+		var minSeverity string
+		var notifyCancellations int
 
 		if err := rows.Scan(
 			&notification.Id,
@@ -311,6 +516,9 @@ SELECT
 			&notification.Created,
 			&notification.ExpiryWarningSent,
 			&routesStr,
+			&causesStr,
+			&minSeverity,
+			&notifyCancellations,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan notification client: %w", err)
 		}
@@ -323,6 +531,10 @@ SELECT
 		routes, err := decodeRoutes(routesStr)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse routes JSON: %w", err)
+		}
+		causes, err := decodeRoutes(causesStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse causes JSON: %w", err)
 		}
 
 		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(now) {
@@ -348,6 +560,9 @@ SELECT
 			Created:             notification.Created,
 			ExpiryWarningSent:   notification.ExpiryWarningSent,
 			Routes:              routes,
+			Causes:              causes,
+			MinSeverity:         minSeverity,
+			NotifyCancellations: notifyCancellations != 0,
 			db:                  v,
 		}
 
@@ -386,7 +601,7 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 	}
 
 	query := `
-		SELECT 
+		SELECT
 			n.id AS notification_id,
 			n.endpoint,
 			n.p256dh,
@@ -394,14 +609,15 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 			n.recent_notifications,
 			n.created,
 			n.expiry_warning_sent,
-			s.routes
-		FROM 
+			s.routes,
+			s.notify_cancellations
+		FROM
 			notifications n
-		JOIN 
+		JOIN
 			stops s
-		ON 
+		ON
 			n.id = s.clientId
-		WHERE 
+		WHERE
 			s.parent_stop = ?
 			AND (
 				s.routes IS NULL
@@ -430,6 +646,7 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 		var notification Notification
 		var recent sql.NullString
 		var routesStr sql.NullString
+		var notifyCancellations int
 
 		if err := rows.Scan(
 			&notification.Id,
@@ -440,6 +657,7 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 			&notification.Created,
 			&notification.ExpiryWarningSent,
 			&routesStr,
+			&notifyCancellations,
 		); err != nil {
 			return nil, fmt.Errorf("failed to scan notification client: %w", err)
 		}
@@ -465,6 +683,9 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 		if excludeClient {
 			continue
 		}
+		if notifyCancellations == 0 {
+			continue
+		}
 
 		client := NotificationClient{
 			Id:                  notification.Id,
@@ -473,6 +694,7 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 			Created:             notification.Created,
 			ExpiryWarningSent:   notification.ExpiryWarningSent,
 			Routes:              routes,
+			NotifyCancellations: true,
 			db:                  v,
 		}
 
@@ -481,6 +703,124 @@ func (v *Database) GetNotificationClientsByStopAndRoute(parentStopId string, rou
 
 	if err = rows.Err(); err != nil {
 		return nil, fmt.Errorf("error iterating over notification clients: %w", err)
+	}
+
+	return clients, nil
+}
+
+/*
+Get clients subscribed directly to a route (no stop involved).
+
+hasSeenId is a unique id given to check if that notification has already been served -
+same TTL'd dedup mechanism GetNotificationClientsByStop uses, so a client matched by
+both a stop subscription and a route subscription for the same alert/update is only
+ever notified once (whichever path runs first marks it seen).
+
+# DO NOT USE A CHECK OF LESS THAN LIMIT TO SEE IF THERES NONE LEFT. SOME MAY BE REMOVED AFTER BECAUSE THEY ARE EXPIRED
+*/
+func (v *Database) GetRouteSubscriptionClients(routeId string, hasSeenId string, limit int, offset int) ([]NotificationClient, error) {
+	now := time.Now().In(v.timeZone)
+	query := `
+SELECT
+                        n.id AS notification_id,
+                        n.endpoint,
+                        n.p256dh,
+                        n.auth,
+                        n.recent_notifications,
+                        n.created,
+                        n.expiry_warning_sent,
+                        r.causes,
+                        r.min_severity,
+                        r.notify_cancellations
+                FROM
+                        notifications n
+                JOIN
+                        route_subscriptions r
+                ON
+                        n.id = r.clientId
+                WHERE
+                        r.route_id = ?
+                LIMIT ?
+                OFFSET ?
+        `
+
+	rows, cancel, err := v.queryContext(query, routeId, limit, offset)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, errors.New("no clients found")
+		}
+		return nil, fmt.Errorf("failed to query route subscription clients: %w", err)
+	}
+	defer cancel()
+	defer rows.Close()
+
+	var clients []NotificationClient
+
+	for rows.Next() {
+		var notification Notification
+		var recent sql.NullString
+		var causesStr sql.NullString
+		var minSeverity string
+		var notifyCancellations int
+
+		if err := rows.Scan(
+			&notification.Id,
+			&notification.Endpoint,
+			&notification.P256dh,
+			&notification.Auth,
+			&recent,
+			&notification.Created,
+			&notification.ExpiryWarningSent,
+			&causesStr,
+			&minSeverity,
+			&notifyCancellations,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan route subscription client: %w", err)
+		}
+
+		if notification.RecentNotifications, err = decodeRecentNotifications(recent); err != nil {
+			return nil, fmt.Errorf("failed to parse recent notifications: %w", err)
+		}
+		notification.RecentNotifications = pruneRecentNotificationEntries(notification.RecentNotifications, now)
+
+		causes, err := decodeRoutes(causesStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse causes JSON: %w", err)
+		}
+
+		if time.Unix(int64(notification.Created), 0).Add(30 * 24 * time.Hour).Before(now) {
+			client := NotificationClient{Id: notification.Id, db: v}
+			client.DeleteNotificationClient("")
+			continue
+		}
+
+		if hasSeenId != "" && hasSeenNotification(notification.RecentNotifications, hasSeenId, now) {
+			continue
+		}
+
+		client := NotificationClient{
+			Id: notification.Id,
+			Notification: webpush.Subscription{
+				Endpoint: notification.Endpoint,
+				Keys: webpush.Keys{
+					Auth:   notification.Auth,
+					P256dh: notification.P256dh,
+				},
+			},
+			RecentNotifications: notification.RecentNotifications,
+			Created:             notification.Created,
+			ExpiryWarningSent:   notification.ExpiryWarningSent,
+			Causes:              causes,
+			MinSeverity:         minSeverity,
+			NotifyCancellations: notifyCancellations != 0,
+			db:                  v,
+		}
+
+		clients = append(clients, client)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating over route subscription clients: %w", err)
 	}
 
 	return clients, nil
@@ -603,7 +943,7 @@ func (v Database) SendNotificationsInBatches(clients []NotificationClient, body,
 				if err != nil {
 					log.Printf("Failed to send notification to %s: %v", client.Notification.Endpoint, err)
 				} else {
-					client.AppendToRecentNotifications(alertId)
+					client.AppendToRecentNotifications(alertId, title, body)
 				}
 			}
 		}()
@@ -664,7 +1004,7 @@ func (client NotificationClient) SendNotification(body, title string, data map[s
 /*
 Update the trip_id's we've already seen
 */
-func (client *NotificationClient) AppendToRecentNotifications(newNotification string) error {
+func (client *NotificationClient) AppendToRecentNotifications(newNotification, title, body string) error {
 	if newNotification == "" {
 		return nil
 	}
@@ -692,7 +1032,7 @@ WHERE id = ?
 	}
 	now := time.Now().In(client.db.timeZone)
 	notifications = pruneRecentNotificationEntries(notifications, now)
-	notifications = append(notifications, RecentNotificationEntry{ID: newNotification, SeenAt: now.Unix()})
+	notifications = append(notifications, RecentNotificationEntry{ID: newNotification, SeenAt: now.Unix(), Title: title, Body: body})
 	if len(notifications) > maxRecentNotificationEntries {
 		notifications = notifications[len(notifications)-maxRecentNotificationEntries:]
 	}
@@ -756,7 +1096,7 @@ func pruneRecentNotificationEntries(entries []RecentNotificationEntry, now time.
 		if _, exists := seen[entry.ID]; exists {
 			continue
 		}
-		pruned = append(pruned, RecentNotificationEntry{ID: entry.ID, SeenAt: seenAt})
+		pruned = append(pruned, RecentNotificationEntry{ID: entry.ID, SeenAt: seenAt, Title: entry.Title, Body: entry.Body})
 		seen[entry.ID] = struct{}{}
 	}
 	if len(pruned) > maxRecentNotificationEntries {
@@ -988,6 +1328,118 @@ func (v *Database) FindNotificationClient(endpoint, p256dh, auth string, parentS
 	return client, nil
 }
 
+type StopSubscription struct {
+	ParentStopId        string   `json:"parent_stop_id"`
+	Routes              []string `json:"routes"`
+	Causes              []string `json:"causes"`
+	MinSeverity         string   `json:"min_severity"`
+	NotifyCancellations bool     `json:"notify_cancellations"`
+}
+
+type RouteSubscription struct {
+	RouteId             string   `json:"route_id"`
+	Causes              []string `json:"causes"`
+	MinSeverity         string   `json:"min_severity"`
+	NotifyCancellations bool     `json:"notify_cancellations"`
+}
+
+type MySubscriptions struct {
+	Stops               []StopSubscription        `json:"stops"`
+	Routes              []RouteSubscription       `json:"routes"`
+	RecentNotifications []RecentNotificationEntry `json:"recent_notifications"`
+}
+
+/*
+List every stop + route subscription for a client, plus their recent
+notification history - powers the "manage my notifications" UI and the
+in-app badge/history, neither of which existed before (find-client only
+ever checked one stop at a time).
+*/
+func (client NotificationClient) GetMySubscriptions() (MySubscriptions, error) {
+	result := MySubscriptions{RecentNotifications: client.RecentNotifications}
+
+	stopRows, cancel, err := client.db.queryContext(
+		`SELECT parent_stop, routes, causes, min_severity, notify_cancellations FROM stops WHERE clientId = ?`,
+		client.Id,
+	)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return result, fmt.Errorf("failed to query stop subscriptions: %w", err)
+		}
+	} else {
+		defer cancel()
+		defer stopRows.Close()
+		for stopRows.Next() {
+			var (
+				parentStop           string
+				routesStr, causesStr sql.NullString
+				minSeverity          string
+				notifyCancellations  int
+			)
+			if err := stopRows.Scan(&parentStop, &routesStr, &causesStr, &minSeverity, &notifyCancellations); err != nil {
+				return result, fmt.Errorf("failed to scan stop subscription: %w", err)
+			}
+			routes, err := decodeRoutes(routesStr)
+			if err != nil {
+				return result, fmt.Errorf("failed to parse routes JSON: %w", err)
+			}
+			causes, err := decodeRoutes(causesStr)
+			if err != nil {
+				return result, fmt.Errorf("failed to parse causes JSON: %w", err)
+			}
+			result.Stops = append(result.Stops, StopSubscription{
+				ParentStopId:        parentStop,
+				Routes:              routes,
+				Causes:              causes,
+				MinSeverity:         minSeverity,
+				NotifyCancellations: notifyCancellations != 0,
+			})
+		}
+		if err := stopRows.Err(); err != nil {
+			return result, fmt.Errorf("error iterating stop subscriptions: %w", err)
+		}
+	}
+
+	routeRows, cancel, err := client.db.queryContext(
+		`SELECT route_id, causes, min_severity, notify_cancellations FROM route_subscriptions WHERE clientId = ?`,
+		client.Id,
+	)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return result, fmt.Errorf("failed to query route subscriptions: %w", err)
+		}
+		return result, nil
+	}
+	defer cancel()
+	defer routeRows.Close()
+	for routeRows.Next() {
+		var (
+			routeId             string
+			causesStr           sql.NullString
+			minSeverity         string
+			notifyCancellations int
+		)
+		if err := routeRows.Scan(&routeId, &causesStr, &minSeverity, &notifyCancellations); err != nil {
+			return result, fmt.Errorf("failed to scan route subscription: %w", err)
+		}
+		causes, err := decodeRoutes(causesStr)
+		if err != nil {
+			return result, fmt.Errorf("failed to parse causes JSON: %w", err)
+		}
+		result.Routes = append(result.Routes, RouteSubscription{
+			RouteId:             routeId,
+			Causes:              causes,
+			MinSeverity:         minSeverity,
+			NotifyCancellations: notifyCancellations != 0,
+		})
+	}
+	if err := routeRows.Err(); err != nil {
+		return result, fmt.Errorf("error iterating route subscriptions: %w", err)
+	}
+
+	return result, nil
+}
+
 /*
 Find a client by their id (only found in the db)
 */
@@ -1104,7 +1556,19 @@ type NotificationClient struct {
 	Created             int
 	ExpiryWarningSent   int
 	db                  *Database
-	Routes              []string // Routes this client is subscribed to
+	Routes              []string // Routes this client is subscribed to (stop subscriptions only)
+	Causes              []string // Empty = every cause
+	MinSeverity         string   // Empty = no threshold
+	NotifyCancellations bool
+}
+
+// SubscriptionFilters are the alert-type options shared by both stop and
+// route subscriptions - kept as one struct so SubscribeToStop and
+// SubscribeToRoute can't drift apart on what they accept.
+type SubscriptionFilters struct {
+	Causes              []string
+	MinSeverity         string
+	NotifyCancellations bool
 }
 
 type AlertEntities struct {

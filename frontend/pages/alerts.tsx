@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
-import { BellDot, Clock, AlertTriangle, AlertCircle, Wrench, Users, CalendarDays, CloudRain, Hammer, Construction, ShieldAlert, HeartPulse, ChevronDown, ChevronUp } from "lucide-react"
+import { BellDot, Clock, ChevronDown, ChevronUp } from "lucide-react"
+import { causeSeverityMap, type AlertResponseData } from "@/lib/alert-causes"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
@@ -210,36 +211,7 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
     )
 }
 
-export interface AlertType {
-    start_date: number
-    end_date: number
-    cause: "UNKNOWN_CAUSE" | "OTHER_CAUSE" | "TECHNICAL_PROBLEM" | "STRIKE" | "DEMONSTRATION" | "ACCIDENT" | "HOLIDAY" | "WEATHER" | "MAINTENANCE" | "CONSTRUCTION" | "POLICE_ACTIVITY" | "MEDICAL_EMERGENCY"
-    effect: string
-    title: string
-    description: string
-}
-
-const causeSeverityMap: Record<
-    AlertType["cause"],
-    {
-        variant: "destructive" | "default" | "secondary"
-        label: string
-        icon: React.ElementType
-    }
-> = {
-    UNKNOWN_CAUSE: { variant: "secondary", label: "Unknown cause", icon: AlertCircle },
-    OTHER_CAUSE: { variant: "secondary", label: "Other", icon: AlertCircle },
-    TECHNICAL_PROBLEM: { variant: "default", label: "Technical issue", icon: Wrench },
-    STRIKE: { variant: "destructive", label: "Strike", icon: Users },
-    DEMONSTRATION: { variant: "destructive", label: "Demonstration", icon: Users },
-    ACCIDENT: { variant: "destructive", label: "Accident", icon: AlertTriangle },
-    HOLIDAY: { variant: "secondary", label: "Holiday schedule", icon: CalendarDays },
-    WEATHER: { variant: "default", label: "Weather", icon: CloudRain },
-    MAINTENANCE: { variant: "secondary", label: "Maintenance", icon: Hammer },
-    CONSTRUCTION: { variant: "default", label: "Construction", icon: Construction },
-    POLICE_ACTIVITY: { variant: "destructive", label: "Police activity", icon: ShieldAlert },
-    MEDICAL_EMERGENCY: { variant: "destructive", label: "Medical emergency", icon: HeartPulse },
-}
+export type AlertType = AlertResponseData
 
 export function DisplayTodaysAlerts({ stopName, forceDisplay }: { stopName: string, forceDisplay?: boolean }) {
     const [alerts, setAlerts] = useState<AlertType[]>([])

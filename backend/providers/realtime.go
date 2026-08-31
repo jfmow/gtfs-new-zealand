@@ -123,6 +123,15 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			pos := vehicle.GetPosition()
 			lat, lng := float64(pos.GetLatitude()), float64(pos.GetLongitude())
 
+			// A vehicle entity with no Position field set still returns a
+			// (non-nil) zero-value struct from GetPosition() - lat/lng both
+			// 0, "Null Island" in the Gulf of Guinea. Without this check that
+			// sails through as a "valid" position and the frontend animates
+			// the marker flying there before snapping back next poll.
+			if lat == 0 && lng == 0 {
+				continue
+			}
+
 			// Skip vehicles outside the requested map bounds
 			if hasBounds && !pointInBounds(lat, lng, boundA, boundB) {
 				continue
@@ -348,8 +357,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					EndDate:     int(biggestEnd),
 					Cause:       alert.GetCause().String(),
 					Effect:      alert.GetEffect().String(),
-					Title:       alert.GetHeaderText().GetTranslation()[0].GetText(),
-					Description: alert.GetDescriptionText().GetTranslation()[0].GetText(),
+					Title:       firstTranslation(alert.GetHeaderText()),
+					Description: firstTranslation(alert.GetDescriptionText()),
 					Severity:    alert.GetSeverityLevel().String(),
 				}
 
@@ -420,8 +429,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				EndDate:     int(biggestEnd),
 				Cause:       alert.GetCause().String(),
 				Effect:      alert.GetEffect().String(),
-				Title:       alert.GetHeaderText().GetTranslation()[0].GetText(),
-				Description: alert.GetDescriptionText().GetTranslation()[0].GetText(),
+				Title:       firstTranslation(alert.GetHeaderText()),
+				Description: firstTranslation(alert.GetDescriptionText()),
 				Severity:    alert.GetSeverityLevel().String(),
 			})
 		}
@@ -941,4 +950,16 @@ type AlertResponseData struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	Severity    string `json:"severity"`
+}
+
+// GTFS-RT alerts aren't required to carry a translation for every field -
+// GetTranslation()[0] panics on an empty slice, so every read of a
+// TranslatedString in this file goes through this instead. providers/notifications
+// has its own copy (different package, no import path between the two).
+func firstTranslation(ts *proto.TranslatedString) string {
+	translations := ts.GetTranslation()
+	if len(translations) == 0 {
+		return ""
+	}
+	return translations[0].GetText()
 }

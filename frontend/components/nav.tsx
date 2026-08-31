@@ -8,6 +8,7 @@ import Head from 'next/head'
 import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FavoritesChips } from './stops/favourites'
+import { NotificationsBell } from './notifications/bell'
 
 const NAV_ROUTES = [
     {
@@ -98,13 +99,15 @@ export default function NavBar() {
                                     >
                                         <item.icon className="w-4 h-4 shrink-0" />
                                         {item.short}
-                                        {isActive(item.href) && (
+                        {isActive(item.href) && (
                                             <span className="absolute inset-x-3 -bottom-px h-0.5 bg-primary rounded-full" />
                                         )}
                                     </Link>
                                 </li>
                             ))}
                         </ul>
+
+                        <NotificationsBell />
                     </nav>
                 </div>
             )}
@@ -118,13 +121,16 @@ export default function NavBar() {
                                 {/* eslint-disable-next-line @next/next/no-img-element */}
                                 <img src={logo} alt="Logo" className="w-7 h-7" />
                             </Link>
-                            <button
-                                onClick={() => setMenuOpen(true)}
-                                aria-label="Open menu"
-                                className="w-9 h-9 flex items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors"
-                            >
-                                <MenuIcon className="w-5 h-5" />
-                            </button>
+                            <div className="flex items-center gap-1">
+                                <NotificationsBell />
+                                <button
+                                    onClick={() => setMenuOpen(true)}
+                                    aria-label="Open menu"
+                                    className="w-9 h-9 flex items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors"
+                                >
+                                    <MenuIcon className="w-5 h-5" />
+                                </button>
+                            </div>
                         </div>
                     </div>
 

@@ -91,18 +91,20 @@ async function getNotificationPermissionState() {
  * 
  * Set stopIdOrName to "" to check if there are any in general (finds first one in db with matching subscription data)
  */
+const NO_SUBSCRIPTION = { has: false, subscription: undefined, routes: [] as string[], causes: [] as string[], minSeverity: "", notifyCancellations: true }
+
 export async function checkStopSubscription(stopIdOrName: string) {
     const sw = await getSwRegistration()
-    if (!sw) return { has: false, subscription: undefined }
+    if (!sw) return NO_SUBSCRIPTION
 
     const state = await getNotificationPermissionState()
     if (state === "cannot send") {
-        return { has: false, subscription: undefined }
+        return NO_SUBSCRIPTION
     }
 
     const subscription = await sw.pushManager.getSubscription()
     if (!subscription) {
-        return { has: false, subscription: undefined }
+        return NO_SUBSCRIPTION
     }
 
     const form = new FormData();
@@ -129,22 +131,28 @@ export async function checkStopSubscription(stopIdOrName: string) {
             // Convert the difference to days
             const diffInDays = diffInMilliseconds / (1000 * 60 * 60 * 24);
 
+            const filters = {
+                causes: notificationClient.Causes ?? [],
+                minSeverity: notificationClient.MinSeverity ?? "",
+                notifyCancellations: notificationClient.NotifyCancellations ?? true,
+            }
+
             if (diffInDays > 29) {
                 const newSubscription = await refreshSubscription()
                 if (newSubscription.refreshed) {
-                    return { has: true, subscription: newSubscription.subscription, routes: notificationClient.Routes }
+                    return { has: true, subscription: newSubscription.subscription, routes: notificationClient.Routes, ...filters }
                 } else {
-                    return { has: false, subscription: undefined, routes: [] }
+                    return { ...NO_SUBSCRIPTION, ...filters }
                 }
             } else {
-                return { has: true, subscription: subscription, routes: notificationClient.Routes }
+                return { has: true, subscription: subscription, routes: notificationClient.Routes, ...filters }
             }
         } else {
-            return { has: false, subscription: undefined, routes: [] }
+            return NO_SUBSCRIPTION
         }
     } catch (err) {
         console.error(err)
-        return { has: false, subscription: undefined, routes: [] }
+        return NO_SUBSCRIPTION
     }
 }
 
@@ -213,7 +221,21 @@ export async function addReminder(stopId: string, tripId: string, type: "arrival
     }
 }
 
-export async function subscribeToStop(stopIdOrName: string, routes: string[]) {
+/** Alert-type options shared by stop and route subscriptions - omitted fields mean "unfiltered" on the backend. */
+export interface SubscriptionFilters {
+    causes?: string[];
+    minSeverity?: string;
+    notifyCancellations?: boolean;
+}
+
+function appendFilters(form: FormData, filters?: SubscriptionFilters) {
+    if (!filters) return;
+    if (filters.causes !== undefined) form.set("causes", JSON.stringify(filters.causes));
+    if (filters.minSeverity !== undefined) form.set("minSeverity", filters.minSeverity);
+    if (filters.notifyCancellations !== undefined) form.set("notifyCancellations", String(filters.notifyCancellations));
+}
+
+export async function subscribeToStop(stopIdOrName: string, routes: string[], filters?: SubscriptionFilters) {
     // eslint-disable-next-line prefer-const
     let { has, subscription } = await checkStopSubscription(stopIdOrName)
 
@@ -232,6 +254,7 @@ export async function subscribeToStop(stopIdOrName: string, routes: string[]) {
     form.set("auth", sub.keys.auth);
     form.set("stopIdOrName", stopIdOrName);
     form.set("routes", JSON.stringify(routes));
+    appendFilters(form, filters);
 
     // Send subscription to the backend
     try {
@@ -250,7 +273,7 @@ export async function subscribeToStop(stopIdOrName: string, routes: string[]) {
     }
 }
 
-export async function updateSubToStop(stopIdOrName: string, routes: string[]) {
+export async function updateSubToStop(stopIdOrName: string, routes: string[], filters?: SubscriptionFilters) {
     // eslint-disable-next-line prefer-const
     let { has, subscription } = await checkStopSubscription(stopIdOrName)
 
@@ -269,6 +292,7 @@ export async function updateSubToStop(stopIdOrName: string, routes: string[]) {
     form.set("auth", sub.keys.auth);
     form.set("stopIdOrName", stopIdOrName);
     form.set("routes", JSON.stringify(routes));
+    appendFilters(form, filters);
 
     // Send subscription to the backend
     try {
@@ -284,6 +308,116 @@ export async function updateSubToStop(stopIdOrName: string, routes: string[]) {
     } catch (err) {
         console.error(err)
         return false
+    }
+}
+
+/** Checks whether the current push subscription (if any) already follows a given route directly (no stop). */
+export async function checkRouteSubscription(routeId: string): Promise<{ has: boolean; subscription?: RouteSubscription }> {
+    const mine = await getMySubscriptions()
+    if (!mine) return { has: false }
+    const match = (mine.routes ?? []).find((r) => r.route_id === routeId)
+    return match ? { has: true, subscription: match } : { has: false }
+}
+
+async function ensureSubscription(): Promise<PushSubscription | undefined> {
+    const existing = await (await getSwRegistration()).pushManager.getSubscription()
+    if (existing) return existing
+    const state = await getNotificationPermissionState()
+    if (state === "cannot send") return undefined
+    return createNewSubscription()
+}
+
+export async function subscribeToRoute(routeId: string, filters?: SubscriptionFilters) {
+    const subscription = await ensureSubscription()
+    if (!subscription) return false
+
+    const form = new FormData();
+    const sub = JSON.parse(JSON.stringify(subscription));
+    form.set("endpoint", sub.endpoint);
+    form.set("p256dh", sub.keys.p256dh);
+    form.set("auth", sub.keys.auth);
+    form.set("routeId", routeId);
+    appendFilters(form, filters);
+
+    try {
+        const response = await ApiFetch(`notifications/route/add`, {
+            method: 'POST',
+            body: form,
+        });
+        return response.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
+export async function updateRouteSub(routeId: string, filters?: SubscriptionFilters) {
+    const subscription = await ensureSubscription()
+    if (!subscription) return false
+
+    const form = new FormData();
+    const sub = JSON.parse(JSON.stringify(subscription));
+    form.set("endpoint", sub.endpoint);
+    form.set("p256dh", sub.keys.p256dh);
+    form.set("auth", sub.keys.auth);
+    form.set("routeId", routeId);
+    appendFilters(form, filters);
+
+    try {
+        const response = await ApiFetch(`notifications/route/edit`, {
+            method: 'POST',
+            body: form,
+        });
+        return response.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
+export async function removeRouteSubscription(routeId: string) {
+    const subscription = await (await getSwRegistration()).pushManager.getSubscription()
+    if (!subscription) return false
+
+    const form = new FormData();
+    const sub = JSON.parse(JSON.stringify(subscription));
+    form.set("endpoint", sub.endpoint);
+    form.set("p256dh", sub.keys.p256dh);
+    form.set("auth", sub.keys.auth);
+    form.set("routeId", routeId);
+
+    try {
+        const response = await ApiFetch(`notifications/route/remove`, {
+            method: 'POST',
+            body: form,
+        });
+        return response.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
+/** Every stop + route subscription for the current device, plus recent notification history - powers the manage-subscriptions view and the nav bell/badge. */
+export async function getMySubscriptions(): Promise<MySubscriptions | null> {
+    const subscription = await (await getSwRegistration()).pushManager.getSubscription()
+    if (!subscription) return null
+
+    const form = new FormData();
+    const sub = JSON.parse(JSON.stringify(subscription));
+    form.set("endpoint", sub.endpoint);
+    form.set("p256dh", sub.keys.p256dh);
+    form.set("auth", sub.keys.auth);
+
+    try {
+        const response = await ApiFetch<MySubscriptions>(`notifications/mine`, {
+            method: 'POST',
+            body: form,
+        });
+        return response.ok ? response.data : null
+    } catch (err) {
+        console.error(err)
+        return null
     }
 }
 
@@ -338,6 +472,37 @@ export interface NotificationClient {
     RecentNotifications: string[];
     Created: number;
     Routes: string[];
+    Causes?: string[];
+    MinSeverity?: string;
+    NotifyCancellations?: boolean;
+}
+
+export interface RecentNotificationEntry {
+    id: string;
+    seen_at?: number;
+    title?: string;
+    body?: string;
+}
+
+export interface StopSubscription {
+    parent_stop_id: string;
+    routes: string[] | null;
+    causes: string[] | null;
+    min_severity: string;
+    notify_cancellations: boolean;
+}
+
+export interface RouteSubscription {
+    route_id: string;
+    causes: string[] | null;
+    min_severity: string;
+    notify_cancellations: boolean;
+}
+
+export interface MySubscriptions {
+    stops: StopSubscription[] | null;
+    routes: RouteSubscription[] | null;
+    recent_notifications: RecentNotificationEntry[] | null;
 }
 
 export interface Notification {

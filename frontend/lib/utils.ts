@@ -65,20 +65,34 @@ export function fullyEncodeURIComponent(str: string) {
     .join('');
 }
 
+const MOBILE_UA = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i
+
 interface UseMobileOptions {
   /**
    * The width threshold in pixels below which a device is considered mobile
    * @default 768
    */
   mobileWidth?: number
+  /**
+   * Resolve synchronously from `window` on the very first client render instead
+   * of defaulting to `false` until the mount effect runs. Only safe for callers
+   * that render no DOM differences during hydration (e.g. content gated behind
+   * an `open` prop that is always false at hydration) - otherwise it causes a
+   * hydration mismatch.
+   * @default false
+   */
+  immediate?: boolean
 }
 
 /**
  * React hook to determine if the current device is a mobile device
  * Uses both screen width and user agent detection for better accuracy
  */
-export function useIsMobile({ mobileWidth = 768 }: UseMobileOptions = {}): boolean {
-  const [isMobile, setIsMobile] = useState<boolean>(false)
+export function useIsMobile({ mobileWidth = 768, immediate = false }: UseMobileOptions = {}): boolean {
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (!immediate || typeof window === "undefined") return false
+    return window.innerWidth < mobileWidth || MOBILE_UA.test(navigator.userAgent)
+  })
 
   useEffect(() => {
     // Function to check if device is mobile
@@ -87,9 +101,7 @@ export function useIsMobile({ mobileWidth = 768 }: UseMobileOptions = {}): boole
       const isMobileByWidth = window.innerWidth < mobileWidth
 
       // Check user agent for mobile devices
-      const isMobileByUserAgent = /Android|webOS|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent,
-      )
+      const isMobileByUserAgent = MOBILE_UA.test(navigator.userAgent)
 
       // Consider a device mobile if either condition is true
       setIsMobile(isMobileByWidth || isMobileByUserAgent)

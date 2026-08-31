@@ -5,6 +5,17 @@ import type { VehiclesResponse } from "@/components/services/tracker"
 
 const REFRESH_INTERVAL = 10 // seconds
 
+/** Compact fingerprint of a poll result - only the fields that actually drive the UI. */
+function vehiclesSignature(byTripId: Record<string, VehiclesResponse>): string {
+    return Object.keys(byTripId)
+        .sort()
+        .map((id) => {
+            const v = byTripId[id]
+            return `${id}:${v.position.lat},${v.position.lon},${v.position.bearing},${v.state}`
+        })
+        .join("|")
+}
+
 /**
  * Polls live positions for every transit leg of a journey at once.
  * Mirrors useServiceTracker's visibility-aware polling, without the
@@ -16,14 +27,26 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
     const [refreshing, setRefreshing] = useState(false)
     const tripIdsKey = tripIds.join(",")
 
+    // Each 10s poll builds a brand-new object even when nothing moved; applying
+    // it unconditionally would re-render every consumer (and, downstream,
+    // rebuild map layers). Skip the setState when the fingerprint is unchanged.
+    const lastSignatureRef = useRef<string>("")
+
     // Kept in a ref so the interval/visibility handler always sees the latest
     // ids without needing to be torn down and rebuilt on every render.
     const tripIdsRef = useRef(tripIds)
     tripIdsRef.current = tripIds
 
     useEffect(() => {
+        const apply = (byTripId: Record<string, VehiclesResponse>) => {
+            const signature = vehiclesSignature(byTripId)
+            if (signature === lastSignatureRef.current) return
+            lastSignatureRef.current = signature
+            setVehiclesByTripId(byTripId)
+        }
+
         if (!active || !tripIdsKey) {
-            setVehiclesByTripId({})
+            apply({})
             return
         }
 
@@ -40,14 +63,14 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
                 if (!res.ok) {
                     // "no vehicles found" is a legitimate state (legs not yet in
                     // service), not an error - clear rather than surface it.
-                    setVehiclesByTripId({})
+                    apply({})
                     return
                 }
                 const byTripId: Record<string, VehiclesResponse> = {}
                 for (const v of res.data) {
                     byTripId[v.trip_id] = v
                 }
-                setVehiclesByTripId(byTripId)
+                apply(byTripId)
             } catch (error) {
                 console.error("Error fetching journey vehicles:", error)
             } finally {

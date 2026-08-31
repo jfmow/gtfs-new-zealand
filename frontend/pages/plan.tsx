@@ -58,8 +58,11 @@ export default function Page() {
 
     // Prefill from a shared journey link. A plain link carries just the
     // start/end/options; a "share this journey" link (see buildShareUrl below)
-    // additionally carries date/timeType/trips/track to reopen (and track) that
-    // exact journey.
+    // additionally carries an `id` (see planCache on the backend - the exact
+    // plan, reopenable up to 30 min after it arrives even if a fresh search
+    // wouldn't find it any more) plus date/timeType/trips/track as a fallback
+    // for links saved before the id-based cache existed, or if that entry has
+    // since expired.
     const shared = useQueryParams({
         startLat: { type: "number", default: 0 },
         startLon: { type: "number", default: 0 },
@@ -70,10 +73,12 @@ export default function Page() {
         sharedMaxWalkKm: { type: "string", default: "", keys: ["maxWalkKm"] },
         sharedWalkSpeed: { type: "string", default: "", keys: ["walkSpeed"] },
         sharedMaxTransfers: { type: "string", default: "", keys: ["maxTransfers"] },
+        sharedId: { type: "string", default: "", keys: ["id"] },
         sharedDate: { type: "string", default: "", keys: ["date"] },
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
         sharedTrack: { type: "boolean", default: false, keys: ["track"] },
     })
+    const idLookupAttemptedRef = useRef(false)
 
     useEffect(() => {
         if (shared.startLat.found && shared.startLon.found) {
@@ -85,9 +90,27 @@ export default function Page() {
         if (shared.sharedMaxWalkKm.found) setMaxWalkKm(shared.sharedMaxWalkKm.value)
         if (shared.sharedWalkSpeed.found) setWalkSpeed(shared.sharedWalkSpeed.value)
         if (shared.sharedMaxTransfers.found) setMaxTransfers(shared.sharedMaxTransfers.value)
-        if (shared.sharedDate.found && shared.sharedTrips.found) {
+        if (shared.sharedDate.found) {
             setTimeType("leaveat")
             setSelectedDate(new Date(shared.sharedDate.value))
+        }
+
+        if (shared.sharedId.found && !idLookupAttemptedRef.current) {
+            idLookupAttemptedRef.current = true
+            setAutoTrack(shared.sharedTrack.value)
+            ApiFetch<JourneyType[]>(`/services/plan/${encodeURIComponent(shared.sharedId.value)}`).then((res) => {
+                if (res.ok && res.data.length > 0) {
+                    setApiResponse(res.data)
+                    setSelectedRoute(res.data[0])
+                    setIsRouteMapOpen(true)
+                } else if (shared.sharedTrips.found) {
+                    // Cache entry gone (expired, or the backend restarted) -
+                    // fall back to re-planning and matching by trip signature.
+                    setAutoOpenSignature(shared.sharedTrips.value)
+                }
+            })
+        } else if (!shared.sharedId.found && shared.sharedTrips.found) {
+            // Links created before the id-based cache existed.
             setAutoOpenSignature(shared.sharedTrips.value)
             setAutoTrack(shared.sharedTrack.value)
         }
@@ -121,8 +144,12 @@ export default function Page() {
 
     // Clears autoTrack the render after the auto-opened route has consumed it,
     // so a later manually-selected route doesn't also start in tracking mode.
+    // Deliberately keyed on selectedRoute only - including autoTrack itself
+    // would re-run this the instant it's cleared, which is harmless here but
+    // not the intent.
     useEffect(() => {
         if (autoTrack && selectedRoute) setAutoTrack(false)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedRoute])
 
     useEffect(() => {
@@ -234,12 +261,13 @@ export default function Page() {
     }
 
     // Builds a link that reopens (and starts tracking) this exact journey, so
-    // whoever it's shared with can follow the live vehicle too - the
-    // date/timeType pin the search to when it originally departed, `trips` is
-    // a signature of its transit legs used to re-select the same result on
-    // load (best effort: if those trips no longer run, the receiver just sees
-    // the results list for that date instead), and `track=1` starts live
-    // tracking immediately rather than requiring them to tap GO themselves.
+    // whoever it's shared with can follow the live vehicle too - `id` reopens
+    // the exact cached plan (see planCache on the backend), which keeps
+    // working up to 30 min after it arrives even once its departure time is
+    // in the past. date/timeType/trips are kept as a fallback (re-plan and
+    // match by transit-leg signature) for when that cache entry is gone, and
+    // `track=1` starts live tracking immediately rather than requiring the
+    // recipient to tap GO themselves.
     const buildShareUrl = useCallback((route: JourneyType) => {
         if (typeof window === "undefined" || !startLocation || !endLocation) return ""
         const params = new URLSearchParams({
@@ -252,6 +280,7 @@ export default function Page() {
             maxWalkKm,
             walkSpeed,
             maxTransfers,
+            id: route.ID,
             date: new Date(route.DepartureTime).toISOString(),
             timeType: "leaveat",
             trips: getTransitTripIds(route).join(","),
@@ -262,10 +291,15 @@ export default function Page() {
 
     return (
         <div className="min-h-screen bg-background">
-            {/* Header */}
-            <header className="sticky top-0 z-10 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-                <div className="mx-auto flex h-12 max-w-lg items-center justify-between px-4">
-                    <span className="text-sm font-semibold">Journey Planner</span>
+            {/* The persistent site nav already shows "Planner" as the active
+                tab and spans the full page width, so a second, narrower,
+                title-duplicating header directly beneath it just looked like
+                a layout glitch. Saved-trip actions now sit inline with the
+                page content instead, in the same width column as everything
+                else on the page. */}
+            <main className="mx-auto max-w-2xl px-4 py-6 space-y-5">
+                <div className="flex items-center justify-between gap-2">
+                    <h1 className="text-lg font-semibold">Journey Planner</h1>
                     <div className="flex items-center gap-1">
                         <Button
                             variant="ghost"
@@ -293,9 +327,7 @@ export default function Page() {
                         </Button>
                     </div>
                 </div>
-            </header>
 
-            <main className="mx-auto max-w-lg px-4 py-5 space-y-5">
                 <SearchForm
                     startLocation={startLocation}
                     endLocation={endLocation}

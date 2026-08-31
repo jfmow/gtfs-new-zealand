@@ -7,6 +7,7 @@ import { GeoJSON } from "./geojson-types";
 import { buttonVariants } from "../ui/button";
 import addMapVariantControlControl from "./tile-layer";
 import { createMapClusterGroup, createNewMarker, MapItem, updateExistingMarker } from "./markers/create";
+import { useUrl } from "@/lib/url-context";
 
 export type LatLng = [number, number];
 type BackupLatLng = LatLng
@@ -35,7 +36,7 @@ type ItemsOnMap = {
         clusters: Record<string, MarkerClusterGroup>
         markers: { id: string, marker: leaflet.Marker }[]
         zoomButtons: Record<string, leaflet.Control>
-        waypointLine: leaflet.Polyline | null
+        waypointLines: leaflet.Polyline[]
     }
     zoomButtons: {
         controls: leaflet.Control[] | null
@@ -66,6 +67,7 @@ export default function MapComp({
     clusterOptions,
     followMarkerId,
 }: MapProps) {
+    const { currentUrl } = useUrl();
     const mapRef = useRef<leaflet.Map | null>(null);
     const onLocationUpdateRef = useRef(onLocationUpdate);
     const followUserRef = useRef(followUser);
@@ -75,7 +77,7 @@ export default function MapComp({
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
         line: { line: null },
-        mapItems: { clusters: {}, markers: [], zoomButtons: {}, waypointLine: null },
+        mapItems: { clusters: {}, markers: [], zoomButtons: {}, waypointLines: [] },
     });
 
     useEffect(() => {
@@ -111,10 +113,48 @@ export default function MapComp({
             }
         });
         if (container) resizeObserver.observe(container);
+        return () => resizeObserver.disconnect();
     }, [defaultZoom, map_id, options?.buttonPosition]);
 
+    // Geolocation polling lives in its own effect (keyed on the stable map
+    // identity, not on mapItems) so it starts exactly one 3s loop per map
+    // instance. It used to sit in the mapItems effect below, where its interval
+    // id was assigned inside a .then() after the cleanup had already captured
+    // `undefined` - so every re-render (3s GPS tick, 10s vehicle poll, 30s
+    // useNow tick) leaked another getCurrentPosition loop until the main thread
+    // seized up. onLocationUpdateRef/followUserRef are kept current every
+    // render, so the callback never needs re-subscribing.
     useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+
+        const activeUser = itemsOnMap.current.user;
+        const controlPosition = options?.buttonPosition === "bottom" ? "bottomright" : "topright";
+
         let intervalId: NodeJS.Timeout | undefined;
+        let cancelled = false;
+
+        startLocationUpdates((latLng) => {
+            addUserMarker(activeUser, map, latLng, controlPosition);
+            onLocationUpdateRef.current?.(latLng[0], latLng[1]);
+            if (followUserRef.current) {
+                map.panTo(latLng, { animate: true, duration: 0.5 });
+            }
+        }).then((res) => {
+            if (cancelled) {
+                if (res) clearInterval(res);
+                return;
+            }
+            if (res) intervalId = res;
+        });
+
+        return () => {
+            cancelled = true;
+            if (intervalId) clearInterval(intervalId);
+        };
+    }, [map_id, options?.buttonPosition]);
+
+    useEffect(() => {
         const map = mapRef.current;
         if (!map) return;
 
@@ -130,10 +170,20 @@ export default function MapComp({
         const oldMarkers = activeMapItems.mapItems.markers;
         const oldClusters = activeMapItems.mapItems.clusters;
         const oldZoomControls = activeMapItems.mapItems.zoomButtons;
+        const oldMarkerById = new Map(oldMarkers.map((m) => [m.id, m.marker]));
 
-        oldMarkers.forEach(({ marker }) => {
-            map.removeLayer(marker);
+        // Only markers no longer present in the new list are actually
+        // removed; markers that persist are updated in place further down
+        // (position/icon/popup) instead of being torn down and re-added,
+        // which previously made every marker visibly flicker on each poll.
+        const newIds = new Set(mapItems.map((i) => i.id));
+        oldMarkers.forEach(({ id, marker }) => {
+            if (!newIds.has(id)) map.removeLayer(marker);
         });
+
+        // Cluster groups are rebuilt wholesale per type - only relevant past
+        // clusterOptions.threshold, which no current caller's marker counts
+        // reach, so this isn't a flicker concern in practice.
         Object.values(oldClusters).forEach((cluster) => {
             map.removeLayer(cluster);
         });
@@ -141,16 +191,6 @@ export default function MapComp({
         Object.values(oldZoomControls).forEach((control) => {
             map.removeControl(control);
         });
-
-        // Remove all polyline segments from the map
-        const overlayPane = map.getPane('overlayPane');
-        const existingLines = overlayPane?.getElementsByClassName('leaflet-interactive') || [];
-        Array.from(existingLines).forEach(el => {
-            if (el instanceof SVGPathElement) {
-                el.remove();
-            }
-        });
-        activeMapItems.mapItems.waypointLine = null;
 
         activeMapItems.mapItems.markers = [];
         activeMapItems.mapItems.clusters = {};
@@ -173,18 +213,18 @@ export default function MapComp({
             }
 
             items.forEach((item) => {
-                const existing = oldMarkers.find((m) => m.id === item.id);
+                const existing = oldMarkerById.get(item.id);
                 let marker: leaflet.Marker;
 
                 if (existing) {
-                    marker = updateExistingMarker(item, existing.marker);
+                    marker = updateExistingMarker(item, existing);
                 } else {
                     marker = createNewMarker(item);
                 }
 
                 if (useCluster && clusterGroup) {
                     clusterGroup.addLayer(marker);
-                } else {
+                } else if (!existing || !map.hasLayer(marker)) {
                     marker.addTo(map);
                 }
 
@@ -225,10 +265,12 @@ export default function MapComp({
 
             // Handle waypoints connection line
             if (type === 'waypoint') {
-                // Remove existing waypoint line
-                if (activeMapItems.mapItems.waypointLine) {
-                    map.removeLayer(activeMapItems.mapItems.waypointLine);
-                }
+                // Remove every previously-drawn segment (all of them, not
+                // just one) before drawing the new set.
+                activeMapItems.mapItems.waypointLines.forEach((segment) => {
+                    map.removeLayer(segment);
+                });
+                activeMapItems.mapItems.waypointLines = [];
 
                 // Create new waypoint line if there are at least 2 points
                 if (items.length >= 2) {
@@ -286,8 +328,8 @@ export default function MapComp({
                         segments.push(segment);
                     }
 
-                    // Store all segments to remove them later
-                    activeMapItems.mapItems.waypointLine = segments[0]; // Store first segment for compatibility
+                    // Store every segment so all of them can be removed later.
+                    activeMapItems.mapItems.waypointLines = segments;
                     // Apply rounded corners to all line segments
                     const existingSegments = map.getPane('overlayPane')?.getElementsByClassName('leaflet-interactive') || [];
                     Array.from(existingSegments).forEach(el => {
@@ -308,18 +350,6 @@ export default function MapComp({
         });
 
         itemsOnMap.current.mapItems = activeMapItems.mapItems;
-
-        startLocationUpdates((latLng) => {
-            addUserMarker(activeMapItems.user, map, latLng, options?.buttonPosition === "bottom" ? "bottomright" : "topright");
-            onLocationUpdateRef.current?.(latLng[0], latLng[1]);
-            if (followUserRef.current) {
-                map.panTo(latLng, { animate: true, duration: 0.5 });
-            }
-        }).then((res) => {
-            if (res) intervalId = res;
-        });
-
-        return () => clearInterval(intervalId);
     }, [mapItems, options?.buttonPosition, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId]);
 
     useEffect(() => {
@@ -335,18 +365,39 @@ export default function MapComp({
                 smoothFactor: 1.5,
                 style: function (feature) {
                     const mode = feature?.properties?.mode;
+                    // Tracked-vehicle mode splits the trip's full shape into
+                    // before-boarding / active / after-alighting segments -
+                    // the parts outside the rider's own leg are grayed out
+                    // even though the vehicle itself continues past them.
+                    const segment = feature?.properties?.segment;
+                    if (segment === "before" || segment === "after") {
+                        return {
+                            color: "#9ca3af",
+                            weight: 5,
+                            opacity: 0.6,
+                            className: "map-route-line",
+                        };
+                    }
+
+                    const baseColor =
+                        line.color === "" ? mode === "walk"
+                            ? "#64748b"   // neutral slate, matches the app's own theme
+                            : mode === "transit"
+                                ? currentUrl.textColor || "#374151"   // this region's own brand color
+                                : "#6ec3db"  // fallback
+                            : line.color;
 
                     return {
-                        color:
-                            line.color === "" ? mode === "walk"
-                                ? "#ff2da4"   // green for walking
-                                : mode === "transit"
-                                    ? "#993bf6"   // blue for transit
-                                    : "#6ec3db"  // fallback
-                                : line.color,
+                        color: baseColor,
                         weight: 6,
                         opacity: 0.95,
-                        className: "map-route-line",
+                        // The rider's actual transit leg (not walk legs, not
+                        // the grayed-out before/after segments above) gets a
+                        // looping dash animation along the line, so it reads
+                        // as "this is the one you're on" - see
+                        // .map-route-line-flow in globals.css.
+                        dashArray: mode === "transit" ? "1 14" : undefined,
+                        className: mode === "transit" ? "map-route-line map-route-line-flow" : "map-route-line",
                     };
                 },
             });
@@ -354,7 +405,7 @@ export default function MapComp({
             activeMapItems.line.line = leafletLine;
             leafletLine.addTo(map);
         }
-    }, [line]);
+    }, [line, currentUrl.textColor, map_id]);
 
     return (
         <div
@@ -371,7 +422,6 @@ export default function MapComp({
         />
     );
 }
-
 
 function createNewMap(ref: React.MutableRefObject<leaflet.Map | null>, map_id: string): leaflet.Map {
     let map: leaflet.Map | null = ref.current

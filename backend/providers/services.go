@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
@@ -15,6 +16,15 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
+// cachedJourneyPlan is a previously-computed plan kept around just long enough
+// for a "share this journey" link to reopen it later - including after its
+// departure time has passed, when a fresh RAPTOR search for that date/time
+// window may no longer return it (or anything at all).
+type cachedJourneyPlan struct {
+	plan      gtfs.JourneyPlan
+	expiresAt time.Time
+}
+
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
 	servicesRoute := primaryRoute.Group("/services")
 
@@ -22,6 +32,28 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	if !found {
 		panic("OSRM_URL env not found")
 	}
+
+	// Journey plans are cached by ID (not persisted, this region's process
+	// memory only) so a shared journey link can reopen the exact plan it was
+	// generated from, whether or not that search is still reproducible live.
+	// Entries expire 30 minutes after the journey's own arrival time.
+	var planCacheMu sync.RWMutex
+	planCache := make(map[string]cachedJourneyPlan)
+
+	go func() {
+		ticker := time.NewTicker(10 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			now := time.Now()
+			planCacheMu.Lock()
+			for id, cp := range planCache {
+				if now.After(cp.expiresAt) {
+					delete(planCache, id)
+				}
+			}
+			planCacheMu.Unlock()
+		}
+	}()
 
 	servicesRoute.GET("/:stationName", func(c echo.Context) error {
 		limitStr := c.QueryParam("limit")
@@ -304,7 +336,38 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusInternalServerError, "No valid journey found", nil, ResponseDetails("error", err.Error()))
 		}
 
+		if plans != nil {
+			planCacheMu.Lock()
+			for _, plan := range *plans {
+				if plan.ID == "" {
+					continue
+				}
+				planCache[plan.ID] = cachedJourneyPlan{
+					plan:      plan,
+					expiresAt: plan.ArrivalTime.Add(30 * time.Minute),
+				}
+			}
+			planCacheMu.Unlock()
+		}
+
 		return JsonApiResponse(c, http.StatusOK, "", plans)
+	})
+
+	// Reopens a single previously-computed plan by ID (see planCache above) -
+	// used by "share this journey" links so they keep working after the
+	// original departure time has passed.
+	servicesRoute.GET("/plan/:id", func(c echo.Context) error {
+		id := c.PathParam("id")
+
+		planCacheMu.RLock()
+		cp, ok := planCache[id]
+		planCacheMu.RUnlock()
+
+		if !ok || time.Now().After(cp.expiresAt) {
+			return JsonApiResponse(c, http.StatusNotFound, "journey plan not found or expired", nil, ResponseDetails("id", id))
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{cp.plan})
 	})
 }
 

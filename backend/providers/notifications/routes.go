@@ -43,6 +43,75 @@ func validateRoutes(routes []string) error {
 	return nil
 }
 
+func validateCauses(causes []string) error {
+	for _, cause := range causes {
+		if _, ok := proto.Alert_Cause_value[cause]; !ok {
+			return fmt.Errorf("invalid cause: %q", cause)
+		}
+	}
+	return nil
+}
+
+// resolveParentStop accepts either a human search string (name/code, as typed
+// into a stop search box) or an already-canonical parent stop id (as handed
+// back by GetMySubscriptions, which only ever has the id, not a searchable
+// name) - tried in that order. Every stop-scoped endpoint below goes through
+// this so a manage-subscriptions UI working purely off ids doesn't need a
+// separate lookup path from a human typing a stop name.
+func resolveParentStop(gtfsData gtfs.Database, cachedStops map[string]gtfs.Stop, stopIdOrName string) (gtfs.Stop, bool) {
+	if stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName); err == nil {
+		if parentStop, found := cachedStops[stop.StopId]; found {
+			return parentStop, true
+		}
+	}
+	if parentStop, found := cachedStops[stopIdOrName]; found {
+		return parentStop, true
+	}
+	return gtfs.Stop{}, false
+}
+
+func validateSeverity(severity string) error {
+	if severity == "" {
+		return nil
+	}
+	if _, ok := proto.Alert_SeverityLevel_value[severity]; !ok {
+		return fmt.Errorf("invalid severity: %q", severity)
+	}
+	return nil
+}
+
+// parseSubscriptionFilters reads the alert-type fields shared by the stop and
+// route subscribe/edit endpoints. notifyCancellations defaults to true
+// (unfiltered) when the field is omitted, so requests from an app version
+// that predates this field keep behaving exactly as they do today.
+func parseSubscriptionFilters(c echo.Context) (SubscriptionFilters, error) {
+	var causes []string
+	if raw := c.FormValue("causes"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &causes); err != nil {
+			return SubscriptionFilters{}, fmt.Errorf("invalid causes array")
+		}
+		if err := validateCauses(causes); err != nil {
+			return SubscriptionFilters{}, err
+		}
+	}
+
+	minSeverity := c.FormValue("minSeverity")
+	if err := validateSeverity(minSeverity); err != nil {
+		return SubscriptionFilters{}, err
+	}
+
+	notifyCancellations := true
+	if raw := c.FormValue("notifyCancellations"); raw != "" {
+		notifyCancellations = raw != "false" && raw != "0"
+	}
+
+	return SubscriptionFilters{
+		Causes:              causes,
+		MinSeverity:         minSeverity,
+		NotifyCancellations: notifyCancellations,
+	}, nil
+}
+
 func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache) {
 	var tripUpdatesCronMutex sync.Mutex
 	var remindersCronMutex sync.Mutex
@@ -221,23 +290,26 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			}
 		}
 
+		filters, err := parseSubscriptionFilters(c)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+				Data:    nil,
+			})
+		}
+
 		endpoint := c.FormValue("endpoint")
 		p256dh := c.FormValue("p256dh")
 		auth := c.FormValue("auth")
 
-		stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
-		if err != nil {
+		parentStop, found := resolveParentStop(gtfsData, parentStopsCache(), stopIdOrName)
+		if !found {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
 				Message: "invalid stop id",
 				Data:    nil,
 			})
-		}
-
-		cachedStops := parentStopsCache()
-		parentStop, found := cachedStops[stop.StopId]
-		if !found {
-			return c.String(http.StatusBadRequest, "invalid stop")
 		}
 
 		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
@@ -249,7 +321,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		if err := newClient.SubscribeToStop(parentStop.StopId, routes); err != nil {
+		if err := newClient.SubscribeToStop(parentStop.StopId, routes, filters); err != nil {
 			fmt.Println(err)
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -313,12 +385,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		var stopId string = ""
 
 		if stopIdOrName != "" {
-			stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
-			if err != nil {
-				return c.String(http.StatusBadRequest, "invalid stop")
-			}
-			cachedStops := parentStopsCache()
-			parentStop, found := cachedStops[stop.StopId]
+			parentStop, found := resolveParentStop(gtfsData, parentStopsCache(), stopIdOrName)
 			if !found {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
@@ -350,12 +417,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		var stopId string = ""
 
 		if stopIdOrName != "" {
-			stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
-			if err != nil {
-				return c.String(http.StatusBadRequest, "invalid stop")
-			}
-			cachedStops := parentStopsCache()
-			parentStop, found := cachedStops[stop.StopId]
+			parentStop, found := resolveParentStop(gtfsData, parentStopsCache(), stopIdOrName)
 			if !found {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
@@ -413,15 +475,19 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			}
 		}
 
+		filters, err := parseSubscriptionFilters(c)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+				Data:    nil,
+			})
+		}
+
 		var stopId string = ""
 
 		if stopIdOrName != "" {
-			stop, err := gtfsData.GetStopByNameOrCode(stopIdOrName)
-			if err != nil {
-				return c.String(http.StatusBadRequest, "invalid stop")
-			}
-			cachedStops := parentStopsCache()
-			parentStop, found := cachedStops[stop.StopId]
+			parentStop, found := resolveParentStop(gtfsData, parentStopsCache(), stopIdOrName)
 			if !found {
 				return c.String(http.StatusBadRequest, "invalid stop")
 			}
@@ -445,7 +511,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		if err := foundClient.SubscribeToStop(stopId, routes); err != nil {
+		if err := foundClient.SubscribeToStop(stopId, routes, filters); err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
 				Message: "failed to update subscription",
@@ -563,6 +629,167 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			Code:    http.StatusOK,
 			Message: "reminder set",
 			Data:    nil,
+		})
+	})
+
+	notificationRoute.POST("/route/add", func(c echo.Context) error {
+		routeId := c.FormValue("routeId")
+		if validateRoutes([]string{routeId}) != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
+			})
+		}
+
+		filters, err := parseSubscriptionFilters(c)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+				Data:    nil,
+			})
+		}
+
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
+		}
+
+		if err := newClient.SubscribeToRoute(routeId, filters); err != nil {
+			fmt.Println(err)
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "failed to subscribe to route",
+				Data:    nil,
+			})
+		}
+
+		newClient.SendNotification("This is a test notification to confirm notifications are enabled", fmt.Sprintf("Notifications enabled for route %s", routeId), nil, "normal")
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "added",
+			Data:    nil,
+		})
+	})
+
+	notificationRoute.POST("/route/edit", func(c echo.Context) error {
+		routeId := c.FormValue("routeId")
+		if validateRoutes([]string{routeId}) != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid route id",
+				Data:    nil,
+			})
+		}
+
+		filters, err := parseSubscriptionFilters(c)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: err.Error(),
+				Data:    nil,
+			})
+		}
+
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no subscription found",
+				Data:    nil,
+			})
+		}
+
+		if err := foundClient.SubscribeToRoute(routeId, filters); err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "failed to update subscription",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription updated",
+			Data:    nil,
+		})
+	})
+
+	notificationRoute.POST("/route/remove", func(c echo.Context) error {
+		routeId := c.FormValue("routeId")
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no subscription found",
+				Data:    nil,
+			})
+		}
+
+		if err := foundClient.DeleteRouteSubscription(routeId); err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "failed to delete subscription",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "subscription removed",
+			Data:    nil,
+		})
+	})
+
+	// Every stop + route subscription for a client, plus their recent
+	// notification history - powers the manage-subscriptions UI and the
+	// in-app bell/badge, neither of which existed before this endpoint
+	// (find-client only ever checked one stop at a time).
+	notificationRoute.POST("/mine", func(c echo.Context) error {
+		endpoint := c.FormValue("endpoint")
+		p256dh := c.FormValue("p256dh")
+		auth := c.FormValue("auth")
+
+		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "no subscription found",
+				Data:    nil,
+			})
+		}
+
+		subscriptions, err := foundClient.GetMySubscriptions()
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{
+				Code:    http.StatusInternalServerError,
+				Message: "failed to load subscriptions",
+				Data:    nil,
+			})
+		}
+
+		return c.JSON(200, Response{
+			Code:    200,
+			Message: "ok",
+			Data:    subscriptions,
 		})
 	})
 }
