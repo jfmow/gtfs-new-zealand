@@ -26,7 +26,7 @@ import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { buildLiveJourney, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime } from "./helpers"
+import { buildLiveJourney, connectionRisk, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, type ConnectionRisk } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -645,6 +645,8 @@ function RouteItinerary({
                             : legIndex === currentLegIndex ? "current"
                                 : "upcoming"
                 const currentLabel = status === "current" && currentPhase ? PHASE_LABEL[currentPhase] : undefined
+                // Don't warn about a connection the rider has already made.
+                const risk = status === "done" ? null : connectionRisk(route.Legs, legIndex)
                 return (
                     <LegRow
                         key={legIndex}
@@ -653,6 +655,7 @@ function RouteItinerary({
                         nextLeg={route.Legs[legIndex + 1]}
                         status={status}
                         currentLabel={currentLabel}
+                        connectionRisk={risk}
                     />
                 )
             })}
@@ -662,7 +665,7 @@ function RouteItinerary({
 
 type LegStatus = "done" | "current" | "upcoming"
 
-function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel }: { leg: Leg; isLast: boolean; nextLeg?: Leg; status?: LegStatus; currentLabel?: string }) {
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk }: { leg: Leg; isLast: boolean; nextLeg?: Leg; status?: LegStatus; currentLabel?: string; connectionRisk?: ConnectionRisk | null }) {
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
     const isEarly = leg.realtime_status === RealtimeStatus.Early
@@ -702,6 +705,18 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel }: { l
                 <div className="mb-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
                     <span>This service is not running. Check alternative routes.</span>
+                </div>
+            )}
+            {connectionRisk && (
+                <div className={`mb-2 flex items-start gap-2 rounded-md border px-3 py-2 text-xs ${connectionRisk.level === "missed"
+                    ? "border-destructive/40 bg-destructive/10 text-destructive"
+                    : "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
+                    <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                    <span>
+                        {connectionRisk.level === "missed"
+                            ? `You'll likely miss this — it leaves ${Math.abs(connectionRisk.transferMin)} min before you get here`
+                            : `Tight transfer — about ${Math.max(0, connectionRisk.transferMin)} min to change`}
+                    </span>
                 </div>
             )}
 

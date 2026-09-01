@@ -147,6 +147,43 @@ export function buildLiveJourney(
     }
 }
 
+export type ConnectionRisk = { level: "missed" | "tight"; transferMin: number }
+
+// Minimum realistic time to change services (matches the planner's own gate).
+const MIN_TRANSFER_MS = 60_000
+
+/**
+ * For the transit leg at `index`, checks whether the current (live) times still
+ * leave enough time to transfer from the previous transit leg — walking legs in
+ * between count against the gap. Returns null for the first ride (the rider
+ * chooses when to leave) or when there's comfortable slack. `transferMin` is the
+ * minutes actually available on the platform (negative = you arrive after it
+ * has left).
+ */
+export function connectionRisk(legs: Leg[], index: number): ConnectionRisk | null {
+    const leg = legs[index]
+    if (!leg || leg.Mode !== "transit") return null
+
+    let prevTransit = -1
+    for (let i = index - 1; i >= 0; i--) {
+        if (legs[i].Mode === "transit") { prevTransit = i; break }
+        if (legs[i].Mode === "walk") continue
+        break
+    }
+    if (prevTransit < 0) return null
+
+    let walkMs = 0
+    for (let i = prevTransit + 1; i < index; i++) {
+        if (legs[i].Mode === "walk") walkMs += legs[i].Duration / 1_000_000
+    }
+
+    const gapMs = new Date(leg.DepartureTime).getTime() - new Date(legs[prevTransit].ArrivalTime).getTime()
+    const slackMs = gapMs - walkMs - MIN_TRANSFER_MS
+    if (slackMs >= 90_000) return null
+
+    return { level: slackMs < 0 ? "missed" : "tight", transferMin: Math.round((gapMs - walkMs) / 60_000) }
+}
+
 export function getWaitingTimeNs(prev: Leg, next: Leg) {
     const arrival = new Date(prev.ArrivalTime).getTime()
     const departure = new Date(next.DepartureTime).getTime()
