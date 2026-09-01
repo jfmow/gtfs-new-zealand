@@ -64,35 +64,24 @@ export function splitTrackedRouteLine(line: GeoJSON, board: LatLon, alight: LatL
     return features
 }
 
-/** A single straight walk-mode feature (styled by map.tsx the same as any other walk leg), e.g. from the rider's current position to their boarding stop. */
-export function walkToStopFeature(from: LatLon, to: LatLon): Record<string, unknown> {
-    return {
-        type: "Feature",
-        properties: { mode: "walk" },
-        geometry: { type: "LineString", coordinates: [[from.lon, from.lat], [to.lon, to.lat]] },
-    }
-}
-
 /**
  * Builds the map's route line for a journey with a live-tracked leg: every
  * feature from the full journey (all walk legs, all other transit legs) is
  * kept as-is, EXCEPT the tracked leg's own feature, which is replaced by its
- * richer tracked-mode representation (before/active/after segments, plus a
- * walk-to-stop feature when relevant). Legs other than the tracked one stay
- * fully visible - tracking one leg shouldn't erase the rest of the journey.
+ * richer tracked-mode representation (before/active/after segments). Any extra
+ * synthetic features (e.g. a live walk-to-stop connector) are appended on top.
+ * Legs other than the tracked one stay fully visible - tracking one leg
+ * shouldn't erase the rest of the journey, including the routed walk to it.
  */
 export function buildTrackedLine(
     routeGeoJson: GeoJSON | undefined,
     trackedTripId: string | undefined,
-    trackedFeatures: Record<string, unknown>[],
-    /** Stop id of a walk leg's own to_stop to drop from the base features - used when trackedFeatures already includes a synthetic replacement for that same walk (see walkToStopFeature), so the plan's original static walk line doesn't render underneath/across it. */
-    replacedWalkToStopId?: string
+    trackedFeatures: Record<string, unknown>[]
 ): GeoJSON {
     const baseFeatures = routeGeoJson ? toFeatureArray(routeGeoJson) : []
     const keptFeatures = baseFeatures.filter((f) => {
-        const props = (f as { properties?: { trip_id?: string; to_stop_id?: string } }).properties
+        const props = (f as { properties?: { trip_id?: string } }).properties
         if (trackedTripId && props?.trip_id === trackedTripId) return false
-        if (replacedWalkToStopId && props?.to_stop_id === replacedWalkToStopId) return false
         return true
     })
     return { type: "FeatureCollection", features: [...keptFeatures, ...trackedFeatures] } as unknown as GeoJSON

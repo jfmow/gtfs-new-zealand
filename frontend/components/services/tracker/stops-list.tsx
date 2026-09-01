@@ -158,12 +158,16 @@ export default function StopsList({
                                 )
                                 : 0
 
+                        // Ignore absurd values from a stale/bogus realtime feed.
+                        const delayIsPlausible = Math.abs(delay) < 180
                         const delayLabel =
-                            delay > 1
-                                ? `Late: ${delay}min`
-                                : delay < -1
-                                    ? `Early: ${Math.abs(delay)}min`
-                                    : ""
+                            !delayIsPlausible
+                                ? ""
+                                : delay > 1
+                                    ? `Late: ${delay}min`
+                                    : delay < -1
+                                        ? `Early: ${Math.abs(delay)}min`
+                                        : ""
 
                         return (
                             <div key={`${stop.parent_stop_id}-${stop.platform}`} className="relative">
@@ -254,7 +258,7 @@ export default function StopsList({
                                                         </span>
                                                     )}
 
-                                                    {delay > 1 || delay < -1 && (
+                                                    {delayLabel !== "" && (
                                                         <Badge
                                                             variant="secondary"
                                                             className="bg-orange-100 text-orange-700 text-xs px-1.5 py-0.5"

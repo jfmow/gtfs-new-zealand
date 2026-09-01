@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Bell, ListTree } from "lucide-react"
 import { ApiFetch } from "@/lib/url-context"
-import { fullyEncodeURIComponent, haversineDistance } from "@/lib/utils"
+import { fullyEncodeURIComponent } from "@/lib/utils"
 import type { AlertResponseData } from "@/lib/alert-causes"
 import RouteNotifications from "@/components/notifications/route-notifications"
 import type { GeoJSON } from "@/components/map/geojson-types"
@@ -14,8 +14,8 @@ import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "@/components/map/map"
 import type { ServicesStop, VehiclesResponse } from "@/components/services/tracker"
 import type { JourneyType, Location, Stop } from "./types"
-import { getTransitRouteIds } from "./helpers"
-import { buildTrackedLine, splitTrackedRouteLine, toFeatureArray, walkToStopFeature } from "./tracked-line"
+import { findStopSequence, getTransitRouteIds } from "./helpers"
+import { buildTrackedLine, splitTrackedRouteLine, toFeatureArray } from "./tracked-line"
 
 const LeafletMap = dynamic(() => import("@/components/map/map"), { ssr: false })
 
@@ -44,30 +44,14 @@ interface LiveMapProps {
     /** The rider's own board/alight stops for the tracked leg - stops and route line outside this range belong to the vehicle's onward trip, not this ride, and render grayed out. */
     trackedBoardStop?: Stop
     trackedAlightStop?: Stop
-    /** Where the walk-to-the-boarding-stop leg starts from, if the rider may still be walking there - hidden once their live location is close enough to the stop (see PROXIMITY_HIDE_METERS). */
-    walkingToStopFrom?: { lat: number; lon: number }
-    /** Keep the map centered on the rider's live location - used while they're on a walk leg with no vehicle to follow. */
+    /** Keep the map centered on the rider's live location - used whenever tracking is active but there's no vehicle to follow (waiting at a stop, walking). */
     followUser?: boolean
 }
-
-// How close counts as "arrived" for hiding the walking-to-stop indicator.
-// Larger stations (the boarding stop is a child of a parent station - bigger
-// physical footprint, e.g. a multi-platform interchange) get a more generous
-// radius than a simple roadside stop.
-const WALK_ARRIVED_METERS_SIMPLE_STOP = 15
-const WALK_ARRIVED_METERS_STATION = 40
 
 const VEHICLE_ICONS = new Set(["bus", "train", "ferry", "school bus"])
 
 function stopMatches(a: ServicesStop, b: ServicesStop): boolean {
     return a.parent_stop_id === b.parent_stop_id || a.child_stop_id === b.child_stop_id
-}
-
-/** Finds a journey leg's board/alight stop within the tracked trip's own stop list, by ID rather than sequence (Leg.FromStop/ToStop.stop_sequence is never populated by /services/plan). */
-function findStopSequence(stops: ServicesStop[] | null | undefined, legStop: Stop | undefined): number | undefined {
-    if (!legStop || !stops) return undefined
-    const match = stops.find((s) => s.parent_stop_id === legStop.parent_station || s.child_stop_id === legStop.stop_id)
-    return match?.sequence
 }
 
 /**
@@ -105,16 +89,11 @@ export function LiveMap({
     trackedRouteLine,
     trackedBoardStop,
     trackedAlightStop,
-    walkingToStopFrom,
     followUser,
 }: LiveMapProps) {
-    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null)
-
-    // Rebuilt only when a real input changes - not on every render. The 3s GPS
-    // tick (userLocation) and the 30s useNow tick upstream would otherwise hand
-    // map.tsx a fresh array each time, re-running its whole marker-diff +
-    // (previously) geolocation effect. userLocation is deliberately NOT a
-    // dependency: it only feeds showWalkToStop / line below, never the markers.
+    // Rebuilt only when a real input changes - not on every render. The 30s
+    // useNow tick upstream would otherwise hand map.tsx a fresh array each time,
+    // re-running its whole marker-diff.
     const mapMarkers = useMemo<MapItem[]>(() => {
         const markers: MapItem[] = []
 
@@ -259,42 +238,17 @@ export function LiveMap({
         trackedAlightStop,
     ])
 
-    const arrivedThresholdM = trackedBoardStop?.parent_station ? WALK_ARRIVED_METERS_STATION : WALK_ARRIVED_METERS_SIMPLE_STOP
-    const distanceToBoardStopM = userLocation && trackedBoardStop
-        ? haversineDistance(userLocation.lat, userLocation.lon, trackedBoardStop.stop_lat, trackedBoardStop.stop_lon)
-        : null
-    // Deliberately doesn't require trackedVehicle - a live vehicle is least
-    // likely to be assigned yet while the rider is still walking to their
-    // first stop, which is exactly when this indicator matters most.
-    const showWalkToStop = !!(
-        trackedBoardStop && walkingToStopFrom &&
-        (distanceToBoardStopM === null || distanceToBoardStopM >= arrivedThresholdM)
-    )
-
     // Memoized on stable identifiers/primitives rather than the raw objects -
-    // trackedVehicle is a new reference on every ~10s poll and userLocation
-    // (which feeds showWalkToStop) on every ~3s GPS tick, and map.tsx tears
-    // down and recreates the whole line layer whenever this reference
-    // changes. Without this, the line's looping flow animation never gets
-    // more than a few seconds to run before being reset back to frame zero.
+    // trackedVehicle is a new reference on every ~10s poll and map.tsx tears
+    // down and recreates the whole line layer whenever this reference changes.
+    // Without this, the line's looping flow animation never gets more than a few
+    // seconds to run before being reset back to frame zero.
     const line = useMemo(() => {
-        // Built independently of trackedVehicle - shown as soon as tracking
-        // starts (see showWalkToStop), well before a live vehicle is likely
-        // to be assigned to the first leg.
-        const walkFeature = showWalkToStop && walkingToStopFrom && trackedBoardStop
-            ? walkToStopFeature(walkingToStopFrom, { lat: trackedBoardStop.stop_lat, lon: trackedBoardStop.stop_lon })
-            : null
-        // When showWalkToStop is set, the plan's original walk-to-board-stop
-        // leg is dropped in favor of the live synthetic one above, so the
-        // two don't render on top of each other (the straight synthetic line
-        // cutting across the original curved OSRM path).
-        const replacedWalkToStopId = showWalkToStop ? trackedBoardStop?.stop_id : undefined
-
         if (trackedVehicle && trackedRouteLine) {
             // Falls back to the line's own feature(s), tagged as an ordinary
             // active transit segment, on the rare chance the tracked leg's
             // board/alight stops aren't resolved yet.
-            let trackedFeatures = trackedBoardStop && trackedAlightStop
+            const trackedFeatures = trackedBoardStop && trackedAlightStop
                 ? splitTrackedRouteLine(
                     trackedRouteLine.line,
                     { lat: trackedBoardStop.stop_lat, lon: trackedBoardStop.stop_lon },
@@ -304,18 +258,13 @@ export function LiveMap({
                     ...f,
                     properties: { ...(f as { properties?: object }).properties, mode: "transit" },
                 }))
-            if (walkFeature) trackedFeatures = [...trackedFeatures, walkFeature]
             // Every OTHER leg's own feature (all walk legs, any other
             // transit leg) is kept from the full journey line - only the
             // tracked leg's feature is swapped out for the richer version.
-            const merged = buildTrackedLine(selectedRoute?.RouteGeoJSON, trackedVehicle.trip_id, trackedFeatures, replacedWalkToStopId)
+            const merged = buildTrackedLine(selectedRoute?.RouteGeoJSON, trackedVehicle.trip_id, trackedFeatures)
             return { GeoJson: merged, color: "" }
         }
         if (selectedRoute) {
-            if (walkFeature) {
-                const merged = buildTrackedLine(selectedRoute.RouteGeoJSON, undefined, [walkFeature], replacedWalkToStopId)
-                return { GeoJson: merged, color: "" }
-            }
             return { GeoJson: selectedRoute.RouteGeoJSON, color: "" }
         }
         return undefined
@@ -325,9 +274,6 @@ export function LiveMap({
         trackedRouteLine,
         trackedBoardStop,
         trackedAlightStop,
-        showWalkToStop,
-        walkingToStopFrom?.lat,
-        walkingToStopFrom?.lon,
         selectedRoute,
     ])
 
@@ -342,7 +288,6 @@ export function LiveMap({
                     line={line}
                     followMarkerId={followMarkerId}
                     followUser={followUser}
-                    onLocationUpdate={(lat, lon) => setUserLocation({ lat, lon })}
                     options={{ buttonPosition: "bottom" }}
                 />
             </Suspense>

@@ -25,7 +25,7 @@ import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime } from "./helpers"
+import { findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -95,6 +95,11 @@ export function RouteDetailSheet({
     const isMobile = useIsMobile({ immediate: true })
     const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(0.4)
     const [journeyStarted, setJourneyStarted] = useState(false)
+    // Highest journey-leg index the rider has been carried past - i.e. a tracked
+    // vehicle was seen beyond that leg's alight stop, so the rider has gotten
+    // off. A latch (reset per journey): a later dropped poll shouldn't put them
+    // back "on board" and resume chasing that vehicle.
+    const [alightedThroughLeg, setAlightedThroughLeg] = useState(-1)
     const now = useNow(20000)
 
     // Captured via ref (not a dependency) so autoTrack flipping back to false
@@ -106,6 +111,7 @@ export function RouteDetailSheet({
     useEffect(() => {
         setJourneyStarted(!!autoTrackRef.current)
         setActiveSnapPoint(0.4)
+        setAlightedThroughLeg(-1)
     }, [route?.ID])
 
     // The drawer runs non-modal (modal={false}, so the map stays interactive
@@ -166,12 +172,13 @@ export function RouteDetailSheet({
     const currentLegIndex = useMemo(() => {
         if (!route) return -1
         const nowMs = now.getTime()
+        // Leg.ArrivalTime is already realtime-adjusted by the backend - don't
+        // add delay_seconds on top of it.
         const idx = route.Legs.findIndex(
-            (l) => nowMs < new Date(l.ArrivalTime).getTime() + (l.delay_seconds ?? 0) * 1000
+            (l) => nowMs < new Date(l.ArrivalTime).getTime()
         )
         return idx === -1 ? route.Legs.length - 1 : idx
     }, [route, now])
-    const currentLeg = currentLegIndex >= 0 ? route?.Legs[currentLegIndex] : undefined
 
     // The transit leg to track: the current leg if it's transit, otherwise the
     // next transit leg coming up - always in journey order, so a later bus that
@@ -181,19 +188,22 @@ export function RouteDetailSheet({
     // later leg that does (bad schedule data / a cancelled-but-not-flagged run).
     const activeTransitLeg = useMemo(() => {
         if (!route || currentLegIndex < 0) return undefined
+        // Never re-select a leg the rider has already been carried past, even if
+        // the schedule clock still thinks they're on it (vehicle ran early).
+        const floor = Math.max(currentLegIndex, alightedThroughLeg + 1)
         const upcoming = route.Legs
             .map((l, i) => ({ l, i }))
-            .filter(({ l, i }) => i >= currentLegIndex && l.Mode === "transit")
+            .filter(({ l, i }) => i >= floor && l.Mode === "transit")
         if (upcoming.length === 0) return undefined
         const first = upcoming[0].l
-        const firstOverdueMs =
-            now.getTime() - (new Date(first.DepartureTime).getTime() + (first.delay_seconds ?? 0) * 1000)
+        // DepartureTime is already realtime-adjusted by the backend.
+        const firstOverdueMs = now.getTime() - new Date(first.DepartureTime).getTime()
         if (!vehiclesByTripId[first.TripID] && firstOverdueMs > OVERDUE_SKIP_MS) {
             const live = upcoming.find(({ l }) => vehiclesByTripId[l.TripID])
             if (live) return live.l
         }
         return first
-    }, [route, currentLegIndex, vehiclesByTripId, now])
+    }, [route, currentLegIndex, alightedThroughLeg, vehiclesByTripId, now])
 
     const trackedTripId =
         journeyStarted && activeTransitLeg && vehiclesByTripId[activeTransitLeg.TripID]
@@ -204,27 +214,29 @@ export function RouteDetailSheet({
     const trackedRouteLine = useRouteLine(trackedTripId ?? "", trackedVehicle?.route.id)
     const followMarkerId = trackedVehicle ? `vehicle-${trackedVehicle.trip_id}` : undefined
 
-    // The leg whose board/alight stops + walk-to-stop indicator the map should
-    // show: the tracked vehicle's leg, or - before any vehicle is live - the
-    // current/next transit leg (so the walking-to-the-first-stop indicator
-    // doesn't depend on a vehicle having been assigned yet).
+    // The leg whose board/alight stops the map should show: the tracked
+    // vehicle's leg, or - before any vehicle is live - the current/next transit
+    // leg.
     const trackedLeg =
         (trackedTripId && route?.Legs.find((l) => l.TripID === trackedTripId)) ||
         (journeyStarted ? activeTransitLeg : undefined)
     const trackedBoardStop = trackedLeg?.FromStop ?? undefined
     const trackedAlightStop = trackedLeg?.ToStop ?? undefined
-
-    // If there's a walk leg immediately before the tracked one, the rider may
-    // still be walking there - LiveMap shows that (hidden once their live
-    // location is close enough to the boarding stop). FromStop null on that
-    // walk leg means it's the very first leg, starting from startLocation.
     const trackedLegIndex = trackedLeg && route ? route.Legs.indexOf(trackedLeg) : -1
-    const precedingWalkLeg = trackedLegIndex > 0 ? route?.Legs[trackedLegIndex - 1] : undefined
-    const walkingToStopFrom = precedingWalkLeg?.Mode === 'walk'
-        ? (precedingWalkLeg.FromStop
-            ? { lat: precedingWalkLeg.FromStop.stop_lat, lon: precedingWalkLeg.FromStop.stop_lon }
-            : startLocation ? { lat: startLocation.lat, lon: startLocation.lon } : undefined)
-        : undefined
+
+    // Release the tracked leg the moment the vehicle carries the rider past
+    // their alight stop - from then on the map follows the next leg's vehicle if
+    // it's live, otherwise the rider (see followUser below), instead of chasing
+    // the vehicle they just got off as it continues its trip.
+    const trackedCurrentSeq = trackedVehicle?.trip?.current_stop?.sequence
+    useEffect(() => {
+        if (!journeyStarted || trackedLegIndex < 0 || trackedCurrentSeq === undefined) return
+        const alightSeq = findStopSequence(trackedStops, trackedAlightStop)
+        if (alightSeq === undefined) return
+        if (trackedCurrentSeq > alightSeq) {
+            setAlightedThroughLeg((prev) => Math.max(prev, trackedLegIndex))
+        }
+    }, [journeyStarted, trackedLegIndex, trackedCurrentSeq, trackedStops, trackedAlightStop])
 
     const defaultZoom = useMemo<[LatLng, LatLng]>(() => [
         [route?.StartLat ?? 0, route?.StartLon ?? 0],
@@ -267,8 +279,7 @@ export function RouteDetailSheet({
             trackedRouteLine={trackedRouteLine}
             trackedBoardStop={trackedBoardStop}
             trackedAlightStop={trackedAlightStop}
-            walkingToStopFrom={walkingToStopFrom}
-            followUser={journeyStarted && !trackedVehicle && currentLeg?.Mode === "walk"}
+            followUser={journeyStarted && !trackedVehicle}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
@@ -367,7 +378,9 @@ function JourneySummary({
     // whenever the last transit leg is running late.
     const now = useNow(30000)
     const delaySeconds = journeyDelaySeconds(route)
-    const adjustedArrival = new Date(new Date(route.ArrivalTime).getTime() + delaySeconds * 1000)
+    // route.ArrivalTime is already realtime-adjusted by the backend; delaySeconds
+    // is kept only for the "(delayed)" hint below.
+    const adjustedArrival = new Date(route.ArrivalTime)
     const remainingMs = adjustedArrival.getTime() - now.getTime()
     const remainingLabel = remainingMs <= 30000 ? "Arrived" : formatDuration(remainingMs * 1_000_000)
 
@@ -453,10 +466,21 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
     const isEarly = leg.realtime_status === RealtimeStatus.Early
-    const isOnTime = leg.realtime_status === RealtimeStatus.OnTime
-    const hasRealtime = isDelayed || isEarly || isOnTime
     const routeColor = leg.Route?.route_color ? `#${leg.Route.route_color}` : "#424242"
     const waitNs = nextLeg ? getWaitingTimeNs(leg, nextLeg) : null
+
+    // Backend sanitises this now, but a plan cached before a realtime feed
+    // corrected itself can still carry an adjusted arrival that lands before its
+    // departure. Fall back to the schedule and drop the realtime badge rather
+    // than render "arrives before it departs" / a negative duration.
+    const inverted = !isWalk && new Date(leg.ArrivalTime).getTime() <= new Date(leg.DepartureTime).getTime()
+    const displayDeparture = inverted && leg.scheduled_departure_time ? leg.scheduled_departure_time : leg.DepartureTime
+    const displayArrival = inverted && leg.scheduled_arrival_time ? leg.scheduled_arrival_time : leg.ArrivalTime
+    const displayDurationNs = inverted
+        ? Math.max(0, new Date(displayArrival).getTime() - new Date(displayDeparture).getTime()) * 1_000_000
+        : leg.Duration
+    const showEarlyLateBadge = (isDelayed || isEarly) && !inverted
+    const showOnTimeBadge = leg.realtime_status === RealtimeStatus.OnTime && !inverted
 
     return (
         <div className="relative">
@@ -471,7 +495,7 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
                 {isWalk ? (
                     <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-pink-500">
                         <Footprints className="h-3 w-3" />
-                        Walk · {Math.round(leg.Duration / 60000000000)} min
+                        Walk · {Math.max(0, Math.round(leg.Duration / 60000000000))} min
                         {leg.DistanceKm > 0 && <span className="text-muted-foreground/70">· {leg.DistanceKm.toFixed(2)} km</span>}
                     </span>
                 ) : (
@@ -488,13 +512,13 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
                             {leg.Route?.vehicle_type && <span className="opacity-80">{leg.Route.vehicle_type}</span>}
                             {leg.Route?.route_short_name || leg.RouteID}
                         </span>
-                        {hasRealtime && (
+                        {showEarlyLateBadge && (
                             <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isDelayed ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
                                 <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`} />
                                 {isDelayed ? 'Late' : 'Early'}
                             </span>
                         )}
-                        {leg.realtime_status === RealtimeStatus.OnTime && (
+                        {showOnTimeBadge && (
                             <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
                                 On time
                             </span>
@@ -504,7 +528,7 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
                                 Scheduled
                             </span>
                         )}
-                        <span className="text-xs text-muted-foreground">· {formatDuration(leg.Duration)}</span>
+                        <span className="text-xs text-muted-foreground">· {formatDuration(displayDurationNs)}</span>
                     </div>
                 )}
             </div>
@@ -513,7 +537,7 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
                 <div className="relative py-2">
                     <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-medium text-sm">{formatTime(leg.DepartureTime)}</span>
+                        <span className="font-medium text-sm">{formatTime(displayDeparture)}</span>
                         <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
                         <div className="flex items-center gap-1">
                             {leg.FromStop?.platform_number && (
@@ -532,7 +556,7 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
                 <div className="relative py-2">
                     <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
                     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-medium text-sm">{formatTime(leg.ArrivalTime)}</span>
+                        <span className="font-medium text-sm">{formatTime(displayArrival)}</span>
                         <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
                         <div className="flex items-center gap-1">
                             {leg.ToStop?.platform_number && (

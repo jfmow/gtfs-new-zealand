@@ -74,15 +74,14 @@ function getRouteStepsJSX(route: JourneyType) {
         const waitingNs = nextLeg ? getWaitingTimeNs(leg, nextLeg) : null
         const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
         const isEarly = leg.realtime_status === RealtimeStatus.Early
-        const isOnTime = leg.realtime_status === RealtimeStatus.OnTime
-        const hasRealtime = isDelayed || isEarly || isOnTime
+        const hasRealtime = isDelayed || isEarly
 
         return (
             <span key={index} className="inline-flex items-center gap-1">
                 {leg.Mode === "walk" ? (
                     <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
                         <Footprints className="h-3 w-3" />
-                        {Math.round(leg.Duration / 60000000000)} min
+                        {Math.max(0, Math.round(leg.Duration / 60000000000))} min
                     </span>
                 ) : (
                     <span className="relative inline-flex items-center">
