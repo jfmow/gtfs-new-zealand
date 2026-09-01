@@ -337,6 +337,14 @@ export function RouteDetailSheet({
         return untilDepartMs <= BOARDING_WINDOW_MS || vehicleAtBoard ? "boarding" : "waiting"
     })()
 
+    // How good the data behind the times is right now: a live vehicle position,
+    // just trip-update predictions, or bare schedule.
+    const activeTransitTripId = activeTransitLeg?.TripID
+    const trackingLevel: "live" | "predicted" | "scheduled" =
+        trackedVehicle ? "live"
+            : activeTransitTripId && (stopTimesByTripId[activeTransitTripId]?.length ?? 0) > 0 ? "predicted"
+                : "scheduled"
+
     const handleShare = async () => {
         const title = `${startLocation?.label ?? "Start"} → ${endLocation?.label ?? "Destination"}`
         const shareUrl = buildShareUrl(route)
@@ -395,6 +403,7 @@ export function RouteDetailSheet({
             onGo={() => setJourneyStarted(true)}
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
+            trackingLevel={trackingLevel}
         />
     )
 
@@ -478,6 +487,7 @@ function JourneySummary({
     onGo,
     currentLegIndex,
     currentPhase,
+    trackingLevel,
 }: {
     route: JourneyType
     onShare: () => void
@@ -485,6 +495,7 @@ function JourneySummary({
     onGo: () => void
     currentLegIndex: number
     currentPhase?: JourneyPhase
+    trackingLevel: "live" | "predicted" | "scheduled"
 }) {
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
@@ -555,9 +566,18 @@ function JourneySummary({
                     )}
                     <div className="min-w-0">
                         <p className="text-base font-semibold truncate">{progress ?? headsign ?? "Your journey"}</p>
-                        <p className="text-xs text-muted-foreground">
-                            {stopCount > 0 ? `${stopCount} stop${stopCount !== 1 ? 's' : ''}` : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
-                        </p>
+                        {journeyStarted && trackingLevel !== "live" ? (
+                            <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                {trackingLevel === "predicted"
+                                    ? "No live vehicle - times are predicted"
+                                    : "No realtime - times are scheduled"}
+                            </p>
+                        ) : (
+                            <p className="text-xs text-muted-foreground">
+                                {stopCount > 0 ? `${stopCount} stop${stopCount !== 1 ? 's' : ''}` : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
+                            </p>
+                        )}
                     </div>
                 </div>
                 <div className="text-right shrink-0">

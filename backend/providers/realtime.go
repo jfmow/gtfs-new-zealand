@@ -22,6 +22,38 @@ type LatLng struct {
 	Lng float64
 }
 
+// parseGTFSClock parses a GTFS "HH:MM:SS" time-of-day - where the hour may be
+// >= 24 for service that runs past midnight - and anchors it to `date`'s
+// calendar day, rolling the extra hours into the following day. Returns false on
+// an unparseable value.
+func parseGTFSClock(clock string, date time.Time, loc *time.Location) (time.Time, bool) {
+	parts := strings.Split(strings.TrimSpace(clock), ":")
+	if len(parts) < 2 {
+		return time.Time{}, false
+	}
+	h, errH := strconv.Atoi(parts[0])
+	m, errM := strconv.Atoi(parts[1])
+	s := 0
+	if len(parts) >= 3 {
+		s, _ = strconv.Atoi(parts[2])
+	}
+	if errH != nil || errM != nil || h < 0 || m < 0 || s < 0 {
+		return time.Time{}, false
+	}
+	midnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, loc)
+	return midnight.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second), true
+}
+
+func clampInt32Seconds(v int32, lo, hi int32) int32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
 func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache, getParentStopByChildCache caches.ParentStopsByChildCache) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 
@@ -507,7 +539,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					0,
 					0,
 				)
-				tripDelay = updatesForTrip.GetDelay()
+				// Clamp a stale/garbage feed delay so it doesn't shift the whole
+				// tail of the trip by hours.
+				tripDelay = clampInt32Seconds(updatesForTrip.GetDelay(), -10*60, 2*60*60)
 			}
 		}
 
@@ -550,26 +584,19 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				data.Passed = true
 			}
 
-			defaultArrivalTime, err := time.ParseInLocation("15:04:05", stop.ArrivalTime, localTimeZone)
-			if err != nil {
+			// GTFS clock times can be >= 24:00:00 for post-midnight service;
+			// parseGTFSClock handles that (time.ParseInLocation does not).
+			// Anchored to `now`'s day - correct for a currently-running trip;
+			// the pre-midnight tail of a trip queried just after midnight can be
+			// a day off, but those stops are already Passed.
+			scheduledArrival, okArr := parseGTFSClock(stop.ArrivalTime, now, localTimeZone)
+			if !okArr {
 				continue
 			}
-
-			defaultDepartureTime, err := time.ParseInLocation("15:04:05", stop.DepartureTime, localTimeZone)
-			if err != nil {
-				defaultDepartureTime = defaultArrivalTime
+			scheduledDeparture, okDep := parseGTFSClock(stop.DepartureTime, now, localTimeZone)
+			if !okDep {
+				scheduledDeparture = scheduledArrival
 			}
-
-			scheduledArrival := time.Date(
-				now.Year(), now.Month(), now.Day(),
-				defaultArrivalTime.Hour(), defaultArrivalTime.Minute(), defaultArrivalTime.Second(),
-				0, localTimeZone,
-			)
-			scheduledDeparture := time.Date(
-				now.Year(), now.Month(), now.Day(),
-				defaultDepartureTime.Hour(), defaultDepartureTime.Minute(), defaultDepartureTime.Second(),
-				0, localTimeZone,
-			)
 
 			data.ScheduledTime = scheduledArrival.UnixMilli()
 
@@ -857,9 +884,8 @@ func getPredictedStopArrivalTimesForTrip(stopUpdates []*proto.TripUpdate_StopTim
 		switch update.GetScheduleRelationship().Enum().String() {
 		case "SKIPPED":
 			stopSkipped = true
-		case "NO_DATA":
-		case "UNSCHEDULED":
-			//skip
+		case "NO_DATA", "UNSCHEDULED":
+			// The feed has no realtime for this stop - don't record a prediction.
 			continue
 		}
 

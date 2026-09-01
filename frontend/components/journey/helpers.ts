@@ -58,14 +58,19 @@ export function formatTimeWithRealtime(actual: Date, scheduled?: Date, status?: 
     return actualStr
 }
 
-function stopTimeFor(stopTimes: StopTimes[], legStop: Stop | null): StopTimes | undefined {
+function stopTimeFor(stopTimes: StopTimes[], legStop: Stop | null, targetMs: number): StopTimes | undefined {
     if (!legStop) return undefined
-    return stopTimes.find(
+    const matches = stopTimes.filter(
         (s) =>
             s.child_stop_id === legStop.stop_id ||
             (!!legStop.parent_station && s.parent_stop_id === legStop.parent_station) ||
             s.parent_stop_id === legStop.stop_id
     )
+    if (matches.length <= 1) return matches[0]
+    // A trip can visit the same stop/station twice (line reversals) - pick the
+    // occurrence whose time is closest to the plan leg's own time for this stop.
+    const t = (s: StopTimes) => s.scheduled_time || s.arrival_time || s.departure_time
+    return matches.reduce((best, s) => (Math.abs(t(s) - targetMs) < Math.abs(t(best) - targetMs) ? s : best))
 }
 
 /**
@@ -89,8 +94,8 @@ export function buildLiveJourney(
         if (leg.Mode !== "transit" || !leg.TripID) return
         const st = stopTimesByTripId[leg.TripID]
         if (!st) return
-        const board = stopTimeFor(st, leg.FromStop)
-        const alight = stopTimeFor(st, leg.ToStop)
+        const board = stopTimeFor(st, leg.FromStop, new Date(leg.DepartureTime).getTime())
+        const alight = stopTimeFor(st, leg.ToStop, new Date(leg.ArrivalTime).getTime())
         if (!board?.departure_time || !alight?.arrival_time) return
 
         const depart = new Date(board.departure_time)
@@ -117,7 +122,11 @@ export function buildLiveJourney(
         const next = legs[i + 1]
         const prev = legs[i - 1]
         if (next?.Mode === "transit") {
-            const arrive = new Date(next.DepartureTime)
+            // Leading walk: match the backend's deferOriginWalk (arrive ~2 min
+            // before the train, not the instant it leaves). A transfer walk
+            // stays tight so the buffer can't overlap the previous leg.
+            const buffer = i === 0 ? 120_000 : 0
+            const arrive = new Date(new Date(next.DepartureTime).getTime() - buffer)
             legs[i].ArrivalTime = arrive
             legs[i].DepartureTime = new Date(arrive.getTime() - durMs)
         } else if (prev?.Mode === "transit") {

@@ -64,11 +64,13 @@ export function useJourneyStopTimes(tripIds: string[], active: boolean) {
 
         let intervalId: NodeJS.Timeout | null = null
         const handleVisibilityChange = () => {
+            if (intervalId) {
+                clearInterval(intervalId)
+                intervalId = null
+            }
             if (document.visibilityState === "visible") {
                 getData()
                 intervalId = setInterval(getData, REFRESH_INTERVAL * 1000)
-            } else if (intervalId) {
-                clearInterval(intervalId)
             }
         }
 
