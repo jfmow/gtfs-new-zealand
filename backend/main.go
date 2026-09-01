@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/jfmow/at-trains-api/basemap"
 	"github.com/jfmow/at-trains-api/providers"
+	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/joho/godotenv"
@@ -39,6 +41,27 @@ var rateLimiterConfig = middleware.RateLimiterConfig{
 }
 
 var localTimeZone, _ = time.LoadLocation("Pacific/Auckland")
+
+// region bundles everything needed to stand up one transit region's API.
+type region struct {
+	name    string
+	group   *echo.Group
+	gtfsURL string
+	gtfsKey gtfs.ApiKey
+	dbName  string
+
+	rtKey      string
+	rtHeader   string
+	rtInterval time.Duration
+	rtVehicles string
+	rtTrips    string
+	rtAlerts   string
+
+	gtfs   gtfs.Database
+	rt     rt.Realtime
+	rtErr  error
+	caches caches.Caches
+}
 
 //var aestZone, _ = time.LoadLocation("Australia/Brisbane")
 
@@ -83,58 +106,87 @@ func main() {
 	//seqAPI := e.Group("/seq")
 	christchurchApi := e.Group("/christ")
 
-	//Auckland Transport
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
 	if !found {
 		panic("Auckland transport api key Env not found")
 	}
-
-	AucklandTransportGTFSData, err := gtfs.New("https://gtfs.at.govt.nz/gtfs.zip", gtfs.ApiKey{Header: "", Value: ""}, "atfgtfs", localTimeZone, "hi@suddsy.dev")
-	if err != nil {
-		fmt.Println("Error loading at gtfs db")
-	}
-
-	AucklandTransportRealtimeData, err := rt.NewClient(atApiKey, "Ocp-Apim-Subscription-Key", 17*time.Second, "https://api.at.govt.nz/realtime/legacy/vehiclelocations", "https://api.at.govt.nz/realtime/legacy/tripupdates", "https://api.at.govt.nz/realtime/legacy/servicealerts", *localTimeZone)
-	if err != nil {
-		panic(err)
-	}
-
-	providers.SetupProvider(atApi, AucklandTransportGTFSData, AucklandTransportRealtimeData, "at", localTimeZone)
-
-	//MetLink
 	metlinkApiKey, found := os.LookupEnv("WEL_APIKEY")
 	if !found {
 		panic("metlink api key Env not found")
 	}
-
-	MetLinkGTFSData, err := gtfs.New("https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", gtfs.ApiKey{Header: "", Value: ""}, "welgtfs", localTimeZone, "hi@suddsy.dev")
-	if err != nil {
-		fmt.Println("Error loading at gtfs db")
-	}
-
-	MetLinkRealtimeData, err := rt.NewClient(metlinkApiKey, "x-api-key", 5*time.Second, "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates", "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts", *localTimeZone)
-	if err != nil {
-		panic(err)
-	}
-
-	providers.SetupProvider(mlApi, MetLinkGTFSData, MetLinkRealtimeData, "wel", localTimeZone)
-
 	christchurchApiKey, found := os.LookupEnv("CHRISTCHURCH_APIKEY")
 	if !found {
 		panic("Christchurch api key Env not found")
 	}
 
-	ChristChurchGTFSData, err := gtfs.New("https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: christchurchApiKey}, "christgtfs", localTimeZone, "hi@suddsy.dev")
-	if err != nil {
-		fmt.Println("Error loading at gtfs db")
+	regions := []*region{
+		{
+			name: "at", group: atApi,
+			gtfsURL: "https://gtfs.at.govt.nz/gtfs.zip", dbName: "atfgtfs",
+			rtKey: atApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 17 * time.Second,
+			rtVehicles: "https://api.at.govt.nz/realtime/legacy/vehiclelocations",
+			rtTrips:    "https://api.at.govt.nz/realtime/legacy/tripupdates",
+			rtAlerts:   "https://api.at.govt.nz/realtime/legacy/servicealerts",
+		},
+		{
+			name: "wel", group: mlApi,
+			gtfsURL: "https://static.opendata.metlink.org.nz/v1/gtfs/full.zip", dbName: "welgtfs",
+			rtKey: metlinkApiKey, rtHeader: "x-api-key", rtInterval: 5 * time.Second,
+			rtVehicles: "https://api.opendata.metlink.org.nz/v1/gtfs-rt/vehiclepositions",
+			rtTrips:    "https://api.opendata.metlink.org.nz/v1/gtfs-rt/tripupdates",
+			rtAlerts:   "https://api.opendata.metlink.org.nz/v1/gtfs-rt/servicealerts",
+		},
+		{
+			name: "christ", group: christchurchApi,
+			gtfsURL: "https://apis.metroinfo.co.nz/rti/gtfs/v1/gtfs.zip", dbName: "christgtfs",
+			gtfsKey: gtfs.ApiKey{Header: "Ocp-Apim-Subscription-Key", Value: christchurchApiKey},
+			rtKey:   christchurchApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 20 * time.Second,
+			rtVehicles: "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb",
+			rtTrips:    "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb",
+			rtAlerts:   "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb",
+		},
 	}
 
-	ChristChurchRealtimeData, err := rt.NewClient(christchurchApiKey, "Ocp-Apim-Subscription-Key", 20*time.Second, "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/vehicle-positions.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb", "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb", *localTimeZone)
-	if err != nil {
-		panic(err)
+	// The three regions are independent (separate DB files, separate route
+	// groups) - build each region's GTFS DB + realtime client in parallel, so
+	// startup is bounded by the slowest single region rather than their sum.
+	// Concurrency is capped at 2 so that a cold start where all three DBs need
+	// a full rebuild (each buffering a GTFS zip) stays within the memory limit.
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 2)
+	for _, r := range regions {
+		wg.Add(1)
+		go func(r *region) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			data, err := gtfs.New(r.gtfsURL, r.gtfsKey, r.dbName, localTimeZone, "hi@suddsy.dev")
+			if err != nil {
+				fmt.Printf("Error loading %s gtfs db: %v\n", r.name, err)
+			}
+			r.gtfs = data
+			client, err := rt.NewClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtVehicles, r.rtTrips, r.rtAlerts, *localTimeZone)
+			if err != nil {
+				r.rtErr = err
+				return
+			}
+			r.rt = client
+			// Warm this region's DB-backed caches here too - it's the other
+			// heavy synchronous step and, like gtfs.New, only touches this
+			// region's own SQLite file.
+			r.caches = caches.CreateCaches(data)
+		}(r)
 	}
+	wg.Wait()
 
-	providers.SetupProvider(christchurchApi, ChristChurchGTFSData, ChristChurchRealtimeData, "christ", localTimeZone)
+	// Route registration touches shared echo state, so it runs serially after
+	// the parallel per-region build + cache warm-up.
+	for _, r := range regions {
+		if r.rtErr != nil {
+			panic(r.rtErr)
+		}
+		providers.SetupProvider(r.group, r.gtfs, r.rt, r.name, localTimeZone, r.caches)
+	}
 	/*
 		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
 		if err != nil {

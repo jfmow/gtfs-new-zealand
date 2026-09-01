@@ -3,7 +3,7 @@ package providers
 import (
 	"time"
 
-	"github.com/jfmow/at-trains-api/providers/caches"
+	cachespkg "github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/at-trains-api/providers/notifications"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
@@ -57,10 +57,18 @@ func ResponseDetails(pairs ...any) map[string]any {
 	return m
 }
 
-func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, gtfsName string, localTimeZone *time.Location) {
+// SetupProvider registers one region's routes. An already-built cache set may be
+// passed in (main.go warms them per-region in parallel); otherwise they're built
+// here synchronously.
+func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, gtfsName string, localTimeZone *time.Location, prebuilt ...cachespkg.Caches) {
 	primaryRouter.Use(middleware.GzipWithConfig(gzipConfig))
 
-	caches := caches.CreateCaches(gtfsData)
+	var caches cachespkg.Caches
+	if len(prebuilt) > 0 {
+		caches = prebuilt[0]
+	} else {
+		caches = cachespkg.CreateCaches(gtfsData)
+	}
 
 	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache)
 	setupRoutesRoutes(primaryRouter, gtfsData, caches.GetRouteCache)

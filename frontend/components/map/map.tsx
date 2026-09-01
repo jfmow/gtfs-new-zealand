@@ -29,6 +29,8 @@ interface MapProps {
     clusterOptions?: { threshold?: number; maxClusterRadius?: number }
     /** Auto-pan the map to keep this marker id in view as it moves. */
     followMarkerId?: string
+    /** When following a marker, instead of panning to it, keep both it and this [lat, lon] point framed (e.g. the vehicle and the stop you're waiting at). */
+    followFitWith?: [number, number] | null
 }
 
 type ItemsOnMap = {
@@ -66,13 +68,16 @@ export default function MapComp({
     followUser,
     clusterOptions,
     followMarkerId,
+    followFitWith,
 }: MapProps) {
     const { currentUrl } = useUrl();
     const mapRef = useRef<leaflet.Map | null>(null);
     const onLocationUpdateRef = useRef(onLocationUpdate);
     const followUserRef = useRef(followUser);
+    const followFitWithRef = useRef(followFitWith);
     onLocationUpdateRef.current = onLocationUpdate;
     followUserRef.current = followUser;
+    followFitWithRef.current = followFitWith;
     const itemsOnMap = useRef<ItemsOnMap>({
         zoomButtons: { controls: [] },
         user: { marker: null, control: null },
@@ -231,7 +236,15 @@ export default function MapComp({
                 updatedMarkers.push({ id: item.id, marker });
 
                 if (followMarkerId && item.id === followMarkerId) {
-                    map.panTo([item.lat, item.lon], { animate: true, duration: 0.5 });
+                    const fitWith = followFitWithRef.current;
+                    if (fitWith) {
+                        map.fitBounds(
+                            leaflet.latLngBounds([item.lat, item.lon], fitWith),
+                            { padding: [55, 55], maxZoom: 16, animate: true, duration: 0.5 }
+                        );
+                    } else {
+                        map.panTo([item.lat, item.lon], { animate: true, duration: 0.5 });
+                    }
                 }
 
                 if (oldZoomControls[item.id]) {

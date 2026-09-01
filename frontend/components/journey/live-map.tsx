@@ -28,6 +28,8 @@ interface LiveMapProps {
     selectedRoute?: JourneyType
     vehiclesByTripId?: Record<string, VehiclesResponse>
     followMarkerId?: string
+    /** When following the vehicle, keep this [lat, lon] point (e.g. the stop you're waiting at) framed alongside it instead of just panning. */
+    followFitWith?: [number, number] | null
     /** Show the floating alternates/alerts buttons - only relevant once a route is selected. */
     showOverlayButtons?: boolean
     onToggleAlternates?: () => void
@@ -46,6 +48,8 @@ interface LiveMapProps {
     trackedAlightStop?: Stop
     /** Keep the map centered on the rider's live location - used whenever tracking is active but there's no vehicle to follow (waiting at a stop, walking). */
     followUser?: boolean
+    /** Fires on every GPS fix - lets the parent decide follow behaviour from the rider's position (e.g. "am I standing at the boarding stop"). */
+    onUserLocation?: (lat: number, lon: number) => void
 }
 
 const VEHICLE_ICONS = new Set(["bus", "train", "ferry", "school bus"])
@@ -82,6 +86,7 @@ export function LiveMap({
     selectedRoute,
     vehiclesByTripId,
     followMarkerId,
+    followFitWith,
     showOverlayButtons,
     onToggleAlternates,
     trackedVehicle,
@@ -90,6 +95,7 @@ export function LiveMap({
     trackedBoardStop,
     trackedAlightStop,
     followUser,
+    onUserLocation,
 }: LiveMapProps) {
     // Rebuilt only when a real input changes - not on every render. The 30s
     // useNow tick upstream would otherwise hand map.tsx a fresh array each time,
@@ -287,7 +293,9 @@ export function LiveMap({
                     height={height}
                     line={line}
                     followMarkerId={followMarkerId}
+                    followFitWith={followFitWith}
                     followUser={followUser}
+                    onLocationUpdate={onUserLocation}
                     options={{ buttonPosition: "bottom" }}
                 />
             </Suspense>

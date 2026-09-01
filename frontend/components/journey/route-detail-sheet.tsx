@@ -19,13 +19,14 @@ import {
     Navigation,
     Share2,
 } from "lucide-react"
-import { useIsMobile } from "@/lib/utils"
+import { haversineDistance, useIsMobile } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
+import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime } from "./helpers"
+import { buildLiveJourney, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -46,6 +47,23 @@ interface RouteDetailSheetProps {
 // must be - while still showing no live vehicle - before tracking is allowed to
 // skip ahead to a later leg that does have one.
 const OVERDUE_SKIP_MS = 5 * 60 * 1000
+
+// Hysteresis for "the rider is standing at the boarding stop, waiting" - enter
+// within ENTER metres, only drop back out past EXIT metres so a jittery GPS fix
+// at the boundary doesn't flip the camera between the vehicle and the rider.
+const AT_STOP_ENTER_M = 40
+const AT_STOP_EXIT_M = 120
+
+// How close to a transit leg's departure counts as "boarding" rather than "waiting".
+const BOARDING_WINDOW_MS = 90 * 1000
+
+type JourneyPhase = "walking" | "waiting" | "boarding" | "onboard"
+const PHASE_LABEL: Record<JourneyPhase, string> = {
+    walking: "Walking",
+    waiting: "Waiting",
+    boarding: "Boarding",
+    onboard: "On board",
+}
 
 function journeyStopCount(route: JourneyType): number {
     return route.Legs.reduce((sum, leg) => {
@@ -100,6 +118,10 @@ export function RouteDetailSheet({
     // off. A latch (reset per journey): a later dropped poll shouldn't put them
     // back "on board" and resume chasing that vehicle.
     const [alightedThroughLeg, setAlightedThroughLeg] = useState(-1)
+    // The rider's live position, and whether they're currently standing at the
+    // boarding stop of the leg being tracked (with hysteresis).
+    const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null)
+    const [atBoardStop, setAtBoardStop] = useState(false)
     const now = useNow(20000)
 
     // Captured via ref (not a dependency) so autoTrack flipping back to false
@@ -112,6 +134,7 @@ export function RouteDetailSheet({
         setJourneyStarted(!!autoTrackRef.current)
         setActiveSnapPoint(0.4)
         setAlightedThroughLeg(-1)
+        setAtBoardStop(false)
     }, [route?.ID])
 
     // The drawer runs non-modal (modal={false}, so the map stays interactive
@@ -165,20 +188,28 @@ export function RouteDetailSheet({
 
     const tripIds = useMemo(() => (route ? getTransitTripIds(route) : []), [route])
     const { vehiclesByTripId } = useJourneyVehicles(tripIds, open && journeyStarted)
+    const stopTimesByTripId = useJourneyStopTimes(tripIds, open && journeyStarted)
 
-    // Which leg the rider is on right now, by delay-adjusted schedule: the first
-    // leg whose adjusted arrival is still in the future. Before departure that's
-    // leg 0; once every leg's arrival has passed, the last leg.
+    // The journey with its leg times shifted to live realtime predictions (while
+    // tracking) - used for everything the rider reads: the itinerary rows, the
+    // waits, the summary header, and which leg they're on.
+    const displayRoute = useMemo(
+        () => (route ? buildLiveJourney(route, stopTimesByTripId) : route),
+        [route, stopTimesByTripId]
+    )
+
+    // Which leg the rider is on right now: the first leg whose (live) arrival is
+    // still in the future. Before departure that's leg 0; once every leg's
+    // arrival has passed, the last leg.
     const currentLegIndex = useMemo(() => {
-        if (!route) return -1
+        if (!displayRoute) return -1
         const nowMs = now.getTime()
-        // Leg.ArrivalTime is already realtime-adjusted by the backend - don't
-        // add delay_seconds on top of it.
-        const idx = route.Legs.findIndex(
+        const idx = displayRoute.Legs.findIndex(
             (l) => nowMs < new Date(l.ArrivalTime).getTime()
         )
-        return idx === -1 ? route.Legs.length - 1 : idx
-    }, [route, now])
+        return idx === -1 ? displayRoute.Legs.length - 1 : idx
+    }, [displayRoute, now])
+    const currentLeg = currentLegIndex >= 0 ? displayRoute?.Legs[currentLegIndex] : undefined
 
     // The transit leg to track: the current leg if it's transit, otherwise the
     // next transit leg coming up - always in journey order, so a later bus that
@@ -212,7 +243,6 @@ export function RouteDetailSheet({
     const trackedVehicle = trackedTripId ? vehiclesByTripId[trackedTripId] : undefined
     const trackedStops = useTrackedTripStops(trackedTripId ?? null)
     const trackedRouteLine = useRouteLine(trackedTripId ?? "", trackedVehicle?.route.id)
-    const followMarkerId = trackedVehicle ? `vehicle-${trackedVehicle.trip_id}` : undefined
 
     // The leg whose board/alight stops the map should show: the tracked
     // vehicle's leg, or - before any vehicle is live - the current/next transit
@@ -223,12 +253,48 @@ export function RouteDetailSheet({
     const trackedBoardStop = trackedLeg?.FromStop ?? undefined
     const trackedAlightStop = trackedLeg?.ToStop ?? undefined
     const trackedLegIndex = trackedLeg && route ? route.Legs.indexOf(trackedLeg) : -1
+    const trackedCurrentSeq = trackedVehicle?.trip?.current_stop?.sequence
+
+    // Has the tracked vehicle already left the rider's boarding stop? If so the
+    // rider is on board (or has missed it) - either way the camera should just
+    // follow the vehicle, not frame it against a stop that's now behind them.
+    const trackedBoardSeq = findStopSequence(trackedStops, trackedBoardStop)
+    const boarded = !!trackedVehicle && trackedCurrentSeq !== undefined && trackedBoardSeq !== undefined
+        && trackedCurrentSeq > trackedBoardSeq
+    // Physically standing at the boarding stop, vehicle not yet departed it.
+    const waitingAtStop = atBoardStop && !boarded
+
+    // Camera: follow the rider while they're still walking to a stop (and not
+    // already waiting at it / on board); otherwise follow the tracked vehicle.
+    const riderWalking = journeyStarted && currentLeg?.Mode === "walk" && !waitingAtStop && !boarded
+    const followMarkerId = trackedVehicle && !riderWalking ? `vehicle-${trackedVehicle.trip_id}` : undefined
+
+    // While waiting at the stop for the tracked vehicle, frame the vehicle and
+    // the stop together (watch it approach) rather than panning to the vehicle
+    // alone. Once boarded this drops and it reverts to a plain follow.
+    const followFitWith: [number, number] | undefined =
+        followMarkerId && waitingAtStop && trackedBoardStop
+            ? [trackedBoardStop.stop_lat, trackedBoardStop.stop_lon]
+            : undefined
+
+    // Track whether the rider is standing at the boarding stop (hysteresis so a
+    // jittery fix at the edge doesn't oscillate the camera). Cleared when there's
+    // no boarding stop to be at (e.g. the leg's been alighted).
+    const boardLat = trackedBoardStop?.stop_lat
+    const boardLon = trackedBoardStop?.stop_lon
+    useEffect(() => {
+        if (!journeyStarted || boardLat === undefined || boardLon === undefined || !userLoc) {
+            setAtBoardStop(false)
+            return
+        }
+        const d = haversineDistance(userLoc.lat, userLoc.lon, boardLat, boardLon)
+        setAtBoardStop((was) => (was ? d < AT_STOP_EXIT_M : d <= AT_STOP_ENTER_M))
+    }, [journeyStarted, boardLat, boardLon, userLoc])
 
     // Release the tracked leg the moment the vehicle carries the rider past
     // their alight stop - from then on the map follows the next leg's vehicle if
     // it's live, otherwise the rider (see followUser below), instead of chasing
     // the vehicle they just got off as it continues its trip.
-    const trackedCurrentSeq = trackedVehicle?.trip?.current_stop?.sequence
     useEffect(() => {
         if (!journeyStarted || trackedLegIndex < 0 || trackedCurrentSeq === undefined) return
         const alightSeq = findStopSequence(trackedStops, trackedAlightStop)
@@ -244,6 +310,32 @@ export function RouteDetailSheet({
     ], [route?.StartLat, route?.StartLon, route?.EndLat, route?.EndLon])
 
     if (!route) return null
+    const shownRoute = displayRoute ?? route
+
+    // The leg index to mark as "current" in the itinerary/header while tracking.
+    // Once the final leg's arrival has passed the whole journey reads as done.
+    const lastLeg = shownRoute.Legs[shownRoute.Legs.length - 1]
+    const journeyArrived =
+        journeyStarted && currentLegIndex === shownRoute.Legs.length - 1 &&
+        !!lastLeg && now.getTime() >= new Date(lastLeg.ArrivalTime).getTime()
+    const progressLegIndex = !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : currentLegIndex
+
+    // What the rider is doing on the current leg right now.
+    const activeLeg = progressLegIndex >= 0 ? shownRoute.Legs[progressLegIndex] : undefined
+    const currentPhase = ((): JourneyPhase | undefined => {
+        if (!journeyStarted || !activeLeg) return undefined
+        if (activeLeg.Mode === "walk") return waitingAtStop ? "waiting" : "walking"
+        if (boarded) return "onboard"
+        // Transit leg, not yet on board: "boarding" once the vehicle is at/one
+        // stop from the rider's boarding stop, or departure is imminent;
+        // "waiting" during the gap before that.
+        const untilDepartMs = new Date(activeLeg.DepartureTime).getTime() - now.getTime()
+        const vehicleAtBoard =
+            trackedBoardSeq !== undefined && trackedCurrentSeq !== undefined &&
+            trackedCurrentSeq >= trackedBoardSeq - 1 && trackedCurrentSeq <= trackedBoardSeq &&
+            (trackedVehicle?.state === "AtStop" || trackedVehicle?.state === "Approaching")
+        return untilDepartMs <= BOARDING_WINDOW_MS || vehicleAtBoard ? "boarding" : "waiting"
+    })()
 
     const handleShare = async () => {
         const title = `${startLocation?.label ?? "Start"} → ${endLocation?.label ?? "Destination"}`
@@ -274,23 +366,35 @@ export function RouteDetailSheet({
             selectedRoute={route}
             vehiclesByTripId={vehiclesByTripId}
             followMarkerId={followMarkerId}
+            followFitWith={followFitWith}
             trackedVehicle={trackedVehicle}
             trackedStops={trackedStops}
             trackedRouteLine={trackedRouteLine}
             trackedBoardStop={trackedBoardStop}
             trackedAlightStop={trackedAlightStop}
-            followUser={journeyStarted && !trackedVehicle}
+            followUser={journeyStarted && !followMarkerId}
+            onUserLocation={(lat, lon) => setUserLoc({ lat, lon })}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
     )
 
+    const itinerary = (
+        <RouteItinerary
+            route={shownRoute}
+            currentLegIndex={progressLegIndex}
+            currentPhase={currentPhase}
+        />
+    )
+
     const summary = (
         <JourneySummary
-            route={route}
+            route={shownRoute}
             onShare={handleShare}
             journeyStarted={journeyStarted}
             onGo={() => setJourneyStarted(true)}
+            currentLegIndex={progressLegIndex}
+            currentPhase={currentPhase}
         />
     )
 
@@ -303,7 +407,7 @@ export function RouteDetailSheet({
                         <div className="w-1/2 relative">{map}</div>
                         <div className="w-1/2 overflow-y-auto p-4 space-y-4">
                             {summary}
-                            <RouteItinerary route={route} />
+                            {itinerary}
                         </div>
                     </div>
                 </DialogContent>
@@ -350,7 +454,7 @@ export function RouteDetailSheet({
                         scroll container a bounded height to overflow against. */}
                     <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4 space-y-4">
                         {summary}
-                        <RouteItinerary route={route} />
+                        {itinerary}
                     </div>
                 </DrawerContent>
             </Drawer>
@@ -363,15 +467,56 @@ function JourneySummary({
     onShare,
     journeyStarted,
     onGo,
+    currentLegIndex,
+    currentPhase,
 }: {
     route: JourneyType
     onShare: () => void
     journeyStarted: boolean
     onGo: () => void
+    currentLegIndex: number
+    currentPhase?: JourneyPhase
 }) {
-    const firstTransitLeg = route.Legs.find(l => l.Mode === 'transit')
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
+
+    // The route shown in the header badge: the leg the rider is on now if it's
+    // transit, else the next transit leg they'll board, else the first.
+    const currentLeg = currentLegIndex >= 0 ? route.Legs[currentLegIndex] : undefined
+    const badgeLeg =
+        (currentLeg?.Mode === "transit" ? currentLeg : undefined) ??
+        (currentLegIndex >= 0 ? route.Legs.slice(currentLegIndex).find((l) => l.Mode === "transit") : undefined) ??
+        route.Legs.find((l) => l.Mode === "transit")
+
+    // The next transit leg (for a "waiting for the X" status during a walk/gap).
+    const nextTransit = currentLegIndex >= 0
+        ? route.Legs.slice(currentLegIndex).find((l) => l.Mode === "transit")
+        : undefined
+
+    // A one-line "where are you in the journey" status, shown once tracking.
+    let progress: string | null = null
+    if (journeyStarted && currentLeg && currentPhase) {
+        const routeName = (l?: Leg) => l?.Route?.route_short_name || l?.RouteID || "service"
+        const isLastLeg = currentLegIndex === route.Legs.length - 1
+        switch (currentPhase) {
+            case "walking":
+                progress = currentLeg.ToStop
+                    ? `Walking to ${currentLeg.ToStop.stop_name}`
+                    : isLastLeg ? "Almost there" : "Walking"
+                break
+            case "waiting":
+                progress = currentLeg.Mode === "transit"
+                    ? `Waiting for the ${routeName(currentLeg)}`
+                    : `Waiting for the ${routeName(nextTransit)}`
+                break
+            case "boarding":
+                progress = `Boarding the ${routeName(currentLeg.Mode === "transit" ? currentLeg : nextTransit)}`
+                break
+            case "onboard":
+                progress = `On the ${routeName(currentLeg)}${currentLeg.ToStop?.stop_name ? ` → ${currentLeg.ToStop.stop_name}` : ""}`
+                break
+        }
+    }
 
     // Delay-adjusted arrival, and a live "time remaining" countdown against it -
     // ticks down as real time passes, and runs longer than the planned duration
@@ -388,19 +533,19 @@ function JourneySummary({
         <div className="space-y-3">
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
-                    {firstTransitLeg?.Route && (
+                    {badgeLeg?.Route && (
                         <span
                             className="shrink-0 px-2 py-1 rounded text-sm font-semibold"
                             style={{
-                                background: "#" + (firstTransitLeg.Route.route_color || "424242"),
-                                color: firstTransitLeg.Route.route_text_color ? `#${firstTransitLeg.Route.route_text_color}` : "#ffffff",
+                                background: "#" + (badgeLeg.Route.route_color || "424242"),
+                                color: badgeLeg.Route.route_text_color ? `#${badgeLeg.Route.route_text_color}` : "#ffffff",
                             }}
                         >
-                            {firstTransitLeg.Route.route_short_name || firstTransitLeg.RouteID}
+                            {badgeLeg.Route.route_short_name || badgeLeg.RouteID}
                         </span>
                     )}
                     <div className="min-w-0">
-                        <p className="text-base font-semibold truncate">{headsign ?? "Your journey"}</p>
+                        <p className="text-base font-semibold truncate">{progress ?? headsign ?? "Your journey"}</p>
                         <p className="text-xs text-muted-foreground">
                             {stopCount > 0 ? `${stopCount} stop${stopCount !== 1 ? 's' : ''}` : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
                         </p>
@@ -452,17 +597,43 @@ function JourneySummary({
     )
 }
 
-function RouteItinerary({ route }: { route: JourneyType }) {
+function RouteItinerary({
+    route,
+    currentLegIndex,
+    currentPhase,
+}: {
+    route: JourneyType
+    /** -1 when not tracking. */
+    currentLegIndex: number
+    currentPhase?: JourneyPhase
+}) {
     return (
         <div className="space-y-1">
-            {route.Legs.map((leg, legIndex) => (
-                <LegRow key={legIndex} leg={leg} isLast={legIndex === route.Legs.length - 1} nextLeg={route.Legs[legIndex + 1]} />
-            ))}
+            {route.Legs.map((leg, legIndex) => {
+                const status: LegStatus =
+                    currentLegIndex < 0 ? "upcoming"
+                        : legIndex < currentLegIndex ? "done"
+                            : legIndex === currentLegIndex ? "current"
+                                : "upcoming"
+                const currentLabel = status === "current" && currentPhase ? PHASE_LABEL[currentPhase] : undefined
+                return (
+                    <LegRow
+                        key={legIndex}
+                        leg={leg}
+                        isLast={legIndex === route.Legs.length - 1}
+                        nextLeg={route.Legs[legIndex + 1]}
+                        status={status}
+                        currentLabel={currentLabel}
+                    />
+                )
+            })}
         </div>
     )
 }
 
-function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?: Leg }) {
+type LegStatus = "done" | "current" | "upcoming"
+
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel }: { leg: Leg; isLast: boolean; nextLeg?: Leg; status?: LegStatus; currentLabel?: string }) {
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
     const isEarly = leg.realtime_status === RealtimeStatus.Early
@@ -483,7 +654,21 @@ function LegRow({ leg, isLast, nextLeg }: { leg: Leg; isLast: boolean; nextLeg?:
     const showOnTimeBadge = leg.realtime_status === RealtimeStatus.OnTime && !inverted
 
     return (
-        <div className="relative">
+        <div
+            className={
+                status === "current"
+                    ? "relative -mx-2 rounded-lg bg-primary/[0.06] px-2 py-1 ring-1 ring-primary/30"
+                    : status === "done"
+                        ? "relative opacity-45"
+                        : "relative"
+            }
+        >
+            {currentLabel && (
+                <span className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground animate-pulse" />
+                    {currentLabel}
+                </span>
+            )}
             {!isWalk && leg.trip_usable === false && (
                 <div className="mb-2 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
                     <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
