@@ -439,7 +439,16 @@ export function RouteDetailSheet({
                 // dismiss affordance shown to the user, so closing should
                 // only happen via onShowAlternates/onOpenChange, not a drag.
                 dismissible={false}
-                snapPoints={[0.4, 0.85]}
+                // The top snap point must be 1, not 0.85: at any snap point
+                // below 1 the sheet still carries a positive translateY, and
+                // vaul's shouldDrag() treats "sheet is translated down at all"
+                // as "consume this gesture as a drag" - so a touch-drag over
+                // the itinerary always moved the sheet instead of scrolling its
+                // content, at every snap point. With 1 as the top snap the
+                // sheet sits at translateY 0 there and vertical drags fall
+                // through to the scroll container. h-[85vh] still leaves 15vh
+                // of map visible above it.
+                snapPoints={[0.4, 1]}
                 activeSnapPoint={activeSnapPoint}
                 setActiveSnapPoint={setActiveSnapPoint}
             >
