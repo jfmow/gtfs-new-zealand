@@ -184,6 +184,83 @@ export function connectionRisk(legs: Leg[], index: number): ConnectionRisk | nul
     return { level: slackMs < 0 ? "missed" : "tight", transferMin: Math.round((gapMs - walkMs) / 60_000) }
 }
 
+export type ReplanChoice = {
+    key: string
+    label: string
+    detail: string
+    origin: { lat: number; lon: number; label: string }
+    departAt: Date
+}
+
+/**
+ * The ways it makes sense to re-run the planner from mid-journey, given where
+ * the rider is. Usually two (the rider picks in a popup); empty on the final leg
+ * or when there's nothing useful to offer.
+ */
+export function replanChoices(
+    route: JourneyType,
+    progressLegIndex: number,
+    phase: "walking" | "waiting" | "boarding" | "onboard" | undefined,
+    vehicleNextStop: { lat: number; lon: number; name: string } | undefined,
+    vehicleNextStopEta: Date | undefined,
+    userLoc: { lat: number; lon: number } | null,
+): ReplanChoice[] {
+    if (progressLegIndex < 0 || progressLegIndex >= route.Legs.length - 1) return []
+    const leg = route.Legs[progressLegIndex]
+    const out: ReplanChoice[] = []
+    const stopChoice = (s: Stop, key: string, label: string, detail: string, departAt: Date): ReplanChoice => ({
+        key, label, detail, origin: { lat: s.stop_lat, lon: s.stop_lon, label: s.stop_name || label }, departAt,
+    })
+
+    // The ride the rider is on / about to take, and where it drops them.
+    const ride = leg.Mode === "transit" ? leg : route.Legs.slice(progressLegIndex + 1).find((l) => l.Mode === "transit")
+    const rideName = ride?.Route?.route_short_name || ride?.RouteID || "the next service"
+
+    if (phase === "onboard" && leg.Mode === "transit") {
+        // Already moving - either get off early or ride to the planned stop.
+        if (vehicleNextStop) {
+            out.push({
+                key: "next-stop",
+                label: `Get off at ${vehicleNextStop.name}`,
+                detail: vehicleNextStopEta ? `re-route from ~${formatTime(vehicleNextStopEta)}` : "re-route from there",
+                origin: { lat: vehicleNextStop.lat, lon: vehicleNextStop.lon, label: vehicleNextStop.name },
+                departAt: vehicleNextStopEta ?? new Date(Date.now() + 2 * 60_000),
+            })
+        }
+        if (leg.ToStop) {
+            out.push(stopChoice(leg.ToStop, "alight", `Stay on to ${leg.ToStop.stop_name}`,
+                `re-route from there (arr ${formatTime(leg.ArrivalTime)})`, new Date(leg.ArrivalTime)))
+        }
+        return out
+    }
+
+    if (phase === "walking" && leg.Mode === "walk") {
+        if (userLoc) {
+            out.push({
+                key: "gps-now", label: "From where I am now", detail: "current location",
+                origin: { lat: userLoc.lat, lon: userLoc.lon, label: "Current location" }, departAt: new Date(),
+            })
+        }
+        if (leg.ToStop) {
+            out.push(stopChoice(leg.ToStop, "target-stop", `From ${leg.ToStop.stop_name}`,
+                `when you get there (~${formatTime(leg.ArrivalTime)})`, new Date(leg.ArrivalTime)))
+        }
+        return out
+    }
+
+    // waiting / boarding: at (or reaching) a stop, about to take `ride`.
+    const hereStop = leg.Mode === "transit" ? leg.FromStop : leg.ToStop
+    if (hereStop) {
+        out.push(stopChoice(hereStop, "here-now", `Leave from ${hereStop.stop_name} now`,
+            "a different way from here", new Date()))
+    }
+    if (ride?.ToStop) {
+        out.push(stopChoice(ride.ToStop, "onward", `Take the ${rideName} anyway`,
+            `re-route from ${ride.ToStop.stop_name} (arr ${formatTime(ride.ArrivalTime)})`, new Date(ride.ArrivalTime)))
+    }
+    return out
+}
+
 export function getWaitingTimeNs(prev: Leg, next: Leg) {
     const arrival = new Date(prev.ArrivalTime).getTime()
     const departure = new Date(next.DepartureTime).getTime()

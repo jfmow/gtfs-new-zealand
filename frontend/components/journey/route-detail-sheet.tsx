@@ -7,6 +7,7 @@ import {
     DrawerTitle,
 } from "@/components/ui/drawer"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
@@ -17,6 +18,7 @@ import {
     Clock,
     Footprints,
     Navigation,
+    RefreshCw,
     Share2,
 } from "lucide-react"
 import { haversineDistance, useIsMobile } from "@/lib/utils"
@@ -26,7 +28,7 @@ import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { buildLiveJourney, connectionRisk, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, type ConnectionRisk } from "./helpers"
+import { buildLiveJourney, connectionRisk, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -39,6 +41,8 @@ interface RouteDetailSheetProps {
     buildShareUrl: (route: JourneyType) => string
     /** Collapses the sheet so the results list underneath is reachable again. */
     onShowAlternates: () => void
+    /** Re-run the planner from a stop the rider is at / heading to, mid-journey. Reveals the fresh options in the results list. */
+    onReplanFromHere?: (origin: { lat: number; lon: number; label: string }, departAt: Date) => void
     /** Set once, right when a shared link auto-opens this exact route, to start tracking immediately instead of requiring a manual GO tap. Read once via a ref, not as a live dependency, so plan.tsx clearing it back to false afterward doesn't undo tracking once it's started. */
     autoTrack?: boolean
 }
@@ -102,6 +106,7 @@ export function RouteDetailSheet({
     endLocation,
     buildShareUrl,
     onShowAlternates,
+    onReplanFromHere,
     autoTrack,
 }: RouteDetailSheetProps) {
     // immediate: true - resolve mobile vs desktop synchronously on the first
@@ -312,6 +317,16 @@ export function RouteDetailSheet({
     if (!route) return null
     const shownRoute = displayRoute ?? route
 
+    // Vehicles to show on the map: drop the ones for legs the rider has already
+    // ridden and alighted - once you're off a train you don't want to keep
+    // watching it drive away while you wait for the next.
+    const alightedTripIds = new Set(
+        route.Legs.filter((l, i) => l.Mode === "transit" && !!l.TripID && i <= alightedThroughLeg).map((l) => l.TripID)
+    )
+    const visibleVehicles = alightedTripIds.size === 0
+        ? vehiclesByTripId
+        : Object.fromEntries(Object.entries(vehiclesByTripId).filter(([id]) => !alightedTripIds.has(id)))
+
     // The leg index to mark as "current" in the itinerary/header while tracking.
     // Once the final leg's arrival has passed the whole journey reads as done.
     const lastLeg = shownRoute.Legs[shownRoute.Legs.length - 1]
@@ -345,6 +360,33 @@ export function RouteDetailSheet({
             : activeTransitTripId && (stopTimesByTripId[activeTransitTripId]?.length ?? 0) > 0 ? "predicted"
                 : "scheduled"
 
+    // "Re-plan from here": the choices the rider can pick from (usually "get off
+    // at the next stop" vs "stay on / take this one and re-route after"), and
+    // whether a downstream connection is now unmakeable (makes the button urgent).
+    const vehicleNext = trackedVehicle?.trip?.next_stop
+    const vehicleNextEtaMs =
+        vehicleNext && activeTransitTripId
+            ? stopTimesByTripId[activeTransitTripId]?.find(
+                (s) => s.child_stop_id === vehicleNext.child_stop_id || s.parent_stop_id === vehicleNext.parent_stop_id
+            )?.arrival_time
+            : undefined
+    const vehicleNextEta = vehicleNextEtaMs ? new Date(vehicleNextEtaMs) : undefined
+
+    const replanOptions = journeyStarted
+        ? replanChoices(
+            shownRoute, progressLegIndex, currentPhase,
+            vehicleNext ? { lat: vehicleNext.lat, lon: vehicleNext.lon, name: vehicleNext.name } : undefined,
+            vehicleNextEta,
+            userLoc,
+        )
+        : []
+    const replanUrgent = replanOptions.length > 0 && shownRoute.Legs.some(
+        (_, i) => i > progressLegIndex && connectionRisk(shownRoute.Legs, i)?.level === "missed"
+    )
+    const handleReplan = onReplanFromHere
+        ? (c: ReplanChoice) => onReplanFromHere(c.origin, c.departAt)
+        : undefined
+
     const handleShare = async () => {
         const title = `${startLocation?.label ?? "Start"} → ${endLocation?.label ?? "Destination"}`
         const shareUrl = buildShareUrl(route)
@@ -372,7 +414,7 @@ export function RouteDetailSheet({
             startLocation={startLocation}
             endLocation={endLocation}
             selectedRoute={route}
-            vehiclesByTripId={vehiclesByTripId}
+            vehiclesByTripId={visibleVehicles}
             followMarkerId={followMarkerId}
             followFitWith={followFitWith}
             trackedVehicle={trackedVehicle}
@@ -404,6 +446,9 @@ export function RouteDetailSheet({
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
             trackingLevel={trackingLevel}
+            replanOptions={replanOptions}
+            onReplan={handleReplan}
+            replanUrgent={replanUrgent}
         />
     )
 
@@ -488,6 +533,9 @@ function JourneySummary({
     currentLegIndex,
     currentPhase,
     trackingLevel,
+    replanOptions,
+    onReplan,
+    replanUrgent,
 }: {
     route: JourneyType
     onShare: () => void
@@ -496,6 +544,9 @@ function JourneySummary({
     currentLegIndex: number
     currentPhase?: JourneyPhase
     trackingLevel: "live" | "predicted" | "scheduled"
+    replanOptions: ReplanChoice[]
+    onReplan?: (choice: ReplanChoice) => void
+    replanUrgent?: boolean
 }) {
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
@@ -622,6 +673,42 @@ function JourneySummary({
                     {journeyStarted ? "Tracking" : "GO"}
                 </Button>
             </div>
+
+            {journeyStarted && onReplan && replanOptions.length > 0 && (() => {
+                const label = replanUrgent ? "You'll miss a connection - find another route" : "Find a better route from here"
+                if (replanOptions.length === 1) {
+                    return (
+                        <Button variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5" onClick={() => onReplan(replanOptions[0])}>
+                            <RefreshCw className="h-3.5 w-3.5" />
+                            {label}
+                        </Button>
+                    )
+                }
+                return (
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5">
+                                <RefreshCw className="h-3.5 w-3.5" />
+                                {label}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="center" className="w-[var(--radix-popover-trigger-width)] p-1">
+                            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Re-plan from…</p>
+                            {replanOptions.map((c) => (
+                                <button
+                                    key={c.key}
+                                    type="button"
+                                    onClick={() => onReplan(c)}
+                                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm hover:bg-accent transition-colors"
+                                >
+                                    <span className="font-medium">{c.label}</span>
+                                    <span className="text-xs text-muted-foreground">{c.detail}</span>
+                                </button>
+                            ))}
+                        </PopoverContent>
+                    </Popover>
+                )
+            })()}
         </div>
     )
 }

@@ -5,9 +5,7 @@ import { AlertTriangle, ArrowRight, Clock, Footprints } from "lucide-react"
 import type { JourneyType } from "./types"
 import {
     formatDuration,
-    formatTimeWithRealtime,
-    getFirstTransitLeg,
-    getLastTransitLeg,
+    formatTime,
     getWaitingTimeNs,
 } from "./helpers"
 import { RealtimeStatus } from "./types"
@@ -21,7 +19,7 @@ export function ResultsList({ routes, onSelect }: ResultsListProps) {
     if (routes.length === 0) return null
 
     return (
-        <div className="mt-6 space-y-2">
+        <div id="journey-results" className="mt-6 space-y-2 scroll-mt-20">
             <h2 className="text-sm font-medium text-muted-foreground">
                 {routes.length} route{routes.length !== 1 ? 's' : ''} found
             </h2>
@@ -46,9 +44,12 @@ export function ResultsList({ routes, onSelect }: ResultsListProps) {
                                     <div className="flex flex-col">
                                         <span className="text-lg font-semibold leading-none">{formatDuration(route.TotalDuration)}</span>
                                         <span className="text-xs text-muted-foreground mt-1">
-                                            {formatTimeWithRealtime(route.DepartureTime, getFirstTransitLeg(route)?.scheduled_departure_time, getFirstTransitLeg(route)?.realtime_status)}
+                                            {/* Journey-level times (already realtime-adjusted + the
+                                                leading walk deferred) - when you leave and when you
+                                                arrive, not any one train's schedule. */}
+                                            {formatTime(route.DepartureTime)}
                                             <ArrowRight className="inline mx-1 h-3 w-3" />
-                                            {formatTimeWithRealtime(route.ArrivalTime, getLastTransitLeg(route)?.scheduled_arrival_time, getLastTransitLeg(route)?.realtime_status)}
+                                            {formatTime(route.ArrivalTime)}
                                         </span>
                                     </div>
                                     <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-[10px] shrink-0">

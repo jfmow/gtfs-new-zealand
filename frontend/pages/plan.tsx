@@ -5,12 +5,12 @@ import { SaveTripDialog } from "@/components/trips/save-trip-dialog"
 import { ManageTripsSheet } from "@/components/trips/manage-trips-sheet"
 import { GlobalTripSettingsDialog } from "@/components/trips/global-trip-settings-dialog"
 import { Button } from "@/components/ui/button"
-import { List, Settings2 } from "lucide-react"
+import { List, Settings2, Undo2 } from "lucide-react"
 import { ApiFetch, useUrl } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
 import type { Location, JourneyType } from "@/components/journey/types"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
-import { getTransitTripIds } from "@/components/journey/helpers"
+import { formatTime, getTransitTripIds } from "@/components/journey/helpers"
 import { SearchForm } from "@/components/journey/search-form"
 import { QuickTripsRail } from "@/components/journey/quick-trips-rail"
 import { ResultsList } from "@/components/journey/results-list"
@@ -35,6 +35,15 @@ export default function Page() {
     const [apiResponse, setApiResponse] = useState<JourneyType[]>([])
     const [selectedRoute, setSelectedRoute] = useState<JourneyType | undefined>()
     const [isSearching, setIsSearching] = useState(false)
+    // Snapshot taken when the rider re-plans mid-journey, so they can bail back
+    // to the route they were on without re-searching.
+    const [replanSnapshot, setReplanSnapshot] = useState<null | {
+        route: JourneyType | undefined
+        results: JourneyType[]
+        start: Location | null
+        timeType: "now" | "leaveat" | "arriveat"
+        date: Date
+    }>(null)
 
     // UI state
     const [saveTripOpen, setSaveTripOpen] = useState(false)
@@ -237,6 +246,23 @@ export default function Page() {
         setIsSelectingOnMap(false)
     }
 
+    const fetchPlans = useCallback(async (
+        from: { lat: number; lon: number },
+        to: { lat: number; lon: number },
+        date: Date,
+        tType: "now" | "leaveat" | "arriveat",
+    ): Promise<JourneyType[] | null> => {
+        try {
+            const response = await ApiFetch<JourneyType[]>(
+                `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
+            )
+            return response.ok ? response.data : null
+        } catch (error) {
+            console.error("Error planning journey:", error)
+            return null
+        }
+    }, [maxWalkKm, walkSpeed, maxTransfers])
+
     const planJourney = async () => {
         if (!startLocation || !endLocation) return
 
@@ -245,20 +271,42 @@ export default function Page() {
 
         setIsSearching(true)
         setApiResponse([])
-        try {
-            const response = await ApiFetch<JourneyType[]>(
-                `/services/plan?startLat=${startLocation.lat}&startLon=${startLocation.lon}&endLat=${endLocation.lat}&endLon=${endLocation.lon}&date=${searchDate.toISOString()}&timeType=${timeType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
-            )
-
-            if (response.ok) {
-                setApiResponse(response.data)
-            }
-        } catch (error) {
-            console.error("Error planning journey:", error)
-        } finally {
-            setIsSearching(false)
-        }
+        setReplanSnapshot(null)
+        const data = await fetchPlans(startLocation, endLocation, searchDate, timeType)
+        if (data) setApiResponse(data)
+        setIsSearching(false)
     }
+
+    // Re-plan from a stop the rider is at / heading to, mid-journey, when the
+    // live times have made the original route unworkable. Points the form at
+    // that stop/time and reveals the fresh options in the results list.
+    const replanFromHere = useCallback(async (origin: { lat: number; lon: number; label: string }, departAt: Date) => {
+        if (!endLocation) return
+        setReplanSnapshot({ route: selectedRoute, results: apiResponse, start: startLocation, timeType, date: selectedDate })
+        setStartLocation({ lat: origin.lat, lon: origin.lon, label: origin.label })
+        setTimeType("leaveat")
+        setSelectedDate(departAt)
+        setIsSearching(true)
+        setApiResponse([])
+        setSelectedRoute(undefined)
+        setIsRouteMapOpen(false)
+        const data = await fetchPlans(origin, endLocation, departAt, "leaveat")
+        if (data) setApiResponse(data)
+        setIsSearching(false)
+        setTimeout(() => document.getElementById("journey-results")?.scrollIntoView({ behavior: "smooth" }), 100)
+    }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate])
+
+    // Bail out of a mid-journey re-plan: restore the route (and form) they were on.
+    const restoreReplan = useCallback(() => {
+        if (!replanSnapshot) return
+        setSelectedRoute(replanSnapshot.route)
+        setApiResponse(replanSnapshot.results)
+        setStartLocation(replanSnapshot.start)
+        setTimeType(replanSnapshot.timeType)
+        setSelectedDate(replanSnapshot.date)
+        setIsRouteMapOpen(!!replanSnapshot.route)
+        setReplanSnapshot(null)
+    }, [replanSnapshot])
 
     // Builds a link that reopens (and starts tracking) this exact journey, so
     // whoever it's shared with can follow the live vehicle too - `id` reopens
@@ -363,6 +411,24 @@ export default function Page() {
                     onReorderTrips={reorderTrips}
                 />
 
+                {replanSnapshot && (
+                    <button
+                        type="button"
+                        onClick={restoreReplan}
+                        className="mt-4 flex w-full items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3.5 py-2.5 text-sm hover:bg-accent/50 transition-colors"
+                    >
+                        <span className="inline-flex items-center gap-2 font-medium">
+                            <Undo2 className="h-4 w-4" />
+                            Keep the route I was on
+                        </span>
+                        {replanSnapshot.route && (
+                            <span className="text-xs text-muted-foreground">
+                                arrives {formatTime(replanSnapshot.route.ArrivalTime)}
+                            </span>
+                        )}
+                    </button>
+                )}
+
                 <ResultsList
                     routes={apiResponse}
                     onSelect={(route) => {
@@ -380,6 +446,7 @@ export default function Page() {
                 endLocation={endLocation}
                 buildShareUrl={buildShareUrl}
                 onShowAlternates={() => setIsRouteMapOpen(false)}
+                onReplanFromHere={replanFromHere}
                 autoTrack={autoTrack}
             />
 
