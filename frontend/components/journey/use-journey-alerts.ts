@@ -60,7 +60,7 @@ const MAX_STACK = 3
  * stop as its next stop - before the "this is your stop" alert fires. Tuned so
  * the alert lands while the vehicle is pulling in, not once it has left again.
  */
-const NEAR_ALIGHT_M = 90
+const NEAR_ALIGHT_M = 200
 
 function routeName(leg: Leg | undefined): string {
     return leg?.Route?.route_short_name || leg?.RouteID || "service"
