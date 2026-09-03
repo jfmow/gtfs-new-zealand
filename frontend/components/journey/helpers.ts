@@ -26,8 +26,8 @@ export function findStopSequence(
  * reports "still here" for the whole inter-stop interval after departure. This
  * closes that gap: departed once `current_stop` is past the stop, OR
  * `current_stop` is still the stop but `next_stop` is beyond it and the feed
- * says the vehicle is moving ("Departed", or "Approaching" the next one) - i.e.
- * anything other than still dwelling there ("AtStop").
+ * says the vehicle is moving ("Leaving" or "Travelling") - i.e. anything other
+ * than still dwelling there ("AtStop").
  *
  * Conservative at clamped boundaries / with no realtime: origin clamp
  * (current === next === first), final clamp (current === next === final), and
@@ -46,7 +46,7 @@ export function hasDepartedStop(
         cur === stopSeq &&
         next !== undefined &&
         next > stopSeq &&
-        (vehicle.state === "Departed" || vehicle.state === "Approaching")
+        (vehicle.state === "Leaving" || vehicle.state === "Travelling")
     )
 }
 

@@ -31,12 +31,15 @@ interface MapProps {
     followMarkerId?: string
     /** When following a marker, instead of panning to it, keep both it and this [lat, lon] point framed (e.g. the vehicle and the stop you're waiting at). */
     followFitWith?: [number, number] | null
+    /** Flips false→true once (e.g. when live tracking starts) to fly the map into a close zoom on zoomInCenter - a one-shot trigger, not a held state. */
+    zoomInTrigger?: boolean
+    zoomInCenter?: LatLng
 }
 
 type ItemsOnMap = {
     mapItems: {
         clusters: Record<string, MarkerClusterGroup>
-        markers: { id: string, marker: leaflet.Marker }[]
+        markers: { id: string, marker: leaflet.Marker, minZoom?: number }[]
         zoomButtons: Record<string, leaflet.Control>
         waypointLines: leaflet.Polyline[]
     }
@@ -69,6 +72,8 @@ export default function MapComp({
     clusterOptions,
     followMarkerId,
     followFitWith,
+    zoomInTrigger,
+    zoomInCenter,
 }: MapProps) {
     const { currentUrl } = useUrl();
     const mapRef = useRef<leaflet.Map | null>(null);
@@ -227,13 +232,20 @@ export default function MapComp({
                     marker = createNewMarker(item);
                 }
 
+                // Below its minZoom, the marker is built (so it's ready to
+                // add instantly once the rider zooms in - see the zoomend
+                // listener below) but kept off the map until then.
+                const belowMinZoom = item.minZoom !== undefined && map.getZoom() < item.minZoom;
+
                 if (useCluster && clusterGroup) {
                     clusterGroup.addLayer(marker);
+                } else if (belowMinZoom) {
+                    if (map.hasLayer(marker)) map.removeLayer(marker);
                 } else if (!existing || !map.hasLayer(marker)) {
                     marker.addTo(map);
                 }
 
-                updatedMarkers.push({ id: item.id, marker });
+                updatedMarkers.push({ id: item.id, marker, minZoom: item.minZoom });
 
                 if (followMarkerId && item.id === followMarkerId) {
                     const fitWith = followFitWithRef.current;
@@ -365,6 +377,46 @@ export default function MapComp({
         itemsOnMap.current.mapItems = activeMapItems.mapItems;
     }, [mapItems, options?.buttonPosition, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId]);
 
+    // Markers with a minZoom are built above but only actually added to the
+    // map once zoomed in enough - toggle them on/off as the rider pans and
+    // zooms, without waiting for mapItems to change again.
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const handleZoom = () => {
+            const zoom = map.getZoom();
+            itemsOnMap.current.mapItems.markers.forEach(({ marker, minZoom }) => {
+                if (minZoom === undefined) return;
+                const shouldShow = zoom >= minZoom;
+                const isShown = map.hasLayer(marker);
+                if (shouldShow && !isShown) marker.addTo(map);
+                else if (!shouldShow && isShown) map.removeLayer(marker);
+            });
+        };
+        map.on("zoomend", handleZoom);
+        return () => {
+            map.off("zoomend", handleZoom);
+        };
+    }, [map_id]);
+
+    // One-shot fly-in on the false→true edge of zoomInTrigger (e.g. the
+    // moment live tracking starts) - not a held state, so a stale/missing
+    // center or a re-render with the same true value does nothing further.
+    // setView, not flyTo: flyTo animates _zoom progressively frame-by-frame,
+    // so a followUser/followMarkerId panTo landing a moment later (its own
+    // internal setView reads the CURRENT _zoom) would catch it still mid-flight
+    // and snap back to the old zoom. setView applies the target zoom to
+    // _zoom immediately (only the visual pan/tile-fade animates), so a panTo
+    // straight after sees the new zoom already in place and just pans within it.
+    const wasZoomInTriggered = useRef(false);
+    useEffect(() => {
+        const map = mapRef.current;
+        if (map && zoomInTrigger && !wasZoomInTriggered.current && zoomInCenter) {
+            map.setView(zoomInCenter, 16, { animate: true, duration: 0.5 });
+        }
+        wasZoomInTriggered.current = !!zoomInTrigger;
+    }, [zoomInTrigger, zoomInCenter]);
+
     useEffect(() => {
         const activeMapItems = itemsOnMap.current;
         const map = mapRef.current;
@@ -392,25 +444,24 @@ export default function MapComp({
                         };
                     }
 
+                    // A feature can carry its own route color (e.g. each
+                    // transit leg colored like its own badge) - takes
+                    // priority over the single blanket line.color/brand color.
+                    const featureColor = feature?.properties?.color as string | undefined
                     const baseColor =
-                        line.color === "" ? mode === "walk"
+                        featureColor ||
+                        (line.color === "" ? mode === "walk"
                             ? "#64748b"   // neutral slate, matches the app's own theme
                             : mode === "transit"
                                 ? currentUrl.textColor || "#374151"   // this region's own brand color
                                 : "#6ec3db"  // fallback
-                            : line.color;
+                            : line.color);
 
                     return {
                         color: baseColor,
                         weight: 6,
                         opacity: 0.95,
-                        // The rider's actual transit leg (not walk legs, not
-                        // the grayed-out before/after segments above) gets a
-                        // looping dash animation along the line, so it reads
-                        // as "this is the one you're on" - see
-                        // .map-route-line-flow in globals.css.
-                        dashArray: mode === "transit" ? "1 14" : undefined,
-                        className: mode === "transit" ? "map-route-line map-route-line-flow" : "map-route-line",
+                        className: "map-route-line",
                     };
                 },
             });
@@ -564,9 +615,18 @@ async function startLocationUpdates(callback: (latLng: LatLng) => void): Promise
         return null;
     }
 
+    // Guards against out-of-order fixes: getCurrentPosition can take up to its
+    // 10s timeout while the interval ticks every 3s, so an earlier call can
+    // resolve after a later one and would otherwise overwrite a fresher fix
+    // with a stale one. Only apply the most recently *issued* fix that resolves.
+    let requestId = 0;
+    let appliedId = 0;
+
     try {
         // Try initial location fetch
+        const id = ++requestId;
         const latLng = await getUserLocation();
+        appliedId = id;
         callback(latLng);
     } catch (error) {
         console.error("Failed to get initial location:", error);
@@ -576,8 +636,11 @@ async function startLocationUpdates(callback: (latLng: LatLng) => void): Promise
 
     // Start interval for repeated location updates only if initial fetch succeeded
     return setInterval(async () => {
+        const id = ++requestId;
         try {
             const latLng = await getUserLocation();
+            if (id < appliedId) return;
+            appliedId = id;
             callback(latLng);
         } catch (error) {
             console.error("Failed to get location update:", error);

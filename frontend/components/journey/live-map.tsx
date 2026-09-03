@@ -50,6 +50,8 @@ interface LiveMapProps {
     followUser?: boolean
     /** Fires on every GPS fix - lets the parent decide follow behaviour from the rider's position (e.g. "am I standing at the boarding stop"). */
     onUserLocation?: (lat: number, lon: number) => void
+    /** True right when GO/live tracking starts - flies the map into a close zoom once, instead of leaving it at whatever the pre-tracking overview was. */
+    trackingStarted?: boolean
 }
 
 const VEHICLE_ICONS = new Set(["bus", "train", "ferry", "school bus"])
@@ -77,6 +79,19 @@ function trackedStopIcon(stop: ServicesStop, vehicle: VehiclesResponse, boardSeq
     return trip.current_stop.sequence > stop.sequence ? "dot gray" : "dot"
 }
 
+/** Popup subtitle for a vehicle marker - a live "N stops away" readout while
+ * it's en route toward `stopsAway`'s target, falling back to plain state text
+ * when there's no target stop to count from (e.g. other in-flight vehicles). */
+function vehicleSubtitle(state: VehiclesResponse["state"], stopsAway?: number): string | undefined {
+    if (state === "AtStop") return "At stop"
+    if (state === "Leaving") return "Just left"
+    if (state === "Arriving" || state === "Travelling") {
+        if (stopsAway !== undefined) return `${stopsAway} ${stopsAway === 1 ? "stop" : "stops"} away`
+        if (state === "Arriving") return "Arriving"
+    }
+    return undefined
+}
+
 export function LiveMap({
     mapId,
     height,
@@ -96,6 +111,7 @@ export function LiveMap({
     trackedAlightStop,
     followUser,
     onUserLocation,
+    trackingStarted,
 }: LiveMapProps) {
     // Rebuilt only when a real input changes - not on every render. The 30s
     // useNow tick upstream would otherwise hand map.tsx a fresh array each time,
@@ -182,10 +198,16 @@ export function LiveMap({
             const boardSeq = findStopSequence(trackedStops, trackedBoardStop)
             const alightSeq = findStopSequence(trackedStops, trackedAlightStop);
             (trackedStops ?? []).forEach((stop) => {
+                const icon = trackedStopIcon(stop, trackedVehicle, boardSeq, alightSeq)
+                // Plain in-between stops only declutter into view once zoomed
+                // in - the start/end/current/next markers stay visible at any
+                // zoom since they're the ones that actually matter at a glance.
+                const minZoom = icon === "dot" || icon === "dot gray" ? 15 : undefined
                 markers.push({
                     lat: stop.lat,
                     lon: stop.lon,
-                    icon: trackedStopIcon(stop, trackedVehicle, boardSeq, alightSeq),
+                    icon,
+                    minZoom,
                     id: `tracked-stop-${stop.parent_stop_id || stop.child_stop_id}`,
                     routeID: '',
                     zIndex: 100,
@@ -196,6 +218,12 @@ export function LiveMap({
                     type: "stop",
                 })
             })
+
+            // Count stops away against whichever end of the ride is still ahead:
+            // the board stop until it's been reached, the alight stop after.
+            const nextSeq = trackedVehicle.trip?.next_stop?.sequence
+            const targetSeq = boardSeq !== undefined && nextSeq !== undefined && nextSeq <= boardSeq ? boardSeq : alightSeq
+            const stopsAway = targetSeq !== undefined && nextSeq !== undefined ? Math.max(0, targetSeq - nextSeq) : undefined
 
             markers.push({
                 lat: trackedVehicle.position.lat,
@@ -208,7 +236,7 @@ export function LiveMap({
                 onClick: () => { },
                 popup: {
                     title: `${trackedVehicle.route.name}${trackedVehicle.trip?.headsign ? ` → ${trackedVehicle.trip.headsign}` : ""}`,
-                    subtitle: trackedVehicle.state === "AtStop" ? "At stop" : trackedVehicle.state === "Approaching" ? "Approaching" : undefined,
+                    subtitle: vehicleSubtitle(trackedVehicle.state, stopsAway),
                 },
                 type: "vehicle",
             })
@@ -225,7 +253,7 @@ export function LiveMap({
                     onClick: () => { },
                     popup: {
                         title: `${v.route.name}${v.trip?.headsign ? ` → ${v.trip.headsign}` : ""}`,
-                        subtitle: v.state === "AtStop" ? "At stop" : v.state === "Approaching" ? "Approaching" : undefined,
+                        subtitle: vehicleSubtitle(v.state),
                     },
                     type: "vehicle",
                 })
@@ -250,6 +278,21 @@ export function LiveMap({
     // Without this, the line's looping flow animation never gets more than a few
     // seconds to run before being reset back to frame zero.
     const line = useMemo(() => {
+        // Each transit leg's own route color (badge color), keyed by route id -
+        // colors every leg's line like its badge instead of one blanket color.
+        const colorByRouteId: Record<string, string> = {}
+        selectedRoute?.Legs.forEach((leg) => {
+            if (leg.Mode === "transit" && leg.RouteID && leg.Route?.route_color) {
+                colorByRouteId[leg.RouteID] = `#${leg.Route.route_color}`
+            }
+        })
+        const colorFeatures = (features: Record<string, unknown>[]) =>
+            features.map((f) => {
+                const props = (f as { properties?: { mode?: string; route_id?: string } }).properties
+                const color = props?.mode === "transit" && props.route_id ? colorByRouteId[props.route_id] : undefined
+                return color ? { ...f, properties: { ...props, color } } : f
+            })
+
         if (trackedVehicle && trackedRouteLine) {
             // Falls back to the line's own feature(s), tagged as an ordinary
             // active transit segment, on the rare chance the tracked leg's
@@ -264,14 +307,28 @@ export function LiveMap({
                     ...f,
                     properties: { ...(f as { properties?: object }).properties, mode: "transit" },
                 }))
+            // The active (not before/after-graying) segment gets the tracked
+            // trip's own resolved color, straight from its shape lookup -
+            // more precise than a route-id match for the one leg that matters most.
+            const coloredTrackedFeatures = trackedFeatures.map((f) => {
+                const props = (f as { properties?: { segment?: string } }).properties
+                return props?.segment === "before" || props?.segment === "after"
+                    ? f
+                    : { ...f, properties: { ...props, color: trackedRouteLine.color } }
+            })
             // Every OTHER leg's own feature (all walk legs, any other
             // transit leg) is kept from the full journey line - only the
             // tracked leg's feature is swapped out for the richer version.
-            const merged = buildTrackedLine(selectedRoute?.RouteGeoJSON, trackedVehicle.trip_id, trackedFeatures)
-            return { GeoJson: merged, color: "" }
+            const merged = buildTrackedLine(selectedRoute?.RouteGeoJSON, trackedVehicle.trip_id, coloredTrackedFeatures)
+            const coloredMerged = { ...merged, features: colorFeatures(toFeatureArray(merged)) } as unknown as GeoJSON
+            return { GeoJson: coloredMerged, color: "" }
         }
         if (selectedRoute) {
-            return { GeoJson: selectedRoute.RouteGeoJSON, color: "" }
+            const coloredRoute = {
+                type: "FeatureCollection",
+                features: colorFeatures(toFeatureArray(selectedRoute.RouteGeoJSON)),
+            } as unknown as GeoJSON
+            return { GeoJson: coloredRoute, color: "" }
         }
         return undefined
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,6 +339,17 @@ export function LiveMap({
         trackedAlightStop,
         selectedRoute,
     ])
+
+    // Whatever's most relevant to fly in on right as tracking starts: the
+    // live vehicle if one's already found, else the board stop, else the
+    // rider's own plan-start point.
+    const zoomInCenter: LatLng | undefined = trackedVehicle
+        ? [trackedVehicle.position.lat, trackedVehicle.position.lon]
+        : trackedBoardStop
+            ? [trackedBoardStop.stop_lat, trackedBoardStop.stop_lon]
+            : startLocation
+                ? [startLocation.lat, startLocation.lon]
+                : undefined
 
     return (
         <div className="relative h-full w-full">
@@ -296,6 +364,8 @@ export function LiveMap({
                     followFitWith={followFitWith}
                     followUser={followUser}
                     onLocationUpdate={onUserLocation}
+                    zoomInTrigger={trackingStarted}
+                    zoomInCenter={zoomInCenter}
                     options={{ buttonPosition: "bottom" }}
                 />
             </Suspense>

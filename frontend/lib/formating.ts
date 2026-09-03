@@ -38,7 +38,11 @@ export const formatUnixTime = (unixTime: number | null | undefined) => {
 
 export function convert24hTo12h(time24: string): string {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const [hours, minutes, seconds] = time24.split(':').map(Number);
+    const [rawHours, minutes, seconds] = time24.split(':').map(Number);
+    // GTFS times can be >= 24:00:00 for service that runs past midnight
+    // (still "today" in GTFS terms) - wrap back into 0-23 so e.g. "24:06:00"
+    // reads as 12:06 AM (tomorrow's clock time) instead of 12:06 PM.
+    const hours = rawHours % 24;
     const period = hours >= 12 ? 'PM' : 'AM';
     const hours12 = hours % 12 || 12;
     const formattedMinutes = minutes.toString().padStart(2, '0');

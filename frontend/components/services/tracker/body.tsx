@@ -128,6 +128,17 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
             ? stopTimes?.find((st) => st.parent_stop_id === currentStop.id || st.child_stop_id === currentStop.id)?.arrival_time
             : undefined
 
+        // Live "N stops away" readout, counted from the rider's own stop (only
+        // known when this tracker was opened from that stop's departure board)
+        // while the vehicle is confirmed en route - not yet, or already past, at it.
+        const currentStopSeq = currentStop
+            ? stopTimes?.find((st) => st.parent_stop_id === currentStop.id || st.child_stop_id === currentStop.id)?.stop.sequence
+            : undefined
+        const stopsAway =
+            (vehicle.state === "Arriving" || vehicle.state === "Travelling") && currentStopSeq !== undefined
+                ? Math.max(0, currentStopSeq - vehicle.trip.next_stop.sequence)
+                : undefined
+
         return (
             <div className="space-y-3">
                 <div>
@@ -184,6 +195,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                             platform={stopStatusPlatform}
                             variant={stopStatusVariant}
                             arrivalTime={stopStatusArrivalTime}
+                            stopsAway={stopsAway}
                         />
                     </div>
 
@@ -524,6 +536,7 @@ const StopStatusCard = memo(function StopStatusCard({
     stopName,
     arrivalTime,
     variant = "default",
+    stopsAway,
 }: {
     title: string
     stopName: string
@@ -531,6 +544,8 @@ const StopStatusCard = memo(function StopStatusCard({
     arrivalTime?: string
     variant?: "current" | "next" | "final" | "default"
     isArrived?: boolean
+    /** Live count of stops until the rider's own stop - shown while the vehicle is confirmed en route. */
+    stopsAway?: number
 }) {
     const getVariantStyles = () => {
         switch (variant) {
@@ -583,6 +598,11 @@ const StopStatusCard = memo(function StopStatusCard({
                         <p className="text-xs font-semibold text-foreground truncate">{stopName}</p>
                         {arrivalTime && (
                             <p className="text-xs font-mono tabular-nums font-semibold text-foreground text-nowrap">@ {arrivalTime}</p>
+                        )}
+                        {stopsAway !== undefined && stopsAway > 0 && (
+                            <p className="text-xs text-muted-foreground text-nowrap">
+                                <span className="text-foreground font-medium">{stopsAway}</span> {stopsAway === 1 ? "stop" : "stops"} away
+                            </p>
                         )}
                     </div>
                 </div>

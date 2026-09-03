@@ -15,20 +15,23 @@ import {
     AlertTriangle,
     Accessibility,
     Bus,
+    ChevronLeft,
     Clock,
     Footprints,
     Navigation,
     RefreshCw,
     Share2,
+    User,
 } from "lucide-react"
 import { haversineDistance, useIsMobile } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
+import { getOccupancyLabel } from "@/components/services"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { useJourneyAlerts } from "./use-journey-alerts"
+import { useJourneyAlerts, boardProximityThreshold } from "./use-journey-alerts"
 import { JourneyAlertOverlay } from "./journey-alert-overlay"
 import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
@@ -266,9 +269,27 @@ export function RouteDetailSheet({
     // rider is on board (or has missed it) - either way the camera should just
     // follow the vehicle, not frame it against a stop that's now behind them.
     const trackedBoardSeq = findStopSequence(trackedStops, trackedBoardStop)
+    const trackedAlightSeq = findStopSequence(trackedStops, trackedAlightStop)
     const boarded = hasDepartedStop(trackedVehicle, trackedBoardSeq)
     // Physically standing at the boarding stop, vehicle not yet departed it.
     const waitingAtStop = atBoardStop && !boarded
+
+    // Live "N stops away" from whichever end of the ride is still ahead - the
+    // board stop until it's reached, the alight stop after - shown only while
+    // the vehicle is confirmed en route (not sitting at a stop already).
+    const trackedTargetSeq = boarded ? trackedAlightSeq : trackedBoardSeq
+    const trackedNextSeq = trackedVehicle?.trip?.next_stop?.sequence
+    const trackedStopsAway =
+        trackedVehicle &&
+            (trackedVehicle.state === "Arriving" || trackedVehicle.state === "Travelling") &&
+            trackedTargetSeq !== undefined &&
+            trackedNextSeq !== undefined
+            ? Math.max(0, trackedTargetSeq - trackedNextSeq)
+            : undefined
+    const trackedOccupancy = trackedVehicle && trackedVehicle.occupancy >= 0 ? trackedVehicle.occupancy : undefined
+    // Whichever stop's platform is currently relevant to the rider - the
+    // boarding platform until it's reached, the alighting platform after.
+    const trackedPlatform = (boarded ? trackedAlightStop : trackedBoardStop)?.platform_number
 
     // Camera: follow the rider while they're still walking to a stop (and not
     // already waiting at it / on board); otherwise follow the tracked vehicle.
@@ -302,13 +323,11 @@ export function RouteDetailSheet({
     // it's live, otherwise the rider (see followUser below), instead of chasing
     // the vehicle they just got off as it continues its trip.
     useEffect(() => {
-        if (!journeyStarted || trackedLegIndex < 0) return
-        const alightSeq = findStopSequence(trackedStops, trackedAlightStop)
-        if (alightSeq === undefined) return
-        if (hasDepartedStop(trackedVehicle, alightSeq)) {
+        if (!journeyStarted || trackedLegIndex < 0 || trackedAlightSeq === undefined) return
+        if (hasDepartedStop(trackedVehicle, trackedAlightSeq)) {
             setAlightedThroughLeg((prev) => Math.max(prev, trackedLegIndex))
         }
-    }, [journeyStarted, trackedLegIndex, trackedVehicle, trackedStops, trackedAlightStop])
+    }, [journeyStarted, trackedLegIndex, trackedVehicle, trackedAlightSeq])
 
     const defaultZoom = useMemo<[LatLng, LatLng]>(() => [
         [route?.StartLat ?? 0, route?.StartLon ?? 0],
@@ -346,18 +365,31 @@ export function RouteDetailSheet({
         if (boarded) return "onboard"
 
         // Transit leg, not yet on board. With a usable live position, "boarding"
-        // only once the vehicle is dwelling at the boarding stop or the boarding
-        // stop is its very next stop - otherwise the rider is still waiting, even
-        // if the (realtime-adjusted) schedule clock has rolled past a stale
+        // only once the vehicle is close enough to actually flag down (mirrors
+        // the "get on now" alert's boardProximityThreshold - buses are
+        // request-stop, so the rider needs real lead time, not just
+        // confirmation it's already dwelling there; trains/ferries always
+        // stop, so they use a tighter threshold) or has reached/passed the
+        // stop outright - otherwise still "waiting", even if the boarding stop
+        // is already its next stop (it may not have left the previous one yet)
+        // or the (realtime-adjusted) schedule clock has rolled past a stale
         // departure time while the bus is still several stops away.
         const vehicleKnown =
             !!trackedVehicle && trackedVehicle.state !== "Unknown" &&
             trackedBoardSeq !== undefined && trackedCurrentSeq !== undefined
         if (vehicleKnown) {
             const nextSeq = trackedVehicle.trip?.next_stop?.sequence
-            const atBoard =
-                (trackedCurrentSeq === trackedBoardSeq && trackedVehicle.state === "AtStop") ||
-                (nextSeq !== undefined && nextSeq === trackedBoardSeq)
+            const nextIsBoard = nextSeq !== undefined && nextSeq === trackedBoardSeq
+            const atOrPastBoard = trackedCurrentSeq >= trackedBoardSeq
+            const metresToBoard = trackedBoardStop
+                ? haversineDistance(
+                    trackedVehicle.position.lat,
+                    trackedVehicle.position.lon,
+                    trackedBoardStop.stop_lat,
+                    trackedBoardStop.stop_lon,
+                )
+                : Infinity
+            const atBoard = (nextIsBoard && metresToBoard <= boardProximityThreshold(trackedVehicle.type)) || atOrPastBoard
             return atBoard ? "boarding" : "waiting"
         }
 
@@ -461,6 +493,7 @@ export function RouteDetailSheet({
             trackedAlightStop={trackedAlightStop}
             followUser={journeyStarted && !followMarkerId}
             onUserLocation={(lat, lon) => setUserLoc({ lat, lon })}
+            trackingStarted={journeyStarted}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
@@ -483,6 +516,9 @@ export function RouteDetailSheet({
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
             trackingLevel={trackingLevel}
+            stopsAway={trackedStopsAway}
+            occupancy={trackedOccupancy}
+            platform={trackedPlatform}
             replanOptions={replanOptions}
             onReplan={handleReplan}
             replanUrgent={replanUrgent}
@@ -570,6 +606,18 @@ export function RouteDetailSheet({
     )
 }
 
+/** Three-figure occupancy readout - 0-1 low, 2 medium, 3-4 high - filled figures darken as the vehicle fills up. */
+function OccupancyIcons({ occupancy }: { occupancy: number }) {
+    const filled = occupancy <= 1 ? 1 : occupancy === 2 ? 2 : 3
+    return (
+        <span className="flex items-center gap-0.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+                <User key={i} className={`h-3.5 w-3.5 ${i < filled ? "text-foreground" : "text-muted-foreground/30"}`} />
+            ))}
+        </span>
+    )
+}
+
 function JourneySummary({
     route,
     onShare,
@@ -578,6 +626,9 @@ function JourneySummary({
     currentLegIndex,
     currentPhase,
     trackingLevel,
+    stopsAway,
+    occupancy,
+    platform,
     replanOptions,
     onReplan,
     replanUrgent,
@@ -589,6 +640,12 @@ function JourneySummary({
     currentLegIndex: number
     currentPhase?: JourneyPhase
     trackingLevel: "live" | "predicted" | "scheduled"
+    /** Live count of stops until the rider's own board/alight stop - undefined when not confirmed en route. */
+    stopsAway?: number
+    /** Occupancy level (0-4) of the tracked vehicle - undefined when unreported. */
+    occupancy?: number
+    /** Platform of whichever stop is currently relevant (board, then alight once on board). */
+    platform?: string
     replanOptions: ReplanChoice[]
     onReplan?: (choice: ReplanChoice) => void
     replanUrgent?: boolean
@@ -684,6 +741,27 @@ function JourneySummary({
                     </p>
                 </div>
             </div>
+
+            {journeyStarted && trackingLevel === "live" && (platform || occupancy !== undefined || stopsAway !== undefined) && (
+                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        {platform && <span>Platform {platform}</span>}
+                        {occupancy !== undefined && (
+                            <span className="flex items-center gap-1.5">
+                                {platform && <span className="text-border">·</span>}
+                                <OccupancyIcons occupancy={occupancy} />
+                                <span className="text-xs">{getOccupancyLabel(occupancy)}</span>
+                            </span>
+                        )}
+                    </div>
+                    {stopsAway !== undefined && (
+                        <span className="flex items-center gap-1 text-sm font-medium shrink-0">
+                            <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                            {stopsAway} {stopsAway === 1 ? "stop" : "stops"} away
+                        </span>
+                    )}
+                </div>
+            )}
 
             <button
                 type="button"

@@ -19,6 +19,8 @@ export interface MapItem {
     bearing?: number;
     /** Dim a marker (0-1) e.g. to de-emphasise non-selected vehicles in focused mode. */
     opacity?: number;
+    /** Only shown once the map is zoomed to at least this level - declutters minor markers (e.g. in-between stops) at a wide view. */
+    minZoom?: number;
     /** Click opens an in-place Leaflet popup instead of navigating away. */
     popup?: {
         title: string;

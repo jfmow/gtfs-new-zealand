@@ -34,7 +34,8 @@ export interface Service {
     location_tracking: boolean
     departed: boolean
     time_till_arrival: number
-    stop_state: "Arrived" | "Departed" | "Arriving" | "Boarding"
+    /** "" when no trip-update tracking is available for this service yet. */
+    stop_state: "Unknown" | "Arriving" | "AtStop" | "Leaving" | "Travelling" | ""
     platform_changed: boolean
     trip_started: boolean
 }
@@ -410,21 +411,21 @@ function ServiceCard({ service, displayingSchedulePreview }: { service: Service;
                                 {convert24hTo12h(service.arrival_time)}
                             </time>
                         </p>
-                        {!isSpecialState && !displayingSchedulePreview && (
+                        {!displayingSchedulePreview && (
                             <>
-                                {service.stops_away > 0 && (
+                                {service.stops_away >= 0 && (
                                     <p className="text-muted-foreground leading-none">
                                         <span className="text-foreground font-medium">{service.stops_away}</span>{" "}
                                         {service.stops_away === 1 ? "stop" : "stops"} away
                                     </p>
                                 )}
-                                {service.stops_away === 0 && (
+                                {service.stops_away === -1 && service.stop_state === "AtStop" && (
                                     <p className="text-green-700 dark:text-green-400 font-medium leading-none text-xs uppercase tracking-wide">
                                         At this stop
                                     </p>
                                 )}
-                                {service.occupancy > 0 && (
-                                    <p className="text-muted-foreground leading-none">
+                                {service.occupancy >= 0 && (
+                                    <p className="text-muted-foreground leading-none font-medium">
                                         {getOccupancyLabel(service.occupancy)}
                                     </p>
                                 )}
@@ -531,7 +532,7 @@ function arrivalUrgencyClass(minutes: number): string {
     return "bg-primary/10 text-primary dark:bg-primary/20"
 }
 
-function getOccupancyLabel(value: number): string {
+export function getOccupancyLabel(value: number): string {
     switch (value) {
         case 0:
         case 1:
@@ -543,7 +544,7 @@ function getOccupancyLabel(value: number): string {
         case 4:
             return "Likely full, standing only"
         default:
-            return ""
+            return "Unknown occupancy"
     }
 }
 

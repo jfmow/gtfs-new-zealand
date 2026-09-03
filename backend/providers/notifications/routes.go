@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
+	"github.com/jfmow/at-trains-api/providers/vehiclestate"
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
@@ -205,20 +206,42 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				if err != nil {
 					return
 				}
+				// Best-effort - a live position sharpens the state derivation
+				// (matching the map/tracker's accuracy) but isn't required; the
+				// timestamp heuristic in vehiclestate.GetNextStopSequence still
+				// works without it.
+				vehicles, _ := realtime.GetVehicles()
 				reminders, err := notificationDB.GetAllReminders()
 				if err != nil {
 					return
 				}
+				// GetAllReminders has no ORDER BY - sort by stop position so that
+				// when a poll gap crosses multiple thresholds at once, an earlier
+				// stop's reminder is always sent before a later stop's, on the
+				// same trip, instead of firing in incidental DB/iteration order.
+				sort.Slice(reminders, func(i, j int) bool {
+					return reminders[i].StopSequence < reminders[j].StopSequence
+				})
 				for _, reminder := range reminders {
 					tripUpdate, err := updates.ByTripID(reminder.TripId)
 					if err != nil {
 						continue
 					}
-					_, lowestSequence, err := gtfsData.GetStopsForTripID(reminder.TripId)
+					stopsForTrip, lowestSequence, err := gtfsData.GetStopsForTripID(reminder.TripId)
 					if err != nil {
 						continue
 					}
-					nextStopSequenceNumber, _, _, _ := getNextStopSequence(tripUpdate.StopTimeUpdate, lowestSequence, localTimeZone)
+					var vehiclePos *proto.VehiclePosition
+					var vehicleLat, vehicleLon float64
+					if v, err := vehicles.ByTripID(reminder.TripId); err == nil {
+						vehiclePos = v
+						if pos := v.GetPosition(); pos != nil {
+							vehicleLat, vehicleLon = float64(pos.GetLatitude()), float64(pos.GetLongitude())
+						}
+					}
+					nextStopSequenceNumber, _, _ := vehiclestate.GetNextStopSequence(
+						tripUpdate.StopTimeUpdate, lowestSequence, localTimeZone, stopsForTrip, vehicleLat, vehicleLon, vehiclePos,
+					)
 
 					// Use >= instead of == to avoid missing reminders when realtime updates
 					// skip over a sequence between polling intervals.
@@ -794,78 +817,3 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 }
 
-func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location) (int, *time.Time, string, string) {
-	if len(stopUpdates) == 0 {
-		return 0, nil, "Unknown", ""
-	}
-
-	now := time.Now().In(localTimeZone)
-
-	sort.Slice(stopUpdates, func(i, j int) bool {
-		if stopUpdates[i] == nil || stopUpdates[j] == nil {
-			return false
-		}
-		return stopUpdates[i].GetStopSequence() < stopUpdates[j].GetStopSequence()
-	})
-
-	for _, update := range stopUpdates {
-		if update == nil {
-			continue
-		}
-
-		var arrivalTs, departureTs int64
-		if a := update.GetArrival(); a != nil {
-			arrivalTs = a.GetTime()
-		}
-		if d := update.GetDeparture(); d != nil {
-			departureTs = d.GetTime()
-		}
-
-		seq := int(update.GetStopSequence())
-
-		if arrivalTs > 0 {
-			at := time.Unix(arrivalTs, 0).In(localTimeZone)
-			if now.Before(at) {
-				return seq - lowestSequence, &at, "Approaching", "Arriving"
-			}
-		}
-
-		if departureTs > 0 {
-			dt := time.Unix(departureTs, 0).In(localTimeZone)
-			if now.Before(dt) {
-				return seq - lowestSequence, &dt, "At stop", "Arrived"
-			}
-		}
-	}
-
-	var lastSeq int
-	var lastTime time.Time
-	found := false
-	for _, update := range stopUpdates {
-		if update == nil {
-			continue
-		}
-		var eventTs int64
-		if d := update.GetDeparture(); d != nil && d.GetTime() > 0 {
-			eventTs = d.GetTime()
-		} else if a := update.GetArrival(); a != nil && a.GetTime() > 0 {
-			eventTs = a.GetTime()
-		}
-		if eventTs == 0 {
-			continue
-		}
-		t := time.Unix(eventTs, 0).In(localTimeZone)
-		if !found || t.After(lastTime) {
-			lastTime = t
-			lastSeq = int(update.GetStopSequence())
-			found = true
-		}
-	}
-
-	if found {
-		nextSeq := lastSeq + 1
-		return nextSeq - lowestSequence, &lastTime, "Departed", "Departed"
-	}
-
-	return 0, nil, "Unknown", ""
-}

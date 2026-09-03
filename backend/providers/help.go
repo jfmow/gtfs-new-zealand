@@ -4,8 +4,10 @@ import (
 	"math"
 	"time"
 
+	"github.com/jfmow/at-trains-api/providers/vehiclestate"
 	"github.com/jfmow/gtfs"
 	realtime "github.com/jfmow/gtfs/realtime"
+	"github.com/jfmow/gtfs/realtime/proto"
 )
 
 func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
@@ -16,40 +18,6 @@ func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
 	maxLng := math.Max(sw.Lng, ne.Lng)
 
 	return lat >= minLat && lat <= maxLat && lng >= minLng && lng <= maxLng
-}
-
-// haversine returns the distance in meters between two lat/lon points
-func haversine(lat1, lon1, lat2, lon2 float64) float64 {
-	const R = 6371000 // Earth radius in meters
-
-	dLat := (lat2 - lat1) * math.Pi / 180
-	dLon := (lon2 - lon1) * math.Pi / 180
-
-	lat1 = lat1 * math.Pi / 180
-	lat2 = lat2 * math.Pi / 180
-
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Sin(dLon/2)*math.Sin(dLon/2)*math.Cos(lat1)*math.Cos(lat2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-
-	return R * c
-}
-
-// atStopProximityMeters is how close a vehicle's live GPS position must be to a
-// stop before a predicted-time-only "AtStop" is trusted. Predicted arrival times
-// can pass before a delayed vehicle's real position gets there.
-const atStopProximityMeters = 100.0
-
-// isNearStop reports whether the vehicle is within atStopProximityMeters of the
-// stop at stopIndex in stopsForTrip. Returns true (trusting the caller's time-based
-// prediction) whenever position data isn't available to check against, so callers
-// without a live vehicle position keep their existing behavior.
-func isNearStop(stopsForTrip []gtfs.Stop, stopIndex int, vehicleLat, vehicleLon float64) bool {
-	if (vehicleLat == 0 && vehicleLon == 0) || stopIndex < 0 || stopIndex >= len(stopsForTrip) {
-		return true
-	}
-	stop := stopsForTrip[stopIndex]
-	return haversine(vehicleLat, vehicleLon, stop.StopLat, stop.StopLon) <= atStopProximityMeters
 }
 
 type RealtimeTripData struct {
@@ -93,23 +61,19 @@ func GetRealtimeTripData(
 		TripStarted:        true,
 	}
 
-	defaultArrivalTime, err := time.ParseInLocation("15:04:05", service.ArrivalTime, localTimeZone)
-	if err == nil {
-		defaultArrivalTime = time.Date(
-			now.Year(),
-			now.Month(),
-			now.Day(),
-			defaultArrivalTime.Hour(),
-			defaultArrivalTime.Minute(),
-			defaultArrivalTime.Second(),
-			0,
-			localTimeZone,
-		)
+	// GTFS scheduled times can be >= 24:00:00 for service that runs past
+	// midnight (still "today" in GTFS terms) - time.Parse rejects an
+	// out-of-range hour outright, which silently left TimeTillArrival at its
+	// zero value (displayed as "now") for every such trip. parseGTFSClock
+	// rolls the extra hours into the next calendar day instead.
+	if defaultArrivalTime, ok := parseGTFSClock(service.ArrivalTime, now, localTimeZone); ok {
 		result.TimeTillArrival = int(defaultArrivalTime.Sub(now).Minutes())
 	}
 
 	var vehicleLat, vehicleLon float64
+	var liveVehicle *proto.VehiclePosition
 	if foundVehicle, err := vehicleLocations.ByTripID(service.TripID); err == nil {
+		liveVehicle = foundVehicle
 		result.LocationTracking = true
 		result.Occupancy = int(foundVehicle.GetOccupancyStatus().Number())
 
@@ -147,7 +111,7 @@ func GetRealtimeTripData(
 
 		stopsForTrip, lowestSequence, err := gtfsData.GetStopsForTripID(service.TripID)
 		if err == nil {
-			nextStopSeq, _, simpleState := getNextStopSequence(stopUpdates, lowestSequence, localTimeZone, stopsForTrip, vehicleLat, vehicleLon)
+			nextStopSeq, _, simpleState := vehiclestate.GetNextStopSequence(stopUpdates, lowestSequence, localTimeZone, stopsForTrip, vehicleLat, vehicleLon, liveVehicle)
 			result.StopsAway = service.StopData.Sequence - lowestSequence - nextStopSeq
 			result.StopState = simpleState
 		}

@@ -37,6 +37,13 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
     const tripIdsRef = useRef(tripIds)
     tripIdsRef.current = tripIds
 
+    // Guards against out-of-order poll resolution: a slow request can resolve
+    // after a later, faster one and would otherwise silently overwrite fresher
+    // position data with stale data. Only ever apply the result of the most
+    // recently *issued* request that has resolved so far.
+    const requestIdRef = useRef(0)
+    const appliedIdRef = useRef(0)
+
     useEffect(() => {
         const apply = (byTripId: Record<string, VehiclesResponse>) => {
             const signature = vehiclesSignature(byTripId)
@@ -53,16 +60,18 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
         let cancelled = false
 
         async function getData(isRefresh = false) {
+            const requestId = ++requestIdRef.current
             if (isRefresh) setRefreshing(true)
             try {
                 const res = await ApiFetch<VehiclesResponse[]>(
                     `realtime/live?tripId=${tripIdsRef.current.map(fullyEncodeURIComponent).join(",")}`,
                     { method: "GET" }
                 )
-                if (cancelled) return
+                if (cancelled || requestId < appliedIdRef.current) return
                 if (!res.ok) {
                     // "no vehicles found" is a legitimate state (legs not yet in
                     // service), not an error - clear rather than surface it.
+                    appliedIdRef.current = requestId
                     apply({})
                     return
                 }
@@ -70,6 +79,7 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
                 for (const v of res.data) {
                     byTripId[v.trip_id] = v
                 }
+                appliedIdRef.current = requestId
                 apply(byTripId)
             } catch (error) {
                 console.error("Error fetching journey vehicles:", error)

@@ -61,6 +61,20 @@ const MAX_STACK = 3
  * the alert lands while the vehicle is pulling in, not once it has left again.
  */
 const NEAR_ALIGHT_M = 220
+/**
+ * How close (metres) the vehicle must be to the rider's board stop - with that
+ * stop as its next stop - before the "get on now" alert fires. Buses only stop
+ * on request in NZ, so they get a bigger threshold than NEAR_ALIGHT_M - the
+ * rider needs real lead time to actually flag one down. Trains and ferries
+ * always stop at every scheduled stop, so there's nothing to flag down - reuse
+ * NEAR_ALIGHT_M's tighter distance, same as the "this is your stop" alert.
+ */
+const NEAR_BOARD_M_BUS = 350
+
+/** Board-proximity threshold for a vehicle of this type - see NEAR_BOARD_M_BUS. */
+export function boardProximityThreshold(vehicleType: string | undefined): number {
+    return vehicleType === "bus" || vehicleType === "school bus" ? NEAR_BOARD_M_BUS : NEAR_ALIGHT_M
+}
 
 function routeName(leg: Leg | undefined): string {
     return leg?.Route?.route_short_name || leg?.RouteID || "service"
@@ -89,6 +103,11 @@ export function useJourneyAlerts({
     const firedRef = useRef<Set<string>>(new Set())
     const idRef = useRef(0)
     const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+    // Per-trip high-water mark of the vehicle's stop_sequence - guards alert
+    // firing against a stale/out-of-order position update (e.g. a slow poll
+    // resolving after a fresher one) so alerts can only ever be evaluated
+    // against non-decreasing physical progress along the route.
+    const lastSeqRef = useRef<Map<string, { cur?: number; next?: number }>>(new Map())
 
     const dismiss = useCallback((id: string) => {
         setAlerts((prev) => prev.filter((a) => a.id !== id))
@@ -183,6 +202,19 @@ export function useJourneyAlerts({
         const nextSeq = trackedVehicle.trip?.next_stop?.sequence
         const name = routeName(trackedLeg)
 
+        // A stale/out-of-order position update (e.g. a slow poll resolving
+        // after a fresher one already landed) would otherwise let the vehicle
+        // appear to regress - evaluate alerts only against non-decreasing
+        // progress for this trip.
+        const prevSeq = lastSeqRef.current.get(tripId)
+        const curRegressed = curSeq !== undefined && prevSeq?.cur !== undefined && curSeq < prevSeq.cur
+        const nextRegressed = nextSeq !== undefined && prevSeq?.next !== undefined && nextSeq < prevSeq.next
+        if (curRegressed || nextRegressed) return
+        lastSeqRef.current.set(tripId, {
+            cur: curSeq !== undefined ? Math.max(curSeq, prevSeq?.cur ?? curSeq) : prevSeq?.cur,
+            next: nextSeq !== undefined ? Math.max(nextSeq, prevSeq?.next ?? nextSeq) : prevSeq?.next,
+        })
+
         // Transfer nudge - the rider has just been handed onto a later leg on
         // foot (previous leg alighted), before that leg's vehicle is even near.
         if (!boarded && isTransfer(route, trackedLeg) && trackedBoardStop) {
@@ -196,7 +228,24 @@ export function useJourneyAlerts({
 
         // Approaching / at the boarding stop.
         if (!boarded && boardSeq !== undefined) {
-            if (nextSeq !== undefined && nextSeq === boardSeq) {
+            const nextIsBoard = nextSeq !== undefined && nextSeq === boardSeq
+            const atOrPastBoard = curSeq !== undefined && curSeq >= boardSeq
+            const metresToBoard = trackedBoardStop
+                ? haversineDistance(
+                    trackedVehicle.position.lat,
+                    trackedVehicle.position.lon,
+                    trackedBoardStop.stop_lat,
+                    trackedBoardStop.stop_lon,
+                )
+                : Infinity
+            // Buses are request-stop - the driver won't pull in at all without
+            // an early signal from the rider, so "get on" needs real lead time
+            // while the vehicle is still inbound, not just once it's already
+            // dwelling there (too late to flag it down). Trains/ferries always
+            // stop, so they get the tighter, alight-style threshold instead.
+            const arrivingAtBoard = (nextIsBoard && metresToBoard <= boardProximityThreshold(trackedVehicle.type)) || atOrPastBoard
+
+            if (nextIsBoard && !arrivingAtBoard) {
                 fire(
                     `${tripId}:board-soon`,
                     "info",
@@ -204,12 +253,12 @@ export function useJourneyAlerts({
                     trackedBoardStop ? `Get ready to board at ${trackedBoardStop.stop_name}.` : "Get ready to board.",
                 )
             }
-            if (curSeq !== undefined && curSeq === boardSeq) {
+            if (arrivingAtBoard) {
                 fire(
                     `${tripId}:board-now`,
                     "action",
                     `Get on the ${name} now`,
-                    trackedBoardStop ? `It's at ${trackedBoardStop.stop_name}.` : undefined,
+                    trackedBoardStop ? `It's arriving at ${trackedBoardStop.stop_name} - flag it down if needed.` : undefined,
                 )
             }
         }

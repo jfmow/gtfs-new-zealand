@@ -74,7 +74,7 @@ export default function StopsList({
             currentStopIndex,
             showAtStop: vehicle.state === "AtStop",
             showBetweenStops:
-                vehicle.state === "Departed" && currentStopIndex < stopsToUse.length - 1,
+                (vehicle.state === "Leaving" || vehicle.state === "Travelling") && currentStopIndex < stopsToUse.length - 1,
         }
     }
 

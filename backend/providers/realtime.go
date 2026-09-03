@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
+	"github.com/jfmow/at-trains-api/providers/vehiclestate"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
@@ -248,13 +249,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				})
 
 				// Determine next stop and trip state (in-transit, stopped, etc.)
-				nextSeq, _, state := getNextStopSequence(
+				nextSeq, _, state := vehiclestate.GetNextStopSequence(
 					tripUpdate.GetStopTimeUpdate(),
 					stopsData.LowestSequence,
 					localTimeZone,
 					stopsData.Stops,
 					lat,
 					lng,
+					vehicle,
 				)
 
 				resp.State = state
@@ -530,14 +532,15 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					localTimeZone,
 				)
 				// No live vehicle position is on hand at this point yet, so this
-				// falls back to trusting the prediction (see isNearStop).
-				nextStopSequenceNumber, _, _ = getNextStopSequence(
+				// falls back to trusting the prediction (see vehiclestate.IsNearStop).
+				nextStopSequenceNumber, _, _ = vehiclestate.GetNextStopSequence(
 					updatesForTrip.GetStopTimeUpdate(),
 					lowestSequence,
 					localTimeZone,
 					nil,
 					0,
 					0,
+					nil,
 				)
 				// Clamp a stale/garbage feed delay so it doesn't shift the whole
 				// tail of the trip by hours.
@@ -660,7 +663,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		for _, vehicle := range vehicles {
 			pos := vehicle.GetPosition()
-			dist := haversine(lat, lon, float64(pos.GetLatitude()), float64(pos.GetLongitude()))
+			dist := vehiclestate.Haversine(lat, lon, float64(pos.GetLatitude()), float64(pos.GetLongitude()))
 			distances = append(distances, vehicleDistance{
 				Vehicle:  vehicle,
 				Distance: dist,
@@ -699,123 +702,6 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// Always return an array
 		return JsonApiResponse(c, http.StatusOK, "Closest vehicles", results)
 	})
-}
-
-// getNextStopSequence inspects a trip's StopTimeUpdates (which may include
-// historical entries) and determines the next stop sequence number relative to
-// lowestSequence, an associated event time (arrival or departure) and a simple
-// state string. It does not assume the first item is the current stop; instead
-// it uses timestamps to find the first upcoming event. If no future event is
-// found it returns the sequence after the most recently departed stop.
-//
-// stopsForTrip and the vehicle's live lat/lon are used to confirm a predicted
-// "AtStop" against the vehicle's actual position - a stale or early prediction
-// otherwise reports "AtStop" (and "Current Stop" in the UI) while the vehicle is
-// still visibly approaching. Pass a nil slice / zero lat,lon to skip this check
-// and fall back to trusting the prediction, e.g. when no live position is available.
-func getNextStopSequence(stopUpdates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, localTimeZone *time.Location, stopsForTrip []gtfs.Stop, vehicleLat, vehicleLon float64) (int, *time.Time, string) {
-	if len(stopUpdates) == 0 {
-		return 0, nil, "Unknown"
-	}
-
-	now := time.Now().In(localTimeZone)
-
-	// First pass: find the earliest stop whose arrival or departure is in the future.
-	// Sort stopUpdates by sequence number for consistent processing
-	sort.Slice(stopUpdates, func(i, j int) bool {
-		if stopUpdates[i] == nil || stopUpdates[j] == nil {
-			return false
-		}
-		return stopUpdates[i].GetStopSequence() < stopUpdates[j].GetStopSequence()
-	})
-
-	for _, update := range stopUpdates {
-		if update == nil || update.GetStopTimeProperties().GetHistoric() {
-			continue
-		}
-
-		var arrivalTs, departureTs int64
-		if a := update.GetArrival(); a != nil {
-			arrivalTs = a.GetTime()
-		}
-		if d := update.GetDeparture(); d != nil {
-			departureTs = d.GetTime()
-		}
-
-		// Approaching if arrival is in the future
-		if arrivalTs > 0 {
-			at := time.Unix(arrivalTs, 0).In(localTimeZone)
-			idx := int(update.GetStopSequence()) - lowestSequence
-			if now.Before(at) {
-				return idx, &at, "Approaching"
-			} else if now.After(at) {
-				// The predicted arrival time has passed - only report AtStop once
-				// the vehicle's live position confirms it, otherwise it's still
-				// approaching (a delayed vehicle can run behind its prediction).
-				if isNearStop(stopsForTrip, idx, vehicleLat, vehicleLon) {
-					return idx + 1, &at, "AtStop"
-				}
-				return idx, &at, "Approaching"
-			}
-		}
-
-		// AtStop if departure is in the future (even if arrival is past)
-		if departureTs > 0 {
-			dt := time.Unix(departureTs, 0).In(localTimeZone)
-			if now.Before(dt) {
-				seq := int(update.GetStopSequence()) + 1
-				return seq - lowestSequence, &dt, "AtStop"
-			} else if now.After(dt) {
-				seq := int(update.GetStopSequence()) + 1
-				return seq - lowestSequence, &dt, "Departed"
-			}
-		}
-	}
-
-	// Second pass: no future events found. Find the most recent event in the past
-	// (largest timestamp <= now). We'll consider that stop departed and return
-	// next sequence = seq+1.
-	var lastSeq int
-	var lastTime time.Time
-	found := false
-	for _, update := range stopUpdates {
-		if update == nil {
-			continue
-		}
-		var arrivalTs, departureTs int64
-		if a := update.GetArrival(); a != nil {
-			arrivalTs = a.GetTime()
-		}
-		if d := update.GetDeparture(); d != nil {
-			departureTs = d.GetTime()
-		}
-
-		// Prefer departure time when available
-		var eventTs int64
-		if departureTs > 0 {
-			eventTs = departureTs
-		} else {
-			eventTs = arrivalTs
-		}
-		if eventTs == 0 {
-			continue
-		}
-		t := time.Unix(eventTs, 0).In(localTimeZone)
-		if !found || t.After(lastTime) {
-			lastTime = t
-			lastSeq = int(update.GetStopSequence())
-			found = true
-		}
-	}
-
-	if found {
-		nextSeq := lastSeq + 1
-		// Return the time of the last event and mark as Departed
-		return nextSeq - lowestSequence, &lastTime, "Departed"
-	}
-
-	// No timestamps at all → unknown
-	return 0, nil, "Unknown"
 }
 
 // Get a stop from a list of stops based on its sequence number
