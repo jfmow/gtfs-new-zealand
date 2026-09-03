@@ -123,3 +123,21 @@ export function useIsMobile({ mobileWidth = 768, immediate = false }: UseMobileO
 
   return isMobile
 }
+
+/** Tracks the browser's own online/offline signal (e.g. flight mode, a dropped wifi/cell connection) - fast and free compared to waiting for a poll to fail. */
+export function useOnlineStatus(): boolean {
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine)
+
+  useEffect(() => {
+    const goOnline = () => setOnline(true)
+    const goOffline = () => setOnline(false)
+    window.addEventListener("online", goOnline)
+    window.addEventListener("offline", goOffline)
+    return () => {
+      window.removeEventListener("online", goOnline)
+      window.removeEventListener("offline", goOffline)
+    }
+  }, [])
+
+  return online
+}

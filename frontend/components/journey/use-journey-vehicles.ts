@@ -5,6 +5,11 @@ import type { VehiclesResponse } from "@/components/services/tracker"
 
 const REFRESH_INTERVAL = 10 // seconds
 
+// Consecutive failed polls (not counting a legitimate "no vehicles" 404)
+// before surfacing a connection-lost state - one blip shouldn't flash a
+// banner, but ~2 misses in a row is a real drop, not noise.
+const FAILURE_THRESHOLD = 2
+
 /** Compact fingerprint of a poll result - only the fields that actually drive the UI. */
 function vehiclesSignature(byTripId: Record<string, VehiclesResponse>): string {
     return Object.keys(byTripId)
@@ -25,6 +30,11 @@ function vehiclesSignature(byTripId: Record<string, VehiclesResponse>): string {
 export function useJourneyVehicles(tripIds: string[], active: boolean) {
     const [vehiclesByTripId, setVehiclesByTripId] = useState<Record<string, VehiclesResponse>>({})
     const [refreshing, setRefreshing] = useState(false)
+    // True once polls have been failing for a while - distinct from a
+    // legitimate "no vehicles running yet" result, which resolves fine and
+    // isn't an error at all.
+    const [connectionLost, setConnectionLost] = useState(false)
+    const consecutiveFailuresRef = useRef(0)
     const tripIdsKey = tripIds.join(",")
 
     // Each 10s poll builds a brand-new object even when nothing moved; applying
@@ -54,6 +64,8 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
 
         if (!active || !tripIdsKey) {
             apply({})
+            consecutiveFailuresRef.current = 0
+            setConnectionLost(false)
             return
         }
 
@@ -69,12 +81,26 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
                 )
                 if (cancelled || requestId < appliedIdRef.current) return
                 if (!res.ok) {
-                    // "no vehicles found" is a legitimate state (legs not yet in
-                    // service), not an error - clear rather than surface it.
+                    if (res.status_code === 404) {
+                        // "no vehicles found" is a legitimate state (legs not yet in
+                        // service), not an error - clear rather than surface it.
+                        consecutiveFailuresRef.current = 0
+                        setConnectionLost(false)
+                        appliedIdRef.current = requestId
+                        apply({})
+                        return
+                    }
+                    // A real failure (network drop, server error) - keep the last
+                    // known positions on screen rather than blanking the map, and
+                    // only surface a connection-lost state once it's persisted
+                    // past a single blip.
+                    consecutiveFailuresRef.current += 1
+                    if (consecutiveFailuresRef.current >= FAILURE_THRESHOLD) setConnectionLost(true)
                     appliedIdRef.current = requestId
-                    apply({})
                     return
                 }
+                consecutiveFailuresRef.current = 0
+                setConnectionLost(false)
                 const byTripId: Record<string, VehiclesResponse> = {}
                 for (const v of res.data) {
                     byTripId[v.trip_id] = v
@@ -83,6 +109,8 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
                 apply(byTripId)
             } catch (error) {
                 console.error("Error fetching journey vehicles:", error)
+                consecutiveFailuresRef.current += 1
+                if (consecutiveFailuresRef.current >= FAILURE_THRESHOLD) setConnectionLost(true)
             } finally {
                 if (isRefresh && !cancelled) setRefreshing(false)
             }
@@ -110,5 +138,5 @@ export function useJourneyVehicles(tripIds: string[], active: boolean) {
         }
     }, [tripIdsKey, active])
 
-    return { vehiclesByTripId, refreshing }
+    return { vehiclesByTripId, refreshing, connectionLost }
 }

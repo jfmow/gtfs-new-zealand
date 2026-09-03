@@ -52,6 +52,11 @@ export function useJourneyStopTimes(tripIds: string[], active: boolean) {
                     })
                 )
                 if (cancelled) return
+                // Every request failing (as opposed to some trips just having no
+                // predictions) usually means the connection dropped, not that
+                // predictions vanished - keep the last known times on screen
+                // rather than snapping the itinerary back to bare schedule.
+                if (results.length > 0 && results.every(([, data]) => data === null)) return
                 const byTripId: Record<string, StopTimes[]> = {}
                 for (const [tripId, data] of results) {
                     if (data && data.length > 0) byTripId[tripId] = data

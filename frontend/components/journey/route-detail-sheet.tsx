@@ -14,6 +14,7 @@ import { toast } from "sonner"
 import {
     AlertTriangle,
     Accessibility,
+    ArrowRight,
     Bus,
     ChevronLeft,
     Clock,
@@ -22,8 +23,9 @@ import {
     RefreshCw,
     Share2,
     User,
+    WifiOff,
 } from "lucide-react"
-import { haversineDistance, useIsMobile } from "@/lib/utils"
+import { haversineDistance, useIsMobile, useOnlineStatus } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
 import { getOccupancyLabel } from "@/components/services"
@@ -197,8 +199,14 @@ export function RouteDetailSheet({
     }, [])
 
     const tripIds = useMemo(() => (route ? getTransitTripIds(route) : []), [route])
-    const { vehiclesByTripId } = useJourneyVehicles(tripIds, open && journeyStarted)
+    const { vehiclesByTripId, connectionLost: pollingConnectionLost } = useJourneyVehicles(tripIds, open && journeyStarted)
     const stopTimesByTripId = useJourneyStopTimes(tripIds, open && journeyStarted)
+    // Browser-level signal (flight mode, wifi/cell drop) is near-instant;
+    // pollingConnectionLost catches the rest (server down, bad response) once
+    // it's persisted past a single blip. Either means "don't trust what's on
+    // screen as fresh" while actively tracking.
+    const isOnline = useOnlineStatus()
+    const connectionLost = journeyStarted && (!isOnline || pollingConnectionLost)
 
     // The journey with its leg times shifted to live realtime predictions (while
     // tracking) - used for everything the rider reads: the itinerary rows, the
@@ -341,9 +349,16 @@ export function RouteDetailSheet({
 
     // Vehicles to show on the map: drop the ones for legs the rider has already
     // ridden and alighted - once you're off a train you don't want to keep
-    // watching it drive away while you wait for the next.
+    // watching it drive away while you wait for the next. alightedThroughLeg
+    // only advances once the vehicle's own GPS confirms it passed the alight
+    // stop, which never fires if that vehicle's feed goes quiet right as the
+    // leg ends (trip completed, no more updates) - so it's paired with
+    // currentLegIndex, which is time-based and keeps advancing regardless,
+    // to make sure a finished leg's vehicle doesn't linger on the map.
     const alightedTripIds = new Set(
-        (route?.Legs ?? []).filter((l, i) => l.Mode === "transit" && !!l.TripID && i <= alightedThroughLeg).map((l) => l.TripID)
+        (route?.Legs ?? [])
+            .filter((l, i) => l.Mode === "transit" && !!l.TripID && (i <= alightedThroughLeg || i < currentLegIndex))
+            .map((l) => l.TripID)
     )
     const visibleVehicles = alightedTripIds.size === 0
         ? vehiclesByTripId
@@ -522,6 +537,7 @@ export function RouteDetailSheet({
             replanOptions={replanOptions}
             onReplan={handleReplan}
             replanUrgent={replanUrgent}
+            connectionLost={connectionLost}
         />
     )
 
@@ -632,6 +648,7 @@ function JourneySummary({
     replanOptions,
     onReplan,
     replanUrgent,
+    connectionLost,
 }: {
     route: JourneyType
     onShare: () => void
@@ -649,6 +666,8 @@ function JourneySummary({
     replanOptions: ReplanChoice[]
     onReplan?: (choice: ReplanChoice) => void
     replanUrgent?: boolean
+    /** Polling has been failing (or the browser itself is offline) for a while - what's on screen may be stale. */
+    connectionLost?: boolean
 }) {
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
@@ -704,6 +723,12 @@ function JourneySummary({
 
     return (
         <div className="space-y-3">
+            {connectionLost && (
+                <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                    <WifiOff className="h-3.5 w-3.5 shrink-0" />
+                    <span>Connection lost - showing the last known info. Still trying to reconnect...</span>
+                </div>
+            )}
             <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 min-w-0">
                     {badgeLeg?.Route && (
@@ -763,32 +788,29 @@ function JourneySummary({
                 </div>
             )}
 
-            <button
-                type="button"
-                onClick={onShare}
-                className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm hover:bg-accent/50 transition-colors"
-            >
-                <span>Share this journey</span>
-                <span className="inline-flex items-center gap-1.5 text-primary font-medium">
-                    <Share2 className="h-3.5 w-3.5" />
-                    Share
-                </span>
-            </button>
-
-            <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
-                <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2 rounded-md border bg-muted/40 pl-3 pr-1.5 py-1.5">
+                <div className="flex flex-1 items-center gap-1.5 min-w-0">
                     {route.Legs.map((leg, i) => (
-                        <span key={i}>
+                        <span key={i} className="shrink-0">
                             {leg.Mode === 'walk'
                                 ? <Footprints className="h-4 w-4 text-muted-foreground" />
                                 : <Bus className="h-4 w-4 text-muted-foreground" />}
                         </span>
                     ))}
-                    <span className="text-sm text-muted-foreground ml-1">{formatDuration(route.TotalDuration)} total</span>
+                    <span className="text-sm text-muted-foreground ml-1 truncate">{formatDuration(route.TotalDuration)} total</span>
                 </div>
                 <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-8 w-8 shrink-0"
+                    onClick={onShare}
+                    aria-label="Share this journey"
+                >
+                    <Share2 className="h-4 w-4" />
+                </Button>
+                <Button
                     size="sm"
-                    className="rounded-full gap-1.5 px-4"
+                    className="rounded-full gap-1.5 px-4 shrink-0"
                     variant={journeyStarted ? "secondary" : "default"}
                     onClick={onGo}
                 >
@@ -801,7 +823,7 @@ function JourneySummary({
                 const label = replanUrgent ? "You'll miss a connection - find another route" : "Find a better route from here"
                 if (replanOptions.length === 1) {
                     return (
-                        <Button variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5" onClick={() => onReplan(replanOptions[0])}>
+                        <Button size="sm" variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5" onClick={() => onReplan(replanOptions[0])}>
                             <RefreshCw className="h-3.5 w-3.5" />
                             {label}
                         </Button>
@@ -810,7 +832,7 @@ function JourneySummary({
                 return (
                     <Popover>
                         <PopoverTrigger asChild>
-                            <Button variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5">
+                            <Button size="sm" variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5">
                                 <RefreshCw className="h-3.5 w-3.5" />
                                 {label}
                             </Button>
@@ -972,45 +994,59 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                 )}
             </div>
 
-            <div className="ml-2 space-y-0 border-l-2 border-border pl-4">
-                <div className="relative py-2">
-                    <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-medium text-sm">{formatTime(displayDeparture)}</span>
-                        <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
-                        <div className="flex items-center gap-1">
-                            {leg.FromStop?.platform_number && (
-                                <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.FromStop.platform_number}</Badge>
-                            )}
-                            {leg.FromStop?.stop_headsign && (
-                                <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
-                            )}
-                            {leg.FromStop?.wheelchair_boarding === 1 && (
-                                <Accessibility className="h-3 w-3 text-muted-foreground" />
-                            )}
+            {isWalk ? (
+                // Walk legs don't need the full two-row board/alight timeline
+                // (no platform/headsign to show at either end) - a single line
+                // covers it, and walks show up between nearly every transit leg
+                // so collapsing this is most of the win on a multi-leg journey.
+                <div className="ml-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 border-l-2 border-border py-1.5 pl-4 text-sm">
+                    <span className="font-medium">{formatTime(displayDeparture)}</span>
+                    <span className="text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
+                    <ArrowRight className="h-3 w-3 text-muted-foreground/70 shrink-0" />
+                    <span className="font-medium">{formatTime(displayArrival)}</span>
+                    <span className="text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
+                </div>
+            ) : (
+                <div className="ml-2 space-y-0 border-l-2 border-border pl-4">
+                    <div className="relative py-1.5">
+                        <span className="absolute -left-[21px] top-2.5 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="font-medium text-sm">{formatTime(displayDeparture)}</span>
+                            <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
+                            <div className="flex items-center gap-1">
+                                {leg.FromStop?.platform_number && (
+                                    <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.FromStop.platform_number}</Badge>
+                                )}
+                                {leg.FromStop?.stop_headsign && (
+                                    <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
+                                )}
+                                {leg.FromStop?.wheelchair_boarding === 1 && (
+                                    <Accessibility className="h-3 w-3 text-muted-foreground" />
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
 
-                <div className="relative py-2">
-                    <span className="absolute -left-[21px] top-3 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
-                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <span className="font-medium text-sm">{formatTime(displayArrival)}</span>
-                        <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
-                        <div className="flex items-center gap-1">
-                            {leg.ToStop?.platform_number && (
-                                <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.ToStop.platform_number}</Badge>
-                            )}
-                            {leg.ToStop?.wheelchair_boarding === 1 && (
-                                <Accessibility className="h-3 w-3 text-muted-foreground" />
-                            )}
+                    <div className="relative py-1.5">
+                        <span className="absolute -left-[21px] top-2.5 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="font-medium text-sm">{formatTime(displayArrival)}</span>
+                            <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
+                            <div className="flex items-center gap-1">
+                                {leg.ToStop?.platform_number && (
+                                    <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.ToStop.platform_number}</Badge>
+                                )}
+                                {leg.ToStop?.wheelchair_boarding === 1 && (
+                                    <Accessibility className="h-3 w-3 text-muted-foreground" />
+                                )}
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
+            )}
 
             {!isLast && waitNs && waitNs >= 60000000000 && (
-                <div className="ml-2 flex items-center gap-2 py-1.5 text-xs text-muted-foreground">
+                <div className="ml-2 flex items-center gap-2 py-1 text-xs text-muted-foreground">
                     <Clock className="h-3 w-3" />
                     <span>{formatDuration(waitNs)} wait</span>
                 </div>

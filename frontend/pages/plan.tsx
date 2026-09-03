@@ -15,6 +15,7 @@ import { SearchForm } from "@/components/journey/search-form"
 import { QuickTripsRail } from "@/components/journey/quick-trips-rail"
 import { ResultsList } from "@/components/journey/results-list"
 import { RouteDetailSheet } from "@/components/journey/route-detail-sheet"
+import { JourneyErrorBoundary } from "@/components/journey/journey-error-boundary"
 import { MapPicker } from "@/components/journey/map-picker"
 
 export default function Page() {
@@ -438,17 +439,19 @@ export default function Page() {
                 />
             </main>
 
-            <RouteDetailSheet
-                open={isRouteMapOpen}
-                onOpenChange={setIsRouteMapOpen}
-                route={selectedRoute ?? null}
-                startLocation={startLocation}
-                endLocation={endLocation}
-                buildShareUrl={buildShareUrl}
-                onShowAlternates={() => setIsRouteMapOpen(false)}
-                onReplanFromHere={replanFromHere}
-                autoTrack={autoTrack}
-            />
+            <JourneyErrorBoundary resetKey={selectedRoute?.ID}>
+                <RouteDetailSheet
+                    open={isRouteMapOpen}
+                    onOpenChange={setIsRouteMapOpen}
+                    route={selectedRoute ?? null}
+                    startLocation={startLocation}
+                    endLocation={endLocation}
+                    buildShareUrl={buildShareUrl}
+                    onShowAlternates={() => setIsRouteMapOpen(false)}
+                    onReplanFromHere={replanFromHere}
+                    autoTrack={autoTrack}
+                />
+            </JourneyErrorBoundary>
 
             <MapPicker
                 open={isSelectingOnMap}
