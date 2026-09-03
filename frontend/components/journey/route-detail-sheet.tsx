@@ -28,7 +28,9 @@ import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
-import { buildLiveJourney, connectionRisk, findStopSequence, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
+import { useJourneyAlerts } from "./use-journey-alerts"
+import { JourneyAlertOverlay } from "./journey-alert-overlay"
+import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -264,8 +266,7 @@ export function RouteDetailSheet({
     // rider is on board (or has missed it) - either way the camera should just
     // follow the vehicle, not frame it against a stop that's now behind them.
     const trackedBoardSeq = findStopSequence(trackedStops, trackedBoardStop)
-    const boarded = !!trackedVehicle && trackedCurrentSeq !== undefined && trackedBoardSeq !== undefined
-        && trackedCurrentSeq > trackedBoardSeq
+    const boarded = hasDepartedStop(trackedVehicle, trackedBoardSeq)
     // Physically standing at the boarding stop, vehicle not yet departed it.
     const waitingAtStop = atBoardStop && !boarded
 
@@ -301,27 +302,29 @@ export function RouteDetailSheet({
     // it's live, otherwise the rider (see followUser below), instead of chasing
     // the vehicle they just got off as it continues its trip.
     useEffect(() => {
-        if (!journeyStarted || trackedLegIndex < 0 || trackedCurrentSeq === undefined) return
+        if (!journeyStarted || trackedLegIndex < 0) return
         const alightSeq = findStopSequence(trackedStops, trackedAlightStop)
         if (alightSeq === undefined) return
-        if (trackedCurrentSeq > alightSeq) {
+        if (hasDepartedStop(trackedVehicle, alightSeq)) {
             setAlightedThroughLeg((prev) => Math.max(prev, trackedLegIndex))
         }
-    }, [journeyStarted, trackedLegIndex, trackedCurrentSeq, trackedStops, trackedAlightStop])
+    }, [journeyStarted, trackedLegIndex, trackedVehicle, trackedStops, trackedAlightStop])
 
     const defaultZoom = useMemo<[LatLng, LatLng]>(() => [
         [route?.StartLat ?? 0, route?.StartLon ?? 0],
         [route?.EndLat ?? 0, route?.EndLon ?? 0],
     ], [route?.StartLat, route?.StartLon, route?.EndLat, route?.EndLon])
 
-    if (!route) return null
+    // Derived render state is computed before the null guard below so the
+    // journey-alert hook (which needs journeyArrived / replanUrgent) can run
+    // unconditionally - it no-ops internally when there's no route or tracking.
     const shownRoute = displayRoute ?? route
 
     // Vehicles to show on the map: drop the ones for legs the rider has already
     // ridden and alighted - once you're off a train you don't want to keep
     // watching it drive away while you wait for the next.
     const alightedTripIds = new Set(
-        route.Legs.filter((l, i) => l.Mode === "transit" && !!l.TripID && i <= alightedThroughLeg).map((l) => l.TripID)
+        (route?.Legs ?? []).filter((l, i) => l.Mode === "transit" && !!l.TripID && i <= alightedThroughLeg).map((l) => l.TripID)
     )
     const visibleVehicles = alightedTripIds.size === 0
         ? vehiclesByTripId
@@ -329,27 +332,38 @@ export function RouteDetailSheet({
 
     // The leg index to mark as "current" in the itinerary/header while tracking.
     // Once the final leg's arrival has passed the whole journey reads as done.
-    const lastLeg = shownRoute.Legs[shownRoute.Legs.length - 1]
+    const lastLeg = shownRoute?.Legs[shownRoute.Legs.length - 1]
     const journeyArrived =
-        journeyStarted && currentLegIndex === shownRoute.Legs.length - 1 &&
+        !!shownRoute && journeyStarted && currentLegIndex === shownRoute.Legs.length - 1 &&
         !!lastLeg && now.getTime() >= new Date(lastLeg.ArrivalTime).getTime()
-    const progressLegIndex = !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : currentLegIndex
+    const progressLegIndex = !shownRoute || !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : currentLegIndex
 
     // What the rider is doing on the current leg right now.
-    const activeLeg = progressLegIndex >= 0 ? shownRoute.Legs[progressLegIndex] : undefined
+    const activeLeg = shownRoute && progressLegIndex >= 0 ? shownRoute.Legs[progressLegIndex] : undefined
     const currentPhase = ((): JourneyPhase | undefined => {
         if (!journeyStarted || !activeLeg) return undefined
         if (activeLeg.Mode === "walk") return waitingAtStop ? "waiting" : "walking"
         if (boarded) return "onboard"
-        // Transit leg, not yet on board: "boarding" once the vehicle is at/one
-        // stop from the rider's boarding stop, or departure is imminent;
-        // "waiting" during the gap before that.
+
+        // Transit leg, not yet on board. With a usable live position, "boarding"
+        // only once the vehicle is dwelling at the boarding stop or the boarding
+        // stop is its very next stop - otherwise the rider is still waiting, even
+        // if the (realtime-adjusted) schedule clock has rolled past a stale
+        // departure time while the bus is still several stops away.
+        const vehicleKnown =
+            !!trackedVehicle && trackedVehicle.state !== "Unknown" &&
+            trackedBoardSeq !== undefined && trackedCurrentSeq !== undefined
+        if (vehicleKnown) {
+            const nextSeq = trackedVehicle.trip?.next_stop?.sequence
+            const atBoard =
+                (trackedCurrentSeq === trackedBoardSeq && trackedVehicle.state === "AtStop") ||
+                (nextSeq !== undefined && nextSeq === trackedBoardSeq)
+            return atBoard ? "boarding" : "waiting"
+        }
+
+        // No usable live position - fall back to the schedule.
         const untilDepartMs = new Date(activeLeg.DepartureTime).getTime() - now.getTime()
-        const vehicleAtBoard =
-            trackedBoardSeq !== undefined && trackedCurrentSeq !== undefined &&
-            trackedCurrentSeq >= trackedBoardSeq - 1 && trackedCurrentSeq <= trackedBoardSeq &&
-            (trackedVehicle?.state === "AtStop" || trackedVehicle?.state === "Approaching")
-        return untilDepartMs <= BOARDING_WINDOW_MS || vehicleAtBoard ? "boarding" : "waiting"
+        return untilDepartMs <= BOARDING_WINDOW_MS ? "boarding" : "waiting"
     })()
 
     // How good the data behind the times is right now: a live vehicle position,
@@ -372,7 +386,7 @@ export function RouteDetailSheet({
             : undefined
     const vehicleNextEta = vehicleNextEtaMs ? new Date(vehicleNextEtaMs) : undefined
 
-    const replanOptions = journeyStarted
+    const replanOptions = shownRoute && journeyStarted
         ? replanChoices(
             shownRoute, progressLegIndex, currentPhase,
             vehicleNext ? { lat: vehicleNext.lat, lon: vehicleNext.lon, name: vehicleNext.name } : undefined,
@@ -380,12 +394,35 @@ export function RouteDetailSheet({
             userLoc,
         )
         : []
-    const replanUrgent = replanOptions.length > 0 && shownRoute.Legs.some(
+    const replanUrgent = !!shownRoute && replanOptions.length > 0 && shownRoute.Legs.some(
         (_, i) => i > progressLegIndex && connectionRisk(shownRoute.Legs, i)?.level === "missed"
     )
     const handleReplan = onReplanFromHere
         ? (c: ReplanChoice) => onReplanFromHere(c.origin, c.departAt)
         : undefined
+
+    // In-app popups for the moments that matter while being tracked: bus a stop
+    // away, get on now, your stop is next, get off here, transfers, arrival.
+    const { alerts, dismiss: dismissAlert, dismissAll: dismissAlerts } = useJourneyAlerts({
+        active: open && journeyStarted,
+        route,
+        trackedVehicle,
+        trackedStops,
+        trackedBoardStop,
+        trackedAlightStop,
+        trackedLeg: trackedLeg || undefined,
+        boarded,
+        journeyArrived,
+        replanUrgent,
+        endLabel: endLocation?.label,
+    })
+
+    // Drop any lingering alert cards when the sheet closes or tracking stops.
+    useEffect(() => {
+        if (!open || !journeyStarted) dismissAlerts()
+    }, [open, journeyStarted, dismissAlerts])
+
+    if (!route || !shownRoute) return null
 
     const handleShare = async () => {
         const title = `${startLocation?.label ?? "Start"} → ${endLocation?.label ?? "Destination"}`
@@ -452,25 +489,33 @@ export function RouteDetailSheet({
         />
     )
 
+    const alertOverlay = (
+        <JourneyAlertOverlay alerts={alerts} onDismiss={dismissAlert} onDismissAll={dismissAlerts} />
+    )
+
     if (!isMobile) {
         return (
-            <Dialog open={open} onOpenChange={onOpenChange}>
-                <DialogContent className="max-w-5xl h-[85vh] flex flex-col p-0 gap-0">
-                    <DialogTitle className="sr-only">Route details</DialogTitle>
-                    <div className="flex flex-1 min-h-0 gap-0">
-                        <div className="w-1/2 relative">{map}</div>
-                        <div className="w-1/2 overflow-y-auto p-4 space-y-4">
-                            {summary}
-                            {itinerary}
+            <>
+                {alertOverlay}
+                <Dialog open={open} onOpenChange={onOpenChange}>
+                    <DialogContent className="max-w-5xl h-[85vh] flex flex-col p-0 gap-0">
+                        <DialogTitle className="sr-only">Route details</DialogTitle>
+                        <div className="flex flex-1 min-h-0 gap-0">
+                            <div className="w-1/2 relative">{map}</div>
+                            <div className="w-1/2 overflow-y-auto p-4 space-y-4">
+                                {summary}
+                                {itinerary}
+                            </div>
                         </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
+                    </DialogContent>
+                </Dialog>
+            </>
         )
     }
 
     return (
         <>
+            {alertOverlay}
             {isMobile && open && (
                 <div className="fixed inset-0 z-40">
                     {map}

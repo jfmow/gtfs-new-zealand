@@ -1,4 +1,4 @@
-import type { ServicesStop, StopTimes } from "@/components/services/tracker"
+import type { ServicesStop, StopTimes, VehiclesResponse } from "@/components/services/tracker"
 import { RealtimeStatus, type Leg, type JourneyType, type Stop } from "./types"
 
 /**
@@ -16,6 +16,38 @@ export function findStopSequence(
         (s) => s.parent_stop_id === legStop.parent_station || s.child_stop_id === legStop.stop_id
     )
     return match?.sequence
+}
+
+/**
+ * Has the tracked vehicle actually pulled away from the stop at `stopSeq`?
+ *
+ * The backend's `current_stop` keeps pointing at a stop until the vehicle
+ * reaches the next one, so a strict `current_stop.sequence > stopSeq` test
+ * reports "still here" for the whole inter-stop interval after departure. This
+ * closes that gap: departed once `current_stop` is past the stop, OR
+ * `current_stop` is still the stop but `next_stop` is beyond it and the feed
+ * says the vehicle is moving ("Departed", or "Approaching" the next one) - i.e.
+ * anything other than still dwelling there ("AtStop").
+ *
+ * Conservative at clamped boundaries / with no realtime: origin clamp
+ * (current === next === first), final clamp (current === next === final), and
+ * state "Unknown" all return false.
+ */
+export function hasDepartedStop(
+    vehicle: VehiclesResponse | undefined,
+    stopSeq: number | undefined,
+): boolean {
+    if (!vehicle?.trip || stopSeq === undefined) return false
+    const cur = vehicle.trip.current_stop?.sequence
+    const next = vehicle.trip.next_stop?.sequence
+    if (cur === undefined) return false
+    if (cur > stopSeq) return true
+    return (
+        cur === stopSeq &&
+        next !== undefined &&
+        next > stopSeq &&
+        (vehicle.state === "Departed" || vehicle.state === "Approaching")
+    )
 }
 
 export function getFirstTransitLeg(route: JourneyType): Leg | null {

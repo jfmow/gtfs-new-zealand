@@ -165,6 +165,17 @@
   animation: live-pulse 2s ease-in-out infinite;
 }
 
+/* Journey alert card auto-dismiss timer bar (see journey-alert-overlay.tsx). */
+@keyframes journey-alert-bar {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .live-dot {
     animation: none;
@@ -172,5 +183,11 @@
 
   .map-route-line-flow {
     animation: none;
+  }
+
+  /* Don't leave the bar sitting full-width forever - just collapse it. */
+  [style*="journey-alert-bar"] {
+    animation: none !important;
+    transform: scaleX(0);
   }
 }
