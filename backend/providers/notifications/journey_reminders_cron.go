@@ -224,9 +224,12 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 		}
 
 		delay = clampJRDelay(delay)
-		leaveUnix := sched + int64(delay) - access
+		departUnix := sched + int64(delay)
+		leaveUnix := departUnix - access
 		leaveTime := time.Unix(leaveUnix, 0).In(tz)
+		departTime := time.Unix(departUnix, 0).In(tz)
 		minsUntilLeave := int(math.Round(time.Until(leaveTime).Minutes()))
+		minsUntilDeparture := int(math.Round(time.Until(departTime).Minutes()))
 
 		sent := append([]int(nil), r.SentOffsets...)
 		offsets := sortedDescInts(r.Offsets)
@@ -277,7 +280,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 			if baseline == 0 {
 				baseline = leaveUnix
 			}
-			title, body := leaveCopy(minsUntilLeave, r.RouteShortName, r.BoardStopName, leaveTime, access)
+			title, body := leaveCopy(minsUntilLeave, minsUntilDeparture, r.RouteShortName, r.BoardStopName, departTime, access)
 			notifyJourneyReminderClient(db, r, fmt.Sprintf("leave-%d", fireMins), title, body)
 		}
 

@@ -152,26 +152,33 @@ func TestBoardStopDelay(t *testing.T) {
 }
 
 func TestLeaveCopy(t *testing.T) {
-	at := time.Date(2026, 9, 4, 8, 15, 0, 0, mustNZ(t))
+	depAt := time.Date(2026, 9, 4, 8, 15, 0, 0, mustNZ(t))
 
-	// Journey with a walk to the stop (access > 120s) -> "leave" wording.
-	title, _ := leaveCopy(0, "STH", "Britomart", at, 600)
-	if title != "Leave now" {
-		t.Errorf("got %q", title)
-	}
-	title, body := leaveCopy(15, "STH", "Britomart", at, 600)
+	// Journey with a walk to the stop (access > 120s), earlier rung -> "Leave in N".
+	title, body := leaveCopy(15, 18, "STH", "Britomart", depAt, 600)
 	if title != "Leave in 15 min" || body == "" {
-		t.Errorf("got %q / %q", title, body)
+		t.Errorf("earlier rung: got %q / %q", title, body)
 	}
 
-	// Catch-this-departure (access <= 120s) -> "departs" wording.
-	title, _ = leaveCopy(15, "STH", "Britomart", at, 0)
-	if title != "Departs in 15 min" {
-		t.Errorf("catch-only: got %q", title)
+	// The "go now" rung never says a bare "now" - it counts down to the departure.
+	title, _ = leaveCopy(0, 4, "STH", "Britomart", depAt, 600)
+	if title != "Leave now - STH in 4 min" {
+		t.Errorf("go-now rung: got %q", title)
 	}
-	title, _ = leaveCopy(0, "STH", "Britomart", at, 0)
-	if title != "Departing now" {
-		t.Errorf("catch-only now: got %q", title)
+	// Floor at 1 min even if the departure countdown lands at 0/negative.
+	title, _ = leaveCopy(0, 0, "STH", "Britomart", depAt, 600)
+	if title != "Leave now - STH in 1 min" {
+		t.Errorf("go-now floor: got %q", title)
+	}
+
+	// Catch-this-departure (access <= 120s) -> "Departs in N".
+	title, _ = leaveCopy(15, 15, "STH", "Britomart", depAt, 0)
+	if title != "Departs in 15 min" {
+		t.Errorf("catch-only rung: got %q", title)
+	}
+	title, _ = leaveCopy(0, 3, "STH", "Britomart", depAt, 0)
+	if title != "Departs in 3 min" {
+		t.Errorf("catch-only go-now: got %q", title)
 	}
 }
 

@@ -533,11 +533,14 @@ func boardStopDelay(tu *proto.TripUpdate, seq int, stopID string) (delay int, sk
 	return int(tu.GetDelay()), false
 }
 
-// leaveCopy builds the title/body for an offset-ladder push. When accessSeconds
-// is small the reminder was set against a specific departure ("catch this bus"),
-// not an A->B journey with a walk to the stop - "departs in N min" reads better
-// than "head off in N min".
-func leaveCopy(minsUntilLeave int, routeName, stopName string, leaveAt time.Time, accessSeconds int64) (title, body string) {
+// leaveCopy builds the title/body for an offset-ladder push. `minsUntilLeave` is
+// minutes until the (buffer-adjusted) time to head off; `minsUntilDeparture` is
+// minutes until the service actually leaves the stop. The final "go now" rung
+// (minsUntilLeave <= 1) is phrased against the departure so it doesn't read as
+// alarmingly late - the leave time already bakes in the walk + a ~2 min platform
+// buffer. When accessSeconds is small the reminder was set against a specific
+// departure ("catch this bus"), so "departs in N" fits better than "leave in N".
+func leaveCopy(minsUntilLeave, minsUntilDeparture int, routeName, stopName string, departAt time.Time, accessSeconds int64) (title, body string) {
 	route := routeName
 	if route == "" {
 		route = "your service"
@@ -547,22 +550,36 @@ func leaveCopy(minsUntilLeave int, routeName, stopName string, leaveAt time.Time
 		from = " from " + stopName
 	}
 
+	// Countdown shown on the "go now" rung - never below 1 ("in 0 min" reads worse
+	// than a plain past-tense), and capped so a stale/odd feed value can't say "in
+	// 45 min" on what should be the final call.
+	dep := minsUntilDeparture
+	if dep < 1 {
+		dep = 1
+	}
+	if dep > 15 {
+		dep = 15
+	}
+
 	catchOnly := accessSeconds <= 120
 	if catchOnly {
 		if minsUntilLeave <= 1 {
-			return "Departing now", fmt.Sprintf("The %s%s is departing now.", route, from)
+			return fmt.Sprintf("Departs in %d min", dep),
+				fmt.Sprintf("The %s%s departs in about %d min (%s).", route, from, dep, departAt.Format("3:04pm"))
 		}
-		return fmt.Sprintf("Departs in %d min", minsUntilLeave),
+		return fmt.Sprintf("Departs in %d min", minsUntilDeparture),
 			fmt.Sprintf("The %s%s departs in about %d min (%s).",
-				route, from, minsUntilLeave, leaveAt.Format("3:04pm"))
+				route, from, minsUntilDeparture, departAt.Format("3:04pm"))
 	}
 
 	if minsUntilLeave <= 1 {
-		return "Leave now", fmt.Sprintf("Leave now to catch the %s%s.", route, from)
+		return fmt.Sprintf("Leave now - %s in %d min", route, dep),
+			fmt.Sprintf("Head off now for the %s%s - it departs in about %d min (%s).",
+				route, from, dep, departAt.Format("3:04pm"))
 	}
 	return fmt.Sprintf("Leave in %d min", minsUntilLeave),
-		fmt.Sprintf("Head off in about %d min for the %s%s (leave by %s).",
-			minsUntilLeave, route, from, leaveAt.Format("3:04pm"))
+		fmt.Sprintf("Head off in about %d min for the %s%s (it departs %s).",
+			minsUntilLeave, route, from, departAt.Format("3:04pm"))
 }
 
 func sortedDescInts(in []int) []int {
