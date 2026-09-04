@@ -43,10 +43,11 @@ interface LeaveReminderDialogProps {
     deeplink?: string
 }
 
+// Minutes of advance heads-up before the "leave now" nudge.
 const OFFSET_CHOICES: { value: number; label: string }[] = [
     { value: 30, label: "30 min before" },
-    { value: 15, label: "15 min" },
-    { value: 5, label: "5 min" },
+    { value: 15, label: "15 min before" },
+    { value: 5, label: "5 min before" },
     { value: 0, label: "When to leave" },
 ]
 
@@ -224,7 +225,7 @@ export function LeaveReminderDialog({
 
                 <div className="space-y-4 py-1">
                     <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Alert me</Label>
+                        <Label className="text-xs text-muted-foreground">Heads-up before you leave</Label>
                         <div className="flex flex-wrap gap-1.5">
                             {OFFSET_CHOICES.map((o) => (
                                 <Chip key={o.value} active={offsets.includes(o.value)} onClick={() => toggleOffset(o.value)}>
@@ -232,6 +233,9 @@ export function LeaveReminderDialog({
                                 </Chip>
                             ))}
                         </div>
+                        <p className="text-[11px] text-muted-foreground">
+                            &quot;When to leave&quot; is the go signal; the others are advance nudges.
+                        </p>
                     </div>
 
                     <div className="space-y-2">
