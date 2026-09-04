@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { AccessibilityIcon, BadgeInfoIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
-import { convert24hTo12h, formatTextToNiceLookingWords, timeTillArrival } from "@/lib/formating"
+import { convert24hTo12h, formatTextToNiceLookingWords } from "@/lib/formating"
 import ServiceTrackerModal from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
 import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
@@ -557,7 +557,12 @@ function sortServices(services: Service[], platformFilter: PlatformFilter | unde
                 if (a.departed && !b.departed) return -1
                 if (!a.departed && b.departed) return 1
             }
-            return timeTillArrival(a.arrival_time) - timeTillArrival(b.arrival_time)
+            // Sort on the backend's day-aware minutes-until value, NOT a
+            // re-parse of arrival_time: a realtime-predicted after-midnight time
+            // comes back formatted "00:06:00" and timeTillArrival() would read
+            // that as ~20h in the past, flinging tonight's post-midnight trains
+            // to the top of the board.
+            return a.time_till_arrival - b.time_till_arrival
         })
 }
 

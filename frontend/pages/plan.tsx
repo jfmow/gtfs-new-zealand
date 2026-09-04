@@ -5,7 +5,7 @@ import { SaveTripDialog } from "@/components/trips/save-trip-dialog"
 import { ManageTripsSheet } from "@/components/trips/manage-trips-sheet"
 import { GlobalTripSettingsDialog } from "@/components/trips/global-trip-settings-dialog"
 import { Button } from "@/components/ui/button"
-import { AlarmClock, List, Navigation, Settings2, Undo2, X } from "lucide-react"
+import { AlarmClock, List, Settings2, Undo2 } from "lucide-react"
 import { ApiFetch, useUrl } from "@/lib/url-context"
 import { getRegionSlug } from "@/lib/url-store"
 import { useQueryParams } from "@/lib/url-params"
@@ -19,7 +19,7 @@ import { RouteDetailSheet } from "@/components/journey/route-detail-sheet"
 import { JourneyErrorBoundary } from "@/components/journey/journey-error-boundary"
 import { MapPicker } from "@/components/journey/map-picker"
 import { LeaveReminderDialog } from "@/components/journey/leave-reminder-dialog"
-import { useActiveJourney, RESUME_GRACE_MS } from "@/components/journey/use-active-journey"
+import { useActiveJourney } from "@/components/journey/use-active-journey"
 
 export default function Page() {
     const { trips, saveTrip, updateTrip, deleteTrip, reorderTrips, updateAllTrips } = useSavedTrips()
@@ -210,7 +210,7 @@ export default function Page() {
         setLeaveReminderOpen(true)
     }, [])
 
-    const { activeJourney, clearActiveJourney } = useActiveJourney()
+    const { activeJourney } = useActiveJourney()
 
     const resumeJourney = useCallback(async () => {
         if (!activeJourney) return
@@ -444,31 +444,6 @@ export default function Page() {
                     onDeleteTrip={deleteTrip}
                     onReorderTrips={reorderTrips}
                 />
-
-                {activeJourney && !selectedRoute && !shared.sharedId.found &&
-                 Date.now() < new Date(activeJourney.arrivalTime).getTime() + RESUME_GRACE_MS && (
-                    <div className="mt-4 flex w-full items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3.5 py-2.5 text-sm">
-                        <button
-                            type="button"
-                            onClick={resumeJourney}
-                            className="flex min-w-0 items-center gap-2 font-medium hover:underline"
-                        >
-                            <Navigation className="h-4 w-4 shrink-0" />
-                            <span className="truncate">Resume tracking your journey to {activeJourney.endLabel}</span>
-                        </button>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                            <span className="text-xs text-muted-foreground">arrives {formatTime(activeJourney.arrivalTime)}</span>
-                            <button
-                                type="button"
-                                onClick={clearActiveJourney}
-                                aria-label="Dismiss"
-                                className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"
-                            >
-                                <X className="h-3.5 w-3.5" />
-                            </button>
-                        </div>
-                    </div>
-                )}
 
                 {replanSnapshot && (
                     <button
