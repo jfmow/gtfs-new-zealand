@@ -296,7 +296,7 @@ export function RouteDetailSheet({
     const trackedNextSeq = trackedVehicle?.trip?.next_stop?.sequence
     const trackedStopsAway =
         trackedVehicle &&
-            (trackedVehicle.state === "Arriving" || trackedVehicle.state === "Travelling") &&
+            trackedVehicle.state !== "Unknown" &&
             trackedTargetSeq !== undefined &&
             trackedNextSeq !== undefined
             ? Math.max(0, trackedTargetSeq - trackedNextSeq)
