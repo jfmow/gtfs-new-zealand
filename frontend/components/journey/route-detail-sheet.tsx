@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
 import {
+    AlarmClock,
     AlertTriangle,
     Accessibility,
     ArrowRight,
@@ -24,6 +25,7 @@ import {
     Share2,
     User,
     WifiOff,
+    X,
 } from "lucide-react"
 import { haversineDistance, useIsMobile, useOnlineStatus } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
@@ -35,7 +37,8 @@ import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
 import { useJourneyAlerts, boardProximityThreshold } from "./use-journey-alerts"
 import { JourneyAlertOverlay } from "./journey-alert-overlay"
-import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
+import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getFirstTransitLeg, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
+import { useActiveJourney } from "./use-active-journey"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -52,6 +55,8 @@ interface RouteDetailSheetProps {
     onReplanFromHere?: (origin: { lat: number; lon: number; label: string }, departAt: Date) => void
     /** Set once, right when a shared link auto-opens this exact route, to start tracking immediately instead of requiring a manual GO tap. Read once via a ref, not as a live dependency, so plan.tsx clearing it back to false afterward doesn't undo tracking once it's started. */
     autoTrack?: boolean
+    /** When set, a not-yet-departed journey shows a "remind me when to leave" action. */
+    onRemindToLeave?: (route: JourneyType) => void
 }
 
 // How far past its delay-adjusted departure the earliest pending transit leg
@@ -115,6 +120,7 @@ export function RouteDetailSheet({
     onShowAlternates,
     onReplanFromHere,
     autoTrack,
+    onRemindToLeave,
 }: RouteDetailSheetProps) {
     // immediate: true - resolve mobile vs desktop synchronously on the first
     // client render. This component renders no DOM until `open` (always false at
@@ -135,6 +141,7 @@ export function RouteDetailSheet({
     const [userLoc, setUserLoc] = useState<{ lat: number; lon: number } | null>(null)
     const [atBoardStop, setAtBoardStop] = useState(false)
     const now = useNow(20000)
+    const { setActiveJourney, clearActiveJourney } = useActiveJourney()
 
     // Captured via ref (not a dependency) so autoTrack flipping back to false
     // right after being consumed doesn't re-run this effect and undo tracking.
@@ -372,6 +379,26 @@ export function RouteDetailSheet({
         !!lastLeg && now.getTime() >= new Date(lastLeg.ArrivalTime).getTime()
     const progressLegIndex = !shownRoute || !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : currentLegIndex
 
+    // Persist the tracked journey so a closed/reloaded tab can resume it; drop it
+    // once the rider has arrived. Keyed so it fires on the transitions, not every render.
+    useEffect(() => {
+        if (!route) return
+        if (journeyStarted && !journeyArrived) {
+            setActiveJourney({
+                route,
+                startedAt: new Date().toISOString(),
+                endLabel: endLocation?.label ?? "your destination",
+                arrivalTime: new Date(route.ArrivalTime).toISOString(),
+                startLocation,
+                endLocation,
+                planId: route.ID,
+            })
+        } else if (journeyArrived) {
+            clearActiveJourney()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [journeyStarted, journeyArrived, route?.ID])
+
     // What the rider is doing on the current leg right now.
     const activeLeg = shownRoute && progressLegIndex >= 0 ? shownRoute.Legs[progressLegIndex] : undefined
     const currentPhase = ((): JourneyPhase | undefined => {
@@ -522,12 +549,20 @@ export function RouteDetailSheet({
         />
     )
 
+    const canRemindToLeave =
+        !!onRemindToLeave &&
+        !journeyStarted &&
+        !!getFirstTransitLeg(route) &&
+        new Date(route.DepartureTime).getTime() > Date.now() + 60_000
+
     const summary = (
         <JourneySummary
             route={shownRoute}
             onShare={handleShare}
+            onRemindToLeave={canRemindToLeave ? () => onRemindToLeave!(route) : undefined}
             journeyStarted={journeyStarted}
             onGo={() => setJourneyStarted(true)}
+            onStopTracking={() => { setJourneyStarted(false); clearActiveJourney() }}
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
             trackingLevel={trackingLevel}
@@ -637,8 +672,10 @@ function OccupancyIcons({ occupancy }: { occupancy: number }) {
 function JourneySummary({
     route,
     onShare,
+    onRemindToLeave,
     journeyStarted,
     onGo,
+    onStopTracking,
     currentLegIndex,
     currentPhase,
     trackingLevel,
@@ -652,8 +689,10 @@ function JourneySummary({
 }: {
     route: JourneyType
     onShare: () => void
+    onRemindToLeave?: () => void
     journeyStarted: boolean
     onGo: () => void
+    onStopTracking?: () => void
     currentLegIndex: number
     currentPhase?: JourneyPhase
     trackingLevel: "live" | "predicted" | "scheduled"
@@ -799,6 +838,17 @@ function JourneySummary({
                     ))}
                     <span className="text-sm text-muted-foreground ml-1 truncate">{formatDuration(route.TotalDuration)} total</span>
                 </div>
+                {onRemindToLeave && (
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0"
+                        onClick={onRemindToLeave}
+                        aria-label="Remind me when to leave"
+                    >
+                        <AlarmClock className="h-4 w-4" />
+                    </Button>
+                )}
                 <Button
                     size="icon"
                     variant="ghost"
@@ -808,15 +858,37 @@ function JourneySummary({
                 >
                     <Share2 className="h-4 w-4" />
                 </Button>
-                <Button
-                    size="sm"
-                    className="rounded-full gap-1.5 px-4 shrink-0"
-                    variant={journeyStarted ? "secondary" : "default"}
-                    onClick={onGo}
-                >
-                    <Navigation className="h-3.5 w-3.5" />
-                    {journeyStarted ? "Tracking" : "GO"}
-                </Button>
+                {journeyStarted && onStopTracking ? (
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button size="sm" className="rounded-full gap-1.5 px-4 shrink-0" variant="secondary">
+                                <Navigation className="h-3.5 w-3.5" />
+                                Tracking
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-48 p-1">
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="w-full justify-start gap-2 text-destructive hover:text-destructive"
+                                onClick={onStopTracking}
+                            >
+                                <X className="h-3.5 w-3.5" />
+                                Stop tracking
+                            </Button>
+                        </PopoverContent>
+                    </Popover>
+                ) : (
+                    <Button
+                        size="sm"
+                        className="rounded-full gap-1.5 px-4 shrink-0"
+                        variant={journeyStarted ? "secondary" : "default"}
+                        onClick={onGo}
+                    >
+                        <Navigation className="h-3.5 w-3.5" />
+                        {journeyStarted ? "Tracking" : "GO"}
+                    </Button>
+                )}
             </div>
 
             {journeyStarted && onReplan && replanOptions.length > 0 && (() => {

@@ -54,6 +54,56 @@ export function getFirstTransitLeg(route: JourneyType): Leg | null {
     return route.Legs.find(l => l.Mode === 'transit') ?? null
 }
 
+/**
+ * Seconds between leaving the origin and the first transit leg's scheduled
+ * departure (i.e. the leading walk + any wait, which the backend's
+ * deferOriginWalk already trims to ~2 min slack), plus the rider's prep buffer.
+ * Used to derive a "leave-by" time from the boarding service's live departure.
+ */
+export function leadingAccessSeconds(route: JourneyType, prepBufferSeconds: number): number {
+    const transit = route.Legs.find(l => l.Mode === 'transit')
+    if (!transit) return prepBufferSeconds
+    const boardDepMs = new Date(transit.scheduled_departure_time ?? transit.DepartureTime).getTime()
+    const planStartMs = new Date(route.Legs[0].DepartureTime).getTime()
+    return Math.max(0, Math.round((boardDepMs - planStartMs) / 1000)) + prepBufferSeconds
+}
+
+/** YYYYMMDD for a date in the transit network's timezone (Pacific/Auckland). */
+export function nzServiceDate(d: Date | string): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' })
+        .format(new Date(d))
+        .replace(/-/g, '')
+}
+
+/** "HH:MM" for a date in Pacific/Auckland. */
+export function nzHHMM(d: Date | string): string {
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Pacific/Auckland',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(new Date(d))
+}
+
+const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+/** "" / "0000000" -> "Once"; "1111100" -> "Weekdays"; "0000011" -> "Weekends"; else "Mon, Wed". */
+export function weekdayMaskLabel(mask: string): string {
+    if (!mask || !mask.includes('1')) return 'Once'
+    if (mask === '1111100') return 'Weekdays'
+    if (mask === '0000011') return 'Weekends'
+    if (mask === '1111111') return 'Every day'
+    return WEEKDAY_LABELS.filter((_, i) => mask[i] === '1').join(', ')
+}
+
+/** For an arrive-by search: the option that lets the rider leave the latest. */
+export function latestDeparture(routes: JourneyType[]): JourneyType | null {
+    if (routes.length === 0) return null
+    return routes.reduce((latest, r) =>
+        new Date(r.DepartureTime).getTime() > new Date(latest.DepartureTime).getTime() ? r : latest
+    )
+}
+
 export function getLastTransitLeg(route: JourneyType): Leg | null {
     const legs = route.Legs.filter(l => l.Mode === 'transit')
     return legs[legs.length - 1] ?? null

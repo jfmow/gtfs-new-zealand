@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
+	"github.com/jfmow/at-trains-api/providers/planlimit"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
 	"github.com/labstack/echo/v5"
@@ -25,7 +27,13 @@ type cachedJourneyPlan struct {
 	expiresAt time.Time
 }
 
-func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache) {
+// planCacheMaxEntries caps the in-memory L1 journey-plan cache. Each entry holds
+// a full JourneyPlan (legs + OSRM walk geometry + shape segments), 5-50 KB, so a
+// traffic burst could otherwise hold hundreds of MB until the 10-min GC tick.
+// The durable plan_store is the real backing, so a small L1 is fine.
+const planCacheMaxEntries = 400
+
+func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, gtfsName string) {
 	servicesRoute := primaryRoute.Group("/services")
 
 	osrmApiUrl, found := os.LookupEnv("OSRM_URL")
@@ -40,6 +48,9 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	var planCacheMu sync.RWMutex
 	planCache := make(map[string]cachedJourneyPlan)
 
+	// Durable L2 for shared "?id=" links so they survive a restart (nil-tolerant).
+	planStore := getPlanStore()
+
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -52,6 +63,10 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				}
 			}
 			planCacheMu.Unlock()
+			// plans.db is one shared file - only one region needs to GC it.
+			if gtfsName == "at" {
+				planStore.gc(now)
+			}
 		}
 	}()
 
@@ -331,6 +346,15 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			jplan.DepartAt = leaveTime
 		}
 
+		// Bound concurrent RAPTOR runs - each holds a large transient allocation.
+		acqCtx, acqCancel := context.WithTimeout(c.Request().Context(), 15*time.Second)
+		got := planlimit.Acquire(acqCtx)
+		acqCancel()
+		if !got {
+			return JsonApiResponse(c, http.StatusServiceUnavailable, "planner busy", nil, ResponseDetails("details", "too many journey plans in flight, try again"))
+		}
+		defer planlimit.Release()
+
 		plans, err := gtfsData.PlanJourneyRaptor(jplan)
 		if err != nil {
 			return JsonApiResponse(c, http.StatusInternalServerError, "No valid journey found", nil, ResponseDetails("error", err.Error()))
@@ -346,7 +370,9 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					plan:      plan,
 					expiresAt: plan.ArrivalTime.Add(30 * time.Minute),
 				}
+				planStore.put(plan)
 			}
+			evictOldestPlanCacheEntries(planCache)
 			planCacheMu.Unlock()
 		}
 
@@ -364,11 +390,39 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		planCacheMu.RUnlock()
 
 		if !ok || time.Now().After(cp.expiresAt) {
+			// L1 miss - fall back to the durable store (survives restarts).
+			if p, found := planStore.get(id); found {
+				return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{p})
+			}
 			return JsonApiResponse(c, http.StatusNotFound, "journey plan not found or expired", nil, ResponseDetails("id", id))
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{cp.plan})
 	})
+}
+
+// evictOldestPlanCacheEntries keeps the in-memory L1 plan cache under
+// planCacheMaxEntries by dropping the entries closest to expiry. Caller holds
+// planCacheMu. The durable plan_store still has everything, so an evicted L1
+// entry just costs a DB read on the next /plan/:id.
+func evictOldestPlanCacheEntries(planCache map[string]cachedJourneyPlan) {
+	over := len(planCache) - planCacheMaxEntries
+	if over <= 0 {
+		return
+	}
+	for i := 0; i < over; i++ {
+		oldestID, first := "", true
+		var oldest time.Time
+		for id, cp := range planCache {
+			if first || cp.expiresAt.Before(oldest) {
+				oldestID, oldest, first = id, cp.expiresAt, false
+			}
+		}
+		if oldestID == "" {
+			return
+		}
+		delete(planCache, oldestID)
+	}
 }
 
 func queryFloat(c echo.Context, key string, def float64) (float64, error) {

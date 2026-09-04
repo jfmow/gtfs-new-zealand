@@ -118,30 +118,21 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		start := Coordinates{Lat: slat, Lon: slon} // Start point
 		end := Coordinates{Lat: elat, Lon: elon}   // End point
 
-		var result GeoJSONResponse
-		done := make(chan struct{})
+		if method != "walking" {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid movement method", nil, ResponseDetails("method", method, "details", "Method is required to determine the type of navigation"))
+		}
 
-		go func() {
-			defer close(done)
-			switch method {
-			case "walking":
-				result = GetWalkingDirections(start, end)
-			default:
-				JsonApiResponse(c, http.StatusBadRequest, "invalid movement method", nil, ResponseDetails("method", method, "details", "Method is required to determine the type of navigation"))
-				return
-			}
-		}()
-
-		select {
-		case <-ctx.Done():
+		// ctx carries the 5s deadline; the OSRM request honours it directly, so
+		// there's no detached goroutine to outlive the handler.
+		result := GetWalkingDirections(ctx, start, end)
+		if ctx.Err() != nil {
 			log.Println("Request timed out")
 			return JsonApiResponse(c, http.StatusRequestTimeout, "", nil, ResponseDetails("details", "Request timed out while fetching route data"))
-		case <-done:
-			if len(result.Features) == 0 {
-				return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("details", "No route found for the given coordinates"))
-			}
-			return JsonApiResponse(c, http.StatusOK, "", result)
 		}
+		if len(result.Features) == 0 {
+			return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("details", "No route found for the given coordinates"))
+		}
+		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 
 	// Location search (autocomplete) using self-hosted Nominatim
@@ -605,8 +596,12 @@ type Step struct {
 	Distance float64 `json:"distance"`
 }
 
+// osrmClient is a shared, bounded client so a slow/hung OSRM can't pin a
+// connection (or the caller's goroutine) indefinitely.
+var osrmClient = &http.Client{Timeout: 8 * time.Second}
+
 // Function to get the route from OSRM
-func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
+func getRouteFromOSRM(ctx context.Context, start, end Coordinates) (GeoJSONResponse, error) {
 	baseURL := strings.TrimRight(os.Getenv("OSRM_URL"), "/")
 
 	query := fmt.Sprintf("%f,%f;%f,%f", start.Lon, start.Lat, end.Lon, end.Lat)
@@ -614,8 +609,11 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 
 	url := baseURL + "/route/v1/foot/" + query + queryParams
 
-	// Make HTTP request
-	resp, err := http.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return GeoJSONResponse{}, err
+	}
+	resp, err := osrmClient.Do(req)
 	if err != nil {
 		return GeoJSONResponse{}, err
 	}
@@ -717,8 +715,8 @@ func getRouteFromOSRM(start, end Coordinates) (GeoJSONResponse, error) {
 }
 
 // Example usage
-func GetWalkingDirections(start, end Coordinates) GeoJSONResponse {
-	geoJSON, err := getRouteFromOSRM(start, end)
+func GetWalkingDirections(ctx context.Context, start, end Coordinates) GeoJSONResponse {
+	geoJSON, err := getRouteFromOSRM(ctx, start, end)
 	if err != nil {
 		fmt.Println("Error getting route:", err)
 	}

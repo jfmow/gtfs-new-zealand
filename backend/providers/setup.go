@@ -70,13 +70,13 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 		caches = cachespkg.CreateCaches(gtfsData)
 	}
 
-	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache)
+	setupServicesRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, gtfsName)
 	setupRoutesRoutes(primaryRouter, gtfsData, caches.GetRouteCache)
 	setupStopsRoutes(primaryRouter, gtfsData, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData)
 
-	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache)
+	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache, gtfsName)
 
 	/*hsdb := history.SetupHistoricalDataStorage(realtime, gtfsName, localTimeZone)
 
