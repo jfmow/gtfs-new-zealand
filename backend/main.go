@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +73,19 @@ func main() {
 	if err != nil {
 		fmt.Println("Error loading .env file")
 	}
+
+	// The process holds several hundred MB of long-lived GTFS/stop caches, so
+	// the default GOGC=100 (let the heap double before collecting) means a
+	// transient journey-plan allocation can push RSS over GOMEMLIMIT and send
+	// the GC into a CPU-burning death spiral on the Pi. A tighter target keeps
+	// the heap flatter at a small, steady CPU cost. Override with GOGC_PERCENT.
+	gcPercent := 60
+	if v := os.Getenv("GOGC_PERCENT"); v != "" {
+		if n, perr := strconv.Atoi(v); perr == nil && n > 0 {
+			gcPercent = n
+		}
+	}
+	debug.SetGCPercent(gcPercent)
 
 	logrus.SetOutput(&lumberjack.Logger{
 		Filename:   filepath.Join(getWorkDir(), "logs", "api.log"),

@@ -5,18 +5,21 @@ import { SaveTripDialog } from "@/components/trips/save-trip-dialog"
 import { ManageTripsSheet } from "@/components/trips/manage-trips-sheet"
 import { GlobalTripSettingsDialog } from "@/components/trips/global-trip-settings-dialog"
 import { Button } from "@/components/ui/button"
-import { List, Settings2, Undo2 } from "lucide-react"
+import { AlarmClock, List, Navigation, Settings2, Undo2, X } from "lucide-react"
 import { ApiFetch, useUrl } from "@/lib/url-context"
+import { getRegionSlug } from "@/lib/url-store"
 import { useQueryParams } from "@/lib/url-params"
 import type { Location, JourneyType } from "@/components/journey/types"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
-import { formatTime, getTransitTripIds } from "@/components/journey/helpers"
+import { formatTime, getTransitTripIds, latestDeparture } from "@/components/journey/helpers"
 import { SearchForm } from "@/components/journey/search-form"
 import { QuickTripsRail } from "@/components/journey/quick-trips-rail"
 import { ResultsList } from "@/components/journey/results-list"
 import { RouteDetailSheet } from "@/components/journey/route-detail-sheet"
 import { JourneyErrorBoundary } from "@/components/journey/journey-error-boundary"
 import { MapPicker } from "@/components/journey/map-picker"
+import { LeaveReminderDialog } from "@/components/journey/leave-reminder-dialog"
+import { useActiveJourney, RESUME_GRACE_MS } from "@/components/journey/use-active-journey"
 
 export default function Page() {
     const { trips, saveTrip, updateTrip, deleteTrip, reorderTrips, updateAllTrips } = useSavedTrips()
@@ -48,6 +51,8 @@ export default function Page() {
 
     // UI state
     const [saveTripOpen, setSaveTripOpen] = useState(false)
+    const [leaveReminderRoute, setLeaveReminderRoute] = useState<JourneyType | null>(null)
+    const [leaveReminderOpen, setLeaveReminderOpen] = useState(false)
     const [manageOpen, setManageOpen] = useState(false)
     const [globalSettingsOpen, setGlobalSettingsOpen] = useState(false)
     const [justSaved, setJustSaved] = useState(false)
@@ -87,8 +92,10 @@ export default function Page() {
         sharedDate: { type: "string", default: "", keys: ["date"] },
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
         sharedTrack: { type: "boolean", default: false, keys: ["track"] },
+        resume: { type: "boolean", default: false, keys: ["resume"] },
     })
     const idLookupAttemptedRef = useRef(false)
+    const resumeAttemptedRef = useRef(false)
 
     useEffect(() => {
         if (shared.startLat.found && shared.startLon.found) {
@@ -197,6 +204,40 @@ export default function Page() {
         setStartLocation(endLocation)
         setEndLocation(startLocation)
     }, [startLocation, endLocation])
+
+    const openLeaveReminder = useCallback((route: JourneyType) => {
+        setLeaveReminderRoute(route)
+        setLeaveReminderOpen(true)
+    }, [])
+
+    const { activeJourney, clearActiveJourney } = useActiveJourney()
+
+    const resumeJourney = useCallback(async () => {
+        if (!activeJourney) return
+        setStartLocation(activeJourney.startLocation)
+        setEndLocation(activeJourney.endLocation)
+        let route = activeJourney.route
+        // Prefer the server's copy when the durable plan store still has it
+        // (keeps the route id + geometry canonical); fall back to the local copy.
+        if (activeJourney.planId) {
+            try {
+                const res = await ApiFetch<JourneyType[]>(`/services/plan/${encodeURIComponent(activeJourney.planId)}`)
+                if (res.ok && res.data.length > 0) route = res.data[0]
+            } catch { /* offline / gone - use the local copy */ }
+        }
+        setApiResponse([route])
+        setSelectedRoute(route)
+        setAutoTrack(true)
+        setIsRouteMapOpen(true)
+    }, [activeJourney])
+
+    // Landed here from the app-wide resume popup (?resume=1).
+    useEffect(() => {
+        if (!shared.resume.found || resumeAttemptedRef.current || !activeJourney) return
+        resumeAttemptedRef.current = true
+        resumeJourney()
+        window.history.replaceState(null, "", "/plan")
+    }, [shared.resume.found, activeJourney, resumeJourney])
 
     const handleSelectFromMap = (mode: 'start' | 'end') => {
         setLocationMode(mode)
@@ -317,26 +358,18 @@ export default function Page() {
     // match by transit-leg signature) for when that cache entry is gone, and
     // `track=1` starts live tracking immediately rather than requiring the
     // recipient to tap GO themselves.
+    // Short same-origin path that opens this exact journey on its own page - the
+    // plan is fetched by id from the durable plan store, so no start/end/date
+    // blob is needed. Used for share links and notification deeplinks alike.
+    const buildSharePath = useCallback((route: JourneyType) => {
+        const slug = getRegionSlug(currentUrl)
+        return `/journey?id=${encodeURIComponent(route.ID)}${slug ? `&region=${slug}` : ""}`
+    }, [currentUrl])
+
     const buildShareUrl = useCallback((route: JourneyType) => {
-        if (typeof window === "undefined" || !startLocation || !endLocation) return ""
-        const params = new URLSearchParams({
-            startLat: String(startLocation.lat),
-            startLon: String(startLocation.lon),
-            startLabel: startLocation.label,
-            endLat: String(endLocation.lat),
-            endLon: String(endLocation.lon),
-            endLabel: endLocation.label,
-            maxWalkKm,
-            walkSpeed,
-            maxTransfers,
-            id: route.ID,
-            date: new Date(route.DepartureTime).toISOString(),
-            timeType: "leaveat",
-            trips: getTransitTripIds(route).join(","),
-            track: "1",
-        })
-        return `${window.location.origin}/plan?${params.toString()}`
-    }, [startLocation, endLocation, maxWalkKm, walkSpeed, maxTransfers])
+        if (typeof window === "undefined") return ""
+        return `${window.location.origin}${buildSharePath(route)}`
+    }, [buildSharePath])
 
     return (
         <div className="min-h-screen bg-background">
@@ -412,6 +445,31 @@ export default function Page() {
                     onReorderTrips={reorderTrips}
                 />
 
+                {activeJourney && !selectedRoute && !shared.sharedId.found &&
+                 Date.now() < new Date(activeJourney.arrivalTime).getTime() + RESUME_GRACE_MS && (
+                    <div className="mt-4 flex w-full items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3.5 py-2.5 text-sm">
+                        <button
+                            type="button"
+                            onClick={resumeJourney}
+                            className="flex min-w-0 items-center gap-2 font-medium hover:underline"
+                        >
+                            <Navigation className="h-4 w-4 shrink-0" />
+                            <span className="truncate">Resume tracking your journey to {activeJourney.endLabel}</span>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                            <span className="text-xs text-muted-foreground">arrives {formatTime(activeJourney.arrivalTime)}</span>
+                            <button
+                                type="button"
+                                onClick={clearActiveJourney}
+                                aria-label="Dismiss"
+                                className="flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {replanSnapshot && (
                     <button
                         type="button"
@@ -430,12 +488,35 @@ export default function Page() {
                     </button>
                 )}
 
+                {timeType === "arriveat" && apiResponse.length > 0 && (() => {
+                    const latest = latestDeparture(apiResponse)
+                    if (!latest || new Date(latest.DepartureTime).getTime() <= Date.now() + 60_000) return null
+                    return (
+                        <div className="flex items-center justify-between gap-2 rounded-lg border bg-muted/40 px-3.5 py-2.5 text-sm">
+                            <span className="min-w-0">
+                                <span className="text-muted-foreground">Latest you can leave: </span>
+                                <span className="font-semibold">{formatTime(latest.DepartureTime)}</span>
+                            </span>
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 shrink-0 gap-1.5 px-2.5 text-xs"
+                                onClick={() => openLeaveReminder(latest)}
+                            >
+                                <AlarmClock className="h-3.5 w-3.5" />
+                                Remind me
+                            </Button>
+                        </div>
+                    )
+                })()}
+
                 <ResultsList
                     routes={apiResponse}
                     onSelect={(route) => {
                         setSelectedRoute(route)
                         setIsRouteMapOpen(true)
                     }}
+                    onRemindToLeave={openLeaveReminder}
                 />
             </main>
 
@@ -450,8 +531,25 @@ export default function Page() {
                     onShowAlternates={() => setIsRouteMapOpen(false)}
                     onReplanFromHere={replanFromHere}
                     autoTrack={autoTrack}
+                    onRemindToLeave={openLeaveReminder}
                 />
             </JourneyErrorBoundary>
+
+            <LeaveReminderDialog
+                open={leaveReminderOpen}
+                onOpenChange={setLeaveReminderOpen}
+                route={leaveReminderRoute}
+                deeplink={leaveReminderRoute ? buildSharePath(leaveReminderRoute) : undefined}
+                requestContext={{
+                    startLocation,
+                    endLocation,
+                    maxWalkKm,
+                    walkSpeed,
+                    maxTransfers,
+                    timeType,
+                    selectedDate,
+                }}
+            />
 
             <MapPicker
                 open={isSelectingOnMap}

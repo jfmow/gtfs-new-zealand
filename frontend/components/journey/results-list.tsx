@@ -1,11 +1,12 @@
 "use client"
 
 import { Badge } from "@/components/ui/badge"
-import { AlertTriangle, ArrowRight, Clock, Footprints } from "lucide-react"
+import { AlarmClock, AlertTriangle, ArrowRight, Clock, Footprints } from "lucide-react"
 import type { JourneyType } from "./types"
 import {
     formatDuration,
     formatTime,
+    getFirstTransitLeg,
     getWaitingTimeNs,
 } from "./helpers"
 import { RealtimeStatus } from "./types"
@@ -13,9 +14,11 @@ import { RealtimeStatus } from "./types"
 interface ResultsListProps {
     routes: JourneyType[]
     onSelect: (route: JourneyType) => void
+    /** When set, future journeys get a "remind me to leave" button. */
+    onRemindToLeave?: (route: JourneyType) => void
 }
 
-export function ResultsList({ routes, onSelect }: ResultsListProps) {
+export function ResultsList({ routes, onSelect, onRemindToLeave }: ResultsListProps) {
     if (routes.length === 0) return null
 
     return (
@@ -26,6 +29,10 @@ export function ResultsList({ routes, onSelect }: ResultsListProps) {
             <div className="space-y-2">
                 {routes.map((route, index) => {
                     const hasDisruption = route.Legs.some(l => l.Mode === 'transit' && l.trip_usable === false)
+                    const canRemind =
+                        !!onRemindToLeave &&
+                        !!getFirstTransitLeg(route) &&
+                        new Date(route.DepartureTime).getTime() > Date.now() + 60_000
                     return (
                         <button
                             key={index}
@@ -52,9 +59,32 @@ export function ResultsList({ routes, onSelect }: ResultsListProps) {
                                             {formatTime(route.ArrivalTime)}
                                         </span>
                                     </div>
-                                    <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-[10px] shrink-0">
-                                        {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
-                                    </Badge>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        <Badge variant={route.Transfers === 0 ? 'default' : 'secondary'} className="text-[10px]">
+                                            {route.Transfers === 0 ? 'Direct' : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
+                                        </Badge>
+                                        {canRemind && (
+                                            <span
+                                                role="button"
+                                                tabIndex={0}
+                                                aria-label="Remind me when to leave for this journey"
+                                                onClick={(e) => {
+                                                    e.stopPropagation()
+                                                    onRemindToLeave!(route)
+                                                }}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter" || e.key === " ") {
+                                                        e.preventDefault()
+                                                        e.stopPropagation()
+                                                        onRemindToLeave!(route)
+                                                    }
+                                                }}
+                                                className="flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                                            >
+                                                <AlarmClock className="h-4 w-4" />
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div className="flex items-center flex-wrap gap-y-1 gap-x-0.5">
                                     {getRouteStepsJSX(route)}

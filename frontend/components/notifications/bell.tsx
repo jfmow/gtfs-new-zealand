@@ -1,20 +1,29 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { Bell } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import { useRouter } from "next/router"
+import { Bell, X } from "lucide-react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
-import { getMySubscriptions, type RecentNotificationEntry } from "@/lib/notifications"
+import {
+    getMySubscriptions,
+    dismissNotification,
+    clearNotifications,
+    type RecentNotificationEntry,
+} from "@/lib/notifications"
 import { ManageNotificationsSheet } from "./manage-sheet"
 
 const LAST_SEEN_KEY = "notifications_last_seen"
+const UPDATED_EVENT = "notificationsUpdated"
 const POLL_MS = 60000
 
-/** Nav bell + unread badge + recent-notification history - the only in-app surface for pushes, which otherwise only ever show as native OS notifications. Read state lives in localStorage (no backend "read" tracking), same as saved trips/favourites elsewhere in this app. */
+/** Nav bell + unread badge + recent-notification history - the only in-app surface for pushes, which otherwise only ever show as native OS notifications. Entries are tappable (open their deeplink) and dismissable. Read state lives in localStorage (no backend "read" tracking), same as saved trips/favourites elsewhere in this app. */
 export function NotificationsBell() {
+    const router = useRouter()
     const [entries, setEntries] = useState<RecentNotificationEntry[]>([])
     const [lastSeen, setLastSeen] = useState(0)
     const [manageOpen, setManageOpen] = useState(false)
+    const [open, setOpen] = useState(false)
 
     useEffect(() => {
         try {
@@ -24,22 +33,25 @@ export function NotificationsBell() {
         }
     }, [])
 
+    const load = useCallback(() => {
+        getMySubscriptions().then((data) => {
+            if (!data) return
+            const sorted = [...(data.recent_notifications ?? [])]
+                .filter((e) => !e.dismissed)
+                .sort((a, b) => (b.seen_at ?? 0) - (a.seen_at ?? 0))
+            setEntries(sorted)
+        })
+    }, [])
+
     useEffect(() => {
-        let cancelled = false
-        function load() {
-            getMySubscriptions().then((data) => {
-                if (cancelled || !data) return
-                const sorted = [...(data.recent_notifications ?? [])].sort((a, b) => (b.seen_at ?? 0) - (a.seen_at ?? 0))
-                setEntries(sorted)
-            })
-        }
         load()
         const interval = setInterval(load, POLL_MS)
+        window.addEventListener(UPDATED_EVENT, load)
         return () => {
-            cancelled = true
             clearInterval(interval)
+            window.removeEventListener(UPDATED_EVENT, load)
         }
-    }, [])
+    }, [load])
 
     const unread = entries.filter((e) => (e.seen_at ?? 0) > lastSeen).length
 
@@ -53,9 +65,30 @@ export function NotificationsBell() {
         }
     }
 
+    const handleOpen = (next: string | undefined) => {
+        setOpen(false)
+        if (next) router.push(next)
+    }
+
+    const handleDismiss = (id: string) => {
+        setEntries((prev) => prev.filter((e) => e.id !== id))
+        dismissNotification(id).finally(() => window.dispatchEvent(new CustomEvent(UPDATED_EVENT)))
+    }
+
+    const handleClearAll = () => {
+        setEntries([])
+        clearNotifications().finally(() => window.dispatchEvent(new CustomEvent(UPDATED_EVENT)))
+    }
+
     return (
         <>
-            <Popover onOpenChange={(open) => { if (open) markSeen() }}>
+            <Popover
+                open={open}
+                onOpenChange={(o) => {
+                    setOpen(o)
+                    if (o) markSeen()
+                }}
+            >
                 <PopoverTrigger asChild>
                     <button
                         aria-label="Notifications"
@@ -70,32 +103,54 @@ export function NotificationsBell() {
                     </button>
                 </PopoverTrigger>
                 <PopoverContent align="end" className="w-80 max-h-96 overflow-y-auto overscroll-contain p-0">
-                    <div className="p-3 border-b flex items-center justify-between sticky top-0 bg-popover">
+                    <div className="p-3 border-b flex items-center justify-between sticky top-0 bg-popover z-10">
                         <p className="text-sm font-medium">Notifications</p>
-                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setManageOpen(true)}>
-                            Manage
-                        </Button>
+                        <div className="flex items-center gap-1">
+                            {entries.length > 0 && (
+                                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleClearAll}>
+                                    Clear all
+                                </Button>
+                            )}
+                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setOpen(false); setManageOpen(true) }}>
+                                Manage
+                            </Button>
+                        </div>
                     </div>
                     {entries.length === 0 ? (
                         <p className="p-4 text-sm text-muted-foreground text-center">No notifications yet.</p>
                     ) : (
                         <div className="divide-y">
-                            {entries.slice(0, 20).map((entry, i) => (
-                                <div key={`${entry.id}-${i}`} className="p-3">
-                                    <p className="text-sm font-medium">{entry.title || "Notification"}</p>
-                                    {entry.body && (
-                                        <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{entry.body}</p>
-                                    )}
-                                    {!!entry.seen_at && (
-                                        <p className="text-[10px] text-muted-foreground/70 mt-1">
-                                            {new Date(entry.seen_at * 1000).toLocaleString("en-NZ", {
-                                                day: "numeric",
-                                                month: "short",
-                                                hour: "numeric",
-                                                minute: "2-digit",
-                                            })}
-                                        </p>
-                                    )}
+                            {entries.slice(0, 30).map((entry, i) => (
+                                <div key={`${entry.id}-${i}`} className="flex items-start gap-1 pr-1.5">
+                                    <button
+                                        type="button"
+                                        disabled={!entry.url}
+                                        onClick={() => handleOpen(entry.url)}
+                                        className="flex-1 min-w-0 p-3 text-left enabled:hover:bg-accent/50 disabled:cursor-default transition-colors"
+                                    >
+                                        <p className="text-sm font-medium">{entry.title || "Notification"}</p>
+                                        {entry.body && (
+                                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{entry.body}</p>
+                                        )}
+                                        {!!entry.seen_at && (
+                                            <p className="text-[10px] text-muted-foreground/70 mt-1">
+                                                {new Date(entry.seen_at * 1000).toLocaleString("en-NZ", {
+                                                    day: "numeric",
+                                                    month: "short",
+                                                    hour: "numeric",
+                                                    minute: "2-digit",
+                                                })}
+                                            </p>
+                                        )}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        aria-label="Dismiss notification"
+                                        onClick={() => handleDismiss(entry.id)}
+                                        className="mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                    >
+                                        <X className="h-3.5 w-3.5" />
+                                    </button>
                                 </div>
                             ))}
                         </div>

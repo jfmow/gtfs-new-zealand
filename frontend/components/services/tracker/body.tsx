@@ -207,7 +207,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 </div>
 
                 {hideMap ? (
-                    <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
+                    <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
                 ) : (
                     <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
                         <TabsList className="w-full">
@@ -304,7 +304,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                         </TabsContent>
 
                         <TabsContent value="stops">
-                            <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} />
+                            <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
                         </TabsContent>
                     </Tabs>
                 )}
@@ -399,7 +399,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 </div>
 
                 {hideMap ? (
-                    <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} />
+                    <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
                 ) : (
                     <Tabs defaultValue="track" className="w-full">
                         <TabsList className="w-full">
@@ -446,7 +446,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                         </TabsContent>
 
                         <TabsContent value="stops">
-                            <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} />
+                            <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
                         </TabsContent>
                     </Tabs>
                 )}

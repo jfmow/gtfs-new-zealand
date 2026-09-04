@@ -20,10 +20,14 @@ import {
     getMySubscriptions,
     removeSubscription,
     removeRouteSubscription,
+    getJourneyReminders,
+    removeJourneyReminder,
     type MySubscriptions,
     type StopSubscription,
     type RouteSubscription,
+    type JourneyReminder,
 } from "@/lib/notifications"
+import { weekdayMaskLabel, formatTime } from "@/components/journey/helpers"
 import StopNotifications from "@/components/notifications"
 import RouteNotifications from "@/components/notifications/route-notifications"
 import LoadingSpinner from "@/components/loading-spinner"
@@ -78,14 +82,30 @@ function subscriptionDetail(causes: string[] | null, minSeverity: string, notify
     return parts.join(" · ")
 }
 
+function journeyReminderDetail(r: JourneyReminder): string {
+    const parts: string[] = [weekdayMaskLabel(r.recurrence)]
+    parts.push(`${r.time_type === "arriveat" ? "arrive by" : "leave"} ${r.target_hhmm}`)
+    if (r.status === "pending_resolve") {
+        parts.push("finding your trip…")
+    } else if (r.status === "scheduled") {
+        parts.push(`next ${r.service_date}`)
+    } else if (r.next_leave_local) {
+        parts.push(`leave ~${formatTime(`1970-01-01T${r.next_leave_local}:00`)}`)
+    }
+    if (r.recurrence && r.recurrence_until) parts.push(`until ${r.recurrence_until}`)
+    return parts.join(" · ")
+}
+
 function ManageNotificationsBody() {
     const [subscriptions, setSubscriptions] = useState<MySubscriptions | null>(null)
+    const [journeyReminders, setJourneyReminders] = useState<JourneyReminder[]>([])
     const [loading, setLoading] = useState(true)
 
     const refetch = useCallback(() => {
         setLoading(true)
-        getMySubscriptions().then((data) => {
-            setSubscriptions(data)
+        Promise.all([getMySubscriptions(), getJourneyReminders()]).then(([subs, reminders]) => {
+            setSubscriptions(subs)
+            setJourneyReminders(reminders)
             setLoading(false)
         })
     }, [])
@@ -96,6 +116,15 @@ function ManageNotificationsBody() {
 
     const stops = subscriptions?.stops ?? []
     const routes = subscriptions?.routes ?? []
+
+    const removeReminder = async (r: JourneyReminder) => {
+        if (await removeJourneyReminder(r.id)) {
+            toast.success("Reminder removed")
+            refetch()
+        } else {
+            toast.error("Failed to remove reminder")
+        }
+    }
 
     const removeStop = async (stop: StopSubscription) => {
         const removed = await removeSubscription(stop.parent_stop_id)
@@ -121,7 +150,7 @@ function ManageNotificationsBody() {
         return <LoadingSpinner height="200px" description="Loading your notifications..." />
     }
 
-    if (stops.length === 0 && routes.length === 0) {
+    if (stops.length === 0 && routes.length === 0 && journeyReminders.length === 0) {
         return (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
                 No notification subscriptions yet. Enable alerts from a stop or route to see them here.
@@ -131,6 +160,20 @@ function ManageNotificationsBody() {
 
     return (
         <div className="flex-1 overflow-y-auto divide-y">
+            {journeyReminders.length > 0 && (
+                <div className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    Leave-by reminders
+                </div>
+            )}
+            {journeyReminders.map((r) => (
+                <SubscriptionRow
+                    key={`jr-${r.id}`}
+                    label={`${r.route_short_name || "Journey"} → ${r.end_label || "destination"}`}
+                    detail={journeyReminderDetail(r)}
+                    onDelete={() => removeReminder(r)}
+                    editTrigger={null}
+                />
+            ))}
             {routes.map((route) => (
                 <SubscriptionRow
                     key={`route-${route.route_id}`}

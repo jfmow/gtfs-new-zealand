@@ -1,10 +1,11 @@
 import { useRef, useEffect, useState } from "react"
-import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X } from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, AlarmClock } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
-import notification from "@/lib/notifications"
-import { formatDistance } from "@/lib/utils"
+import notification, { addJourneyReminder } from "@/lib/notifications"
+import { formatDistance, cn } from "@/lib/utils"
+import { nzHHMM, nzServiceDate, formatTime } from "@/components/journey/helpers"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
 import { formatUnixTime } from "@/lib/formating"
 
@@ -13,20 +14,27 @@ interface StopsListProps {
     vehicle?: VehiclesResponse
     stopTimes?: StopTimes[] | null
     tripId?: string
+    /** Short route name for the reminder copy (blank tolerated). */
+    routeShortName?: string
 }
+
+type ReminderType = "get_off" | "arrival" | "n_stops_away" | "leave"
 
 export default function StopsList({
     stops,
     vehicle,
     stopTimes,
     tripId,
+    routeShortName,
 }: StopsListProps) {
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const nextStopRef = useRef<HTMLDivElement>(null)
 
     const [isSelectingReminder, setIsSelectingReminder] = useState(false)
-    const [reminderType, setReminderType] = useState<"get_off" | "arrival" | "n_stops_away" | null>(null)
+    const [reminderType, setReminderType] = useState<ReminderType | null>(null)
     const [nStopsAway, setNStopsAway] = useState(1)
+    const [leaveOffsets, setLeaveOffsets] = useState<number[]>([30, 15, 5, 0])
+    const [leavePrep, setLeavePrep] = useState(5)
 
     useEffect(() => {
         nextStopRef?.current?.scrollIntoView({
@@ -82,6 +90,52 @@ export default function StopsList({
     const handleStopSelection = async (stop: ServicesStop) => {
         if (!isSelectingReminder || !tripId || !reminderType) return
 
+        if (reminderType === "leave") {
+            const st =
+                stopTimes?.find((s) => s.child_stop_id === stop.child_stop_id) ??
+                stopTimes?.find((s) => s.parent_stop_id === stop.parent_stop_id)
+            const schedMs = st?.scheduled_time
+            if (!schedMs) {
+                toast.error("No scheduled time for this stop")
+                return
+            }
+            if (leaveOffsets.length === 0) {
+                toast.error("Pick at least one alert time")
+                return
+            }
+            const res = await addJourneyReminder({
+                kind: "fixed_trip",
+                start: { lat: stop.lat, lon: stop.lon, label: stop.name },
+                end: { lat: stop.lat, lon: stop.lon, label: stop.name },
+                timeType: "departat",
+                targetHHMM: nzHHMM(new Date(schedMs)),
+                serviceDate: nzServiceDate(new Date(schedMs)),
+                boardTripId: tripId,
+                boardStopId: stop.child_stop_id,
+                scheduledDepartureIso: new Date(schedMs).toISOString(),
+                routeShortName: routeShortName ?? "",
+                boardStopName: stop.name,
+                accessSeconds: leavePrep * 60,
+                offsets: leaveOffsets,
+                prepBufferSeconds: leavePrep * 60,
+                maxWalkKm: "1",
+                walkSpeed: "4.8",
+                maxTransfers: "5",
+                deeplink: `/vehicles?tripId=${encodeURIComponent(tripId)}`,
+            })
+            if (res.ok) {
+                toast.success(
+                    `Reminder set — the ${routeShortName ? routeShortName + " " : ""}${formatTime(new Date(schedMs))} departure from ${stop.name}`,
+                    { duration: 8000 },
+                )
+            } else {
+                toast.error(res.message || "Failed to add reminder")
+            }
+            setIsSelectingReminder(false)
+            setReminderType(null)
+            return
+        }
+
         const ok = await notification.addReminder(
             stop.parent_stop_id,
             tripId,
@@ -106,7 +160,7 @@ export default function StopsList({
         setReminderType(null)
     }
 
-    const toggleReminder = (type: "get_off" | "arrival" | "n_stops_away") => {
+    const toggleReminder = (type: ReminderType) => {
         if (isSelectingReminder && reminderType === type) {
             setIsSelectingReminder(false)
             setReminderType(null)
@@ -135,7 +189,9 @@ export default function StopsList({
                         <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
                             {reminderType === "get_off"
                                 ? "Click a stop to be reminded when it's time to get off"
-                                : "Click a stop to be reminded when the vehicle is arriving"}
+                                : reminderType === "leave"
+                                    ? "Click the stop you'll board at"
+                                    : "Click a stop to be reminded when the vehicle is arriving"}
                         </p>
                     </div>
                 )}
@@ -343,6 +399,78 @@ export default function StopsList({
                         )}
                     </Button>
                 </div>
+
+                <Button
+                    onClick={() => toggleReminder("leave")}
+                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
+                    variant={isSelectingReminder && reminderType === "leave" ? "outline" : "default"}
+                >
+                    {isSelectingReminder && reminderType === "leave" ? (
+                        <>
+                            <X className="w-4 h-4 mr-2" />
+                            Cancel Selection
+                        </>
+                    ) : (
+                        <>
+                            <AlarmClock className="w-4 h-4 mr-2" />
+                            Remind me before this departs
+                        </>
+                    )}
+                </Button>
+
+                {isSelectingReminder && reminderType === "leave" && (
+                    <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
+                        <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">Alert me</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[
+                                    { v: 30, l: "30 min before" },
+                                    { v: 15, l: "15 min" },
+                                    { v: 5, l: "5 min" },
+                                    { v: 0, l: "At departure" },
+                                ].map((o) => (
+                                    <button
+                                        key={o.v}
+                                        type="button"
+                                        onClick={() =>
+                                            setLeaveOffsets((cur) =>
+                                                cur.includes(o.v) ? cur.filter((x) => x !== o.v) : [...cur, o.v],
+                                            )
+                                        }
+                                        className={cn(
+                                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                                            leaveOffsets.includes(o.v)
+                                                ? "border-primary bg-primary text-primary-foreground"
+                                                : "border-input bg-background hover:bg-accent",
+                                        )}
+                                    >
+                                        {o.l}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="space-y-1.5">
+                            <p className="text-xs text-muted-foreground">Time to get ready</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {[0, 5, 10, 15].map((m) => (
+                                    <button
+                                        key={m}
+                                        type="button"
+                                        onClick={() => setLeavePrep(m)}
+                                        className={cn(
+                                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                                            leavePrep === m
+                                                ? "border-primary bg-primary text-primary-foreground"
+                                                : "border-input bg-background hover:bg-accent",
+                                        )}
+                                    >
+                                        {m === 0 ? "None" : `${m} min`}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </>
     )

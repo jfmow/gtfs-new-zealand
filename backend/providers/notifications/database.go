@@ -9,12 +9,29 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var ErrClientNotFound = errors.New("notification client not found")
+
+// notifications.db is a single shared file, but SetupNotificationsRoutes runs
+// once per region - without this every region would open its own connection pool
+// (each with its own page cache) against the same file. Share one handle.
+var (
+	sharedDBOnce sync.Once
+	sharedDB     *Database
+	sharedDBErr  error
+)
+
+func sharedDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Database, error) {
+	sharedDBOnce.Do(func() {
+		sharedDB, sharedDBErr = newDatabase(timeZone, mailToEmail, mailToName)
+	})
+	return sharedDB, sharedDBErr
+}
 
 const (
 	defaultDBFileName   = "notifications.db"
@@ -43,7 +60,7 @@ func newDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Data
 		dbPath = filepath.Join(cwd, dbPath)
 	}
 
-	sqlDB, err := sql.Open("sqlite3", fmt.Sprintf("%s?_foreign_keys=on", dbPath))
+	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL&_txlock=immediate&_cache_size=-4000")
 	if err != nil {
 		return nil, fmt.Errorf("open notifications database: %w", err)
 	}
@@ -52,6 +69,11 @@ func newDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Data
 		sqlDB.Close()
 		return nil, fmt.Errorf("ping notifications database: %w", err)
 	}
+
+	// Small file, low write rate - a tiny pool avoids idle connections and lock
+	// contention (WAL + immediate-txn locking + a busy timeout handle the rest).
+	sqlDB.SetMaxOpenConns(2)
+	sqlDB.SetMaxIdleConns(1)
 
 	database := &Database{
 		db:          sqlDB,
@@ -76,6 +98,33 @@ func (d *Database) Close() error {
 		return nil
 	}
 	return d.db.Close()
+}
+
+// Maintain reclaims free pages left by 30-day client GC / reminder churn and
+// folds the WAL back into the main file. Cheap - the DB is tiny - but run it at
+// most daily, off-peak.
+func (d *Database) Maintain() {
+	if d == nil || d.db == nil {
+		return
+	}
+	if _, err := d.db.Exec("PRAGMA wal_checkpoint(TRUNCATE);"); err != nil {
+		fmt.Println("notifications: wal_checkpoint:", err)
+	}
+	if _, err := d.db.Exec("VACUUM;"); err != nil {
+		fmt.Println("notifications: VACUUM:", err)
+	}
+}
+
+// PruneStaleReminders removes one-shot reminders whose trip never fired (created
+// before cutoff). Nothing else deletes these until the owning client's 30-day
+// cascade.
+func (d *Database) PruneStaleReminders(cutoffUnix int64) {
+	if d == nil || d.db == nil {
+		return
+	}
+	if _, err := d.execContext(`DELETE FROM reminders WHERE created < ?`, cutoffUnix); err != nil {
+		fmt.Println("notifications: PruneStaleReminders:", err)
+	}
 }
 
 func (d *Database) ensureSchema(ctx context.Context) error {
@@ -121,6 +170,52 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             UNIQUE(clientId, route_id),
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
+		// "Leave-by" planned journey reminders. Unlike `reminders` (one-shot,
+		// bound to a live trip_id, UNIQUE(clientId, type)) a device may hold
+		// several of these, for different journeys/days, and a recurring row's
+		// service_date changes over its life - so dedup is on `dedup_key`
+		// (a hash of the template identity) instead of a fixed type.
+		`CREATE TABLE IF NOT EXISTS journey_reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER NOT NULL,
+            region TEXT NOT NULL DEFAULT '',
+            dedup_key TEXT NOT NULL DEFAULT '',
+
+            kind TEXT NOT NULL DEFAULT 'fixed_trip',
+            status TEXT NOT NULL DEFAULT 'armed',
+
+            start_lat REAL NOT NULL DEFAULT 0, start_lon REAL NOT NULL DEFAULT 0, start_label TEXT NOT NULL DEFAULT '',
+            end_lat REAL NOT NULL DEFAULT 0, end_lon REAL NOT NULL DEFAULT 0, end_label TEXT NOT NULL DEFAULT '',
+            time_type TEXT NOT NULL DEFAULT 'arriveat',
+            target_hhmm TEXT NOT NULL DEFAULT '',
+            max_walk_km REAL NOT NULL DEFAULT 1.0,
+            walk_speed REAL NOT NULL DEFAULT 4.8,
+            max_transfers INTEGER NOT NULL DEFAULT 5,
+            prep_buffer_seconds INTEGER NOT NULL DEFAULT 300,
+            offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
+            recurrence TEXT NOT NULL DEFAULT '',
+            recurrence_until TEXT NOT NULL DEFAULT '',
+            deeplink TEXT NOT NULL DEFAULT '/plan',
+
+            service_date TEXT NOT NULL,
+            target_unix INTEGER NOT NULL,
+            board_trip_id TEXT, board_stop_id TEXT, board_stop_sequence INTEGER,
+            scheduled_departure_unix INTEGER,
+            access_seconds INTEGER,
+            route_short_name TEXT NOT NULL DEFAULT '',
+            board_stop_name TEXT NOT NULL DEFAULT '',
+            sent_offsets TEXT NOT NULL DEFAULT '[]',
+            baseline_leave_unix INTEGER,
+            resolve_attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT NOT NULL DEFAULT '',
+
+            created INTEGER NOT NULL,
+            updated INTEGER NOT NULL,
+
+            UNIQUE(clientId, dedup_key),
+            FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
+        );`,
+		`CREATE INDEX IF NOT EXISTS idx_jr_region_status ON journey_reminders(region, status);`,
 	}
 
 	for _, stmt := range stmts {
@@ -210,6 +305,12 @@ type RecentNotificationEntry struct {
 	// omitted for legacy entries written before these fields existed.
 	Title string `json:"title,omitempty"`
 	Body  string `json:"body,omitempty"`
+	// URL is the notification's deeplink (push data.url) so the in-app list can
+	// open the relevant page on tap. Dismissed hides the entry from the in-app
+	// list while keeping the row so the TTL'd push-dedup (hasSeenNotification)
+	// still suppresses a repeat native notification.
+	URL       string `json:"url,omitempty"`
+	Dismissed bool   `json:"dismissed,omitempty"`
 }
 
 func decodeRecentNotifications(raw sql.NullString) ([]RecentNotificationEntry, error) {
@@ -268,6 +369,31 @@ func decodeRoutes(raw sql.NullString) ([]string, error) {
 		return nil, err
 	}
 	return routes, nil
+}
+
+// encodeIntSlice / decodeIntSlice back the JSON []int columns on
+// journey_reminders (offsets, sent_offsets). Empty always round-trips as "[]"
+// (the column's NOT NULL DEFAULT), never NULL.
+func encodeIntSlice(values []int) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func decodeIntSlice(raw sql.NullString) []int {
+	if !raw.Valid || raw.String == "" || raw.String == "[]" {
+		return nil
+	}
+	var values []int
+	if err := json.Unmarshal([]byte(raw.String), &values); err != nil {
+		return nil
+	}
+	return values
 }
 
 func (d *Database) queryContext(query string, args ...any) (*sql.Rows, context.CancelFunc, error) {

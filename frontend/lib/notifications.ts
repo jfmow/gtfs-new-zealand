@@ -221,6 +221,180 @@ export async function addReminder(stopId: string, tripId: string, type: "arrival
     }
 }
 
+// ─────────────── planned journey "leave-by" reminders ───────────────
+
+export interface JourneyReminder {
+    id: number
+    kind: "fixed_trip" | "journey_request"
+    status: "scheduled" | "pending_resolve" | "armed" | "notifying"
+    start_label: string
+    end_label: string
+    time_type: "arriveat" | "departat"
+    target_hhmm: string
+    recurrence: string
+    recurrence_until?: string
+    service_date: string
+    offsets: number[]
+    route_short_name: string
+    board_stop_name: string
+    next_leave_unix?: number
+    next_leave_local?: string
+}
+
+export interface JourneyReminderInput {
+    kind?: "fixed_trip" | "journey_request"
+    start: { lat: number; lon: number; label: string }
+    end: { lat: number; lon: number; label: string }
+    timeType: "arriveat" | "departat"
+    targetUnix?: number
+    targetHHMM?: string
+    serviceDate?: string
+    maxWalkKm: string
+    walkSpeed: string
+    maxTransfers: string
+    prepBufferSeconds: number
+    offsets: number[]
+    recurrence?: string
+    recurrenceUntil?: string
+    boardTripId?: string
+    boardStopId?: string
+    scheduledDepartureIso?: string
+    routeShortName?: string
+    boardStopName?: string
+    accessSeconds?: number
+    deeplink?: string
+}
+
+async function journeyReminderForm(): Promise<FormData | null> {
+    let subscription = await getCurrentPushSubscription()
+    if (!subscription) {
+        if ((await getNotificationPermissionState()) === "cannot send") return null
+        const newSub = await createNewSubscription()
+        const s = JSON.parse(JSON.stringify(newSub))
+        subscription = { endpoint: s.endpoint, auth: s.keys.auth, p256dh: s.keys.p256dh }
+    }
+    const form = new FormData()
+    form.set("endpoint", subscription.endpoint)
+    form.set("p256dh", subscription.p256dh)
+    form.set("auth", subscription.auth)
+    return form
+}
+
+export async function addJourneyReminder(
+    p: JourneyReminderInput
+): Promise<{ ok: boolean; status?: string; nextLeaveUnix?: number; nextLeaveLocal?: string; message?: string }> {
+    const form = await journeyReminderForm()
+    if (!form) return { ok: false, message: "Notifications are blocked in this browser." }
+
+    form.set("kind", p.kind ?? "fixed_trip")
+    form.set("startLat", String(p.start.lat))
+    form.set("startLon", String(p.start.lon))
+    form.set("startLabel", p.start.label)
+    form.set("endLat", String(p.end.lat))
+    form.set("endLon", String(p.end.lon))
+    form.set("endLabel", p.end.label)
+    form.set("timeType", p.timeType)
+    if (p.targetUnix !== undefined) form.set("targetUnix", String(p.targetUnix))
+    if (p.targetHHMM) form.set("targetHHMM", p.targetHHMM)
+    if (p.serviceDate) form.set("serviceDate", p.serviceDate)
+    form.set("maxWalkKm", p.maxWalkKm)
+    form.set("walkSpeed", p.walkSpeed)
+    form.set("maxTransfers", p.maxTransfers)
+    form.set("prepBufferSeconds", String(p.prepBufferSeconds))
+    form.set("offsets", JSON.stringify(p.offsets))
+    if (p.recurrence) form.set("recurrence", p.recurrence)
+    if (p.recurrenceUntil) form.set("recurrenceUntil", p.recurrenceUntil)
+    if (p.boardTripId) form.set("boardTripId", p.boardTripId)
+    if (p.boardStopId) form.set("boardStopId", p.boardStopId)
+    if (p.scheduledDepartureIso) form.set("scheduledDepartureIso", p.scheduledDepartureIso)
+    if (p.routeShortName) form.set("routeShortName", p.routeShortName)
+    if (p.boardStopName) form.set("boardStopName", p.boardStopName)
+    if (p.accessSeconds !== undefined) form.set("accessSeconds", String(Math.round(p.accessSeconds)))
+    if (p.deeplink) form.set("deeplink", p.deeplink)
+
+    try {
+        const res = await ApiFetch<{ status: string; next_leave_unix?: number; next_leave_local?: string }>(
+            `notifications/journey-reminder`,
+            { method: "POST", body: form }
+        )
+        if (!res.ok) return { ok: false, message: res.error }
+        return {
+            ok: true,
+            status: res.data.status,
+            nextLeaveUnix: res.data.next_leave_unix,
+            nextLeaveLocal: res.data.next_leave_local,
+        }
+    } catch (err) {
+        console.error(err)
+        return { ok: false, message: "Something went wrong." }
+    }
+}
+
+export async function getJourneyReminders(): Promise<JourneyReminder[]> {
+    const form = await journeyReminderForm()
+    if (!form) return []
+    try {
+        const res = await ApiFetch<JourneyReminder[]>(`notifications/journey-reminders`, { method: "POST", body: form })
+        return res.ok ? res.data : []
+    } catch (err) {
+        console.error(err)
+        return []
+    }
+}
+
+export async function removeJourneyReminder(id: number): Promise<boolean> {
+    const form = await journeyReminderForm()
+    if (!form) return false
+    form.set("id", String(id))
+    try {
+        const res = await ApiFetch(`notifications/journey-reminder/remove`, { method: "POST", body: form })
+        return res.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
+// ─────────────── in-app notification history ───────────────
+
+/** FormData with the current push-subscription keys, or null if there's no subscription. */
+async function pushSubForm(): Promise<FormData | null> {
+    const sub = await getCurrentPushSubscription()
+    if (!sub) return null
+    const form = new FormData()
+    form.set("endpoint", sub.endpoint)
+    form.set("p256dh", sub.p256dh)
+    form.set("auth", sub.auth)
+    return form
+}
+
+/** Soft-hide one in-app notification history entry (kept server-side for push de-dup). */
+export async function dismissNotification(id: string): Promise<boolean> {
+    const form = await pushSubForm()
+    if (!form) return false
+    form.set("id", id)
+    try {
+        const res = await ApiFetch(`notifications/history/dismiss`, { method: "POST", body: form })
+        return res.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
+/** Soft-hide every in-app notification history entry for this device. */
+export async function clearNotifications(): Promise<boolean> {
+    const form = await pushSubForm()
+    if (!form) return false
+    try {
+        const res = await ApiFetch(`notifications/history/clear`, { method: "POST", body: form })
+        return res.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
 /** Alert-type options shared by stop and route subscriptions - omitted fields mean "unfiltered" on the backend. */
 export interface SubscriptionFilters {
     causes?: string[];
@@ -482,6 +656,8 @@ export interface RecentNotificationEntry {
     seen_at?: number;
     title?: string;
     body?: string;
+    url?: string;
+    dismissed?: boolean;
 }
 
 export interface StopSubscription {
@@ -526,6 +702,11 @@ const notification = {
     addReminder,
     subscribeToStop,
     refreshSubscription,
+    addJourneyReminder,
+    getJourneyReminders,
+    removeJourneyReminder,
+    dismissNotification,
+    clearNotifications,
 };
 
 export default notification;

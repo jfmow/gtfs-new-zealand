@@ -943,7 +943,7 @@ func (v Database) SendNotificationsInBatches(clients []NotificationClient, body,
 				if err != nil {
 					log.Printf("Failed to send notification to %s: %v", client.Notification.Endpoint, err)
 				} else {
-					client.AppendToRecentNotifications(alertId, title, body)
+					client.AppendToRecentNotifications(alertId, title, body, data["url"])
 				}
 			}
 		}()
@@ -1004,7 +1004,7 @@ func (client NotificationClient) SendNotification(body, title string, data map[s
 /*
 Update the trip_id's we've already seen
 */
-func (client *NotificationClient) AppendToRecentNotifications(newNotification, title, body string) error {
+func (client *NotificationClient) AppendToRecentNotifications(newNotification, title, body, url string) error {
 	if newNotification == "" {
 		return nil
 	}
@@ -1032,7 +1032,7 @@ WHERE id = ?
 	}
 	now := time.Now().In(client.db.timeZone)
 	notifications = pruneRecentNotificationEntries(notifications, now)
-	notifications = append(notifications, RecentNotificationEntry{ID: newNotification, SeenAt: now.Unix(), Title: title, Body: body})
+	notifications = append(notifications, RecentNotificationEntry{ID: newNotification, SeenAt: now.Unix(), Title: title, Body: body, URL: url})
 	if len(notifications) > maxRecentNotificationEntries {
 		notifications = notifications[len(notifications)-maxRecentNotificationEntries:]
 	}
@@ -1052,6 +1052,79 @@ WHERE id = ?
 
 	client.RecentNotifications = notifications
 
+	return nil
+}
+
+// visibleRecentNotifications drops dismissed entries - used for the in-app list.
+// The dismissed rows stay in the DB so hasSeenNotification still suppresses a
+// repeat native notification for a still-active alert within the TTL window.
+func visibleRecentNotifications(entries []RecentNotificationEntry) []RecentNotificationEntry {
+	out := make([]RecentNotificationEntry, 0, len(entries))
+	for _, e := range entries {
+		if e.Dismissed {
+			continue
+		}
+		out = append(out, e)
+	}
+	return out
+}
+
+// DismissRecentNotification soft-hides one history entry (by its id) from the
+// in-app list. The row is kept so the push-dedup still works.
+func (client *NotificationClient) DismissRecentNotification(entryID string) error {
+	if entryID == "" {
+		return nil
+	}
+	return client.mutateRecentNotifications(func(entries []RecentNotificationEntry) []RecentNotificationEntry {
+		for i := range entries {
+			if entries[i].ID == entryID {
+				entries[i].Dismissed = true
+			}
+		}
+		return entries
+	})
+}
+
+// ClearRecentNotifications soft-hides every history entry.
+func (client *NotificationClient) ClearRecentNotifications() error {
+	return client.mutateRecentNotifications(func(entries []RecentNotificationEntry) []RecentNotificationEntry {
+		for i := range entries {
+			entries[i].Dismissed = true
+		}
+		return entries
+	})
+}
+
+// mutateRecentNotifications reads the current history, applies fn, and writes it
+// back - without pruning (pruning here would drop >TTL rows that are still doing
+// dedup duty).
+func (client *NotificationClient) mutateRecentNotifications(fn func([]RecentNotificationEntry) []RecentNotificationEntry) error {
+	row, cancel := client.db.queryRowContext(`SELECT recent_notifications FROM notifications WHERE id = ?`, client.Id)
+	defer cancel()
+
+	var recent sql.NullString
+	if err := row.Scan(&recent); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return errors.New("client not found")
+		}
+		return errors.New("failed to fetch recent notifications")
+	}
+
+	entries, err := decodeRecentNotifications(recent)
+	if err != nil {
+		return errors.New("failed to unmarshal recent notifications")
+	}
+
+	entries = fn(entries)
+
+	encoded, err := encodeRecentNotifications(entries)
+	if err != nil {
+		return errors.New("failed to marshal recent notifications")
+	}
+	if _, err := client.db.execContext(`UPDATE notifications SET recent_notifications = ? WHERE id = ?`, encoded, client.Id); err != nil {
+		return errors.New("failed to update recent notifications")
+	}
+	client.RecentNotifications = entries
 	return nil
 }
 
@@ -1096,7 +1169,7 @@ func pruneRecentNotificationEntries(entries []RecentNotificationEntry, now time.
 		if _, exists := seen[entry.ID]; exists {
 			continue
 		}
-		pruned = append(pruned, RecentNotificationEntry{ID: entry.ID, SeenAt: seenAt, Title: entry.Title, Body: entry.Body})
+		pruned = append(pruned, RecentNotificationEntry{ID: entry.ID, SeenAt: seenAt, Title: entry.Title, Body: entry.Body, URL: entry.URL, Dismissed: entry.Dismissed})
 		seen[entry.ID] = struct{}{}
 	}
 	if len(pruned) > maxRecentNotificationEntries {
@@ -1356,7 +1429,7 @@ in-app badge/history, neither of which existed before (find-client only
 ever checked one stop at a time).
 */
 func (client NotificationClient) GetMySubscriptions() (MySubscriptions, error) {
-	result := MySubscriptions{RecentNotifications: client.RecentNotifications}
+	result := MySubscriptions{RecentNotifications: visibleRecentNotifications(client.RecentNotifications)}
 
 	stopRows, cancel, err := client.db.queryContext(
 		`SELECT parent_stop, routes, causes, min_severity, notify_cancellations FROM stops WHERE clientId = ?`,
