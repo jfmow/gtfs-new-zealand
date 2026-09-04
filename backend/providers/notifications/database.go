@@ -191,7 +191,8 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             max_walk_km REAL NOT NULL DEFAULT 1.0,
             walk_speed REAL NOT NULL DEFAULT 4.8,
             max_transfers INTEGER NOT NULL DEFAULT 5,
-            prep_buffer_seconds INTEGER NOT NULL DEFAULT 300,
+            -- prep_buffer_seconds: removed. The leave anchor is now the journey's
+            -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
             recurrence TEXT NOT NULL DEFAULT '',
             recurrence_until TEXT NOT NULL DEFAULT '',

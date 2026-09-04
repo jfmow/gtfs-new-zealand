@@ -57,15 +57,16 @@ export function getFirstTransitLeg(route: JourneyType): Leg | null {
 /**
  * Seconds between leaving the origin and the first transit leg's scheduled
  * departure (i.e. the leading walk + any wait, which the backend's
- * deferOriginWalk already trims to ~2 min slack), plus the rider's prep buffer.
- * Used to derive a "leave-by" time from the boarding service's live departure.
+ * deferOriginWalk already trims to ~2 min slack). Used to derive a "leave-by"
+ * time from the boarding service's live departure: leaveTime = boardDeparture -
+ * leadingAccessSeconds, i.e. the journey's real walk-out time.
  */
-export function leadingAccessSeconds(route: JourneyType, prepBufferSeconds: number): number {
+export function leadingAccessSeconds(route: JourneyType): number {
     const transit = route.Legs.find(l => l.Mode === 'transit')
-    if (!transit) return prepBufferSeconds
+    if (!transit) return 0
     const boardDepMs = new Date(transit.scheduled_departure_time ?? transit.DepartureTime).getTime()
     const planStartMs = new Date(route.Legs[0].DepartureTime).getTime()
-    return Math.max(0, Math.round((boardDepMs - planStartMs) / 1000)) + prepBufferSeconds
+    return Math.max(0, Math.round((boardDepMs - planStartMs) / 1000))
 }
 
 /** YYYYMMDD for a date in the transit network's timezone (Pacific/Auckland). */

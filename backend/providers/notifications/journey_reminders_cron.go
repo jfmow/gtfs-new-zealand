@@ -141,9 +141,12 @@ func jrCronResolve(
 		}
 		schedUnix := boardDeparture.Unix()
 
-		access := int(boardDeparture.Sub(plan.DepartureTime).Seconds()) + r.PrepBufferSeconds
+		// Leading walk/wait from the rider's start to the boarding stop. The
+		// leave anchor is schedUnix - access (the real walk-out time); the
+		// offset ladder is the only lead, no prep padding.
+		access := int(boardDeparture.Sub(plan.DepartureTime).Seconds())
 		if access < 0 {
-			access = r.PrepBufferSeconds
+			access = 0
 		}
 		if access > 4*60*60 {
 			access = 4 * 60 * 60
@@ -262,16 +265,16 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 			changed = true
 		}
 
-		// (b) fire pending offsets; collapse several already-past rungs into one push
+		// (b) fire pending offsets. When a poll gap makes several rungs due at
+		// once, collapse them into one push phrased from the most urgent
+		// (smallest) rung reached - never a larger one, or the copy under-reports.
 		fireMins := -1
 		for _, o := range offsets {
 			if containsInt(sent, o) {
 				continue
 			}
 			if now.Unix() >= leaveUnix-int64(o)*60 {
-				if fireMins == -1 {
-					fireMins = o
-				}
+				fireMins = o // offsets are sorted desc, so the last write is the smallest rung
 				sent = append(sent, o)
 				changed = true
 			}
@@ -280,7 +283,15 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 			if baseline == 0 {
 				baseline = leaveUnix
 			}
-			title, body := leaveCopy(minsUntilLeave, minsUntilDeparture, r.RouteShortName, r.BoardStopName, departTime, access)
+			// Phrase from the rung that fired, not the live countdown: a delayed
+			// service legitimately pushes the leave time out (take whichever is
+			// larger), but a stale "running early" feed must never turn an
+			// advance rung ("in 5 min") into "leave now".
+			copyMins := fireMins
+			if minsUntilLeave > copyMins {
+				copyMins = minsUntilLeave
+			}
+			title, body := leaveCopy(copyMins, minsUntilDeparture, r.RouteShortName, r.BoardStopName, departTime, access)
 			notifyJourneyReminderClient(db, r, fmt.Sprintf("leave-%d", fireMins), title, body)
 		}
 

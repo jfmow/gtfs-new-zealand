@@ -34,7 +34,6 @@ export default function StopsList({
     const [reminderType, setReminderType] = useState<ReminderType | null>(null)
     const [nStopsAway, setNStopsAway] = useState(1)
     const [leaveOffsets, setLeaveOffsets] = useState<number[]>([30, 15, 5, 0])
-    const [leavePrep, setLeavePrep] = useState(5)
 
     useEffect(() => {
         nextStopRef?.current?.scrollIntoView({
@@ -115,9 +114,8 @@ export default function StopsList({
                 scheduledDepartureIso: new Date(schedMs).toISOString(),
                 routeShortName: routeShortName ?? "",
                 boardStopName: stop.name,
-                accessSeconds: leavePrep * 60,
+                accessSeconds: 0,
                 offsets: leaveOffsets,
-                prepBufferSeconds: leavePrep * 60,
                 maxWalkKm: "1",
                 walkSpeed: "4.8",
                 maxTransfers: "5",
@@ -445,26 +443,6 @@ export default function StopsList({
                                         )}
                                     >
                                         {o.l}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        <div className="space-y-1.5">
-                            <p className="text-xs text-muted-foreground">Time to get ready</p>
-                            <div className="flex flex-wrap gap-1.5">
-                                {[0, 5, 10, 15].map((m) => (
-                                    <button
-                                        key={m}
-                                        type="button"
-                                        onClick={() => setLeavePrep(m)}
-                                        className={cn(
-                                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                                            leavePrep === m
-                                                ? "border-primary bg-primary text-primary-foreground"
-                                                : "border-input bg-background hover:bg-accent",
-                                        )}
-                                    >
-                                        {m === 0 ? "None" : `${m} min`}
                                     </button>
                                 ))}
                             </div>

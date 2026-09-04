@@ -35,8 +35,11 @@ Status lifecycle:
 
 const (
 	// Bounds on a GTFS-realtime delay we're willing to trust for the leave-time
-	// maths - mirrors the (unexported) clamp in the gtfs journey planner.
-	jrMinTrustedDelaySeconds = -10 * 60
+	// maths. A late service can push the leave time out a long way, but a
+	// service reporting more than a few minutes *early* is almost always a
+	// stale pre-trip prediction - trusting it drags every "leave" alert that
+	// many minutes too soon, so the early side is clamped tight.
+	jrMinTrustedDelaySeconds = -3 * 60
 	jrMaxTrustedDelaySeconds = 2 * 60 * 60
 
 	// A leave-time shift this many seconds past what the user was last told
@@ -71,7 +74,6 @@ type JourneyReminder struct {
 	MaxWalkKm          float64
 	WalkSpeed          float64
 	MaxTransfers       int
-	PrepBufferSeconds  int
 	Offsets            []int
 	Recurrence         string
 	RecurrenceUntil    string
@@ -100,7 +102,7 @@ const jrColumns = `
 	id, clientId, region, dedup_key, kind, status,
 	start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 	time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-	prep_buffer_seconds, offsets, recurrence, recurrence_until, deeplink,
+	offsets, recurrence, recurrence_until, deeplink,
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
@@ -115,7 +117,7 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 		&r.Id, &r.ClientId, &r.Region, &r.DedupKey, &r.Kind, &r.Status,
 		&r.StartLat, &r.StartLon, &r.StartLabel, &r.EndLat, &r.EndLon, &r.EndLabel,
 		&r.TimeType, &r.TargetHHMM, &r.MaxWalkKm, &r.WalkSpeed, &r.MaxTransfers,
-		&r.PrepBufferSeconds, &offsetsRaw, &r.Recurrence, &r.RecurrenceUntil, &r.Deeplink,
+		&offsetsRaw, &r.Recurrence, &r.RecurrenceUntil, &r.Deeplink,
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
 		&sentRaw, &r.BaselineLeaveUnix, &r.ResolveAttempts, &r.LastError, &r.Created, &r.Updated,
@@ -241,18 +243,18 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			clientId, region, dedup_key, kind, status,
 			start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 			time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-			prep_buffer_seconds, offsets, recurrence, recurrence_until, deeplink,
+			offsets, recurrence, recurrence_until, deeplink,
 			service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 			scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
-		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
 		ON CONFLICT(clientId, dedup_key) DO UPDATE SET
 			region=excluded.region, kind=excluded.kind, status=excluded.status,
 			start_lat=excluded.start_lat, start_lon=excluded.start_lon, start_label=excluded.start_label,
 			end_lat=excluded.end_lat, end_lon=excluded.end_lon, end_label=excluded.end_label,
 			time_type=excluded.time_type, target_hhmm=excluded.target_hhmm,
 			max_walk_km=excluded.max_walk_km, walk_speed=excluded.walk_speed, max_transfers=excluded.max_transfers,
-			prep_buffer_seconds=excluded.prep_buffer_seconds, offsets=excluded.offsets,
+			offsets=excluded.offsets,
 			recurrence=excluded.recurrence, recurrence_until=excluded.recurrence_until, deeplink=excluded.deeplink,
 			service_date=excluded.service_date, target_unix=excluded.target_unix,
 			board_trip_id=excluded.board_trip_id, board_stop_id=excluded.board_stop_id, board_stop_sequence=excluded.board_stop_sequence,
@@ -263,7 +265,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 		r.ClientId, r.Region, r.DedupKey, r.Kind, r.Status,
 		r.StartLat, r.StartLon, r.StartLabel, r.EndLat, r.EndLon, r.EndLabel,
 		r.TimeType, r.TargetHHMM, r.MaxWalkKm, r.WalkSpeed, r.MaxTransfers,
-		r.PrepBufferSeconds, encodeIntSlice(r.Offsets), r.Recurrence, r.RecurrenceUntil, r.Deeplink,
+		encodeIntSlice(r.Offsets), r.Recurrence, r.RecurrenceUntil, r.Deeplink,
 		r.ServiceDate, r.TargetUnix, r.BoardTripID, r.BoardStopID, r.BoardStopSequence,
 		r.ScheduledDepartureUnix, r.AccessSeconds, r.RouteShortName, r.BoardStopName,
 		encodeIntSlice(r.SentOffsets), r.BaselineLeaveUnix, r.ResolveAttempts, r.LastError, now, now,

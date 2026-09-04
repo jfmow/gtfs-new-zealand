@@ -119,6 +119,14 @@ func TestClampJRDelay(t *testing.T) {
 	if got := clampJRDelay(-30 * 60); got != jrMinTrustedDelaySeconds {
 		t.Errorf("clamp low: got %d", got)
 	}
+	// A service reporting several minutes early is clamped tight so it can't
+	// drag every "leave" alert that many minutes forward.
+	if got := clampJRDelay(-5 * 60); got != jrMinTrustedDelaySeconds {
+		t.Errorf("early clamp: got %d want %d", got, jrMinTrustedDelaySeconds)
+	}
+	if jrMinTrustedDelaySeconds < -5*60 {
+		t.Errorf("early-delay clamp too loose: %d", jrMinTrustedDelaySeconds)
+	}
 	if got := clampJRDelay(120); got != 120 {
 		t.Errorf("in-range: got %d", got)
 	}

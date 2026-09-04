@@ -252,7 +252,6 @@ export interface JourneyReminderInput {
     maxWalkKm: string
     walkSpeed: string
     maxTransfers: string
-    prepBufferSeconds: number
     offsets: number[]
     recurrence?: string
     recurrenceUntil?: string
@@ -300,7 +299,6 @@ export async function addJourneyReminder(
     form.set("maxWalkKm", p.maxWalkKm)
     form.set("walkSpeed", p.walkSpeed)
     form.set("maxTransfers", p.maxTransfers)
-    form.set("prepBufferSeconds", String(p.prepBufferSeconds))
     form.set("offsets", JSON.stringify(p.offsets))
     if (p.recurrence) form.set("recurrence", p.recurrence)
     if (p.recurrenceUntil) form.set("recurrenceUntil", p.recurrenceUntil)

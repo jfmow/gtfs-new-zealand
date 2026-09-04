@@ -51,8 +51,6 @@ const OFFSET_CHOICES: { value: number; label: string }[] = [
     { value: 0, label: "When to leave" },
 ]
 
-const PREP_CHOICES = [0, 5, 10, 15]
-
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
 
 type RepeatMode = "once" | "weekdays" | "custom"
@@ -90,7 +88,6 @@ export function LeaveReminderDialog({
     deeplink,
 }: LeaveReminderDialogProps) {
     const [offsets, setOffsets] = useState<number[]>([30, 15, 5, 0])
-    const [prep, setPrep] = useState(5)
     const [repeat, setRepeat] = useState<RepeatMode>("once")
     const [customDays, setCustomDays] = useState<boolean[]>([false, false, false, false, false, false, false])
     const [until, setUntil] = useState("")
@@ -99,7 +96,6 @@ export function LeaveReminderDialog({
     useEffect(() => {
         if (open) {
             setOffsets([30, 15, 5, 0])
-            setPrep(5)
             setRepeat("once")
             setCustomDays([false, false, false, false, false, false, false])
             setUntil("")
@@ -161,7 +157,6 @@ export function LeaveReminderDialog({
             maxWalkKm: requestContext.maxWalkKm,
             walkSpeed: requestContext.walkSpeed,
             maxTransfers: requestContext.maxTransfers,
-            prepBufferSeconds: prep * 60,
             offsets,
         }
 
@@ -181,7 +176,7 @@ export function LeaveReminderDialog({
                 scheduledDepartureIso: boardIso,
                 routeShortName: transit.Route?.route_short_name || transit.RouteID,
                 boardStopName: transit.FromStop?.stop_name,
-                accessSeconds: leadingAccessSeconds(route, prep * 60),
+                accessSeconds: leadingAccessSeconds(route),
             })
         } else {
             // recurring - resolved per occurrence on the day
@@ -236,17 +231,6 @@ export function LeaveReminderDialog({
                         <p className="text-[11px] text-muted-foreground">
                             &quot;When to leave&quot; is the go signal; the others are advance nudges.
                         </p>
-                    </div>
-
-                    <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Time to get ready</Label>
-                        <div className="flex flex-wrap gap-1.5">
-                            {PREP_CHOICES.map((m) => (
-                                <Chip key={m} active={prep === m} onClick={() => setPrep(m)}>
-                                    {m === 0 ? "None" : `${m} min`}
-                                </Chip>
-                            ))}
-                        </div>
                     </div>
 
                     <div className="space-y-2">

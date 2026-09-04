@@ -934,17 +934,6 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 		offsets = sortedDescInts(offsets)
 
-		prepBuffer := 300
-		if v, pErr := strconv.Atoi(c.FormValue("prepBufferSeconds")); pErr == nil {
-			prepBuffer = v
-		}
-		if prepBuffer < 0 {
-			prepBuffer = 0
-		}
-		if prepBuffer > 3600 {
-			prepBuffer = 3600
-		}
-
 		now := time.Now().In(localTimeZone)
 
 		// target time-of-day
@@ -1026,7 +1015,6 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			MaxWalkKm:         maxWalkKm,
 			WalkSpeed:         walkSpeed,
 			MaxTransfers:      maxTransfers,
-			PrepBufferSeconds: prepBuffer,
 			Offsets:           offsets,
 			Recurrence:        recurrence,
 			RecurrenceUntil:   recurrenceUntil,
@@ -1070,7 +1058,10 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			schedUnix := schedT.Unix()
 			boardServiceDate := schedT.Format("20060102")
 
-			access := prepBuffer
+			// access = leading walk/wait from the rider's start to the boarding
+			// stop; the leave anchor is schedUnix - access (the real walk-out
+			// time). No prep padding - the offset ladder is the only lead.
+			access := 0
 			if v, aErr := strconv.Atoi(c.FormValue("accessSeconds")); aErr == nil && v >= 0 {
 				access = v
 			}
