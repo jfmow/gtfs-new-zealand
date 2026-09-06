@@ -5,8 +5,9 @@
 ########################
 FROM --platform=$TARGETPLATFORM golang:1.24-alpine AS builder
 
-# We need a compiler + libc headers for CGO
-RUN apk add --no-cache build-base tzdata
+# build-base + headers for CGO; git so `go mod download` can fetch a module
+# straight from its VCS when proxy.golang.org hasn't cached the tag yet.
+RUN apk add --no-cache build-base tzdata git
 
 WORKDIR /src
 
