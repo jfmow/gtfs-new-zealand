@@ -1,5 +1,5 @@
-import leaflet, { MarkerClusterGroup } from "leaflet"
-import "leaflet.markercluster";
+import maplibregl from "maplibre-gl";
+import { toLngLat } from "../geo";
 
 export interface MapItem {
     lat: number;
@@ -21,7 +21,7 @@ export interface MapItem {
     opacity?: number;
     /** Only shown once the map is zoomed to at least this level - declutters minor markers (e.g. in-between stops) at a wide view. */
     minZoom?: number;
-    /** Click opens an in-place Leaflet popup instead of navigating away. */
+    /** Click opens an in-place popup instead of navigating away. */
     popup?: {
         title: string;
         /** Secondary line below the title, e.g. an arrival time. */
@@ -35,56 +35,145 @@ export interface MapItem {
     zoomButton?: string
 }
 
-export function createNewMarker(MapItem: MapItem): leaflet.Marker {
-    const customIcon = createMarkerIcon(MapItem.routeID, MapItem.icon || "bus", MapItem.visibleLabel, MapItem.bearing, MapItem.opacity);
+/**
+ * MapLibre `Marker`s are just DOM elements the map keeps positioned, so - like
+ * Leaflet's `divIcon` before it - the icon is plain HTML we render into a
+ * `<div>`. `anchor`/`offset` reproduce Leaflet's old `iconAnchor` pixel points.
+ */
+type MarkerStyle = { anchor: maplibregl.PositionAnchor; offset: [number, number] };
 
-    const marker = leaflet.marker([MapItem.lat, MapItem.lon], { icon: customIcon, zIndexOffset: MapItem.zIndex });
-
-    if (typeof MapItem.onClick === 'function' && MapItem.id !== "") {
-        marker.on('click', () => MapItem.onClick(MapItem.id));
-    }
-
-    if (MapItem.popup) {
-        marker.bindPopup(createPopupHtml(MapItem.popup));
-    }
-
-    return marker
+function markerStyle(item: MapItem): MarkerStyle {
+    if (item.icon === "hidden") return { anchor: "center", offset: [0, 0] };
+    // Dots mark an exact point, so they sit centred on it; every other icon
+    // reads as a pin and hangs above the point by its bottom edge.
+    if (item.icon === "dot" || item.icon === "dot gray") return { anchor: "center", offset: [0, 0] };
+    return { anchor: "bottom", offset: [0, 0] };
 }
 
-export function updateExistingMarker(MapItem: MapItem, marker: leaflet.Marker): leaflet.Marker {
-    const customIcon = createMarkerIcon(
-        MapItem.routeID,
-        MapItem.icon,
-        MapItem.visibleLabel,
-        MapItem.bearing,
-        MapItem.opacity
+function iconInnerHtml(item: MapItem): string {
+    const { routeID, icon, visibleLabel, bearing, opacity } = item;
+
+    if (icon === "hidden") {
+        return `<div style="width: 0px; height: 0px;"></div>`;
+    }
+
+    const iconUrl = routesWithIcons.includes(routeID)
+        ? `/route_icons/${routeID}.png`
+        : getIconUrl(icon);
+
+    // Bearing 0 is indistinguishable from "no data" (proto3 default) - only
+    // custom route logos are skipped, since rotating a logo looks wrong.
+    const rotation = bearing !== undefined && bearing !== 0 && !routesWithIcons.includes(routeID)
+        ? `rotate(${bearing}deg)`
+        : "";
+
+    if (visibleLabel) {
+        return `
+            <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
+            <span
+              style="
+                position: absolute;
+                bottom: 32px;
+                left: 50%;
+                transform: translateX(-50%);
+                color: #1d4ed8;
+                font-size: 12px;
+                font-weight: 700;
+                white-space: nowrap;
+                padding: 4px 10px;
+                background-color: rgba(255, 255, 255, 0.96);
+                border-radius: 9999px;
+                border: 1px solid rgba(148, 163, 184, 0.55);
+                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
+              "
+            >
+              ${visibleLabel}
+            </span>
+            <img
+              src="${iconUrl}" alt=""
+              style="position: absolute; inset: 0; width: 28px; height: 28px; transform: ${rotation};"
+            />
+            </div>
+        `;
+    }
+
+    return `
+        <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
+            <img
+              src="${iconUrl}" alt=""
+              style="width: 28px; height: 28px; transform: ${rotation};"
+            />
+        </div>
+    `;
+}
+
+/** The click listener is bound once and reads the marker's current item, which
+ * `updateExistingMarker` swaps in place on every poll - so the handler always
+ * fires against the latest data without ever being re-subscribed. */
+type MarkerWithItem = maplibregl.Marker & { __item: MapItem; __popupKey?: string };
+
+/**
+ * The marker's outer element is owned by MapLibre (it manages its class list
+ * and transform for positioning), so all our styling goes on an inner wrapper.
+ * Overwriting the outer element's className would strip `maplibregl-marker` and
+ * its `position: absolute`, and the markers then drift on pan/zoom.
+ */
+function paintContent(item: MapItem, content: HTMLDivElement) {
+    if (!item.icon) {
+        throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
+    }
+    content.style.cursor = typeof item.onClick === "function" && item.id !== "" ? "pointer" : "";
+    content.innerHTML = iconInnerHtml(item);
+}
+
+function syncPopup(item: MapItem, marker: MarkerWithItem) {
+    const key = item.popup ? JSON.stringify(item.popup) : "";
+    if (key === marker.__popupKey) return;
+    marker.__popupKey = key;
+    marker.setPopup(
+        item.popup
+            ? new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(createPopupHtml(item.popup))
+            : undefined
     );
+}
 
+function contentOf(marker: maplibregl.Marker): HTMLDivElement {
+    return marker.getElement().firstElementChild as HTMLDivElement;
+}
 
-    // Update icon
-    marker.setIcon(customIcon);
+export function createNewMarker(item: MapItem): maplibregl.Marker {
+    const style = markerStyle(item);
+    const root = document.createElement("div");
+    const content = document.createElement("div");
+    root.appendChild(content);
+    paintContent(item, content);
 
-    // Update zIndex
-    marker.setZIndexOffset(MapItem.zIndex ?? 0);
+    const marker = new maplibregl.Marker({
+        element: root,
+        anchor: style.anchor,
+        offset: style.offset,
+    }).setLngLat(toLngLat([item.lat, item.lon])) as MarkerWithItem;
 
-    // Remove all existing event listeners before reattaching
-    marker.off();
+    root.style.zIndex = String(item.zIndex ?? 0);
+    marker.__item = item;
+    content.addEventListener("click", () => {
+        const it = marker.__item;
+        if (typeof it.onClick === "function" && it.id !== "") it.onClick(it.id);
+    });
 
-    // Update click handler
-    if (typeof MapItem.onClick === 'function' && MapItem.id !== "") {
-        marker.on('click', () => MapItem.onClick(MapItem.id));
-    }
-
-    // Re-bind popup if necessary
-    marker.unbindPopup();
-    if (MapItem.popup) {
-        marker.bindPopup(createPopupHtml(MapItem.popup));
-    }
-
-    // Update position
-    animateMarkerTo(marker, MapItem.lat, MapItem.lon)
-
+    syncPopup(item, marker);
     return marker;
+}
+
+export function updateExistingMarker(item: MapItem, marker: maplibregl.Marker): maplibregl.Marker {
+    const m = marker as MarkerWithItem;
+    m.__item = item;
+    m.setOffset(markerStyle(item).offset);
+    m.getElement().style.zIndex = String(item.zIndex ?? 0);
+    paintContent(item, contentOf(m));
+    syncPopup(item, m);
+    animateMarkerTo(m, item.lat, item.lon);
+    return m;
 }
 
 function escapeHtml(value: string): string {
@@ -105,82 +194,6 @@ function createPopupHtml(popup: NonNullable<MapItem["popup"]>): string {
         ? `<a href="${escapeHtml(popup.linkHref)}" style="color:#2563eb;text-decoration:underline;font-size:12px;">${escapeHtml(popup.linkText || "View departures")}</a>`
         : ""
     return `<div style="font-size:13px;min-width:120px;">${title}${subtitle}${link}</div>`
-}
-
-
-function createMarkerIcon(routeId: string, icon: string, visibleLabel: string | undefined, bearing?: number, opacity?: number): leaflet.Icon<leaflet.IconOptions> | leaflet.DivIcon {
-    if (!icon) {
-        throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
-    }
-    if (icon === "hidden") {
-        return leaflet.divIcon({
-            className: "hidden-icon",
-            html: `<div style="width: 0px; height: 0px;"></div>`,
-            iconAnchor: [0, 0],
-        });
-    }
-
-    const iconUrl = routesWithIcons.includes(routeId)
-        ? `/route_icons/${routeId}.png`
-        : getIconUrl(icon);
-
-    // Bearing 0 is indistinguishable from "no data" (proto3 default) - only
-    // custom route logos are skipped, since rotating a logo looks wrong.
-    const rotation = bearing !== undefined && bearing !== 0 && !routesWithIcons.includes(routeId)
-        ? `rotate(${bearing}deg)`
-        : ""
-
-    let customIcon
-
-    if (visibleLabel) {
-        customIcon = leaflet.divIcon({
-            className: "flex items-center justify-center",
-            html: `
-            <div style="position: relative; width: max-content; height: 46px; opacity: ${opacity ?? 1};">
-            <span
-              style="
-                position: absolute;
-                top: -16px;
-                left: 50%;
-                transform: translateX(-50%);
-                color: #1d4ed8;
-                font-size: 12px;
-                font-weight: 700;
-                white-space: nowrap;
-                padding: 4px 10px;
-                background-color: rgba(255, 255, 255, 0.96);
-                border-radius: 9999px;
-                border: 1px solid rgba(148, 163, 184, 0.55);
-                box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
-              "
-            >
-              ${visibleLabel}
-            </span>
-            <img
-              src="${iconUrl}" alt=""
-              style="position: absolute; top: 12px; left: 50%; transform: translateX(-50%) ${rotation}; width: 28px; height: 28px; border-radius: 9999px; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.25);"
-            />
-            </div>
-        `,
-            iconAnchor: [14, 44],
-        });
-    } else {
-        customIcon = leaflet.divIcon({
-            className: "flex items-center justify-center",
-            html: `
-            <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
-                <img
-                  src="${iconUrl}" alt=""
-                  style="width: 24px; height: 24px; border-radius: 9999px; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22); transform: ${rotation};"
-                />
-            </div>
-        `,
-            iconAnchor: [12, 26],
-        });
-    }
-
-
-    return customIcon
 }
 
 function getIconUrl(icon: string): string {
@@ -206,26 +219,19 @@ function getIconUrl(icon: string): string {
     return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
 }
 
-export function createMapClusterGroup(maxClusterRadius = 50): MarkerClusterGroup {
-    return leaflet.markerClusterGroup({
-        maxClusterRadius, // Adjust this value to make the group expand earlier. A smaller value causes earlier expansion.
-        iconCreateFunction: function (cluster) {
-            // Define a custom cluster icon using /blank.png and the number of markers
-            const count = cluster.getChildCount();
-            return leaflet.divIcon({
-                html: `<div style="position: relative; width: 32px; height: 32px;">
-                     <img src="/vehicle_icons/blank.png" style="width: 100%; height: 100%;" />
-                     <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: black;">
-                       ${count}
-                     </div>
-                   </div>`,
-                className: "custom-cluster-icon",
-                iconSize: [32, 32],
-            });
-        },
-    });
+/** Cluster-bubble marker element - ported from the old markercluster iconCreateFunction. */
+export function createClusterElement(count: number): HTMLDivElement {
+    const el = document.createElement("div");
+    el.className = "custom-cluster-icon";
+    el.style.cursor = "pointer";
+    el.innerHTML = `<div style="position: relative; width: 32px; height: 32px;">
+         <img src="/vehicle_icons/blank.png" style="width: 100%; height: 100%;" />
+         <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: black;">
+           ${count}
+         </div>
+       </div>`;
+    return el;
 }
-
 
 const routesWithIcons = [
     //Buses
@@ -252,17 +258,17 @@ const routesWithIcons = [
     "WEST-201",
 ]
 
-
-function animateMarkerTo(marker: L.Marker, newLat: number, newLng: number, duration = 500) {
-    const start = marker.getLatLng();
-    const end = leaflet.latLng(newLat, newLng);
+function animateMarkerTo(marker: maplibregl.Marker, newLat: number, newLng: number, duration = 500) {
+    const start = marker.getLngLat();
+    const endLng = newLng;
+    const endLat = newLat;
     const startTime = performance.now();
 
     function animate(time: number) {
         const t = Math.min(1, (time - startTime) / duration);
-        const lat = start.lat + (end.lat - start.lat) * t;
-        const lng = start.lng + (end.lng - start.lng) * t;
-        marker.setLatLng([lat, lng]);
+        const lng = start.lng + (endLng - start.lng) * t;
+        const lat = start.lat + (endLat - start.lat) * t;
+        marker.setLngLat([lng, lat]);
 
         if (t < 1) requestAnimationFrame(animate);
     }

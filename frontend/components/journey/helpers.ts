@@ -110,6 +110,41 @@ export function getLastTransitLeg(route: JourneyType): Leg | null {
     return legs[legs.length - 1] ?? null
 }
 
+function totalWalkKm(route: JourneyType): number {
+    return route.Legs.reduce((km, l) => (l.Mode === 'walk' ? km + (l.DistanceKm || 0) : km), 0)
+}
+
+/**
+ * Drops journeys that another result beats on every axis - a later/equal
+ * departure, an earlier/equal arrival, no more transfers and no more walking,
+ * with at least one strict improvement. Guards against the planner's
+ * doubleback plans (ride past the destination station and come back) sitting in
+ * the list next to the obvious direct one. Order is preserved.
+ */
+export function pruneDominatedPlans(routes: JourneyType[]): JourneyType[] {
+    if (routes.length < 2) return routes
+    const m = routes.map((r) => ({
+        dep: new Date(r.DepartureTime).getTime(),
+        arr: new Date(r.ArrivalTime).getTime(),
+        transfers: r.Transfers ?? 0,
+        walk: totalWalkKm(r),
+    }))
+    return routes.filter((_, i) => {
+        for (let j = 0; j < m.length; j++) {
+            if (j === i) continue
+            const a = m[j], b = m[i]
+            const noWorse =
+                a.dep >= b.dep && a.arr <= b.arr && a.transfers <= b.transfers && a.walk <= b.walk + 1e-6
+            const strictlyBetter =
+                a.arr < b.arr || a.transfers < b.transfers || a.dep > b.dep
+            // On a full tie, keep the earlier-listed plan only.
+            if (noWorse && strictlyBetter) return false
+            if (noWorse && !strictlyBetter && j < i) return false
+        }
+        return true
+    })
+}
+
 export function formatTime(dateString: string | Date) {
     return new Date(dateString).toLocaleTimeString('en-US', {
         hour: 'numeric',

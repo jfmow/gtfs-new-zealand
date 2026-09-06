@@ -11,7 +11,7 @@ import { getRegionSlug } from "@/lib/url-store"
 import { useQueryParams } from "@/lib/url-params"
 import type { Location, JourneyType } from "@/components/journey/types"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
-import { formatTime, getTransitTripIds, latestDeparture } from "@/components/journey/helpers"
+import { formatTime, getTransitTripIds, latestDeparture, pruneDominatedPlans } from "@/components/journey/helpers"
 import { SearchForm } from "@/components/journey/search-form"
 import { QuickTripsRail } from "@/components/journey/quick-trips-rail"
 import { ResultsList } from "@/components/journey/results-list"
@@ -298,7 +298,7 @@ export default function Page() {
             const response = await ApiFetch<JourneyType[]>(
                 `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
             )
-            return response.ok ? response.data : null
+            return response.ok ? pruneDominatedPlans(response.data) : null
         } catch (error) {
             console.error("Error planning journey:", error)
             return null

@@ -1,12 +1,16 @@
 import { Header } from "@/components/nav";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUrl } from "@/lib/url-context";
-import { Monitor, Moon, Sun } from "lucide-react"
+import { Map as MapIcon, Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes";
+import { useEffect, useState } from "react";
+import { getMapThemeOverride, setMapThemeOverride, type MapThemeOverride } from "@/components/map/map-theme";
 
 export default function Settings() {
     const { urlOptions, setCurrentUrl, currentUrl } = useUrl()
     const { setTheme, theme } = useTheme()
+    const [mapTheme, setMapTheme] = useState<MapThemeOverride>("auto")
+    useEffect(() => setMapTheme(getMapThemeOverride()), [])
 
     return (
         <>
@@ -79,6 +83,43 @@ export default function Settings() {
                                 <SelectItem value="system">
                                     <div className="flex items-center gap-2">
                                         <Monitor className="w-4 h-4" /> System
+                                    </div>
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
+
+                    {/* Map basemap theme */}
+                    <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+                        <div>
+                            <p className="text-sm font-medium">Map style</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Basemap colours, independent of the app theme</p>
+                        </div>
+                        <Select
+                            value={mapTheme}
+                            onValueChange={(val) => {
+                                const next = val as MapThemeOverride
+                                setMapTheme(next)
+                                setMapThemeOverride(next)
+                            }}
+                        >
+                            <SelectTrigger className="w-[140px] shrink-0">
+                                <SelectValue placeholder="Select map style" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="auto">
+                                    <div className="flex items-center gap-2">
+                                        <MapIcon className="w-4 h-4" /> Auto
+                                    </div>
+                                </SelectItem>
+                                <SelectItem value="light">
+                                    <div className="flex items-center gap-2">
+                                        <Sun className="w-4 h-4" /> Light
+                                    </div>
+                                </SelectItem>
+                                <SelectItem value="dark">
+                                    <div className="flex items-center gap-2">
+                                        <Moon className="w-4 h-4" /> Dark
                                     </div>
                                 </SelectItem>
                             </SelectContent>

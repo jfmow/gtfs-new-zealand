@@ -98,6 +98,11 @@ export default function StopsList({
                 toast.error("No scheduled time for this stop")
                 return
             }
+            // The backend anchors the reminder on the trip + scheduled time, but
+            // the rider cares about when the bus actually leaves - show the live
+            // (delay-adjusted) departure in the confirmation, falling back to the
+            // timetable when there's no realtime prediction yet.
+            const displayMs = st?.departure_time || schedMs
             if (leaveOffsets.length === 0) {
                 toast.error("Pick at least one alert time")
                 return
@@ -122,8 +127,13 @@ export default function StopsList({
                 deeplink: `/vehicles?tripId=${encodeURIComponent(tripId)}`,
             })
             if (res.ok) {
+                // Prefer the backend's own computed departure ("HH:MM"); fall
+                // back to the live prediction from the stop list.
+                const shownTime = res.nextLeaveLocal
+                    ? formatTime(`1970-01-01T${res.nextLeaveLocal}:00`)
+                    : formatTime(new Date(displayMs))
                 toast.success(
-                    `Reminder set — the ${routeShortName ? routeShortName + " " : ""}${formatTime(new Date(schedMs))} departure from ${stop.name}`,
+                    `Reminder set — the ${routeShortName ? routeShortName + " " : ""}${shownTime} departure from ${stop.name}`,
                     { duration: 8000 },
                 )
             } else {

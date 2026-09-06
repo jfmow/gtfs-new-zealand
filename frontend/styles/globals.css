@@ -115,29 +115,8 @@
   color: #1d4ed8;
 }
 
-.leaflet-tooltip.custom-tooltip:before {
-  display: none;
-}
-
-.map-route-line {
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  filter: drop-shadow(0 0 0.8px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 2.2px rgba(255, 255, 255, 0.85));
-}
-
-@keyframes route-line-flow {
-  to {
-    /* Negative of the dash pattern's period (1 + 14 = 15) - one full cycle
-       so the loop has no visible seam. */
-    stroke-dashoffset: -15;
-  }
-}
-
-.map-route-line-flow {
-  animation: route-line-flow 0.8s linear infinite;
-}
-
-.leaflet-control-container .map-control-button {
+/* MapLibre controls: our custom buttons live inside .maplibregl-ctrl wrappers. */
+.maplibregl-ctrl .map-control-button {
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.5) !important;
   background: rgba(255, 255, 255, 0.95) !important;
@@ -145,8 +124,31 @@
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
 }
 
-.leaflet-control-container .map-control-button .lucide {
+.maplibregl-ctrl .map-control-button .lucide {
   stroke-width: 2.1px;
+}
+
+/* Drop MapLibre's default control chrome - we bring our own pill buttons. */
+.maplibregl-ctrl-group {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+
+.maplibregl-popup-content {
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+}
+
+.dark .maplibregl-popup-content {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.dark .maplibregl-popup-tip {
+  border-top-color: #1e293b;
+  border-bottom-color: #1e293b;
 }
 
 @keyframes live-pulse {

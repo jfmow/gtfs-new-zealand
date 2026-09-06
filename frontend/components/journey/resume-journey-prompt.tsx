@@ -40,22 +40,29 @@ export function ResumeJourneyPrompt() {
     }
 
     return (
-        <div className="pointer-events-none fixed inset-x-0 top-14 z-40 flex justify-center px-3">
-            <div className="pointer-events-auto flex w-full max-w-sm items-center gap-1.5 rounded-full border bg-background/95 py-1 pl-3 pr-1 text-sm shadow-lg backdrop-blur">
+        // z-40 keeps it below nav dropdowns/popovers (z-50), which portal to
+        // <body> and so always paint over this. Bottom on mobile (thumb reach,
+        // clear of the nav), just under the nav on desktop.
+        <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-3 sm:bottom-auto sm:top-16">
+            <div className="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border-2 border-primary/40 bg-primary py-1.5 pl-4 pr-1.5 text-sm text-primary-foreground shadow-xl shadow-primary/25 animate-in fade-in slide-in-from-bottom-2 sm:slide-in-from-top-2">
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground opacity-60" />
+                    <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-primary-foreground" />
+                </span>
                 <button
                     type="button"
                     onClick={() => router.push("/plan?resume=1")}
                     className="flex min-w-0 flex-1 items-center gap-1.5 py-1 text-left"
                 >
-                    <Navigation className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate font-medium">Resume journey to {activeJourney.endLabel}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">· {formatTime(activeJourney.arrivalTime)}</span>
+                    <Navigation className="h-4 w-4 shrink-0" />
+                    <span className="truncate font-semibold">Resume journey to {activeJourney.endLabel}</span>
+                    <span className="shrink-0 text-xs opacity-80">· {formatTime(activeJourney.arrivalTime)}</span>
                 </button>
                 <button
                     type="button"
                     aria-label="Dismiss"
                     onClick={dismiss}
-                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:bg-accent"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-primary-foreground/80 hover:bg-primary-foreground/15"
                 >
                     <X className="h-4 w-4" />
                 </button>
