@@ -31,6 +31,14 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [tabValue, setTabValue] = useState(hideMap ? "stops" : "track")
 
+    // Stable map container ids - MapComp re-creates the whole map (and so resets
+    // the zoom) whenever map_id changes, and this component re-renders on every
+    // ~10s poll. Generating the id once per mount keeps the map alive across polls.
+    const mapIdRef = useRef<string>()
+    if (!mapIdRef.current) mapIdRef.current = "tracker-" + Math.random().toString(36).slice(2)
+    const trackMapId = mapIdRef.current
+    const previewMapId = trackMapId + "-preview"
+
     // Auto-scroll to next stop when it changes or when switching to stops tab
     useEffect(() => {
         if (tabValue === "stops" && nextStopRef.current && scrollAreaRef.current) {
@@ -231,6 +239,13 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                             : [[vehicle.position.lat, vehicle.position.lon]]
                                     }
                                     line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
+                                    followMarkerId={vehicle.trip_id}
+                                    followFitWith={
+                                        currentStop &&
+                                        (currentStopSeq === undefined || currentStopSeq >= vehicle.trip.next_stop.sequence)
+                                            ? [currentStop.lat, currentStop.lon]
+                                            : null
+                                    }
                                     mapItems={
                                         stops
                                             ? [
@@ -297,7 +312,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                                 },
                                             ]
                                     }
-                                    map_id={"tracker" + Math.random()}
+                                    map_id={trackMapId}
                                     height={"300px"}
                                 />
                             </Suspense>
@@ -439,7 +454,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                             }) as MapItem
                                         },
                                     )}
-                                    map_id={"tracker preview" + Math.random()}
+                                    map_id={previewMapId}
                                     height={"300px"}
                                 />
                             </Suspense>
