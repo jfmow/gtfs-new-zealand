@@ -1,15 +1,17 @@
 import { Header } from "@/components/nav";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUrl } from "@/lib/url-context";
-import { Map as MapIcon, Monitor, Moon, Sun } from "lucide-react"
+import { BellRing, ChevronRight, Map as MapIcon, Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 import { getMapThemeOverride, setMapThemeOverride, type MapThemeOverride } from "@/components/map/map-theme";
+import { ManageNotificationsSheet } from "@/components/notifications/manage-sheet";
 
 export default function Settings() {
     const { urlOptions, setCurrentUrl, currentUrl } = useUrl()
     const { setTheme, theme } = useTheme()
     const [mapTheme, setMapTheme] = useState<MapThemeOverride>("auto")
+    const [remindersOpen, setRemindersOpen] = useState(false)
     useEffect(() => setMapTheme(getMapThemeOverride()), [])
 
     return (
@@ -22,6 +24,23 @@ export default function Settings() {
                 </div>
 
                 <div className="max-w-lg divide-y divide-border border rounded-xl overflow-hidden bg-card">
+                    {/* Reminders & alerts */}
+                    <button
+                        onClick={() => setRemindersOpen(true)}
+                        className="flex w-full items-center justify-between gap-6 px-4 py-3.5 text-left transition-colors hover:bg-accent/50"
+                    >
+                        <div className="flex items-start gap-3">
+                            <BellRing className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <div>
+                                <p className="text-sm font-medium">Reminders &amp; alerts</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                    Repeating leave-by reminders, and stop &amp; route alerts
+                                </p>
+                            </div>
+                        </div>
+                        <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    </button>
+
                     {/* Region */}
                     <div className="flex items-center justify-between gap-6 px-4 py-3.5">
                         <div>
@@ -127,6 +146,8 @@ export default function Settings() {
                     </div>
                 </div>
             </div>
+
+            <ManageNotificationsSheet open={remindersOpen} onOpenChange={setRemindersOpen} />
         </>
     );
 }

@@ -26,9 +26,6 @@ type RouteAlert = AlertResponseData
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const { vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
-    const nextStopRef = useRef<HTMLLIElement>(null)
-    const scrollAreaRef = useRef<HTMLDivElement>(null)
-    const [tabValue, setTabValue] = useState(hideMap ? "stops" : "track")
 
     // On the full-screen page the map should fill the space under the header/tabs
     // rather than sit in a fixed 300px slot with dead space below it.
@@ -42,20 +39,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const trackMapId = mapIdRef.current
     const previewMapId = trackMapId + "-preview"
 
-    // Auto-scroll to next stop when it changes or when switching to stops tab
-    useEffect(() => {
-        if (tabValue === "stops" && nextStopRef.current && scrollAreaRef.current) {
-            // Small delay to ensure the tab content is rendered
-            const timeoutId = setTimeout(() => {
-                nextStopRef.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                    inline: "nearest",
-                })
-            }, 100)
-            return () => clearTimeout(timeoutId)
-        }
-    }, [tabValue, vehicle?.trip.next_stop.parent_stop_id, vehicle?.trip.next_stop.platform])
 
     const routeLine = useRouteLine(tripId, vehicle?.route.id)
 
@@ -213,7 +196,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 {hideMap ? (
                     <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
                 ) : (
-                    <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
+                    <Tabs defaultValue="track" className="w-full">
                         <TabsList className="w-full">
                             <TabsTrigger disabled={stops?.length === 0} className="w-full" value="stops">
                                 Stops

@@ -67,12 +67,23 @@ export default function StopsList({
         }, 100)
     }
 
+    // Auto-scroll the "next stop" row into view. Runs when the list first has
+    // data (the stops/vehicle often arrive a beat after this mounts, so an
+    // empty-deps effect would fire before nextStopRef is attached and do
+    // nothing) and again whenever the vehicle advances to a new next stop.
+    // Keyed so it doesn't re-scroll on every poll that leaves the stop unchanged.
+    const lastScrolledKey = useRef<string | null>(null)
+    const nextStopKey = vehicle
+        ? `${vehicle.trip.next_stop.parent_stop_id}|${vehicle.trip.next_stop.platform}`
+        : null
     useEffect(() => {
-        nextStopRef?.current?.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-        })
-    }, [])
+        if (!nextStopKey || !nextStopRef.current || lastScrolledKey.current === nextStopKey) return
+        lastScrolledKey.current = nextStopKey
+        const t = setTimeout(() => {
+            nextStopRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+        }, 120)
+        return () => clearTimeout(t)
+    }, [nextStopKey, stops])
 
     const getStopStatus = (stop: ServicesStop) => {
         if (!vehicle) return { isCurrentStop: false, isNextStop: false, passed: false }
@@ -117,6 +128,26 @@ export default function StopsList({
         }
     }
 
+    // A "leave" alert whose moment has already passed is impossible. Bound the
+    // check by the latest stop the rider could still board at, so a valid choice
+    // for a far-along stop is never disabled; handleStopSelection re-checks
+    // against the exact stop that's picked. (These reminders are always one-off.)
+    const latestBoardableLeaveMs = (() => {
+        const times = (stops ?? [])
+            .filter((s) => {
+                const st = getStopStatus(s)
+                return !st.passed && !st.isCurrentStop
+            })
+            .map((s) => {
+                const t = getStopTime(s.parent_stop_id)
+                return t?.departure_time || t?.scheduled_time || 0
+            })
+            .filter((ms) => ms > 0)
+        return times.length ? Math.max(...times) : null
+    })()
+    const leaveOffsetImpossible = (minutes: number) =>
+        latestBoardableLeaveMs !== null && latestBoardableLeaveMs - minutes * 60_000 <= Date.now() + 15_000
+
     // --- Reminder Handlers ---
     const handleStopSelection = async (stop: ServicesStop) => {
         if (!isSelectingReminder || !tripId || !reminderType) return
@@ -139,6 +170,12 @@ export default function StopsList({
                 toast.error("Pick at least one alert time")
                 return
             }
+            // Drop any heads-up whose moment has already passed for this stop.
+            const usableOffsets = leaveOffsets.filter((o) => displayMs - o * 60_000 > Date.now() + 15_000)
+            if (usableOffsets.length === 0) {
+                toast.error("That service leaves too soon to remind you")
+                return
+            }
             const res = await addJourneyReminder({
                 kind: "fixed_trip",
                 start: { lat: stop.lat, lon: stop.lon, label: stop.name },
@@ -152,7 +189,7 @@ export default function StopsList({
                 routeShortName: routeShortName ?? "",
                 boardStopName: stop.name,
                 accessSeconds: 0,
-                offsets: leaveOffsets,
+                offsets: usableOffsets,
                 maxWalkKm: "1",
                 walkSpeed: "4.8",
                 maxTransfers: "5",
@@ -164,8 +201,10 @@ export default function StopsList({
                 const shownTime = res.nextLeaveLocal
                     ? formatTime(`1970-01-01T${res.nextLeaveLocal}:00`)
                     : formatTime(new Date(displayMs))
+                const dropped = leaveOffsets.length - usableOffsets.length
                 toast.success(
-                    `Reminder set — the ${routeShortName ? routeShortName + " " : ""}${shownTime} departure from ${stop.name}`,
+                    `Reminder set — the ${routeShortName ? routeShortName + " " : ""}${shownTime} departure from ${stop.name}` +
+                        (dropped > 0 ? " (earlier alert times had already passed)" : ""),
                     { duration: 8000 },
                 )
             } else {
@@ -441,10 +480,14 @@ export default function StopsList({
                                         { v: 15, l: "15 min" },
                                         { v: 5, l: "5 min" },
                                         { v: 0, l: "At departure" },
-                                    ].map((o) => (
+                                    ].map((o) => {
+                                        const impossible = leaveOffsetImpossible(o.v)
+                                        return (
                                         <button
                                             key={o.v}
                                             type="button"
+                                            disabled={impossible}
+                                            title={impossible ? "That time has already passed" : undefined}
                                             aria-pressed={leaveOffsets.includes(o.v)}
                                             onClick={() =>
                                                 setLeaveOffsets((cur) =>
@@ -453,14 +496,17 @@ export default function StopsList({
                                             }
                                             className={cn(
                                                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                                                leaveOffsets.includes(o.v)
-                                                    ? "border-primary bg-primary text-primary-foreground"
-                                                    : "border-input bg-background hover:bg-accent",
+                                                impossible
+                                                    ? "cursor-not-allowed border-input bg-muted text-muted-foreground/50 line-through"
+                                                    : leaveOffsets.includes(o.v)
+                                                        ? "border-primary bg-primary text-primary-foreground"
+                                                        : "border-input bg-background hover:bg-accent",
                                             )}
                                         >
                                             {o.l}
                                         </button>
-                                    ))}
+                                        )
+                                    })}
                                 </div>
                             </div>
                         )}

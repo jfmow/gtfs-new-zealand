@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { Map, Settings2Icon, MenuIcon, X, Car, Siren, CalendarDays, Route } from 'lucide-react'
+import { Map, Settings2Icon, MenuIcon, X, Car, Siren, CalendarDays, Route, BellRing } from 'lucide-react'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useTheme } from 'next-themes'
 import { ReactNode, useEffect, useState } from 'react'
@@ -9,6 +9,7 @@ import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
 import { motion, AnimatePresence } from 'framer-motion'
 import { FavoritesChips } from './stops/favourites'
 import { NotificationsBell } from './notifications/bell'
+import { ManageNotificationsSheet } from './notifications/manage-sheet'
 
 const NAV_ROUTES = [
     {
@@ -53,6 +54,7 @@ export default function NavBar() {
     const { theme } = useTheme()
     const isMobile = useIsMobile()
     const [menuOpen, setMenuOpen] = useState(false)
+    const [remindersOpen, setRemindersOpen] = useState(false)
     const router = useRouter()
 
     const logo = theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"
@@ -192,6 +194,13 @@ export default function NavBar() {
                                                     {item.label}
                                                 </Link>
                                             ))}
+                                            <button
+                                                onClick={() => { setMenuOpen(false); setRemindersOpen(true) }}
+                                                className="flex w-full items-center gap-3 border-l-2 border-transparent py-2.5 pl-3 pr-3 font-display text-sm font-medium uppercase tracking-wide text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                                            >
+                                                <BellRing className="w-4 h-4 shrink-0" />
+                                                My Reminders
+                                            </button>
                                         </nav>
 
                                         {/* Favourites */}
@@ -213,6 +222,8 @@ export default function NavBar() {
                     </AnimatePresence>
                 </>
             )}
+
+            <ManageNotificationsSheet open={remindersOpen} onOpenChange={setRemindersOpen} />
         </>
     )
 }

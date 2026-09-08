@@ -116,8 +116,19 @@ func GetRealtimeTripData(
 			result.StopState = simpleState
 		}
 
-		if result.StopsAway <= -1 {
-			result.Departed = true
+		if result.TripStarted {
+			if result.StopsAway <= -1 {
+				result.Departed = true
+			}
+		} else if result.StopsAway < 0 {
+			// A trip that hasn't started yet can't have departed this stop. AT's
+			// feed publishes trip updates ahead of time but omits a prediction
+			// for a trip's *origin* stop, so GetNextStopSequence reports the
+			// second stop as "next" and StopsAway lands at -1 for any service
+			// that originates here (e.g. Western Line trips reversing at
+			// Newmarket). Left alone, that flagged every future Swanson
+			// departure as "Departed" at the top of the board.
+			result.StopsAway = 0
 		}
 
 		if tripUpdate.GetTrip().GetScheduleRelationship() == 3 {

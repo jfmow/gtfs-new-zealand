@@ -57,10 +57,12 @@ type RepeatMode = "once" | "weekdays" | "custom"
 
 function Chip({
     active,
+    disabled,
     onClick,
     children,
 }: {
     active: boolean
+    disabled?: boolean
     onClick: () => void
     children: React.ReactNode
 }) {
@@ -68,11 +70,15 @@ function Chip({
         <button
             type="button"
             onClick={onClick}
+            disabled={disabled}
+            title={disabled ? "That time has already passed" : undefined}
             className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                active
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-input bg-background hover:bg-accent"
+                disabled
+                    ? "cursor-not-allowed border-input bg-muted text-muted-foreground/50 line-through"
+                    : active
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-background hover:bg-accent"
             )}
         >
             {children}
@@ -103,6 +109,17 @@ export function LeaveReminderDialog({
     }, [open])
 
     const transit = route ? getFirstTransitLeg(route) : null
+
+    // For a one-off reminder we know the concrete leave time, so any heads-up
+    // whose moment has already passed is impossible - disable it. (A recurring
+    // reminder resolves a fresh trip each day, so every offset stays valid.)
+    const leaveMs =
+        route && transit
+            ? new Date(transit.scheduled_departure_time ?? transit.DepartureTime).getTime() -
+              leadingAccessSeconds(route) * 1000
+            : null
+    const offsetPassed = (minutes: number) =>
+        repeat === "once" && leaveMs !== null && leaveMs - minutes * 60_000 <= Date.now() + 15_000
 
     const recurrenceMask = useMemo(() => {
         if (repeat === "once") return ""
@@ -135,9 +152,11 @@ export function LeaveReminderDialog({
         label: "Destination",
     }
 
+    const usableOffsets = offsets.filter((o) => !offsetPassed(o))
+
     const handleSubmit = async () => {
-        if (offsets.length === 0) {
-            toast.error("Pick at least one alert time")
+        if (usableOffsets.length === 0) {
+            toast.error(offsets.length === 0 ? "Pick at least one alert time" : "Those alert times have already passed")
             return
         }
         setSubmitting(true)
@@ -157,7 +176,7 @@ export function LeaveReminderDialog({
             maxWalkKm: requestContext.maxWalkKm,
             walkSpeed: requestContext.walkSpeed,
             maxTransfers: requestContext.maxTransfers,
-            offsets,
+            offsets: usableOffsets,
         }
 
         let res
@@ -223,13 +242,20 @@ export function LeaveReminderDialog({
                         <Label className="text-xs text-muted-foreground">Heads-up before you leave</Label>
                         <div className="flex flex-wrap gap-1.5">
                             {OFFSET_CHOICES.map((o) => (
-                                <Chip key={o.value} active={offsets.includes(o.value)} onClick={() => toggleOffset(o.value)}>
+                                <Chip
+                                    key={o.value}
+                                    active={offsets.includes(o.value)}
+                                    disabled={offsetPassed(o.value)}
+                                    onClick={() => toggleOffset(o.value)}
+                                >
                                     {o.label}
                                 </Chip>
                             ))}
                         </div>
                         <p className="text-[11px] text-muted-foreground">
-                            &quot;When to leave&quot; is the go signal; the others are advance nudges.
+                            {repeat === "once" && usableOffsets.length === 0
+                                ? "This journey leaves too soon to set a reminder — try repeating it, or an earlier trip."
+                                : `"When to leave" is the go signal; the others are advance nudges.`}
                         </p>
                     </div>
 
@@ -287,7 +313,7 @@ export function LeaveReminderDialog({
                     <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
                         Cancel
                     </Button>
-                    <Button onClick={handleSubmit} disabled={submitting || offsets.length === 0}>
+                    <Button onClick={handleSubmit} disabled={submitting || usableOffsets.length === 0}>
                         {submitting ? "Setting…" : "Set reminder"}
                     </Button>
                 </DialogFooter>

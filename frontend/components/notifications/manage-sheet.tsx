@@ -153,7 +153,8 @@ function ManageNotificationsBody() {
     if (stops.length === 0 && routes.length === 0 && journeyReminders.length === 0) {
         return (
             <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-                No notification subscriptions yet. Enable alerts from a stop or route to see them here.
+                Nothing set up yet. Add a repeating &ldquo;leave by&rdquo; reminder from the journey
+                planner, or turn on alerts for a stop or route &mdash; they&apos;ll all show here.
             </p>
         )
     }
@@ -224,7 +225,7 @@ export function ManageNotificationsSheet({ open, onOpenChange }: ManageNotificat
     const title = (
         <span className="flex items-center gap-1.5">
             <RouteIcon className="h-3.5 w-3.5" />
-            My notifications
+            Reminders &amp; alerts
         </span>
     )
 
