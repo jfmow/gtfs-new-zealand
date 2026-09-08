@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react"
-import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, AlarmClock } from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, AlarmClock, ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -16,6 +16,12 @@ interface StopsListProps {
     tripId?: string
     /** Short route name for the reminder copy (blank tolerated). */
     routeShortName?: string
+    /**
+     * "inset" (default): the stop list scrolls inside a fixed-height box and the
+     * reminder actions sit below it. "page": the list flows with a full-screen
+     * page and the reminder actions pin to the bottom of the viewport.
+     */
+    layout?: "inset" | "page"
 }
 
 type ReminderType = "get_off" | "arrival" | "n_stops_away" | "leave"
@@ -26,14 +32,40 @@ export default function StopsList({
     stopTimes,
     tripId,
     routeShortName,
+    layout = "inset",
 }: StopsListProps) {
+    const isPage = layout === "page"
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const nextStopRef = useRef<HTMLDivElement>(null)
+    const reminderRef = useRef<HTMLDivElement>(null)
 
     const [isSelectingReminder, setIsSelectingReminder] = useState(false)
     const [reminderType, setReminderType] = useState<ReminderType | null>(null)
+    const [showReminderOptions, setShowReminderOptions] = useState(false)
     const [nStopsAway, setNStopsAway] = useState(1)
     const [leaveOffsets, setLeaveOffsets] = useState<number[]>([30, 15, 5, 0])
+
+    const openReminderOptions = () => {
+        setShowReminderOptions(true)
+        setTimeout(() => {
+            reminderRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" })
+        }, 60)
+    }
+
+    const startReminder = (type: ReminderType) => {
+        setShowReminderOptions(false)
+        setIsSelectingReminder(true)
+        setReminderType(type)
+    }
+
+    const cancelReminder = () => {
+        setIsSelectingReminder(false)
+        setReminderType(null)
+        setShowReminderOptions(false)
+        setTimeout(() => {
+            nextStopRef?.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+        }, 100)
+    }
 
     useEffect(() => {
         nextStopRef?.current?.scrollIntoView({
@@ -168,38 +200,28 @@ export default function StopsList({
         setReminderType(null)
     }
 
-    const toggleReminder = (type: ReminderType) => {
-        if (isSelectingReminder && reminderType === type) {
-            setIsSelectingReminder(false)
-            setReminderType(null)
-            setTimeout(() => {
-                nextStopRef?.current?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                })
-            }, 100)
-        } else {
-            setIsSelectingReminder(true)
-            setReminderType(type)
-        }
-    }
-
     const vehiclePosition = getVehiclePosition()
 
     return (
         <>
             <div
                 ref={scrollAreaRef}
-                className="max-h-[300px] overflow-y-auto space-y-1 p-2 sm:p-4 relative bg-white dark:bg-gray-900 rounded-md"
+                className={cn(
+                    "relative space-y-1 rounded-xl border border-border bg-card p-2 sm:p-3",
+                    !isPage && "max-h-[50vh] overflow-y-auto overscroll-contain sm:max-h-[440px]",
+                )}
             >
                 {isSelectingReminder && (
-                    <div className="sticky top-0 z-20 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-3 mb-3">
-                        <p className="text-sm text-blue-700 dark:text-blue-300 font-medium">
+                    <div className={cn(
+                        "sticky z-20 mb-2 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-950",
+                        isPage ? "top-14" : "top-0",
+                    )}>
+                        <p className="text-sm font-medium text-blue-700 dark:text-blue-300">
                             {reminderType === "get_off"
-                                ? "Click a stop to be reminded when it's time to get off"
+                                ? "Tap the stop where you want to get off"
                                 : reminderType === "leave"
-                                    ? "Click the stop you'll board at"
-                                    : "Click a stop to be reminded when the vehicle is arriving"}
+                                    ? "Tap the stop you'll board at"
+                                    : `Tap the stop to watch — you'll be told when the vehicle is ${nStopsAway} stop${nStopsAway === 1 ? "" : "s"} away`}
                         </p>
                     </div>
                 )}
@@ -234,7 +256,7 @@ export default function StopsList({
                                         : ""
 
                         return (
-                            <div key={`${stop.parent_stop_id}-${stop.platform}`} className="relative">
+                            <div key={`${stop.parent_stop_id}-${stop.platform}-${index}`} className="relative">
                                 {vehiclePosition?.showBetweenStops &&
                                     vehiclePosition.currentStopIndex === index &&
                                     !isLast && !isSelectingReminder && (
@@ -248,14 +270,26 @@ export default function StopsList({
                                 <div
                                     ref={isNextStop ? nextStopRef : null}
                                     onClick={() => canSelect && handleStopSelection(stop)}
-                                    className={`relative flex items-start gap-3 px-2 py-3 rounded-sm border transition-all duration-200 min-h-[60px] ${stopTime?.skipped ? "opacity-50" : ""} ${isCurrentStop
-                                        ? "bg-orange-50 dark:bg-orange-900 border-orange-200 dark:border-orange-700 shadow-sm"
-                                        : isNextStop
-                                            ? "bg-blue-50 dark:bg-blue-900 border-blue-200 dark:border-blue-700 shadow-sm ring-2 ring-blue-100 dark:ring-blue-900"
-                                            : passed
-                                                ? "bg-gray-50 dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                                                : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 active:bg-gray-50 dark:active:bg-gray-800"
-                                        }`}
+                                    role={canSelect ? "button" : undefined}
+                                    tabIndex={canSelect ? 0 : undefined}
+                                    onKeyDown={(e) => {
+                                        if (canSelect && (e.key === "Enter" || e.key === " ")) {
+                                            e.preventDefault()
+                                            handleStopSelection(stop)
+                                        }
+                                    }}
+                                    className={cn(
+                                        "relative flex min-h-[56px] items-start gap-3 rounded-lg border border-transparent px-2.5 py-2.5 transition-colors",
+                                        stopTime?.skipped && "opacity-50",
+                                        canSelect && "cursor-pointer border-green-300 bg-green-50/60 hover:bg-green-50 dark:border-green-800 dark:bg-green-950/30 dark:hover:bg-green-950/50",
+                                        isCurrentStop
+                                            ? "border-orange-200 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/60"
+                                            : isNextStop
+                                                ? "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/60"
+                                                : passed
+                                                    ? "opacity-60"
+                                                    : "active:bg-muted",
+                                    )}
                                 >
                                     {/* Indicator */}
                                     <div className="flex flex-col items-center mt-1">
@@ -265,14 +299,14 @@ export default function StopsList({
                                                 : isNextStop
                                                     ? "bg-blue-400 border-blue-400 animate-pulse"
                                                     : passed
-                                                        ? "bg-gray-300 dark:bg-gray-600 border-gray-300 dark:border-gray-600"
+                                                        ? "bg-muted-foreground/40 border-muted-foreground/40"
                                                         : canSelect
-                                                            ? "bg-green-100 dark:bg-green-800 border-green-400 dark:border-green-600"
-                                                            : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                                            ? "bg-green-100 dark:bg-green-900 border-green-500"
+                                                            : "bg-card border-muted-foreground/40"
                                                 }`}
                                         />
                                         {!isLast && (
-                                            <div className="w-0.5 h-8 mt-1 bg-gray-200 dark:bg-gray-700" />
+                                            <div className="w-0.5 h-8 mt-1 bg-border" />
                                         )}
                                     </div>
 
@@ -286,26 +320,26 @@ export default function StopsList({
                                                         : isNextStop
                                                             ? "text-blue-700 dark:text-blue-300"
                                                             : passed
-                                                                ? "text-gray-500 dark:text-gray-400"
+                                                                ? "text-muted-foreground"
                                                                 : canSelect
                                                                     ? "text-green-700 dark:text-green-400"
-                                                                    : "text-gray-900 dark:text-gray-100"
+                                                                    : "text-foreground"
                                                         }`}
                                                 >
                                                     {stop.name}
                                                 </h3>
 
-                                                <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-gray-600 dark:text-gray-400">
+                                                <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1 text-xs text-muted-foreground">
                                                     {stop.platform && (
                                                         <span className="flex items-center gap-1">
                                                             <MapPin className="w-3 h-3" />
                                                             Platform {stop.platform}
                                                         </span>
                                                     )}
-                                                    {!passed && !isCurrentStop && (
+                                                    {vehicle && !passed && !isCurrentStop && distance >= 1 && (
                                                         <span className="flex items-center gap-1">
                                                             <Waypoints className="w-3 h-3" />
-                                                            Distance {formatDistance(distance)}
+                                                            {formatDistance(distance)} to go
                                                         </span>
                                                     )}
 
@@ -315,7 +349,7 @@ export default function StopsList({
                                                             {arrivalTime}
                                                             {departureTime && arrivalTime !== departureTime && (
                                                                 <>
-                                                                    <span className="text-gray-400">→</span>
+                                                                    <span className="text-muted-foreground/50">&rarr;</span>
                                                                     <span>{departureTime}</span>
                                                                 </>
                                                             )}
@@ -359,107 +393,150 @@ export default function StopsList({
                     })}
             </div>
 
-            <div className="flex flex-col gap-2 mt-4">
-                <Button
-                    onClick={() => toggleReminder("get_off")}
-                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
-                    variant={isSelectingReminder && reminderType === "get_off" ? "outline" : "default"}
-                >
-                    {isSelectingReminder && reminderType === "get_off" ? (
-                        <>
-                            <X className="w-4 h-4 mr-2" />
-                            Cancel Selection
-                        </>
-                    ) : (
-                        <>
-                            <Bell className="w-4 h-4 mr-2" />
-                            Remind me to get off
-                        </>
-                    )}
-                </Button>
-
-                <div className="flex gap-2 flex-1">
-                    <input
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={nStopsAway}
-                        disabled={isSelectingReminder}
-                        onChange={(e) => setNStopsAway(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                        aria-label="Number of stops away"
-                        className="w-14 rounded-md border border-input bg-background px-2 py-1 text-sm text-center disabled:opacity-50"
-                    />
-                    <Button
-                        onClick={() => toggleReminder("n_stops_away")}
-                        className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
-                        variant={isSelectingReminder && reminderType === "n_stops_away" ? "outline" : "default"}
-                    >
-                        {isSelectingReminder && reminderType === "n_stops_away" ? (
-                            <>
-                                <X className="w-4 h-4 mr-2" />
-                                Cancel Selection
-                            </>
-                        ) : (
-                            <>
-                                <Bell className="w-4 h-4 mr-2" />
-                                Notify me {nStopsAway} stop{nStopsAway === 1 ? "" : "s"} away
-                            </>
-                        )}
-                    </Button>
-                </div>
-
-                <Button
-                    onClick={() => toggleReminder("leave")}
-                    className={`${!isSelectingReminder ? "border border-transparent" : ""} flex-1`}
-                    variant={isSelectingReminder && reminderType === "leave" ? "outline" : "default"}
-                >
-                    {isSelectingReminder && reminderType === "leave" ? (
-                        <>
-                            <X className="w-4 h-4 mr-2" />
-                            Cancel Selection
-                        </>
-                    ) : (
-                        <>
-                            <AlarmClock className="w-4 h-4 mr-2" />
-                            Remind me before this departs
-                        </>
-                    )}
-                </Button>
-
-                {isSelectingReminder && reminderType === "leave" && (
-                    <div className="rounded-lg border bg-muted/40 p-3 space-y-3">
-                        <div className="space-y-1.5">
-                            <p className="text-xs text-muted-foreground">Alert me</p>
-                            <div className="flex flex-wrap gap-1.5">
-                                {[
-                                    { v: 30, l: "30 min before" },
-                                    { v: 15, l: "15 min" },
-                                    { v: 5, l: "5 min" },
-                                    { v: 0, l: "At departure" },
-                                ].map((o) => (
+            <div
+                ref={reminderRef}
+                className={cn(
+                    "scroll-mt-16",
+                    isPage && !isSelectingReminder && !showReminderOptions
+                        ? "sticky bottom-0 z-10 -mx-4 mt-4 border-t border-border bg-background/95 px-4 py-3 backdrop-blur"
+                        : "mt-4",
+                )}
+            >
+                {isSelectingReminder ? (
+                    <div className="space-y-3">
+                        {reminderType === "n_stops_away" && (
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-border bg-muted/40 p-3 text-sm">
+                                <span className="text-muted-foreground">Tell me when it&apos;s</span>
+                                <div className="flex items-center gap-1">
                                     <button
-                                        key={o.v}
                                         type="button"
-                                        onClick={() =>
-                                            setLeaveOffsets((cur) =>
-                                                cur.includes(o.v) ? cur.filter((x) => x !== o.v) : [...cur, o.v],
-                                            )
-                                        }
-                                        className={cn(
-                                            "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                                            leaveOffsets.includes(o.v)
-                                                ? "border-primary bg-primary text-primary-foreground"
-                                                : "border-input bg-background hover:bg-accent",
-                                        )}
+                                        aria-label="Fewer stops"
+                                        onClick={() => setNStopsAway((n) => Math.max(1, n - 1))}
+                                        className="flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-accent"
                                     >
-                                        {o.l}
+                                        &minus;
                                     </button>
-                                ))}
+                                    <span className="w-8 text-center font-semibold tabular-nums">{nStopsAway}</span>
+                                    <button
+                                        type="button"
+                                        aria-label="More stops"
+                                        onClick={() => setNStopsAway((n) => Math.min(20, n + 1))}
+                                        className="flex h-8 w-8 items-center justify-center rounded-md border border-input hover:bg-accent"
+                                    >
+                                        +
+                                    </button>
+                                </div>
+                                <span className="text-muted-foreground">
+                                    stop{nStopsAway === 1 ? "" : "s"} away
+                                </span>
                             </div>
-                        </div>
+                        )}
+
+                        {reminderType === "leave" && (
+                            <div className="rounded-lg border border-border bg-muted/40 p-3">
+                                <p className="mb-1.5 text-xs text-muted-foreground">Alert me</p>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                        { v: 30, l: "30 min before" },
+                                        { v: 15, l: "15 min" },
+                                        { v: 5, l: "5 min" },
+                                        { v: 0, l: "At departure" },
+                                    ].map((o) => (
+                                        <button
+                                            key={o.v}
+                                            type="button"
+                                            aria-pressed={leaveOffsets.includes(o.v)}
+                                            onClick={() =>
+                                                setLeaveOffsets((cur) =>
+                                                    cur.includes(o.v) ? cur.filter((x) => x !== o.v) : [...cur, o.v],
+                                                )
+                                            }
+                                            className={cn(
+                                                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                                                leaveOffsets.includes(o.v)
+                                                    ? "border-primary bg-primary text-primary-foreground"
+                                                    : "border-input bg-background hover:bg-accent",
+                                            )}
+                                        >
+                                            {o.l}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        <Button variant="outline" className="w-full" onClick={cancelReminder}>
+                            <X className="mr-2 h-4 w-4" />
+                            Cancel
+                        </Button>
                     </div>
+                ) : showReminderOptions ? (
+                    <div className="space-y-2">
+                        <p className="text-sm font-medium text-foreground">What should we remind you about?</p>
+                        <div className="divide-y divide-border overflow-hidden rounded-lg border border-border">
+                            <ReminderOptionRow
+                                icon={<Bell className="h-4 w-4" />}
+                                title="When to get off"
+                                subtitle="A nudge as your stop comes up"
+                                onClick={() => startReminder("get_off")}
+                            />
+                            <ReminderOptionRow
+                                icon={<Waypoints className="h-4 w-4" />}
+                                title="A few stops before mine"
+                                subtitle="So you can get ready in time"
+                                onClick={() => startReminder("n_stops_away")}
+                            />
+                            <ReminderOptionRow
+                                icon={<AlarmClock className="h-4 w-4" />}
+                                title="Before it leaves my stop"
+                                subtitle="So you're not late getting there"
+                                onClick={() => startReminder("leave")}
+                            />
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowReminderOptions(false)}
+                            className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                            Not now
+                        </button>
+                    </div>
+                ) : (
+                    <Button className="w-full" onClick={openReminderOptions}>
+                        <Bell className="mr-2 h-4 w-4" />
+                        Set a reminder
+                    </Button>
                 )}
             </div>
         </>
+    )
+}
+
+function ReminderOptionRow({
+    icon,
+    title,
+    subtitle,
+    onClick,
+}: {
+    icon: React.ReactNode
+    title: string
+    subtitle: string
+    onClick: () => void
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted text-foreground">
+                {icon}
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block text-sm font-medium text-foreground">{title}</span>
+                <span className="block text-xs text-muted-foreground">{subtitle}</span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/60" />
+        </button>
     )
 }

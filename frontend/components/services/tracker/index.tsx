@@ -1,4 +1,4 @@
-import { memo, useState } from "react"
+import { memo, useState, type ReactNode } from "react"
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "../../ui/button"
 import { Eye, Loader2, Navigation } from "lucide-react"
@@ -22,6 +22,12 @@ interface ServiceTrackerModalProps {
     previewData?: PreviewData
     /** Suppress the internal mini map - use when the caller already shows this trip on a bigger map alongside. */
     hideMap?: boolean
+    /**
+     * Custom trigger element. When given, it replaces the default Track/Preview
+     * button and is used as-is (rendered `asChild`), so the caller can make e.g. a
+     * whole departure-board row open the tracker.
+     */
+    children?: ReactNode
 }
 
 export interface PreviewData {
@@ -53,6 +59,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
     onOpenChange,
     previewData,
     hideMap,
+    children,
 }: ServiceTrackerModalProps) {
     const [open, setOpen] = useState(defaultOpen)
     const isMobile = useIsMobile()
@@ -63,7 +70,9 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
         if (onOpenChange) onOpenChange(v)
     }
 
-    const triggerButton = !defaultOpen ? (
+    const triggerButton = defaultOpen ? null : children ? (
+        children
+    ) : (
         <Button
             aria-label="Track service on map"
             disabled={!loaded || initialLoading}
@@ -88,7 +97,7 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
                 </>
             )}
         </Button>
-    ) : null
+    )
 
     const content = (
         <ServiceTrackerProvider
@@ -113,8 +122,11 @@ const ServiceTrackerModal = memo(function ServiceTrackerModal({
         <Sheet open={open} onOpenChange={handleOpenChange}>
             {triggerButton && <SheetTrigger asChild>{triggerButton}</SheetTrigger>}
             {open && (vehicle || (!has && previewData && stops)) && (
-                <SheetContent side={"bottom"} className="max-h-[90vh] overflow-y-auto rounded-t-lg">
-                    <div className="mx-auto w-full max-w-sm">{content}</div>
+                <SheetContent
+                    side={"bottom"}
+                    className="max-h-[92vh] overflow-y-auto overscroll-contain rounded-t-2xl p-4 pt-5 sm:p-6"
+                >
+                    <div className="mx-auto w-full max-w-md">{content}</div>
                 </SheetContent>
             )}
         </Sheet>

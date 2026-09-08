@@ -3,16 +3,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import LoadingSpinner from "../../loading-spinner"
 import { formatUnixTime, timeTillArrivalMsString } from "@/lib/formating"
 import StopsList from "./stops-list"
-import RaceTheBus from "./race-the-bus"
 import { useServiceTrackerContext, useRouteLine } from "./use-service-tracker"
 import type { MapItem } from "@/components/map/markers/create"
 import type { LatLng } from "../../map/map"
 import { ApiFetch } from "@/lib/url-context"
-import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X } from "lucide-react"
+import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X, CalendarClockIcon, RadioIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { fullyEncodeURIComponent } from "@/lib/utils"
+import { cn, fullyEncodeURIComponent } from "@/lib/utils"
 import { getRegionSlug, urlStore } from "@/lib/url-store"
 import { toast } from "sonner"
 import type { AlertResponseData } from "@/lib/alert-causes"
@@ -26,10 +25,14 @@ const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="
 type RouteAlert = AlertResponseData
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent() {
-    const { vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap } = useServiceTrackerContext()
+    const { vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
     const nextStopRef = useRef<HTMLLIElement>(null)
     const scrollAreaRef = useRef<HTMLDivElement>(null)
     const [tabValue, setTabValue] = useState(hideMap ? "stops" : "track")
+
+    // On the full-screen page the map should fill the space under the header/tabs
+    // rather than sit in a fixed 300px slot with dead space below it.
+    const mapHeight = stopsLayout === "page" ? "min(58vh, 560px)" : "300px"
 
     // Stable map container ids - MapComp re-creates the whole map (and so resets
     // the zoom) whenever map_id changes, and this component re-renders on every
@@ -132,10 +135,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 )
                 : "";
 
-        const currentStopArrivalMs = currentStop
-            ? stopTimes?.find((st) => st.parent_stop_id === currentStop.id || st.child_stop_id === currentStop.id)?.arrival_time
-            : undefined
-
         // Live "N stops away" readout, counted from the rider's own stop (only
         // known when this tracker was opened from that stop's departure board)
         // while the vehicle is confirmed en route - not yet, or already past, at it.
@@ -151,6 +150,8 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
             <div className="space-y-3">
                 <div>
                     <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} routeId={activeRouteId} />
+
+                    {vehicle.state === "Unknown" && <TrackingNotice level="limited" />}
 
                     {vehicle.off_course && (
                         <Card className="border-destructive bg-destructive/5 mb-4">
@@ -175,7 +176,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                     {vehicle.route.name}
                                 </span>
                             </div>
-                            <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-tight">
+                            <h1 className="text-lg sm:text-xl font-display font-bold text-foreground leading-tight">
                                 {vehicle.trip.headsign}
                             </h1>
                         </div>
@@ -207,15 +208,10 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                         />
                     </div>
 
-                    {currentStop && (
-                        <div className="mt-4">
-                            <RaceTheBus currentStop={currentStop} vehicleArrivalMs={currentStopArrivalMs} />
-                        </div>
-                    )}
                 </div>
 
                 {hideMap ? (
-                    <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
+                    <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
                 ) : (
                     <Tabs onValueChange={setTabValue} defaultValue="track" className="w-full">
                         <TabsList className="w-full">
@@ -228,7 +224,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                         </TabsList>
 
                         <TabsContent value="track">
-                            <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
+                            <Suspense fallback={<LoadingSpinner description="Loading map..." height={mapHeight} />}>
                                 <LeafletMap
                                     defaultZoom={
                                         currentStop
@@ -313,13 +309,13 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                             ]
                                     }
                                     map_id={trackMapId}
-                                    height={"300px"}
+                                    height={mapHeight}
                                 />
                             </Suspense>
                         </TabsContent>
 
                         <TabsContent value="stops">
-                            <StopsList tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
+                            <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
                         </TabsContent>
                     </Tabs>
                 )}
@@ -378,10 +374,11 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                         {previewData.route_name}
                                     </span>
                                 </div>
-                                <h1 className="text-xl sm:text-2xl font-display font-bold text-foreground leading-tight">
+                                <h1 className="text-lg sm:text-xl font-display font-bold text-foreground leading-tight">
                                     {previewData.tripHeadsign}
                                 </h1>
                             </div>
+                            <TrackingNotice level="scheduled" />
                             <Card>
                                 <CardContent className="p-4">
                                     <div className="flex flex-wrap gap-1 items-center justify-between">
@@ -414,20 +411,20 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 </div>
 
                 {hideMap ? (
-                    <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
+                    <StopsList layout={stopsLayout} tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
                 ) : (
-                    <Tabs defaultValue="track" className="w-full">
+                    <Tabs defaultValue="stops" className="w-full">
                         <TabsList className="w-full">
                             <TabsTrigger className="w-full" value="stops">
                                 Stops
                             </TabsTrigger>
                             <TabsTrigger className="w-full" value="track">
-                                Track
+                                Route map
                             </TabsTrigger>
                         </TabsList>
 
                         <TabsContent value="track">
-                            <Suspense fallback={<LoadingSpinner description="Loading map..." height="300px" />}>
+                            <Suspense fallback={<LoadingSpinner description="Loading map..." height={mapHeight} />}>
                                 <LeafletMap
                                     defaultZoom={mapBounds}
                                     line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
@@ -455,13 +452,13 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                         },
                                     )}
                                     map_id={previewMapId}
-                                    height={"300px"}
+                                    height={mapHeight}
                                 />
                             </Suspense>
                         </TabsContent>
 
                         <TabsContent value="stops">
-                            <StopsList tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
+                            <StopsList layout={stopsLayout} tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
                         </TabsContent>
                     </Tabs>
                 )}
@@ -474,6 +471,41 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
 
 export default ServiceTrackerContent
 
+
+function TrackingNotice({ level }: { level: "scheduled" | "limited" }) {
+    const scheduled = level === "scheduled"
+    return (
+        <div
+            className={cn(
+                "mb-4 flex items-start gap-2.5 rounded-lg border p-3",
+                scheduled
+                    ? "border-border bg-muted/50"
+                    : "border-amber-200 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-950/40",
+            )}
+        >
+            {scheduled ? (
+                <CalendarClockIcon className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+            ) : (
+                <RadioIcon className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+            )}
+            <div className="text-sm">
+                <p
+                    className={cn(
+                        "font-medium",
+                        scheduled ? "text-foreground" : "text-amber-800 dark:text-amber-200",
+                    )}
+                >
+                    {scheduled ? "Timetable only" : "Limited tracking"}
+                </p>
+                <p className={scheduled ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300/90"}>
+                    {scheduled
+                        ? "This service isn't reporting its position. Times below come from the schedule, not a live vehicle."
+                        : "We're getting arrival updates for this trip, but no live position — the map may be approximate."}
+                </p>
+            </div>
+        </div>
+    )
+}
 
 const RouteAlertsBanner = memo(function RouteAlertsBanner({
     alerts,
@@ -602,21 +634,25 @@ const StopStatusCard = memo(function StopStatusCard({
     }
 
     return (
-        <Card className={`${getVariantStyles()} transition-colors overflow-hidden`}>
-            <CardContent className="p-3 overflow-hidden">
-                <div className="flex items-center gap-1">
-                    <div className={`${getIconColor()} flex-shrink-0`}>
+        <Card className={`${getVariantStyles()} overflow-hidden transition-colors`}>
+            <CardContent className="p-3">
+                <div className="flex items-start gap-2">
+                    <div className={`${getIconColor()} mt-0.5 flex-shrink-0`}>
                         {variant === "final" ? <FlagIcon className="h-4 w-4" /> : variant === "current" ? <MapPinIcon className="h-4 w-4" /> : <Navigation2 className="h-4 w-4" />}
                     </div>
-                    <div className="flex flex-nowrap gap-1 w-full items-center overflow-hidden">
-                        <p className={`text-xs text-nowrap font-medium ${getTitleColor()}`}>{title.replace(":", "")}:</p>
-                        <p className="text-xs font-semibold text-foreground truncate">{stopName}</p>
-                        {arrivalTime && (
-                            <p className="text-xs font-mono tabular-nums font-semibold text-foreground text-nowrap">@ {arrivalTime}</p>
-                        )}
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                            <p className={`text-xs font-medium ${getTitleColor()}`}>{title.replace(":", "")}</p>
+                            {arrivalTime && (
+                                <p className="shrink-0 font-mono text-xs font-semibold tabular-nums text-foreground">
+                                    {arrivalTime}
+                                </p>
+                            )}
+                        </div>
+                        <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground">{stopName}</p>
                         {stopsAway !== undefined && stopsAway > 0 && (
-                            <p className="text-xs text-muted-foreground text-nowrap">
-                                <span className="text-foreground font-medium">{stopsAway}</span> {stopsAway === 1 ? "stop" : "stops"} away
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                <span className="font-medium text-foreground">{stopsAway}</span> {stopsAway === 1 ? "stop" : "stops"} away
                             </p>
                         )}
                     </div>

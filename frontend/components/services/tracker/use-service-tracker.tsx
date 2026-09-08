@@ -22,6 +22,11 @@ export interface ServiceTrackerContextValue {
     refreshing: boolean
     /** Suppress the internal mini map - use when a caller already shows this trip on a bigger map alongside. */
     hideMap?: boolean
+    /**
+     * "inset" (default) caps the stop list in its own scroll box; "page" lets it
+     * flow with a full-screen page and pins the reminder actions to the bottom.
+     */
+    stopsLayout?: "inset" | "page"
 }
 
 const ServiceTrackerContext = createContext<ServiceTrackerContextValue | null>(null)

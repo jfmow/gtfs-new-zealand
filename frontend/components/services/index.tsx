@@ -1,16 +1,25 @@
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { AccessibilityIcon, BadgeInfoIcon, BikeIcon, ChevronDown, ChevronUp } from "lucide-react"
+import {
+    AccessibilityIcon,
+    BikeIcon,
+    ChevronDown,
+    ChevronRight,
+    ChevronUp,
+    ClockIcon,
+    InfoIcon,
+    MapPinIcon,
+    WaypointsIcon,
+} from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords } from "@/lib/formating"
-import ServiceTrackerModal from "./tracker"
+import ServiceTrackerView from "./tracker/panel"
+import type { PreviewData } from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
-import { fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
+import { cn, fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
 import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
 import { motion, AnimatePresence } from "framer-motion"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip"
 
 interface ServicesProps {
     stopName: string
@@ -70,6 +79,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const [isInitialLoading, setIsInitialLoading] = useState(true)
     const displayingSchedulePreview = filterDate ? true : false
     const [showAllPlatforms, setShowAllPlatforms] = useState(false)
+    const [selectedService, setSelectedService] = useState<Service | null>(null)
     const isMobile = useIsMobile()
 
     const getUniquePlatforms = (services: Service[]) => {
@@ -101,6 +111,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
         setServices([])
         setPlatformFilter({ type: 'platforms', value: "all" })
+        setSelectedService(null)
         setIsInitialLoading(true)
 
         async function fetchServices(date?: Date) {
@@ -159,20 +170,20 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                 <>
                     <DisplayTodaysAlerts stopName={stopName} forceDisplay />
                     <InfoScreen
-                        infoTitle="No Services Scheduled"
-                        infoText={`No services are scheduled at "${stopName}" for this time.`}
+                        infoTitle="No services scheduled"
+                        infoText={`Nothing is scheduled to call at "${stopName}" around this time. Try another time or a nearby stop.`}
                     />
                 </>
             )
         }
-        return <ErrorScreen traceId={errorTrace} errorTitle="Could not load services" errorText={errorMessage} />
+        return <ErrorScreen traceId={errorTrace} errorTitle="Could not load departures" errorText={errorMessage} />
     }
 
     if (stopName === "") return null
 
     if (isInitialLoading) {
         return (
-            <div className="max-w-[1400px] w-full mx-auto p-4">
+            <div className="mx-auto w-full max-w-2xl px-4 pb-10">
                 <ServicesLoadingSkeleton />
             </div>
         )
@@ -184,51 +195,68 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         ? uniquePlatforms.platforms.slice(0, 3)
         : uniquePlatforms.platforms
 
+    const visibleServices = sortServices(services, platformFilter)
+
+    const panelOpen = selectedService !== null && !isMobile
+    const trackerProps = selectedService && {
+        tripId: selectedService.trip_id,
+        has: selectedService.location_tracking,
+        currentStop: {
+            id: selectedService.stop.id,
+            lat: selectedService.stop.lat,
+            lon: selectedService.stop.lon,
+            name: selectedService.stop.name,
+        },
+        previewData: {
+            tripHeadsign: selectedService.headsign,
+            route_id: selectedService.route.id,
+            route_name: selectedService.route.name,
+            trip_id: selectedService.trip_id,
+            route_color: selectedService.route.color,
+        } as PreviewData,
+    }
+
     return (
-        <div className="max-w-[1400px] w-full mx-auto px-4 pb-8">
+        <div
+            className={cn(
+                "mx-auto w-full px-4 pb-10",
+                panelOpen ? "max-w-5xl md:flex md:items-start md:gap-6" : "max-w-2xl",
+            )}
+        >
+          <div className="min-w-0 flex-1">
             {uniquePlatforms.platforms.length > 1 && (
-                <section className="mb-5" aria-labelledby="platform-filter-heading">
+                <section className="mb-3" aria-labelledby="platform-filter-heading">
                     <h2 id="platform-filter-heading" className="sr-only">
-                        Filter services by {uniquePlatforms.type === "platforms" ? "platform" : "route"}
+                        Filter departures by {uniquePlatforms.type === "platforms" ? "platform" : "route"}
                     </h2>
                     <div className="space-y-2">
                         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Platform filters">
-                            <button
-                                role="tab"
-                                aria-selected={platformFilter.value === "all"}
+                            <FilterChip
+                                selected={platformFilter.value === "all"}
                                 onClick={() => setPlatformFilter({ ...platformFilter, value: "all" })}
-                                className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${platformFilter.value === "all"
-                                    ? "bg-primary text-primary-foreground shadow-sm"
-                                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                                    }`}
                             >
-                                All {uniquePlatforms.type === "platforms" ? "Platforms" : "Routes"}
-                            </button>
+                                All {uniquePlatforms.type === "platforms" ? "platforms" : "routes"}
+                            </FilterChip>
                             {platformsToShow.map((platform) => (
-                                <button
+                                <FilterChip
                                     key={platform}
-                                    role="tab"
-                                    aria-selected={platformFilter.value === platform}
+                                    selected={platformFilter.value === platform}
                                     onClick={() => setPlatformFilter({ ...platformFilter, value: platform })}
-                                    className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-150 ${platformFilter.value === platform
-                                        ? "bg-primary text-primary-foreground shadow-sm"
-                                        : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                                        }`}
                                 >
                                     {uniquePlatforms.type === "platforms" ? "Platform " : ""}{platform}
-                                </button>
+                                </FilterChip>
                             ))}
                         </div>
                         {shouldShowExpandButton && (
                             <button
                                 onClick={() => setShowAllPlatforms(!showAllPlatforms)}
                                 aria-expanded={showAllPlatforms}
-                                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
                             >
                                 {showAllPlatforms ? (
-                                    <><ChevronUp className="w-3 h-3" /> Show fewer</>
+                                    <><ChevronUp className="h-3 w-3" /> Show fewer</>
                                 ) : (
-                                    <><ChevronDown className="w-3 h-3" /> {uniquePlatforms.platforms.length - 3} more</>
+                                    <><ChevronDown className="h-3 w-3" /> {uniquePlatforms.platforms.length - 3} more</>
                                 )}
                             </button>
                         )}
@@ -237,299 +265,361 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             )}
 
             <section aria-labelledby="services-heading">
-                <h2 id="services-heading" className="sr-only">Available services</h2>
-                <ul
-                    id="services-list"
-                    role="list"
-                    aria-live="polite"
-                    aria-atomic="false"
-                    className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3"
-                >
-                    <AnimatePresence mode="popLayout">
-                        {sortServices(services, platformFilter).map((service, index) => (
-                            <motion.li
-                                key={service.trip_id + service.platform}
-                                layout
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: -4 }}
-                                transition={{
-                                    duration: 0.18,
-                                    delay: Math.min(index * 0.025, 0.25),
-                                    layout: { duration: 0.25 },
-                                }}
-                                className="h-full"
-                            >
-                                <ServiceCard
-                                    service={service}
-                                    displayingSchedulePreview={displayingSchedulePreview}
-                                />
-                            </motion.li>
-                        ))}
-                    </AnimatePresence>
-                </ul>
+                <h2 id="services-heading" className="sr-only">Departures from {stopName}</h2>
+
+                {visibleServices.length === 0 ? (
+                    <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+                        Nothing on this {uniquePlatforms.type === "platforms" ? "platform" : "route"} right now.
+                    </p>
+                ) : (
+                    <ul
+                        id="services-list"
+                        role="list"
+                        aria-live="polite"
+                        aria-atomic="false"
+                        className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card"
+                    >
+                        <AnimatePresence mode="popLayout" initial={false}>
+                            {visibleServices.map((service) => (
+                                <motion.li
+                                    key={service.trip_id + service.platform}
+                                    layout
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.15, layout: { duration: 0.25 } }}
+                                >
+                                    <ServiceRow
+                                        service={service}
+                                        displayingSchedulePreview={displayingSchedulePreview}
+                                        selected={selectedService?.trip_id === service.trip_id}
+                                        onOpen={() => setSelectedService(service)}
+                                    />
+                                </motion.li>
+                            ))}
+                        </AnimatePresence>
+                    </ul>
+                )}
             </section>
 
-            <footer className="mt-8 pt-5 border-t border-border">
-                <div className="flex flex-wrap gap-x-6 gap-y-3 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                        <BadgeInfoIcon className="w-3.5 h-3.5 shrink-0" />
-                        <span>Partial tracking: trip updates only, no live location</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1">
-                            <BikeIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> Bikes allowed
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <BikeIcon className="w-3.5 h-3.5 text-amber-500" /> Ask operator
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <BikeIcon className="w-3.5 h-3.5 text-red-500" /> No bikes
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <span className="flex items-center gap-1">
-                            <AccessibilityIcon className="w-3.5 h-3.5 text-green-600 dark:text-green-400" /> Accessible
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <AccessibilityIcon className="w-3.5 h-3.5 text-amber-500" /> Unknown
-                        </span>
-                        <span className="flex items-center gap-1">
-                            <AccessibilityIcon className="w-3.5 h-3.5 text-red-500" /> Not accessible
-                        </span>
-                    </div>
-                </div>
-            </footer>
+            <IconKey />
+          </div>
+
+          <AnimatePresence>
+              {panelOpen && trackerProps && (
+                  <motion.div
+                      key="tracker-panel"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                      className="sticky top-[4.5rem] hidden h-[calc(100vh-6rem)] w-[400px] max-w-[38vw] shrink-0 md:block"
+                  >
+                      <ServiceTrackerView
+                          variant="panel"
+                          hideMap={false}
+                          tripId={trackerProps.tripId}
+                          has={trackerProps.has}
+                          currentStop={trackerProps.currentStop}
+                          previewData={trackerProps.previewData}
+                          onClose={() => setSelectedService(null)}
+                      />
+                  </motion.div>
+              )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+              {selectedService && isMobile && trackerProps && (
+                  <ServiceTrackerView
+                      key="tracker-page"
+                      variant="page"
+                      backLabel="Departures"
+                      tripId={trackerProps.tripId}
+                      has={trackerProps.has}
+                      currentStop={trackerProps.currentStop}
+                      previewData={trackerProps.previewData}
+                      onClose={() => setSelectedService(null)}
+                  />
+              )}
+          </AnimatePresence>
         </div>
     )
 }
 
-function ServiceCard({ service, displayingSchedulePreview }: { service: Service; displayingSchedulePreview: boolean }) {
-    const isSpecialState = service.canceled || service.skipped || (service.departed && !displayingSchedulePreview)
-
-    const statusStripeColor = service.canceled
-        ? "bg-red-500"
-        : service.skipped
-            ? "bg-blue-500"
-            : service.departed
-                ? "bg-amber-500"
-                : null
-
+function FilterChip({
+    selected,
+    onClick,
+    children,
+}: {
+    selected: boolean
+    onClick: () => void
+    children: React.ReactNode
+}) {
     return (
-        <Card
-            className={`h-full flex flex-col overflow-hidden transition-shadow duration-200 hover:shadow-md ${service.canceled
-                ? "border-red-200 dark:border-red-900/60 bg-red-50/40 dark:bg-red-950/20"
-                : service.skipped
-                    ? "border-blue-200 dark:border-blue-900/60 bg-blue-50/40 dark:bg-blue-950/20"
-                    : service.departed && !displayingSchedulePreview
-                        ? "border-amber-200 dark:border-amber-900/60 bg-amber-50/40 dark:bg-amber-950/20"
-                        : ""
-                }`}
-            role="article"
-            aria-label={`${service.route.name} to ${formatTextToNiceLookingWords(service.headsign)}`}
-        >
-            {statusStripeColor && (
-                <div className={`h-0.5 w-full ${statusStripeColor}`} aria-hidden="true" />
+        <button
+            role="tab"
+            aria-selected={selected}
+            onClick={onClick}
+            className={cn(
+                "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
+                selected
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground",
             )}
-
-            <CardHeader className="p-4 pb-3">
-                <div className="flex items-start gap-2.5">
-                    {/* Route badge */}
-                    <span
-                        className="shrink-0 mt-0.5 px-2 py-0.5 rounded text-white text-xs font-bold tracking-wide leading-5"
-                        style={{
-                            background: "#" + (service.route.color || "424242"),
-                        }}
-                        aria-label={`Route ${service.route.name}`}
-                    >
-                        {service.route.name}
-                    </span>
-
-                    {/* Destination + status badges */}
-                    <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm leading-snug text-foreground line-clamp-2">
-                            {formatTextToNiceLookingWords(service.headsign)}
-                        </p>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                            {service.canceled && (
-                                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800">
-                                    Canceled
-                                </Badge>
-                            )}
-                            {service.skipped && (
-                                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 border-blue-200 dark:border-blue-800">
-                                    Not stopping
-                                </Badge>
-                            )}
-                            {service.departed && !displayingSchedulePreview && (
-                                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border-amber-200 dark:border-amber-800">
-                                    Departed
-                                </Badge>
-                            )}
-                            {service.platform_changed && (
-                                <Badge className="text-[10px] px-1.5 py-0 h-4 bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 border-red-200 dark:border-red-800">
-                                    Platform changed
-                                </Badge>
-                            )}
-                            {service.trip_update_tracking && !service.location_tracking && service.trip_started && (
-                                <TooltipProvider>
-                                    <Tooltip delayDuration={100}>
-                                        <TooltipTrigger>
-                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 cursor-default">
-                                                Partial updates
-                                            </Badge>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>Receiving trip updates but no live location</p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                </TooltipProvider>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Time till arrival chip */}
-                    {!displayingSchedulePreview && !isSpecialState && (
-                        <div className={`shrink-0 rounded-lg px-2 py-1 text-center min-w-[48px] ${arrivalUrgencyClass(service.time_till_arrival)}`}>
-                            <span className="text-sm font-bold leading-tight block tabular-nums">
-                                {service.stops_away === 0 && service.time_till_arrival <= 1
-                                    ? "Now"
-                                    : formatArrivalTime(service.time_till_arrival)}
-                            </span>
-                        </div>
-                    )}
-                </div>
-            </CardHeader>
-
-            <CardContent className="px-4 pb-4 pt-0 flex-1 flex flex-col">
-                {/* Scheduled time + platform row */}
-                <div className="flex items-end justify-between gap-2">
-                    <div className="space-y-1 text-sm">
-                        <p className="text-muted-foreground leading-none">
-                            {service.skipped ? "Passing" : "Scheduled"}{" "}
-                            <time dateTime={service.arrival_time} className="text-foreground font-medium">
-                                {convert24hTo12h(service.arrival_time)}
-                            </time>
-                        </p>
-                        {!displayingSchedulePreview && (
-                            <>
-                                {service.stops_away >= 0 && (
-                                    <p className="text-muted-foreground leading-none">
-                                        <span className="text-foreground font-medium">{service.stops_away}</span>{" "}
-                                        {service.stops_away === 1 ? "stop" : "stops"} away
-                                    </p>
-                                )}
-                                {service.stops_away === -1 && service.stop_state === "AtStop" && (
-                                    <p className="text-green-700 dark:text-green-400 font-medium leading-none text-xs uppercase tracking-wide">
-                                        At this stop
-                                    </p>
-                                )}
-                                {service.occupancy >= 0 && (
-                                    <p className="text-muted-foreground leading-none font-medium">
-                                        {getOccupancyLabel(service.occupancy)}
-                                    </p>
-                                )}
-                            </>
-                        )}
-                    </div>
-
-                    {/* Platform */}
-                    {service.platform && service.platform !== "" && service.platform !== "no platform" && (
-                        <div className="text-right shrink-0">
-                            <p className="text-[10px] text-muted-foreground uppercase tracking-wider leading-none mb-0.5">Platform</p>
-                            <p className={`text-xl font-bold leading-none ${service.platform_changed ? "text-destructive" : "text-primary"}`}>
-                                {service.platform}
-                            </p>
-                        </div>
-                    )}
-                </div>
-
-                {/* Spacer pushes action row to bottom */}
-                <div className="flex-1" />
-
-                {/* Track button + accessibility icons — always at bottom */}
-                {!displayingSchedulePreview && !service.canceled && !service.departed && !service.skipped && (
-                    <div className="flex items-center gap-2 mt-3">
-                        <div className="flex-1">
-                            <ServiceTrackerModal
-                                previewData={{
-                                    tripHeadsign: service.headsign,
-                                    route_id: service.route.id,
-                                    route_name: service.route.name,
-                                    trip_id: service.trip_id,
-                                    route_color: service.route.color,
-                                }}
-                                currentStop={service.stop}
-                                loaded={true}
-                                has={service.location_tracking}
-                                tripId={service.trip_id}
-                            />
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <BikeIcon
-                                aria-label={
-                                    service.bikes_allowed === 1
-                                        ? "Bikes allowed"
-                                        : service.bikes_allowed === 2
-                                            ? "No bikes"
-                                            : "Ask about bikes"
-                                }
-                                className={`w-4 h-4 ${service.bikes_allowed === 1
-                                    ? "text-green-600 dark:text-green-400"
-                                    : service.bikes_allowed === 2
-                                        ? "text-red-500"
-                                        : "text-amber-500"
-                                    }`}
-                            />
-                            <AccessibilityIcon
-                                aria-label={
-                                    service.wheelchairs_allowed === 1
-                                        ? "Wheelchair accessible"
-                                        : service.wheelchairs_allowed === 2
-                                            ? "Not wheelchair accessible"
-                                            : "Accessibility unknown"
-                                }
-                                className={`w-4 h-4 ${service.wheelchairs_allowed === 1
-                                    ? "text-green-600 dark:text-green-400"
-                                    : service.wheelchairs_allowed === 2
-                                        ? "text-red-500"
-                                        : "text-amber-500"
-                                    }`}
-                            />
-                        </div>
-                    </div>
-                )}
-
-                {/* Schedule preview: just accessibility icons at bottom */}
-                {displayingSchedulePreview && (
-                    <div className="flex items-center gap-1.5 mt-3">
-                        <BikeIcon
-                            className={`w-4 h-4 ${service.bikes_allowed === 1
-                                ? "text-green-600 dark:text-green-400"
-                                : service.bikes_allowed === 2
-                                    ? "text-red-500"
-                                    : "text-amber-500"
-                                }`}
-                        />
-                        <AccessibilityIcon
-                            className={`w-4 h-4 ${service.wheelchairs_allowed === 1
-                                ? "text-green-600 dark:text-green-400"
-                                : service.wheelchairs_allowed === 2
-                                    ? "text-red-500"
-                                    : "text-amber-500"
-                                }`}
-                        />
-                    </div>
-                )}
-            </CardContent>
-        </Card>
+        >
+            {children}
+        </button>
     )
 }
 
-function arrivalUrgencyClass(minutes: number): string {
-    if (minutes <= 1) return "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
-    if (minutes <= 5) return "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
-    return "bg-primary/10 text-primary dark:bg-primary/20"
+function ServiceRow({
+    service,
+    displayingSchedulePreview,
+    selected,
+    onOpen,
+}: {
+    service: Service
+    displayingSchedulePreview: boolean
+    selected: boolean
+    onOpen: () => void
+}) {
+    const isCanceled = service.canceled
+    const isSkipped = service.skipped
+    const isDeparted = service.departed && !displayingSchedulePreview
+    const trackable = !displayingSchedulePreview && !isCanceled && !isDeparted && !isSkipped
+
+    const tint = isCanceled
+        ? "bg-destructive/[0.06]"
+        : isSkipped
+            ? "bg-blue-500/[0.06]"
+            : isDeparted
+                ? "bg-amber-500/[0.06]"
+                : ""
+
+    const hasPlatform =
+        service.platform && service.platform !== "" && service.platform !== "no platform"
+
+    // Occupancy, "N stops away" and "at this stop" only mean something when this
+    // service is actually being tracked - otherwise the values are placeholders
+    // and would falsely tell a rider the bus has seats or is two stops out.
+    const isLive =
+        !displayingSchedulePreview && (service.location_tracking || service.trip_update_tracking)
+    const showOccupancy = service.location_tracking && service.occupancy >= 0
+
+    // How much we really know about where this service is right now.
+    const tracking: "live" | "limited" | "scheduled" = service.location_tracking
+        ? "live"
+        : service.trip_update_tracking
+            ? "limited"
+            : "scheduled"
+
+    const inner = (
+        <div className={cn("flex w-full items-start gap-3 px-3 py-3 text-left", tint)}>
+            {/* Route-colour rail: the one place agency colour lives */}
+            <span
+                aria-hidden
+                className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
+                style={{ background: "#" + (service.route.color || "9ca3af") }}
+            />
+
+            <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                            <span
+                                className="rounded px-1.5 py-0.5 text-[11px] font-bold leading-4 tracking-wide text-white"
+                                style={{ background: "#" + (service.route.color || "424242") }}
+                            >
+                                {service.route.name}
+                            </span>
+                            {service.platform_changed && (
+                                <Badge className="h-4 border-red-200 bg-red-100 px-1.5 py-0 text-[10px] text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
+                                    Platform changed
+                                </Badge>
+                            )}
+                            {!displayingSchedulePreview && tracking === "limited" && (
+                                <Badge
+                                    variant="outline"
+                                    className="h-4 border-amber-300 px-1.5 py-0 text-[10px] font-medium text-amber-700 dark:border-amber-700/70 dark:text-amber-400"
+                                >
+                                    Limited tracking
+                                </Badge>
+                            )}
+                            {!displayingSchedulePreview && tracking === "scheduled" && (
+                                <Badge
+                                    variant="outline"
+                                    className="h-4 px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
+                                >
+                                    Timetable only
+                                </Badge>
+                            )}
+                        </div>
+
+                        <p className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground">
+                            {formatTextToNiceLookingWords(service.headsign)}
+                        </p>
+                    </div>
+
+                    <div className="shrink-0 pt-0.5 text-right">
+                        <BoardTime service={service} displayingSchedulePreview={displayingSchedulePreview} />
+                    </div>
+                </div>
+
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {!displayingSchedulePreview && (
+                        <span className="inline-flex items-center gap-1 tabular-nums">
+                            <ClockIcon className="h-3 w-3 shrink-0" />
+                            {convert24hTo12h(service.arrival_time)}
+                        </span>
+                    )}
+                    {hasPlatform && (
+                        <span
+                            className={cn(
+                                "inline-flex items-center gap-1",
+                                service.platform_changed && "font-medium text-destructive",
+                            )}
+                        >
+                            <MapPinIcon className="h-3 w-3 shrink-0" />
+                            Platform {service.platform}
+                        </span>
+                    )}
+                    {isLive && service.stops_away > 0 && (
+                        <span className="inline-flex items-center gap-1">
+                            <WaypointsIcon className="h-3 w-3 shrink-0" />
+                            {service.stops_away} {service.stops_away === 1 ? "stop" : "stops"} away
+                        </span>
+                    )}
+                    {isLive && service.stops_away === -1 && service.stop_state === "AtStop" && (
+                        <span className="font-medium text-blue-600 dark:text-blue-400">At this stop</span>
+                    )}
+                    {showOccupancy && <span>{getOccupancyShort(service.occupancy)}</span>}
+
+                    <span className="ml-auto inline-flex items-center gap-1.5">
+                        <BikeIcon className={cn("h-3.5 w-3.5", allowedColor(service.bikes_allowed))} />
+                        <AccessibilityIcon
+                            className={cn("h-3.5 w-3.5", allowedColor(service.wheelchairs_allowed))}
+                        />
+                        {trackable && (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground/60" aria-hidden />
+                        )}
+                    </span>
+                </div>
+            </div>
+        </div>
+    )
+
+    if (!trackable) {
+        return inner
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={onOpen}
+            aria-label={`Track ${service.route.name} to ${formatTextToNiceLookingWords(service.headsign)}`}
+            className={cn(
+                "block w-full transition-colors hover:bg-muted/50 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+                selected && "bg-accent ring-1 ring-inset ring-border",
+            )}
+        >
+            {inner}
+        </button>
+    )
+}
+
+function BoardTime({
+    service,
+    displayingSchedulePreview,
+}: {
+    service: Service
+    displayingSchedulePreview: boolean
+}) {
+    if (displayingSchedulePreview) {
+        return (
+            <span className="text-sm font-semibold tabular-nums text-foreground">
+                {convert24hTo12h(service.arrival_time)}
+            </span>
+        )
+    }
+    if (service.canceled) {
+        return <span className="text-sm font-bold uppercase tracking-wide text-destructive">Cancelled</span>
+    }
+    if (service.skipped) {
+        return (
+            <span className="text-sm font-bold text-blue-600 dark:text-blue-400">Not stopping</span>
+        )
+    }
+    if (service.departed) {
+        return <span className="text-sm font-bold text-amber-600 dark:text-amber-400">Departed</span>
+    }
+
+    const now = service.stops_away === 0 && service.time_till_arrival <= 1
+    if (now) {
+        return (
+            <span className="live-dot text-xl font-bold leading-none text-blue-600 dark:text-blue-400">
+                Now
+            </span>
+        )
+    }
+
+    const imminent = service.time_till_arrival <= 2
+    return (
+        <span
+            className={cn(
+                "text-xl font-bold leading-none tabular-nums",
+                imminent ? "text-blue-600 dark:text-blue-400" : "text-foreground",
+            )}
+        >
+            {boardCountdown(service.time_till_arrival)}
+        </span>
+    )
+}
+
+function IconKey() {
+    return (
+        <details className="mt-4 text-xs text-muted-foreground">
+            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <InfoIcon className="h-3.5 w-3.5" />
+                What the icons mean
+            </summary>
+            <div className="mt-2 space-y-1.5 border-l-2 border-border pl-3">
+                <p className="flex items-center gap-1.5">
+                    <BikeIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> bikes allowed
+                    <span className="mx-1 text-border">|</span>
+                    <BikeIcon className="h-3.5 w-3.5 text-amber-500" /> ask the operator
+                    <span className="mx-1 text-border">|</span>
+                    <BikeIcon className="h-3.5 w-3.5 text-red-500" /> no bikes
+                </p>
+                <p className="flex items-center gap-1.5">
+                    <AccessibilityIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> step-free
+                    <span className="mx-1 text-border">|</span>
+                    <AccessibilityIcon className="h-3.5 w-3.5 text-amber-500" /> unknown
+                    <span className="mx-1 text-border">|</span>
+                    <AccessibilityIcon className="h-3.5 w-3.5 text-red-500" /> not step-free
+                </p>
+                <p>
+                    <span className="font-medium text-amber-700 dark:text-amber-400">Limited tracking</span>{" "}
+                    means we have arrival updates but no live position on the map.{" "}
+                    <span className="font-medium">Timetable only</span> means this service isn&apos;t
+                    reporting at all &mdash; times are scheduled.
+                </p>
+            </div>
+        </details>
+    )
+}
+
+function allowedColor(value: number): string {
+    if (value === 1) return "text-green-600 dark:text-green-400"
+    if (value === 2) return "text-red-500"
+    return "text-amber-500"
+}
+
+function boardCountdown(minutes: number): string {
+    if (minutes <= 0.5) return "Now"
+    const hours = Math.floor(minutes / 60)
+    const mins = Math.round(minutes % 60)
+    if (hours > 0) return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
+    return `${mins} min`
 }
 
 export function getOccupancyLabel(value: number): string {
@@ -545,6 +635,22 @@ export function getOccupancyLabel(value: number): string {
             return "Likely full, standing only"
         default:
             return "Unknown occupancy"
+    }
+}
+
+function getOccupancyShort(value: number): string {
+    switch (value) {
+        case 0:
+        case 1:
+            return "Seats free"
+        case 2:
+            return "Filling up"
+        case 3:
+            return "Standing room"
+        case 4:
+            return "Likely full"
+        default:
+            return ""
     }
 }
 
@@ -564,15 +670,4 @@ function sortServices(services: Service[], platformFilter: PlatformFilter | unde
             // to the top of the board.
             return a.time_till_arrival - b.time_till_arrival
         })
-}
-
-function formatArrivalTime(minutes: number): string {
-    if (minutes <= 0.5) return "now"
-
-    const hours = Math.floor(minutes / 60)
-    const mins = Math.round(minutes % 60)
-
-    if (hours > 0 && mins > 0) return `${hours}h ${mins}m`
-    if (hours > 0) return `${hours}h`
-    return `${mins}m`
 }
