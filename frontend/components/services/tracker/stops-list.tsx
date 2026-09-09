@@ -1,5 +1,5 @@
 import { useRef, useEffect, useState } from "react"
-import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, AlarmClock, ChevronRight } from "lucide-react"
+import { MapPin, Clock, AlertTriangle, Train, Waypoints, Bell, X, AlarmClock, ChevronRight, ChevronUp, ChevronDown } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -44,6 +44,10 @@ export default function StopsList({
     const [showReminderOptions, setShowReminderOptions] = useState(false)
     const [nStopsAway, setNStopsAway] = useState(1)
     const [leaveOffsets, setLeaveOffsets] = useState<number[]>([30, 15, 5, 0])
+    // Long routes collapse the stops already behind the vehicle and the ones far
+    // ahead, so the rider isn't scrolling past 30 stops to reach what's next.
+    const [showPast, setShowPast] = useState(false)
+    const [showFarAhead, setShowFarAhead] = useState(false)
 
     const openReminderOptions = () => {
         setShowReminderOptions(true)
@@ -99,18 +103,21 @@ export default function StopsList({
     // empty-deps effect would fire before nextStopRef is attached and do
     // nothing) and again whenever the vehicle advances to a new next stop.
     // Keyed so it doesn't re-scroll on every poll that leaves the stop unchanged.
+    // Skipped in "page" layout: there the list shares its scroll container with
+    // the header/summary/reminder bar (the mobile drawer), and yanking it to the
+    // next stop would hide the at-a-glance card the drawer opens on.
     const lastScrolledKey = useRef<string | null>(null)
     const nextStopKey = vehicle
         ? `${vehicle.trip.next_stop.parent_stop_id}|${vehicle.trip.next_stop.platform}`
         : limitedNextStopKey
     useEffect(() => {
-        if (!nextStopKey || !nextStopRef.current || lastScrolledKey.current === nextStopKey) return
+        if (isPage || !nextStopKey || !nextStopRef.current || lastScrolledKey.current === nextStopKey) return
         lastScrolledKey.current = nextStopKey
         const t = setTimeout(() => {
             nextStopRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
         }, 120)
         return () => clearTimeout(t)
-    }, [nextStopKey, stops])
+    }, [isPage, nextStopKey, stops])
 
     const getStopStatus = (stop: ServicesStop) => {
         if (vehicle) {
@@ -275,6 +282,37 @@ export default function StopsList({
 
     const vehiclePosition = getVehiclePosition()
 
+    const visibleStops = (stops ?? []).filter((stop) =>
+        isSelectingReminder ? !getStopStatus(stop).passed && !getStopStatus(stop).isCurrentStop : true,
+    )
+
+    // Anchor the visible window on where the vehicle is now (current stop, else
+    // next stop). Null on a timetable-only trip with no live position - then the
+    // whole list stays expanded, since the rider is browsing the route.
+    const anchorIndex = (() => {
+        const cur = visibleStops.findIndex((s) => getStopStatus(s).isCurrentStop)
+        if (cur !== -1) return cur
+        const nxt = visibleStops.findIndex((s) => getStopStatus(s).isNextStop)
+        return nxt !== -1 ? nxt : null
+    })()
+    const lastStopIndex = visibleStops.length - 1
+    const KEEP_BEHIND = 1
+    const KEEP_AHEAD = 6
+    // Only bother collapsing when the vehicle is somewhere in a long enough list
+    // and we're not in the middle of picking a stop for a reminder.
+    const collapsingActive =
+        !isSelectingReminder &&
+        anchorIndex !== null &&
+        visibleStops.length > KEEP_BEHIND + KEEP_AHEAD + 5
+    const inPastRange = (i: number) =>
+        collapsingActive && i < (anchorIndex as number) - KEEP_BEHIND
+    const inFarAheadRange = (i: number) =>
+        collapsingActive && i > (anchorIndex as number) + KEEP_AHEAD && i !== lastStopIndex
+    const isPastCollapsed = (i: number) => !showPast && inPastRange(i)
+    const isFarAheadCollapsed = (i: number) => !showFarAhead && inFarAheadRange(i)
+    const pastCount = visibleStops.filter((_, i) => inPastRange(i)).length
+    const farAheadCount = visibleStops.filter((_, i) => inFarAheadRange(i)).length
+
     return (
         <>
             <div
@@ -299,13 +337,39 @@ export default function StopsList({
                     </div>
                 )}
 
-                {stops
-                    ?.filter((stop) => (isSelectingReminder ? !getStopStatus(stop).passed && !getStopStatus(stop).isCurrentStop : true))
-                    .map((stop, index) => {
+                {showPast && pastCount > 0 && (
+                    <CollapseToggle
+                        label={`Hide ${pastCount} passed stop${pastCount === 1 ? "" : "s"}`}
+                        direction="up"
+                        onClick={() => setShowPast(false)}
+                    />
+                )}
+
+                {visibleStops.map((stop, index) => {
+                        if (isPastCollapsed(index)) {
+                            return isPastCollapsed(index - 1) ? null : (
+                                <CollapseToggle
+                                    key="collapsed-past"
+                                    label={`Show ${pastCount} passed stop${pastCount === 1 ? "" : "s"}`}
+                                    direction="down"
+                                    onClick={() => setShowPast(true)}
+                                />
+                            )
+                        }
+                        if (isFarAheadCollapsed(index)) {
+                            return isFarAheadCollapsed(index - 1) ? null : (
+                                <CollapseToggle
+                                    key="collapsed-ahead"
+                                    label={`Show ${farAheadCount} more stop${farAheadCount === 1 ? "" : "s"}`}
+                                    direction="down"
+                                    onClick={() => setShowFarAhead(true)}
+                                />
+                            )
+                        }
                         const { isCurrentStop, isNextStop, passed } = getStopStatus(stop)
                         const stopTime = getStopTime(stop.parent_stop_id)
                         const distance = stopTime?.dist || 0
-                        const isLast = index === stops.length - 1
+                        const isLast = index === lastStopIndex
                         const arrivalTime = formatUnixTime(stopTime?.arrival_time)
                         const departureTime = formatUnixTime(stopTime?.departure_time)
                         const canSelect = isSelectingReminder && !passed && !isCurrentStop
@@ -464,6 +528,14 @@ export default function StopsList({
                             </div>
                         )
                     })}
+
+                {showFarAhead && farAheadCount > 0 && (
+                    <CollapseToggle
+                        label="Show fewer stops"
+                        direction="up"
+                        onClick={() => setShowFarAhead(false)}
+                    />
+                )}
             </div>
 
             <div
@@ -589,6 +661,29 @@ export default function StopsList({
                 )}
             </div>
         </>
+    )
+}
+
+/** A slim row that stands in for a run of collapsed stops (passed, or far ahead). */
+function CollapseToggle({
+    label,
+    direction,
+    onClick,
+}: {
+    label: string
+    direction: "up" | "down"
+    onClick: () => void
+}) {
+    const Icon = direction === "up" ? ChevronUp : ChevronDown
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+        >
+            <Icon className="h-3.5 w-3.5 shrink-0" />
+            {label}
+        </button>
     )
 }
 

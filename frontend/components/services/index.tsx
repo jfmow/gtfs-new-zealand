@@ -12,6 +12,7 @@ import {
     WaypointsIcon,
 } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords } from "@/lib/formating"
+import { getOccupancyShort } from "./occupancy"
 import ServiceTrackerView from "./tracker/panel"
 import type { PreviewData } from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
@@ -197,7 +198,6 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     const visibleServices = sortServices(services, platformFilter)
 
-    const panelOpen = selectedService !== null && !isMobile
     const trackerProps = selectedService && {
         tripId: selectedService.trip_id,
         has: selectedService.location_tracking,
@@ -218,12 +218,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     }
 
     return (
-        <div
-            className={cn(
-                "mx-auto w-full px-4 pb-10",
-                panelOpen ? "max-w-5xl md:flex md:items-start md:gap-6" : "max-w-2xl",
-            )}
-        >
+        <div className="mx-auto w-full max-w-2xl px-4 pb-10">
           <div className="min-w-0 flex-1">
             {uniquePlatforms.platforms.length > 1 && (
                 <section className="mb-3" aria-labelledby="platform-filter-heading">
@@ -306,45 +301,19 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             <IconKey />
           </div>
 
-          <AnimatePresence>
-              {panelOpen && trackerProps && (
-                  <motion.div
-                      key="tracker-panel"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 20 }}
-                      transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
-                      className="sticky top-[4.5rem] hidden h-[calc(100vh-6rem)] w-[400px] max-w-[38vw] shrink-0 md:block"
-                  >
-                      <ServiceTrackerView
-                          variant="panel"
-                          hideMap={false}
-                          tripId={trackerProps.tripId}
-                          has={trackerProps.has}
-                          tripUpdateTracking={trackerProps.tripUpdateTracking}
-                          currentStop={trackerProps.currentStop}
-                          previewData={trackerProps.previewData}
-                          onClose={() => setSelectedService(null)}
-                      />
-                  </motion.div>
-              )}
-          </AnimatePresence>
-
-          <AnimatePresence>
-              {selectedService && isMobile && trackerProps && (
-                  <ServiceTrackerView
-                      key="tracker-page"
-                      variant="page"
-                      backLabel="Departures"
-                      tripId={trackerProps.tripId}
-                      has={trackerProps.has}
-                      tripUpdateTracking={trackerProps.tripUpdateTracking}
-                      currentStop={trackerProps.currentStop}
-                      previewData={trackerProps.previewData}
-                      onClose={() => setSelectedService(null)}
-                  />
-              )}
-          </AnimatePresence>
+          {selectedService && trackerProps && (
+              <ServiceTrackerView
+                  key={trackerProps.tripId}
+                  variant={isMobile ? "sheet" : "dialog"}
+                  backLabel="Departures"
+                  tripId={trackerProps.tripId}
+                  has={trackerProps.has}
+                  tripUpdateTracking={trackerProps.tripUpdateTracking}
+                  currentStop={trackerProps.currentStop}
+                  previewData={trackerProps.previewData}
+                  onClose={() => setSelectedService(null)}
+              />
+          )}
         </div>
     )
 }
@@ -639,37 +608,7 @@ function boardCountdown(minutes: number): string {
     return `${mins} min`
 }
 
-export function getOccupancyLabel(value: number): string {
-    switch (value) {
-        case 0:
-        case 1:
-            return "Seats available"
-        case 2:
-            return "Some seats still available"
-        case 3:
-            return "Likely standing room only"
-        case 4:
-            return "Likely full, standing only"
-        default:
-            return "Unknown occupancy"
-    }
-}
-
-function getOccupancyShort(value: number): string {
-    switch (value) {
-        case 0:
-        case 1:
-            return "Seats free"
-        case 2:
-            return "Filling up"
-        case 3:
-            return "Standing room"
-        case 4:
-            return "Likely full"
-        default:
-            return ""
-    }
-}
+export { getOccupancyLabel, getOccupancyShort } from "./occupancy"
 
 function sortServices(services: Service[], platformFilter: PlatformFilter | undefined) {
     return services

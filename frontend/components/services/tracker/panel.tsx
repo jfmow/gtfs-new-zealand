@@ -1,12 +1,17 @@
-import { memo } from "react"
+import { memo, type ReactNode } from "react"
 import { ChevronLeft, X } from "lucide-react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Button } from "../../ui/button"
+import { Dialog, DialogContent, DialogTitle } from "../../ui/dialog"
 import ErrorScreen from "../../ui/error-screen"
 import LoadingSpinner from "../../loading-spinner"
 import ServiceTrackerContent from "./body"
+import TrackerMap from "./tracker-map"
+import TrackerMobileSheet from "./mobile-sheet"
 import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker"
 import type { PreviewData } from "."
+
+type Variant = "panel" | "page" | "sheet" | "dialog"
 
 interface ServiceTrackerViewProps {
     tripId: string
@@ -21,22 +26,25 @@ interface ServiceTrackerViewProps {
         name: string
     }
     previewData?: PreviewData
-    /** Hide the tracker's own mini-map (use when a bigger map is already on screen). */
+    /** Force-hide the tracker's own map (defaults on for every variant except "page"). */
     hideMap?: boolean
     onClose: () => void
     /**
-     * "panel" docks beside an existing view (desktop); "page" takes the whole
-     * screen with a back button (mobile).
+     * "panel" docks beside an existing view (desktop); "sheet" is the map-first
+     * mobile drawer; "dialog" is the desktop split (map + detail); "page" is the
+     * legacy full-screen mobile view.
      */
-    variant?: "panel" | "page"
+    variant?: Variant
+    /** For "sheet": render the tracker's own full-screen map behind the drawer. Off when the page already shows one (e.g. /vehicles). */
+    hasOwnMap?: boolean
     /** Label for the back/close affordance, e.g. "Departures". */
     backLabel?: string
 }
 
 /**
- * Full-surface counterpart to ServiceTrackerModal: instead of covering the page
- * with a dialog/sheet, it either docks beside it (desktop panel) or replaces it
- * (mobile page). Both share ServiceTrackerContent and one polling lifecycle.
+ * Single entry point for the service tracker. Owns the polling lifecycle and the
+ * loading/error/empty states; each variant is a different shell around the shared
+ * ServiceTrackerContent.
  */
 const ServiceTrackerView = memo(function ServiceTrackerView({
     tripId,
@@ -47,53 +55,92 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
     hideMap,
     onClose,
     variant = "panel",
+    hasOwnMap = true,
     backLabel = "Back",
 }: ServiceTrackerViewProps) {
-    // A docked panel usually sits next to a big map already; a full page doesn't.
-    const resolvedHideMap = hideMap ?? variant === "panel"
+    // "page" is the only variant that still shows the tracker's own inline map;
+    // the others supply the map themselves (sheet/dialog) or dock beside an
+    // existing one (panel).
+    const resolvedHideMap = hideMap ?? variant !== "page"
+    const stopsLayout: "inset" | "page" = variant === "panel" || variant === "dialog" ? "inset" : "page"
     const { stops, stopTimes, vehicle, initialLoading, refreshing, error } = useServiceTracker(tripId, has, true)
     const reduceMotion = useReducedMotion()
 
     const ready = !!vehicle || (!!previewData && !!stops)
 
-    const buildContent = (stopsLayout: "inset" | "page") =>
-        ready ? (
-            <ServiceTrackerProvider
-                value={{
-                    vehicle,
-                    stops,
-                    stopTimes,
-                    previewData,
-                    tripId,
-                    tripUpdateTracking,
-                    currentStop,
-                    refreshing,
-                    hideMap: resolvedHideMap,
-                    stopsLayout,
-                }}
+    const withProvider = (children: ReactNode) => (
+        <ServiceTrackerProvider
+            value={{
+                vehicle,
+                stops,
+                stopTimes,
+                previewData,
+                tripId,
+                tripUpdateTracking,
+                currentStop,
+                refreshing,
+                hideMap: resolvedHideMap,
+                stopsLayout,
+            }}
+        >
+            {children}
+        </ServiceTrackerProvider>
+    )
+
+    const detail = ready ? (
+        <ServiceTrackerContent />
+    ) : initialLoading ? (
+        <LoadingSpinner description="Loading service…" height="200px" />
+    ) : error ? (
+        <ErrorScreen
+            traceId={error.traceId}
+            errorTitle="Couldn't load this service"
+            errorText={
+                error.statusCode === 404 || error.statusCode === 400
+                    ? "We don't have stop details for this trip right now — it may have just finished, or its timetable was updated. Try another service."
+                    : error.message || "Something went wrong loading this service. Try again shortly."
+            }
+        />
+    ) : (
+        <p className="py-10 text-center text-sm text-muted-foreground">
+            This service couldn&apos;t be loaded — it may have finished for the day.
+        </p>
+    )
+
+    if (variant === "sheet") {
+        return withProvider(
+            <TrackerMobileSheet
+                hasOwnMap={hasOwnMap}
+                backLabel={backLabel === "Back" ? undefined : backLabel}
+                onClose={onClose}
             >
-                <ServiceTrackerContent />
-            </ServiceTrackerProvider>
-        ) : initialLoading ? (
-            <LoadingSpinner description="Loading service…" height="200px" />
-        ) : error ? (
-            <ErrorScreen
-                traceId={error.traceId}
-                errorTitle="Couldn't load this service"
-                errorText={
-                    error.statusCode === 404 || error.statusCode === 400
-                        ? "We don't have stop details for this trip right now — it may have just finished, or its timetable was updated. Try another service."
-                        : error.message || "Something went wrong loading this service. Try again shortly."
-                }
-            />
-        ) : (
-            <p className="py-10 text-center text-sm text-muted-foreground">
-                This service couldn&apos;t be loaded — it may have finished for the day.
-            </p>
+                {detail}
+            </TrackerMobileSheet>,
         )
+    }
+
+    if (variant === "dialog") {
+        return withProvider(
+            <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+                <DialogContent className="flex h-[85vh] max-w-5xl flex-col gap-0 p-0" aria-describedby={undefined}>
+                    <DialogTitle className="sr-only">Live service tracker</DialogTitle>
+                    <div className="flex min-h-0 flex-1">
+                        <div className="relative w-1/2 border-r border-border">
+                            {ready ? (
+                                <TrackerMap height="100%" />
+                            ) : (
+                                <LoadingSpinner description="Loading map…" height="100%" />
+                            )}
+                        </div>
+                        <div className="w-1/2 overflow-y-auto overscroll-contain p-4">{detail}</div>
+                    </div>
+                </DialogContent>
+            </Dialog>,
+        )
+    }
 
     if (variant === "page") {
-        return (
+        return withProvider(
             <motion.div
                 initial={reduceMotion ? { opacity: 0 } : { opacity: 0, x: "12%" }}
                 animate={{ opacity: 1, x: 0 }}
@@ -112,15 +159,14 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
                             {backLabel}
                         </button>
                     </div>
-                    <div className="mx-auto w-full max-w-2xl px-4 pb-6 pt-4">{buildContent("page")}</div>
+                    <div className="mx-auto w-full max-w-2xl px-4 pb-6 pt-4">{detail}</div>
                 </div>
-            </motion.div>
+            </motion.div>,
         )
     }
 
-    const content = buildContent("inset")
-
-    return (
+    // "panel" - docked beside a full-page map on desktop.
+    return withProvider(
         <aside className="flex h-full max-h-full w-[400px] max-w-[38vw] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background">
             <div className="flex items-center justify-between border-b border-border p-3">
                 <span className="text-sm font-medium text-muted-foreground">Live tracker</span>
@@ -128,8 +174,8 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
                     <X className="h-4 w-4" />
                 </Button>
             </div>
-            <div className="flex-1 overflow-y-auto overscroll-contain p-4">{content}</div>
-        </aside>
+            <div className="flex-1 overflow-y-auto overscroll-contain p-4">{detail}</div>
+        </aside>,
     )
 })
 

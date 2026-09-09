@@ -1,8 +1,8 @@
 import LoadingSpinner from "@/components/loading-spinner";
 import { Suspense, useEffect, useState } from "react";
 import dynamic from "next/dynamic";
-import ServiceTrackerModal, { VehiclesResponse } from "@/components/services/tracker";
-import ServiceTrackerPanel from "@/components/services/tracker/panel";
+import { VehiclesResponse } from "@/components/services/tracker";
+import ServiceTrackerView from "@/components/services/tracker/panel";
 import { useRouteLine, useServiceTracker } from "@/components/services/tracker/use-service-tracker";
 import VehicleList from "@/components/vehicles/vehicle-list";
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context";
@@ -133,13 +133,13 @@ export default function Vehicles() {
                 </div>
 
                 {selectedVehicle.found && selectedVehicle.value !== "" && isMobile && (
-                    <ServiceTrackerModal
-                        loaded
-                        defaultOpen
-                        onOpenChange={(v) => (!v ? selectedVehicle.set("") : null)}
+                    <ServiceTrackerView
+                        key={selectedVehicle.value}
+                        variant="sheet"
+                        hasOwnMap={false}
                         has={true}
                         tripId={selectedVehicle.value}
-                        hideMap
+                        onClose={() => selectedVehicle.set("")}
                     />
                 )}
 
@@ -245,7 +245,8 @@ export default function Vehicles() {
                     </div>
 
                     {selectedVehicle.found && selectedVehicle.value !== "" && !isMobile && (
-                        <ServiceTrackerPanel
+                        <ServiceTrackerView
+                            variant="panel"
                             tripId={selectedVehicle.value}
                             onClose={() => selectedVehicle.set("")}
                         />

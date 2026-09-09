@@ -23,14 +23,13 @@ import {
     Navigation,
     RefreshCw,
     Share2,
-    User,
     WifiOff,
     X,
 } from "lucide-react"
 import { haversineDistance, useIsMobile, useOnlineStatus } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
-import { getOccupancyLabel } from "@/components/services"
+import { getOccupancyLabel, OccupancyIcons } from "@/components/services/occupancy"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
@@ -654,18 +653,6 @@ export function RouteDetailSheet({
                 </DrawerContent>
             </Drawer>
         </>
-    )
-}
-
-/** Three-figure occupancy readout - 0-1 low, 2 medium, 3-4 high - filled figures darken as the vehicle fills up. */
-function OccupancyIcons({ occupancy }: { occupancy: number }) {
-    const filled = occupancy <= 1 ? 1 : occupancy === 2 ? 2 : 3
-    return (
-        <span className="flex items-center gap-0.5" aria-hidden>
-            {[0, 1, 2].map((i) => (
-                <User key={i} className={`h-3.5 w-3.5 ${i < filled ? "text-foreground" : "text-muted-foreground/30"}`} />
-            ))}
-        </span>
     )
 }
 

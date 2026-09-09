@@ -1,8 +1,57 @@
-import { Armchair, Circle, PersonStandingIcon, Skull } from "lucide-react"
+import { Armchair, Circle, PersonStandingIcon, Skull, User } from "lucide-react"
 
 interface OccupancyStatusIndicatorProps {
     value: number
     type: "dots" | "message" | "people"
+}
+
+/** Longer, sentence-style occupancy description - used where there's room to explain. */
+export function getOccupancyLabel(value: number): string {
+    switch (value) {
+        case 0:
+        case 1:
+            return "Seats available"
+        case 2:
+            return "Some seats still available"
+        case 3:
+            return "Likely standing room only"
+        case 4:
+            return "Likely full, standing only"
+        default:
+            return "Unknown occupancy"
+    }
+}
+
+/** Two-word occupancy label for tight spots (the departures board row, the tracker summary). */
+export function getOccupancyShort(value: number): string {
+    switch (value) {
+        case 0:
+        case 1:
+            return "Seats free"
+        case 2:
+            return "Filling up"
+        case 3:
+            return "Standing room"
+        case 4:
+            return "Likely full"
+        default:
+            return ""
+    }
+}
+
+/**
+ * Three-figure occupancy readout - 0-1 low, 2 medium, 3-4 high - filled figures
+ * darken as the vehicle fills up. Shared by the journey sheet and the service tracker.
+ */
+export function OccupancyIcons({ occupancy }: { occupancy: number }) {
+    const filled = occupancy <= 1 ? 1 : occupancy === 2 ? 2 : 3
+    return (
+        <span className="flex items-center gap-0.5" aria-hidden>
+            {[0, 1, 2].map((i) => (
+                <User key={i} className={`h-3.5 w-3.5 ${i < filled ? "text-foreground" : "text-muted-foreground/30"}`} />
+            ))}
+        </span>
+    )
 }
 
 export default function OccupancyStatusIndicator({ value = 0, type = "dots" }: OccupancyStatusIndicatorProps) {

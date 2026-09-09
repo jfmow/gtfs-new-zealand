@@ -1,46 +1,28 @@
-import { lazy, memo, Suspense, useRef, useEffect, useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import LoadingSpinner from "../../loading-spinner"
-import { formatUnixTime, timeTillArrivalMsString } from "@/lib/formating"
+import { memo, useEffect, useState } from "react"
+import { formatUnixTime } from "@/lib/formating"
 import StopsList from "./stops-list"
-import { useServiceTrackerContext, useRouteLine } from "./use-service-tracker"
-import type { MapItem } from "@/components/map/markers/create"
-import type { LatLng } from "../../map/map"
+import TrackerMap from "./tracker-map"
+import { TrackerSummaryCard } from "./summary-card"
+import { useServiceTrackerContext } from "./use-service-tracker"
+import { shareTrip } from "./helpers"
 import { ApiFetch } from "@/lib/url-context"
 import { TriangleAlertIcon, Loader2, MapPinIcon, FlagIcon, Navigation2, Share2, X, CalendarClockIcon, RadioIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { cn, fullyEncodeURIComponent } from "@/lib/utils"
-import { getRegionSlug, urlStore } from "@/lib/url-store"
-import { toast } from "sonner"
 import type { AlertResponseData } from "@/lib/alert-causes"
 import RouteNotifications from "@/components/notifications/route-notifications"
 import { BellIcon } from "lucide-react"
 
-const LeafletMap = lazy(() => import("../../map/map"))
-
-const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" class="lucide lucide-bus-front-icon lucide-bus-front"><path d="M4 6 2 7"/><path d="M10 6h4"/><path d="m22 7-2-1"/><rect width="16" height="16" x="4" y="3" rx="2"/><path d="M4 11h16"/><path d="M8 15h.01"/><path d="M16 15h.01"/><path d="M6 19v2"/><path d="M18 21v-2"/></svg>`
-
 type RouteAlert = AlertResponseData
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent() {
-    const { vehicle, stops, stopTimes, previewData, tripId, tripUpdateTracking, currentStop, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
+    const { vehicle, stops, stopTimes, previewData, tripId, tripUpdateTracking, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
 
-    // On the full-screen page the map should fill the space under the header/tabs
-    // rather than sit in a fixed 300px slot with dead space below it.
-    const mapHeight = stopsLayout === "page" ? "min(58vh, 560px)" : "300px"
-
-    // Stable map container ids - MapComp re-creates the whole map (and so resets
-    // the zoom) whenever map_id changes, and this component re-renders on every
-    // ~10s poll. Generating the id once per mount keeps the map alive across polls.
-    const mapIdRef = useRef<string>()
-    if (!mapIdRef.current) mapIdRef.current = "tracker-" + Math.random().toString(36).slice(2)
-    const trackMapId = mapIdRef.current
-    const previewMapId = trackMapId + "-preview"
-
-
-    const routeLine = useRouteLine(tripId, vehicle?.route.id)
+    // On a full-screen page the inline map fills more of the view; docked/inset it
+    // sits in a compact slot above the stop list.
+    const mapHeight = stopsLayout === "page" ? "min(58vh, 560px)" : "320px"
 
     const activeRouteId = vehicle?.route.id || previewData?.route_id
     const [routeAlerts, setRouteAlerts] = useState<RouteAlert[]>([])
@@ -64,24 +46,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
     const visibleAlerts = routeAlerts.filter((alert) => !dismissedAlerts.has(alert.title))
     const dismissAlert = (title: string) => setDismissedAlerts((prev) => new Set(prev).add(title))
 
-    const handleShare = async () => {
-        const region = getRegionSlug(urlStore.currentUrl)
-        const url = `${window.location.origin}/trip?tripId=${fullyEncodeURIComponent(tripId)}&region=${region}`
-        if (navigator.share) {
-            try {
-                await navigator.share({ title: vehicle ? `${vehicle.route.name} - ${vehicle.trip.headsign}` : "Track this trip", url })
-            } catch {
-                // user dismissed the share sheet - not an error
-            }
-        } else {
-            try {
-                await navigator.clipboard.writeText(url)
-                toast.success("Link copied to clipboard")
-            } catch {
-                toast.error("Couldn't copy link - clipboard access was denied")
-            }
-        }
-    }
+    const handleShare = () => shareTrip(tripId, vehicle)
 
     // Vehicle tracking mode
     if (vehicle) {
@@ -117,17 +82,6 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                     )?.arrival_time || 0
                 )
                 : "";
-
-        // Live "N stops away" readout, counted from the rider's own stop (only
-        // known when this tracker was opened from that stop's departure board)
-        // while the vehicle is confirmed en route - not yet, or already past, at it.
-        const currentStopSeq = currentStop
-            ? stopTimes?.find((st) => st.parent_stop_id === currentStop.id || st.child_stop_id === currentStop.id)?.stop.sequence
-            : undefined
-        const stopsAway =
-            (vehicle.state === "Arriving" || vehicle.state === "Travelling") && currentStopSeq !== undefined
-                ? Math.max(0, currentStopSeq - vehicle.trip.next_stop.sequence)
-                : undefined
 
         return (
             <div className="space-y-3">
@@ -180,162 +134,29 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                         </div>
                     </div>
 
-                    <div className="grid gap-3 sm:gap-4 mt-4">
+                    <div className="mt-4 grid gap-3 sm:gap-4">
+                        <TrackerSummaryCard />
                         <StopStatusCard
                             title={stopStatusTitle}
                             stopName={stopStatusName}
                             platform={stopStatusPlatform}
                             variant={stopStatusVariant}
                             arrivalTime={stopStatusArrivalTime}
-                            stopsAway={stopsAway}
                         />
                     </div>
 
                 </div>
 
-                {hideMap ? (
-                    <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
-                ) : (
-                    <Tabs defaultValue="track" className="w-full">
-                        <TabsList className="w-full">
-                            <TabsTrigger disabled={stops?.length === 0} className="w-full" value="stops">
-                                Stops
-                            </TabsTrigger>
-                            <TabsTrigger className="w-full" value="track">
-                                Track
-                            </TabsTrigger>
-                        </TabsList>
+                {!hideMap && <TrackerMap height={mapHeight} />}
 
-                        <TabsContent value="track">
-                            <Suspense fallback={<LoadingSpinner description="Loading map..." height={mapHeight} />}>
-                                <LeafletMap
-                                    defaultZoom={
-                                        currentStop
-                                            ? [
-                                                [vehicle.position.lat, vehicle.position.lon],
-                                                [currentStop.lat, currentStop.lon],
-                                            ]
-                                            : [[vehicle.position.lat, vehicle.position.lon]]
-                                    }
-                                    line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
-                                    followMarkerId={vehicle.trip_id}
-                                    followFitWith={
-                                        currentStop &&
-                                        (currentStopSeq === undefined || currentStopSeq >= vehicle.trip.next_stop.sequence)
-                                            ? [currentStop.lat, currentStop.lon]
-                                            : null
-                                    }
-                                    mapItems={
-                                        stops
-                                            ? [
-                                                ...stops.map(
-                                                    (stop) => {
-                                                        const stopTime = stopTimes?.find(
-                                                            (st) => st.parent_stop_id === stop.parent_stop_id || st.child_stop_id === stop.child_stop_id
-                                                        )
-                                                        return ({
-                                                            lat: stop.lat,
-                                                            lon: stop.lon,
-                                                            icon: vehicle.trip.next_stop.parent_stop_id === stop.parent_stop_id || vehicle.trip.next_stop.child_stop_id === stop.child_stop_id
-                                                                ? "next stop marker"
-                                                                : currentStop?.name === stop.name
-                                                                    ? "marked stop marker"
-                                                                    : vehicle.trip.final_stop.parent_stop_id === stop.parent_stop_id || vehicle.trip.final_stop.child_stop_id === stop.child_stop_id
-                                                                        ? "end marker"
-                                                                        : vehicle.trip.next_stop.parent_stop_id === stop.parent_stop_id || vehicle.trip.next_stop.child_stop_id === stop.child_stop_id
-                                                                            ? "next stop marker"
-                                                                            : stop.parent_stop_id === vehicle.trip.current_stop.parent_stop_id || stop.child_stop_id === vehicle.trip.current_stop.child_stop_id
-                                                                                ? "current stop marker"
-                                                                                : stop.parent_stop_id === vehicle.trip.first_stop.parent_stop_id ? "start marker" : vehicle.trip.current_stop.sequence > stop.sequence
-                                                                                    ? "dot gray"
-                                                                                    : "dot",
-                                                            id: stop.name,
-                                                            routeID: "",
-                                                            type: "stop",
-                                                            zIndex: 1,
-                                                            onClick: () => { },
-                                                            popup: {
-                                                                title: `${stop.name} ${stop.platform ? `| Platform ${stop.platform}` : ""}`,
-                                                                subtitle: stopTime ? timeTillArrivalMsString(stopTime.arrival_time) : undefined,
-                                                                linkText: "View departures",
-                                                                linkHref: `/?s=${encodeURIComponent(stop.name)}`,
-                                                            },
-                                                        }) as MapItem
-                                                    },
-                                                ),
-                                                {
-                                                    lat: vehicle.position.lat,
-                                                    lon: vehicle.position.lon,
-                                                    icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
-                                                    bearing: vehicle.position.bearing,
-                                                    id: vehicle.trip_id,
-                                                    routeID: vehicle.route.id,
-                                                    zIndex: 1,
-                                                    type: "vehicle",
-                                                    onClick: () => { },
-                                                    zoomButton: VehicleIcon,
-                                                },
-                                            ]
-                                            : [
-                                                {
-                                                    lat: vehicle.position.lat,
-                                                    lon: vehicle.position.lon,
-                                                    icon: (vehicle.type === "bus" || vehicle.type === "train" || vehicle.type === "ferry") ? vehicle.type : "bus",
-                                                    bearing: vehicle.position.bearing,
-                                                    id: vehicle.trip_id,
-                                                    routeID: vehicle.route.id,
-                                                    zIndex: 1,
-                                                    type: "vehicle",
-                                                    onClick: () => { },
-                                                    zoomButton: VehicleIcon,
-                                                },
-                                            ]
-                                    }
-                                    map_id={trackMapId}
-                                    height={mapHeight}
-                                />
-                            </Suspense>
-                        </TabsContent>
-
-                        <TabsContent value="stops">
-                            <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
-                        </TabsContent>
-                    </Tabs>
-                )}
-            </div >
+                <StopsList layout={stopsLayout} tripId={tripId} stops={stops} vehicle={vehicle} stopTimes={stopTimes} routeShortName={vehicle?.route.name ?? previewData?.route_name} />
+            </div>
         )
-    }
-
-    function getBoundsFromStops(stops: { lat: number; lon: number; sequence: number }[]): [LatLng, LatLng] {
-        if (!Array.isArray(stops) || stops.length === 0) {
-            throw new Error("Stops array is empty or invalid.");
-        }
-
-
-        let minLat = stops[0].lat;
-        let maxLat = stops[0].lat;
-        let minLng = stops[0].lon;
-        let maxLng = stops[0].lon;
-
-        for (const stop of stops) {
-            if (stop.lat < minLat) minLat = stop.lat;
-            if (stop.lat > maxLat) maxLat = stop.lat;
-            if (stop.lon < minLng) minLng = stop.lon;
-            if (stop.lon > maxLng) maxLng = stop.lon;
-        }
-
-        const mapBounds: [LatLng, LatLng] = [
-            [minLat, minLng], // southwest corner
-            [maxLat, maxLng], // northeast corner
-        ];
-
-        return mapBounds;
     }
 
     // Preview mode
     if (!vehicle && previewData && stops) {
-        const sortedStops = stops.sort((a, b) => a.sequence - b.sequence)
-        const mapBounds = getBoundsFromStops(sortedStops);
+        const sortedStops = [...stops].sort((a, b) => a.sequence - b.sequence)
 
         return (
             <div className="space-y-3 relative">
@@ -393,58 +214,9 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
 
                 </div>
 
-                {hideMap ? (
-                    <StopsList layout={stopsLayout} tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
-                ) : (
-                    <Tabs defaultValue="stops" className="w-full">
-                        <TabsList className="w-full">
-                            <TabsTrigger className="w-full" value="stops">
-                                Stops
-                            </TabsTrigger>
-                            <TabsTrigger className="w-full" value="track">
-                                Route map
-                            </TabsTrigger>
-                        </TabsList>
+                {!hideMap && <TrackerMap height={mapHeight} />}
 
-                        <TabsContent value="track">
-                            <Suspense fallback={<LoadingSpinner description="Loading map..." height={mapHeight} />}>
-                                <LeafletMap
-                                    defaultZoom={mapBounds}
-                                    line={routeLine ? { GeoJson: routeLine.line, color: routeLine.color } : undefined}
-                                    mapItems={stops.map(
-                                        (item, index) => {
-                                            const stopTime = stopTimes?.find(
-                                                (st) => st.parent_stop_id === item.parent_stop_id || st.child_stop_id === item.child_stop_id
-                                            )
-                                            return ({
-                                                lat: item.lat,
-                                                lon: item.lon,
-                                                icon: index === stops.length - 1 ? "end marker" : "dot",
-                                                id: item.name,
-                                                routeID: "",
-                                                zIndex: 1,
-                                                type: "stop",
-                                                onClick: () => { },
-                                                popup: {
-                                                    title: item.name,
-                                                    subtitle: stopTime ? timeTillArrivalMsString(stopTime.arrival_time) : undefined,
-                                                    linkText: "View departures",
-                                                    linkHref: `/?s=${encodeURIComponent(item.name)}`,
-                                                },
-                                            }) as MapItem
-                                        },
-                                    )}
-                                    map_id={previewMapId}
-                                    height={mapHeight}
-                                />
-                            </Suspense>
-                        </TabsContent>
-
-                        <TabsContent value="stops">
-                            <StopsList layout={stopsLayout} tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
-                        </TabsContent>
-                    </Tabs>
-                )}
+                <StopsList layout={stopsLayout} tripId={tripId} stops={stops} stopTimes={stopTimes} routeShortName={previewData?.route_name} />
             </div>
         )
     }
@@ -576,7 +348,6 @@ const StopStatusCard = memo(function StopStatusCard({
     stopName,
     arrivalTime,
     variant = "default",
-    stopsAway,
 }: {
     title: string
     stopName: string
@@ -584,8 +355,6 @@ const StopStatusCard = memo(function StopStatusCard({
     arrivalTime?: string
     variant?: "current" | "next" | "final" | "default"
     isArrived?: boolean
-    /** Live count of stops until the rider's own stop - shown while the vehicle is confirmed en route. */
-    stopsAway?: number
 }) {
     const getVariantStyles = () => {
         switch (variant) {
@@ -643,11 +412,6 @@ const StopStatusCard = memo(function StopStatusCard({
                             )}
                         </div>
                         <p className="mt-0.5 text-sm font-semibold leading-snug text-foreground">{stopName}</p>
-                        {stopsAway !== undefined && stopsAway > 0 && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                                <span className="font-medium text-foreground">{stopsAway}</span> {stopsAway === 1 ? "stop" : "stops"} away
-                            </p>
-                        )}
                     </div>
                 </div>
             </CardContent>
