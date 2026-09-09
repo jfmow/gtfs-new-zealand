@@ -402,8 +402,11 @@ function ServiceRow({
     // Occupancy, "N stops away" and "at this stop" only mean something when this
     // service is actually being tracked - otherwise the values are placeholders
     // and would falsely tell a rider the bus has seats or is two stops out.
+    // A cancelled or skipped service still carries a stale sequence from the
+    // feed; don't dress "Cancelled" up with "6 stops away".
     const isLive =
-        !displayingSchedulePreview && (service.location_tracking || service.trip_update_tracking)
+        !displayingSchedulePreview && !isCanceled && !isSkipped &&
+        (service.location_tracking || service.trip_update_tracking)
     const showOccupancy = service.location_tracking && service.occupancy >= 0
 
     // How much we really know about where this service is right now.
@@ -657,7 +660,10 @@ function getOccupancyShort(value: number): string {
 function sortServices(services: Service[], platformFilter: PlatformFilter | undefined) {
     return services
         .filter((item) => platformFilter?.value === "all" || item.platform === platformFilter?.value || item.route.name === platformFilter?.value)
-        .filter((item) => item.time_till_arrival >= -2)
+        // A cancelled or skipped service stays on the board longer than a normal
+        // one - a rider standing on the platform still needs to see that the
+        // train they were waiting for isn't coming / won't stop.
+        .filter((item) => item.time_till_arrival >= ((item.canceled || item.skipped) ? -20 : -2))
         .sort((a, b) => {
             if (!a.canceled && !b.canceled) {
                 if (a.departed && !b.departed) return -1

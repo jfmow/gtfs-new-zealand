@@ -104,7 +104,13 @@ func GetRealtimeTripData(
 		stopUpdates := tripUpdate.GetStopTimeUpdate()
 		predictedArrivalTimes := getPredictedStopArrivalTimesForTrip(stopUpdates, localTimeZone)
 
-		if predictedArrival, ok := predictedArrivalTimes[service.StopId]; ok {
+		if predictedArrival, ok := predictedArrivalTimes[service.StopId]; ok && !predictedArrival.ArrivalTime.IsZero() {
+			// AT gives a SKIPPED stop no arrival/departure time, so
+			// predictedArrival.ArrivalTime is the zero value here. Formatting it
+			// yields "00:00:00" and Sub(now) overflows to ~-153,000,000 minutes,
+			// which the frontend then drops (it filters time_till_arrival < -2) -
+			// so a cancelled/skipped train vanished from the board instead of
+			// showing as "Cancelled"/"Not stopping". Keep the scheduled fallback.
 			result.ArrivalTime = predictedArrival.ArrivalTime.Format("15:04:05")
 			result.TimeTillArrival = int(predictedArrival.ArrivalTime.Sub(now).Minutes())
 		}
