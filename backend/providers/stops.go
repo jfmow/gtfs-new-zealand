@@ -30,11 +30,17 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 		}
 
 		var result []ServicesStop
+		var skipped int
 		for _, i := range stops.Stops {
 			var responseData ServicesStop
 			stop, err := gtfsData.GetParentStopByChildStopID(i.StopId)
 			if err != nil {
-				return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("stopId", i.StopId, "details", "No parent stop available for the given child stop ID in the gtfs data", "error", err.Error()))
+				// One child stop with no resolvable parent shouldn't sink the
+				// whole trip - the departures board will have already listed
+				// this service, so 404ing here dead-ends a row the user was
+				// told they could track. Skip the bad stop and return the rest.
+				skipped++
+				continue
 			}
 
 			responseData.ParentStopId = stop.StopId
@@ -46,6 +52,10 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 			responseData.Sequence = i.Sequence
 
 			result = append(result, responseData)
+		}
+
+		if len(result) == 0 {
+			return JsonApiResponse(c, http.StatusNotFound, "no resolvable stops for trip", nil, ResponseDetails("tripId", tripId, "skippedStops", skipped, "details", "None of the trip's stops could be resolved to a parent stop in the gtfs data"))
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", result)

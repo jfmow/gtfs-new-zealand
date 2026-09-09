@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { ApiFetch } from "@/lib/url-context"
 import { fullyEncodeURIComponent } from "@/lib/utils"
-import { getStopsForTrip } from "../stops"
+import { fetchStopsForTrip } from "../stops"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 
@@ -60,12 +60,23 @@ export function useServiceTrackerContext(): ServiceTrackerContextValue {
  * /trip page can all drive ServiceTrackerContent without duplicating fetch logic.
  * `active` replaces the modal's `open` state - callers decide when polling should run.
  */
+/** Why the tracker has no stop list to show - surfaced to the user instead of a guess. */
+export interface ServiceTrackerError {
+    message: string
+    traceId?: string
+    statusCode?: number
+}
+
 export function useServiceTracker(tripId: string, has: boolean, active: boolean) {
     const [stops, setStops] = useState<ServicesStop[] | null>(null)
     const [stopTimes, setStopTimes] = useState<StopTimes[]>([])
     const [vehicle, setVehicle] = useState<VehiclesResponse>()
-    const [initialLoading, setInitialLoading] = useState(false)
+    // Start "loading" whenever we're actually about to fetch - otherwise the
+    // first render (before the effect runs) briefly falls through to the
+    // "couldn't be loaded" branch and flashes an error at the user.
+    const [initialLoading, setInitialLoading] = useState(() => active && !!tripId)
     const [refreshing, setRefreshing] = useState(false)
+    const [error, setError] = useState<ServiceTrackerError | null>(null)
 
     useEffect(() => {
         // A request fired for the previous tripId can still resolve after this
@@ -78,44 +89,44 @@ export function useServiceTracker(tripId: string, has: boolean, active: boolean)
         setStops(null)
         setStopTimes([])
         setVehicle(undefined)
+        setError(null)
 
         async function getData(isRefresh = false) {
             if (isRefresh) {
                 setRefreshing(true)
             }
 
+            let stopsError: ServiceTrackerError | null = null
+
             try {
-                if (!has) {
-                    const stopsData = await getStopsForTrip(tripId)
-                    if (!cancelled && stopsData) {
-                        setStops(stopsData)
-                    }
-                } else {
+                if (has) {
+                    // A missing/failed live position isn't fatal - fall through
+                    // and still load the stop list so the tracker can render.
                     const res = await ApiFetch<VehiclesResponse[]>(`realtime/live?tripId=${fullyEncodeURIComponent(tripId)}`, {
-                        method: "GET"
+                        method: "GET",
                     })
                     if (cancelled) return
-                    if (!res.ok) {
+                    if (res.ok && res.data && res.data.length >= 1) {
+                        setVehicle(res.data[0])
+                    } else if (!res.ok) {
                         console.error(res.error)
-                        return
-                    } else {
-                        if (res.data && res.data.length >= 1) {
-                            const vehicle = res.data[0]
-                            setVehicle(vehicle)
-                            const stopsData = await getStopsForTrip(tripId)
-                            if (!cancelled && stopsData) {
-                                setStops(stopsData)
-                            }
-                        } else {
-                            const stopsData = await getStopsForTrip(tripId)
-                            if (!cancelled && stopsData) {
-                                setStops(stopsData)
-                            }
-                        }
                     }
                 }
 
                 if (cancelled) return
+
+                const stopsRes = await fetchStopsForTrip(tripId)
+                if (cancelled) return
+                if (stopsRes.ok) {
+                    setStops(stopsRes.stops)
+                } else {
+                    console.warn("Failed to fetch stops for trip:", stopsRes.error)
+                    stopsError = {
+                        message: stopsRes.error,
+                        traceId: stopsRes.traceId,
+                        statusCode: stopsRes.statusCode,
+                    }
+                }
 
                 const stopTimesRes = await ApiFetch<StopTimes[]>(`realtime/stop-times?tripId=${fullyEncodeURIComponent(tripId)}`, {
                     method: "GET",
@@ -123,11 +134,15 @@ export function useServiceTracker(tripId: string, has: boolean, active: boolean)
                 if (!cancelled && stopTimesRes.ok) {
                     setStopTimes(stopTimesRes.data)
                 }
-            } catch (error) {
-                console.error("Error fetching service tracker data:", error)
+            } catch (err) {
+                console.error("Error fetching service tracker data:", err)
+                stopsError = { message: err instanceof Error ? err.message : "Unknown error" }
             } finally {
-                if (isRefresh && !cancelled) {
-                    setRefreshing(false)
+                if (!cancelled) {
+                    setError(stopsError)
+                    if (isRefresh) {
+                        setRefreshing(false)
+                    }
                 }
             }
         }
@@ -152,6 +167,8 @@ export function useServiceTracker(tripId: string, has: boolean, active: boolean)
             })
             handleVisibilityChange()
             document.addEventListener("visibilitychange", handleVisibilityChange)
+        } else {
+            setInitialLoading(false)
         }
 
         return () => {
@@ -163,7 +180,7 @@ export function useServiceTracker(tripId: string, has: boolean, active: boolean)
         }
     }, [has, active, tripId])
 
-    return { stops, stopTimes, vehicle, initialLoading, refreshing }
+    return { stops, stopTimes, vehicle, initialLoading, refreshing, error }
 }
 
 /**

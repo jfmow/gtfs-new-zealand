@@ -2,6 +2,7 @@ import { memo } from "react"
 import { ChevronLeft, X } from "lucide-react"
 import { motion, useReducedMotion } from "framer-motion"
 import { Button } from "../../ui/button"
+import ErrorScreen from "../../ui/error-screen"
 import LoadingSpinner from "../../loading-spinner"
 import ServiceTrackerContent from "./body"
 import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker"
@@ -50,7 +51,7 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
 }: ServiceTrackerViewProps) {
     // A docked panel usually sits next to a big map already; a full page doesn't.
     const resolvedHideMap = hideMap ?? variant === "panel"
-    const { stops, stopTimes, vehicle, initialLoading, refreshing } = useServiceTracker(tripId, has, true)
+    const { stops, stopTimes, vehicle, initialLoading, refreshing, error } = useServiceTracker(tripId, has, true)
     const reduceMotion = useReducedMotion()
 
     const ready = !!vehicle || (!!previewData && !!stops)
@@ -75,6 +76,16 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
             </ServiceTrackerProvider>
         ) : initialLoading ? (
             <LoadingSpinner description="Loading service…" height="200px" />
+        ) : error ? (
+            <ErrorScreen
+                traceId={error.traceId}
+                errorTitle="Couldn't load this service"
+                errorText={
+                    error.statusCode === 404 || error.statusCode === 400
+                        ? "We don't have stop details for this trip right now — it may have just finished, or its timetable was updated. Try another service."
+                        : error.message || "Something went wrong loading this service. Try again shortly."
+                }
+            />
         ) : (
             <p className="py-10 text-center text-sm text-muted-foreground">
                 This service couldn&apos;t be loaded — it may have finished for the day.

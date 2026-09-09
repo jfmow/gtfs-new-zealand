@@ -389,7 +389,14 @@ function ServiceRow({
     const isCanceled = service.canceled
     const isSkipped = service.skipped
     const isDeparted = service.departed && !displayingSchedulePreview
-    const trackable = !displayingSchedulePreview && !isCanceled && !isDeparted && !isSkipped
+    // Only offer the tracker when there's actually something live to track.
+    // A "Timetable only" service has no vehicle and no arrival predictions - the
+    // tracker would just show a static stop list, and half the time can't even
+    // load that (the trip may not be in the backend's stop cache), so it dead-
+    // ends on a row we told the rider they could tap.
+    const hasRealtime = service.location_tracking || service.trip_update_tracking
+    const trackable =
+        !displayingSchedulePreview && !isCanceled && !isDeparted && !isSkipped && hasRealtime
 
     const tint = isCanceled
         ? "bg-destructive/[0.06]"

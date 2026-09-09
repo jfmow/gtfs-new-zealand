@@ -3,26 +3,24 @@ import { ApiFetch } from "@/lib/url-context";
 
 
 export async function getStopsForTrip(tripId: string): Promise<ServicesStop[] | null> {
-    const response = await getStopsDataForTrip(tripId);
+    const response = await fetchStopsForTrip(tripId);
     if (!response.ok) {
         console.warn("Failed to fetch stops for trip:", response.error);
         return null
     }
-
-    const stopsData = response.stops
-    const stops = stopsData.sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
-
-    return stops;
-
+    return response.stops;
 }
 
 
-
-type GetStopsForTripResult =
-    | { error: string, ok: false }
+export type GetStopsForTripResult =
+    | { error: string, traceId?: string, statusCode?: number, ok: false }
     | { stops: ServicesStop[], ok: true };
 
-async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResult> {
+/**
+ * Like getStopsForTrip but keeps the failure detail (message + trace id) so the
+ * caller can show a real error instead of a generic "couldn't load" message.
+ */
+export async function fetchStopsForTrip(tripId: string): Promise<GetStopsForTripResult> {
     if (tripId == "") {
         console.warn("Missing trip id");
         return { error: "Missing trip id", ok: false };
@@ -31,13 +29,15 @@ async function getStopsDataForTrip(tripId: string): Promise<GetStopsForTripResul
     try {
         const response = await ApiFetch<ServicesStop[]>(`stops/${tripId}`);
 
-        // Check if the response is OK
         if (!response.ok) {
-            return { error: response.error, ok: false };
+            return { error: response.error, traceId: response.trace_id, statusCode: response.status_code, ok: false };
         }
 
-        // Parse the response JSON and return services
-        return { ok: true, stops: response.data.map((item, index) => ({ ...item, index })) };
+        const stops = response.data
+            .map((item, index) => ({ ...item, index }))
+            .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
+
+        return { ok: true, stops };
     } catch (error) {
         // Handle unexpected errors
         return { error: (error as Error).message, ok: false };
