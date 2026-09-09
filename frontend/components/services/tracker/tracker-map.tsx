@@ -38,7 +38,7 @@ export default function TrackerMap({ height }: { height: string }) {
         return <LoadingSpinner description="Loading map…" height={height} />
     }
 
-    const currentStopSeq = getCurrentStopSequence(stopTimes, currentStop)
+    const currentStopSeq = getCurrentStopSequence(sortedStops, currentStop)
 
     let defaultZoom: [LatLng, LatLng] | [LatLng]
     if (vehicle) {

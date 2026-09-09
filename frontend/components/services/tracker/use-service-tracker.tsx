@@ -20,7 +20,8 @@ export interface ServiceTrackerContextValue {
      */
     tripUpdateTracking?: boolean
     currentStop?: {
-        id: string
+        parent_stop_id: string
+        child_stop_id: string
         lat: number
         lon: number
         name: string

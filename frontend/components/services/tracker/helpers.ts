@@ -5,7 +5,8 @@ import type { LatLng } from "../../map/map"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
 
 export interface CurrentStop {
-    id: string
+    parent_stop_id: string
+    child_stop_id: string
     lat: number
     lon: number
     name: string
@@ -13,29 +14,47 @@ export interface CurrentStop {
 
 /**
  * The rider's stop id from a departure board can be a parent or a child stop id,
- * and the trip's stop-times may key the same stop the other way - so fall back to
- * matching on the (unique enough) stop name.
+ * and the trip's own stop record may key the same stop the other way - so also
+ * fall back to matching on the (unique enough) stop name when it's available.
  */
-const matchesRiderStop = (st: StopTimes, stop: CurrentStop) =>
-    st.parent_stop_id === stop.id || st.child_stop_id === stop.id || st.stop?.name === stop.name
+const matchesRiderStop = (
+    candidate: { parent_stop_id: string; child_stop_id: string; name?: string },
+    stop: CurrentStop,
+) =>
+    candidate.parent_stop_id === stop.parent_stop_id ||
+    candidate.child_stop_id === stop.child_stop_id ||
+    (!!candidate.name && candidate.name === stop.name)
 
 export function findRiderStopTime(
     stopTimes: StopTimes[] | null | undefined,
     currentStop?: CurrentStop,
 ): StopTimes | undefined {
     if (!currentStop) return undefined
-    return stopTimes?.find((st) => matchesRiderStop(st, currentStop))
+    if (!stopTimes || stopTimes.length === 0) return undefined
+    return stopTimes.find((st) => matchesRiderStop(st, currentStop))
 }
 
 /**
  * The rider is on this stop's platform waiting for the vehicle. Only meaningful
  * when the tracker was opened from that stop's departure board.
  */
+export function findRiderStop(
+    stops: ServicesStop[] | null | undefined,
+    currentStop?: CurrentStop,
+): ServicesStop | undefined {
+    if (!currentStop || !stops || stops.length === 0) return undefined
+    return stops.find((s) => matchesRiderStop(s, currentStop))
+}
+
+/**
+ * Sequence lives on the trip's stop list, not on the realtime stop-times payload
+ * (that's keyed by stop id only) - so resolve the rider's stop against `stops`.
+ */
 export function getCurrentStopSequence(
-    stopTimes: StopTimes[] | null | undefined,
+    stops: ServicesStop[] | null | undefined,
     currentStop?: CurrentStop,
 ): number | undefined {
-    return findRiderStopTime(stopTimes, currentStop)?.stop.sequence
+    return findRiderStop(stops, currentStop)?.sequence
 }
 
 /**
@@ -45,12 +64,11 @@ export function getCurrentStopSequence(
  */
 export function getStopsAway(
     vehicle: VehiclesResponse | undefined,
-    stopTimes: StopTimes[] | null | undefined,
+    stops: ServicesStop[] | null | undefined,
     currentStop?: CurrentStop,
 ): number | undefined {
     if (!vehicle) return undefined
-    if (vehicle.state !== "Arriving" && vehicle.state !== "Travelling") return undefined
-    const currentStopSeq = getCurrentStopSequence(stopTimes, currentStop)
+    const currentStopSeq = getCurrentStopSequence(stops, currentStop)
     if (currentStopSeq === undefined) return undefined
     return Math.max(0, currentStopSeq - vehicle.trip.next_stop.sequence)
 }
@@ -74,7 +92,6 @@ export function getTrackerEta(
 ): TrackerEta | undefined {
     if (!vehicle || vehicle.off_course || vehicle.state === "Unknown") return undefined
     if (!stopTimes?.length) return undefined
-
     const riderStop = findRiderStopTime(stopTimes, currentStop)
     if (riderStop && !riderStop.skipped && !riderStop.passed && riderStop.arrival_time > 0) {
         return { ms: riderStop.arrival_time, atRiderStop: true }

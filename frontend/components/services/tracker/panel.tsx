@@ -20,7 +20,8 @@ interface ServiceTrackerViewProps {
     /** Whether the service has trip-update (arrival prediction) tracking - shown as "Limited tracking" when there's no live vehicle. */
     tripUpdateTracking?: boolean
     currentStop?: {
-        id: string
+        parent_stop_id: string
+        child_stop_id: string
         lat: number
         lon: number
         name: string

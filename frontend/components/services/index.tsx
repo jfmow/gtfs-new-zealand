@@ -59,7 +59,8 @@ export interface ServicesRoute {
 export interface ServicesStop {
     lat: number
     lon: number
-    id: string
+    parent_stop_id: string
+    child_stop_id: string
     name: string
     platform: string
     sequence: number
@@ -203,7 +204,8 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         has: selectedService.location_tracking,
         tripUpdateTracking: selectedService.trip_update_tracking,
         currentStop: {
-            id: selectedService.stop.id,
+            parent_stop_id: selectedService.stop.parent_stop_id,
+            child_stop_id: selectedService.stop.child_stop_id,
             lat: selectedService.stop.lat,
             lon: selectedService.stop.lon,
             name: selectedService.stop.name,
@@ -219,101 +221,101 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
     return (
         <div className="mx-auto w-full max-w-2xl px-4 pb-10">
-          <div className="min-w-0 flex-1">
-            {uniquePlatforms.platforms.length > 1 && (
-                <section className="mb-3" aria-labelledby="platform-filter-heading">
-                    <h2 id="platform-filter-heading" className="sr-only">
-                        Filter departures by {uniquePlatforms.type === "platforms" ? "platform" : "route"}
-                    </h2>
-                    <div className="space-y-2">
-                        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Platform filters">
-                            <FilterChip
-                                selected={platformFilter.value === "all"}
-                                onClick={() => setPlatformFilter({ ...platformFilter, value: "all" })}
-                            >
-                                All {uniquePlatforms.type === "platforms" ? "platforms" : "routes"}
-                            </FilterChip>
-                            {platformsToShow.map((platform) => (
+            <div className="min-w-0 flex-1">
+                {uniquePlatforms.platforms.length > 1 && (
+                    <section className="mb-3" aria-labelledby="platform-filter-heading">
+                        <h2 id="platform-filter-heading" className="sr-only">
+                            Filter departures by {uniquePlatforms.type === "platforms" ? "platform" : "route"}
+                        </h2>
+                        <div className="space-y-2">
+                            <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Platform filters">
                                 <FilterChip
-                                    key={platform}
-                                    selected={platformFilter.value === platform}
-                                    onClick={() => setPlatformFilter({ ...platformFilter, value: platform })}
+                                    selected={platformFilter.value === "all"}
+                                    onClick={() => setPlatformFilter({ ...platformFilter, value: "all" })}
                                 >
-                                    {uniquePlatforms.type === "platforms" ? "Platform " : ""}{platform}
+                                    All {uniquePlatforms.type === "platforms" ? "platforms" : "routes"}
                                 </FilterChip>
-                            ))}
-                        </div>
-                        {shouldShowExpandButton && (
-                            <button
-                                onClick={() => setShowAllPlatforms(!showAllPlatforms)}
-                                aria-expanded={showAllPlatforms}
-                                className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
-                            >
-                                {showAllPlatforms ? (
-                                    <><ChevronUp className="h-3 w-3" /> Show fewer</>
-                                ) : (
-                                    <><ChevronDown className="h-3 w-3" /> {uniquePlatforms.platforms.length - 3} more</>
-                                )}
-                            </button>
-                        )}
-                    </div>
-                </section>
-            )}
-
-            <section aria-labelledby="services-heading">
-                <h2 id="services-heading" className="sr-only">Departures from {stopName}</h2>
-
-                {visibleServices.length === 0 ? (
-                    <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
-                        Nothing on this {uniquePlatforms.type === "platforms" ? "platform" : "route"} right now.
-                    </p>
-                ) : (
-                    <ul
-                        id="services-list"
-                        role="list"
-                        aria-live="polite"
-                        aria-atomic="false"
-                        className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card"
-                    >
-                        <AnimatePresence mode="popLayout" initial={false}>
-                            {visibleServices.map((service) => (
-                                <motion.li
-                                    key={service.trip_id + service.platform}
-                                    layout
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    transition={{ duration: 0.15, layout: { duration: 0.25 } }}
+                                {platformsToShow.map((platform) => (
+                                    <FilterChip
+                                        key={platform}
+                                        selected={platformFilter.value === platform}
+                                        onClick={() => setPlatformFilter({ ...platformFilter, value: platform })}
+                                    >
+                                        {uniquePlatforms.type === "platforms" ? "Platform " : ""}{platform}
+                                    </FilterChip>
+                                ))}
+                            </div>
+                            {shouldShowExpandButton && (
+                                <button
+                                    onClick={() => setShowAllPlatforms(!showAllPlatforms)}
+                                    aria-expanded={showAllPlatforms}
+                                    className="flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground"
                                 >
-                                    <ServiceRow
-                                        service={service}
-                                        displayingSchedulePreview={displayingSchedulePreview}
-                                        selected={selectedService?.trip_id === service.trip_id}
-                                        onOpen={() => setSelectedService(service)}
-                                    />
-                                </motion.li>
-                            ))}
-                        </AnimatePresence>
-                    </ul>
+                                    {showAllPlatforms ? (
+                                        <><ChevronUp className="h-3 w-3" /> Show fewer</>
+                                    ) : (
+                                        <><ChevronDown className="h-3 w-3" /> {uniquePlatforms.platforms.length - 3} more</>
+                                    )}
+                                </button>
+                            )}
+                        </div>
+                    </section>
                 )}
-            </section>
 
-            <IconKey />
-          </div>
+                <section aria-labelledby="services-heading">
+                    <h2 id="services-heading" className="sr-only">Departures from {stopName}</h2>
 
-          {selectedService && trackerProps && (
-              <ServiceTrackerView
-                  key={trackerProps.tripId}
-                  variant={isMobile ? "sheet" : "dialog"}
-                  backLabel="Departures"
-                  tripId={trackerProps.tripId}
-                  has={trackerProps.has}
-                  tripUpdateTracking={trackerProps.tripUpdateTracking}
-                  currentStop={trackerProps.currentStop}
-                  previewData={trackerProps.previewData}
-                  onClose={() => setSelectedService(null)}
-              />
-          )}
+                    {visibleServices.length === 0 ? (
+                        <p className="rounded-xl border border-border bg-card px-4 py-8 text-center text-sm text-muted-foreground">
+                            Nothing on this {uniquePlatforms.type === "platforms" ? "platform" : "route"} right now.
+                        </p>
+                    ) : (
+                        <ul
+                            id="services-list"
+                            role="list"
+                            aria-live="polite"
+                            aria-atomic="false"
+                            className="divide-y divide-border overflow-hidden rounded-xl border border-border bg-card"
+                        >
+                            <AnimatePresence mode="popLayout" initial={false}>
+                                {visibleServices.map((service) => (
+                                    <motion.li
+                                        key={service.trip_id + service.platform}
+                                        layout
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        transition={{ duration: 0.15, layout: { duration: 0.25 } }}
+                                    >
+                                        <ServiceRow
+                                            service={service}
+                                            displayingSchedulePreview={displayingSchedulePreview}
+                                            selected={selectedService?.trip_id === service.trip_id}
+                                            onOpen={() => setSelectedService(service)}
+                                        />
+                                    </motion.li>
+                                ))}
+                            </AnimatePresence>
+                        </ul>
+                    )}
+                </section>
+
+                <IconKey />
+            </div>
+
+            {selectedService && trackerProps && (
+                <ServiceTrackerView
+                    key={trackerProps.tripId}
+                    variant={isMobile ? "sheet" : "dialog"}
+                    backLabel="Departures"
+                    tripId={trackerProps.tripId}
+                    has={trackerProps.has}
+                    tripUpdateTracking={trackerProps.tripUpdateTracking}
+                    currentStop={trackerProps.currentStop}
+                    previewData={trackerProps.previewData}
+                    onClose={() => setSelectedService(null)}
+                />
+            )}
         </div>
     )
 }

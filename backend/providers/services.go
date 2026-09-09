@@ -150,13 +150,20 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		)
 
 		for i, service := range filteredServices {
+			// service.StopId is the child stop the trip actually calls at; the
+			// parent is either its parent_station or the child itself when it
+			// stands alone (mirrors the trip stop-times endpoint).
+			parentStopId := service.StopData.ParentStation
+			if parentStopId == "" {
+				parentStopId = service.StopId
+			}
 			response := ServicesResponse2{
 				StopsAway:          service.StopSequence,
 				ArrivalTime:        service.ArrivalTime,
 				Headsign:           service.StopHeadsign,
 				Platform:           service.Platform,
 				Route:              &ServicesRoute{RouteId: service.TripData.RouteID, RouteShortName: service.RouteShortName},
-				Stop:               &ServicesStop{ParentStopId: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
+				Stop:               &ServicesStop{ParentStopId: parentStopId, ChildStopId: service.StopId, Lat: service.StopData.StopLat, Lon: service.StopData.StopLon, Name: stop.StopName + " " + stop.StopCode, Platform: service.Platform, Sequence: service.StopSequence},
 				LocationTracking:   false,
 				TripUpdateTracking: false,
 				TripId:             service.TripID,
@@ -242,8 +249,13 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				RouteShortName: service.RouteShortName,
 				RouteColor:     service.RouteColor,
 			}
+			parentStopId := service.StopData.ParentStation
+			if parentStopId == "" {
+				parentStopId = service.StopId
+			}
 			response.Stop = &ServicesStop{
-				ParentStopId: service.StopId,
+				ParentStopId: parentStopId,
+				ChildStopId:  service.StopId,
 				Lat:          service.StopData.StopLat,
 				Lon:          service.StopData.StopLon,
 				Name:         stop.StopName,

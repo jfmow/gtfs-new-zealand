@@ -10,7 +10,8 @@ import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker
 interface ServiceTrackerModalProps {
     tripId: string
     currentStop?: {
-        id: string
+        parent_stop_id: string
+        child_stop_id: string
         lat: number
         lon: number
         name: string
@@ -44,7 +45,6 @@ export interface StopTimes {
     arrival_time: number
     departure_time: number
     scheduled_time: number
-    stop: ServicesStop
     skipped: boolean
     passed: boolean
     dist: number
