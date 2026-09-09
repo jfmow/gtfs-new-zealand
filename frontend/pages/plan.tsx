@@ -32,6 +32,7 @@ export default function Page() {
     const [maxWalkKm, setMaxWalkKm] = useState("1")
     const [walkSpeed, setWalkSpeed] = useState("4.8")
     const [maxTransfers, setMaxTransfers] = useState("5")
+    const [minResults, setMinResults] = useState("3")
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
     const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now")
 
@@ -88,6 +89,7 @@ export default function Page() {
         sharedMaxWalkKm: { type: "string", default: "", keys: ["maxWalkKm"] },
         sharedWalkSpeed: { type: "string", default: "", keys: ["walkSpeed"] },
         sharedMaxTransfers: { type: "string", default: "", keys: ["maxTransfers"] },
+        sharedMinResults: { type: "string", default: "", keys: ["minResults"] },
         sharedId: { type: "string", default: "", keys: ["id"] },
         sharedDate: { type: "string", default: "", keys: ["date"] },
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
@@ -107,6 +109,7 @@ export default function Page() {
         if (shared.sharedMaxWalkKm.found) setMaxWalkKm(shared.sharedMaxWalkKm.value)
         if (shared.sharedWalkSpeed.found) setWalkSpeed(shared.sharedWalkSpeed.value)
         if (shared.sharedMaxTransfers.found) setMaxTransfers(shared.sharedMaxTransfers.value)
+        if (shared.sharedMinResults.found) setMinResults(shared.sharedMinResults.value)
         if (shared.sharedDate.found) {
             setTimeType("leaveat")
             setSelectedDate(new Date(shared.sharedDate.value))
@@ -296,14 +299,14 @@ export default function Page() {
     ): Promise<JourneyType[] | null> => {
         try {
             const response = await ApiFetch<JourneyType[]>(
-                `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}`
+                `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}&minResults=${minResults}`
             )
             return response.ok ? pruneDominatedPlans(response.data) : null
         } catch (error) {
             console.error("Error planning journey:", error)
             return null
         }
-    }, [maxWalkKm, walkSpeed, maxTransfers])
+    }, [maxWalkKm, walkSpeed, maxTransfers, minResults])
 
     const planJourney = async () => {
         if (!startLocation || !endLocation) return
@@ -430,6 +433,8 @@ export default function Page() {
                     onWalkSpeedChange={setWalkSpeed}
                     maxTransfers={maxTransfers}
                     onMaxTransfersChange={setMaxTransfers}
+                    minResults={minResults}
+                    onMinResultsChange={setMinResults}
                     isSearching={isSearching}
                     canSave={canSave}
                     justSaved={justSaved}

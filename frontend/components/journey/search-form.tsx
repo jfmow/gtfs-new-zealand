@@ -44,6 +44,8 @@ interface SearchFormProps {
     onWalkSpeedChange: (v: string) => void
     maxTransfers: string
     onMaxTransfersChange: (v: string) => void
+    minResults: string
+    onMinResultsChange: (v: string) => void
 
     isSearching: boolean
     canSave: boolean
@@ -72,6 +74,8 @@ export function SearchForm({
     onWalkSpeedChange,
     maxTransfers,
     onMaxTransfersChange,
+    minResults,
+    onMinResultsChange,
     isSearching,
     canSave,
     justSaved,
@@ -190,6 +194,18 @@ export function SearchForm({
                                 <SelectItem value="3">Up to 3</SelectItem>
                                 <SelectItem value="4">Up to 4</SelectItem>
                                 <SelectItem value="5">Up to 5</SelectItem>
+                            </SelectContent>
+                        </Select>
+
+                        <Select value={minResults} onValueChange={onMinResultsChange}>
+                            <SelectTrigger className="h-8 w-auto min-w-[130px] text-xs">
+                                <span className="text-muted-foreground mr-1">Show:</span>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="3">3 journeys</SelectItem>
+                                <SelectItem value="5">5 journeys</SelectItem>
+                                <SelectItem value="8">8 journeys</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>

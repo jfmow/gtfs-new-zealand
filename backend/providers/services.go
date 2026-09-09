@@ -320,6 +320,15 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				ResponseDetails("maxTransfers", c.QueryParam("maxTransfers"), "error", err.Error()))
 		}
 
+		minResults, err := queryInt(c, "minResults", 3)
+		if err != nil || minResults < 1 || minResults > 10 {
+			minResults = 3
+		}
+		maxResults := minResults
+		if maxResults < 5 {
+			maxResults = 5
+		}
+
 		timeType := queryString(c, "timeType", "now")
 		jplan := gtfs.JourneyRequest{
 			StartLat:        startLat,
@@ -330,8 +339,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			WalkSpeedKmph:   walkSpeed,
 			MaxTransfers:    maxTransfers,
 			MaxNearbyStops:  50,
-			MaxResults:      5,
-			MinResults:      3,
+			MaxResults:      maxResults,
+			MinResults:      minResults,
 			OsrmURL:         osrmApiUrl,
 			IncludeChildren: true,
 			Realtime:        &realtime,
