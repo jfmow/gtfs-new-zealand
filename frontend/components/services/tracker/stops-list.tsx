@@ -67,6 +67,33 @@ export default function StopsList({
         }, 100)
     }
 
+    const getStopTime = (stopId: string) =>
+        stopTimes?.find((st) => st.parent_stop_id === stopId || st.child_stop_id === stopId)
+
+    // Limited tracking (trip-update predictions, no live vehicle): the backend
+    // still marks each stop `passed` from the trip update's stop sequence, so we
+    // can drive current/previous/next highlighting off that instead of a vehicle
+    // position - and it advances on its own as the ~10s poll brings fresh data.
+    const limited = !vehicle && !!stops && !!stopTimes?.length
+    const limitedNextStopKey = limited
+        ? (() => {
+            const next = stops!.find((s) => {
+                const st = getStopTime(s.parent_stop_id)
+                return st && !st.passed && !st.skipped
+            })
+            return next ? `${next.parent_stop_id}|${next.platform}` : null
+        })()
+        : null
+    const limitedPrevStopKey = limited
+        ? (() => {
+            let prev: ServicesStop | undefined
+            for (const s of stops!) {
+                if (getStopTime(s.parent_stop_id)?.passed) prev = s
+            }
+            return prev ? `${prev.parent_stop_id}|${prev.platform}` : null
+        })()
+        : null
+
     // Auto-scroll the "next stop" row into view. Runs when the list first has
     // data (the stops/vehicle often arrive a beat after this mounts, so an
     // empty-deps effect would fire before nextStopRef is attached and do
@@ -75,7 +102,7 @@ export default function StopsList({
     const lastScrolledKey = useRef<string | null>(null)
     const nextStopKey = vehicle
         ? `${vehicle.trip.next_stop.parent_stop_id}|${vehicle.trip.next_stop.platform}`
-        : null
+        : limitedNextStopKey
     useEffect(() => {
         if (!nextStopKey || !nextStopRef.current || lastScrolledKey.current === nextStopKey) return
         lastScrolledKey.current = nextStopKey
@@ -86,24 +113,31 @@ export default function StopsList({
     }, [nextStopKey, stops])
 
     const getStopStatus = (stop: ServicesStop) => {
-        if (!vehicle) return { isCurrentStop: false, isNextStop: false, passed: false }
+        if (vehicle) {
+            const isCurrentStop =
+                vehicle.trip.current_stop.parent_stop_id === stop.parent_stop_id &&
+                stop.platform === vehicle.trip.current_stop.platform
 
-        const isCurrentStop =
-            vehicle.trip.current_stop.parent_stop_id === stop.parent_stop_id &&
-            stop.platform === vehicle.trip.current_stop.platform
+            const isNextStop =
+                vehicle.trip.next_stop.parent_stop_id === stop.parent_stop_id &&
+                stop.platform === vehicle.trip.next_stop.platform &&
+                !isCurrentStop
 
-        const isNextStop =
-            vehicle.trip.next_stop.parent_stop_id === stop.parent_stop_id &&
-            stop.platform === vehicle.trip.next_stop.platform &&
-            !isCurrentStop
+            const passed = vehicle.trip.current_stop.sequence > stop.sequence
 
-        const passed = vehicle.trip.current_stop.sequence > stop.sequence
+            return { isCurrentStop, isNextStop, passed }
+        }
 
-        return { isCurrentStop, isNextStop, passed }
+        if (limited) {
+            const key = `${stop.parent_stop_id}|${stop.platform}`
+            const isNextStop = key === limitedNextStopKey
+            const isCurrentStop = key === limitedPrevStopKey && !isNextStop
+            const passed = !!getStopTime(stop.parent_stop_id)?.passed && !isCurrentStop
+            return { isCurrentStop, isNextStop, passed }
+        }
+
+        return { isCurrentStop: false, isNextStop: false, passed: false }
     }
-
-    const getStopTime = (stopId: string) =>
-        stopTimes?.find((st) => st.parent_stop_id === stopId || st.child_stop_id === stopId)
 
     const getVehiclePosition = () => {
         if (!stops || !vehicle) return null
@@ -407,9 +441,9 @@ export default function StopsList({
                                             </div>
 
                                             <div className="flex flex-col gap-1 items-end flex-shrink-0">
-                                                {isCurrentStop && vehicle && !stopTime?.skipped && (
+                                                {isCurrentStop && (vehicle || limited) && !stopTime?.skipped && (
                                                     <Badge variant="secondary" className="text-xs bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300">
-                                                        {vehicle.state === "AtStop" ? "Current" : "Previous"}
+                                                        {vehicle?.state === "AtStop" ? "Current" : "Previous"}
                                                     </Badge>
                                                 )}
                                                 {isNextStop && !stopTime?.skipped && (

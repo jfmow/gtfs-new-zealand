@@ -13,6 +13,12 @@ export interface ServiceTrackerContextValue {
     stopTimes: StopTimes[] | null
     previewData?: PreviewData
     tripId: string
+    /**
+     * The service has trip-update (arrival prediction) tracking but no live
+     * vehicle position. Drives the "Limited tracking" vs "Timetable only" notice
+     * when the tracker falls back to its no-vehicle view.
+     */
+    tripUpdateTracking?: boolean
     currentStop?: {
         id: string
         lat: number

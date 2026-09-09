@@ -201,6 +201,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const trackerProps = selectedService && {
         tripId: selectedService.trip_id,
         has: selectedService.location_tracking,
+        tripUpdateTracking: selectedService.trip_update_tracking,
         currentStop: {
             id: selectedService.stop.id,
             lat: selectedService.stop.lat,
@@ -320,6 +321,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                           hideMap={false}
                           tripId={trackerProps.tripId}
                           has={trackerProps.has}
+                          tripUpdateTracking={trackerProps.tripUpdateTracking}
                           currentStop={trackerProps.currentStop}
                           previewData={trackerProps.previewData}
                           onClose={() => setSelectedService(null)}
@@ -336,6 +338,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                       backLabel="Departures"
                       tripId={trackerProps.tripId}
                       has={trackerProps.has}
+                      tripUpdateTracking={trackerProps.tripUpdateTracking}
                       currentStop={trackerProps.currentStop}
                       previewData={trackerProps.previewData}
                       onClose={() => setSelectedService(null)}

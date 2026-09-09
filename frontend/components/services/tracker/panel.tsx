@@ -11,6 +11,8 @@ interface ServiceTrackerViewProps {
     tripId: string
     /** Whether this service has live location tracking - drives which feed the hook polls. */
     has?: boolean
+    /** Whether the service has trip-update (arrival prediction) tracking - shown as "Limited tracking" when there's no live vehicle. */
+    tripUpdateTracking?: boolean
     currentStop?: {
         id: string
         lat: number
@@ -38,6 +40,7 @@ interface ServiceTrackerViewProps {
 const ServiceTrackerView = memo(function ServiceTrackerView({
     tripId,
     has = true,
+    tripUpdateTracking,
     currentStop,
     previewData,
     hideMap,
@@ -61,6 +64,7 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
                     stopTimes,
                     previewData,
                     tripId,
+                    tripUpdateTracking,
                     currentStop,
                     refreshing,
                     hideMap: resolvedHideMap,

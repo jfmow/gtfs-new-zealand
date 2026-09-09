@@ -25,7 +25,7 @@ const VehicleIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="
 type RouteAlert = AlertResponseData
 
 const ServiceTrackerContent = memo(function ServiceTrackerContent() {
-    const { vehicle, stops, stopTimes, previewData, tripId, currentStop, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
+    const { vehicle, stops, stopTimes, previewData, tripId, tripUpdateTracking, currentStop, refreshing, hideMap, stopsLayout } = useServiceTrackerContext()
 
     // On the full-screen page the map should fill the space under the header/tabs
     // rather than sit in a fixed 300px slot with dead space below it.
@@ -134,7 +134,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                 <div>
                     <RouteAlertsBanner alerts={visibleAlerts} onDismiss={dismissAlert} routeId={activeRouteId} />
 
-                    {vehicle.state === "Unknown" && <TrackingNotice level="limited" />}
+                    {vehicle.state === "Unknown" && <TrackingNotice level="limited" hasVehicle />}
 
                     {vehicle.off_course && (
                         <Card className="border-destructive bg-destructive/5 mb-4">
@@ -361,7 +361,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
                                     {previewData.tripHeadsign}
                                 </h1>
                             </div>
-                            <TrackingNotice level="scheduled" />
+                            <TrackingNotice level={tripUpdateTracking ? "limited" : "scheduled"} />
                             <Card>
                                 <CardContent className="p-4">
                                     <div className="flex flex-wrap gap-1 items-center justify-between">
@@ -455,8 +455,18 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
 export default ServiceTrackerContent
 
 
-function TrackingNotice({ level }: { level: "scheduled" | "limited" }) {
+function TrackingNotice({
+    level,
+    hasVehicle = false,
+}: {
+    level: "scheduled" | "limited"
+    /** In "limited" mode: true when a vehicle position exists but is stale/unreliable, false when there's no position at all. */
+    hasVehicle?: boolean
+}) {
     const scheduled = level === "scheduled"
+    const limitedText = hasVehicle
+        ? "We're getting arrival updates for this trip, but its live position is unreliable right now — the map may be approximate."
+        : "Arrival times below are live predictions for this trip. There's no vehicle position, so the map shows the route only."
     return (
         <div
             className={cn(
@@ -483,7 +493,7 @@ function TrackingNotice({ level }: { level: "scheduled" | "limited" }) {
                 <p className={scheduled ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300/90"}>
                     {scheduled
                         ? "This service isn't reporting its position. Times below come from the schedule, not a live vehicle."
-                        : "We're getting arrival updates for this trip, but no live position — the map may be approximate."}
+                        : limitedText}
                 </p>
             </div>
         </div>
