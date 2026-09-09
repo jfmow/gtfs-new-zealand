@@ -407,14 +407,18 @@ function ServiceRow({
     const isLive =
         !displayingSchedulePreview && !isCanceled && !isSkipped &&
         (service.location_tracking || service.trip_update_tracking)
-    const showOccupancy = service.location_tracking && service.occupancy >= 0
+    const showOccupancy = isLive && service.location_tracking && service.occupancy >= 0
 
-    // How much we really know about where this service is right now.
-    const tracking: "live" | "limited" | "scheduled" = service.location_tracking
-        ? "live"
-        : service.trip_update_tracking
-            ? "limited"
-            : "scheduled"
+    // How much we really know about where this service is right now. A cancelled
+    // or skipped service says its own thing ("Cancelled" / "Not stopping") - a
+    // "Limited tracking" badge next to that is just noise.
+    const tracking: "live" | "limited" | "scheduled" | "none" = isCanceled || isSkipped
+        ? "none"
+        : service.location_tracking
+            ? "live"
+            : service.trip_update_tracking
+                ? "limited"
+                : "scheduled"
 
     const inner = (
         <div className={cn("flex w-full items-start gap-3 px-3 py-3 text-left", tint)}>
