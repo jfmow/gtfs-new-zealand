@@ -124,6 +124,14 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		for _, service := range services {
 			stopsForService, found := stopsForTripCache[service.TripID]
 			if !found {
+				// The trip-stops cache can legitimately be missing a trip - most
+				// often in the day or two before a GTFS feed version rollover,
+				// when the cache's date window and the trip's calendar block no
+				// longer line up. Dropping the trip here makes real departures
+				// silently vanish from the board, so keep it: GetActiveTrips has
+				// already excluded set-down-only (last) stops, we just can't do
+				// the sequence normalisation below without the stop list.
+				filteredServices = append(filteredServices, service)
 				continue
 			}
 			//The stop sequence in gtfs data sometimes goes to 0 for first or 1 for first, so make them == 0 for first because our array of stops will always start at 0 as the first, so selecting 1 for first would actually be the 2nd stop
