@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { format } from "date-fns"
 import type { Location } from "./types"
+import { RouteMultiSelect, type RouteOption } from "./route-filter"
 
 interface SearchFormProps {
     startLocation: Location | null
@@ -46,6 +47,10 @@ interface SearchFormProps {
     onMaxTransfersChange: (v: string) => void
     minResults: string
     onMinResultsChange: (v: string) => void
+    onlyRoutes: RouteOption[]
+    onOnlyRoutesChange: (routes: RouteOption[]) => void
+    requiredRoutes: RouteOption[]
+    onRequiredRoutesChange: (routes: RouteOption[]) => void
 
     isSearching: boolean
     canSave: boolean
@@ -76,6 +81,10 @@ export function SearchForm({
     onMaxTransfersChange,
     minResults,
     onMinResultsChange,
+    onlyRoutes,
+    onOnlyRoutesChange,
+    requiredRoutes,
+    onRequiredRoutesChange,
     isSearching,
     canSave,
     justSaved,
@@ -208,6 +217,20 @@ export function SearchForm({
                                 <SelectItem value="8">8 journeys</SelectItem>
                             </SelectContent>
                         </Select>
+                    </div>
+                    <div className="flex flex-wrap gap-3 pt-3">
+                        <RouteMultiSelect
+                            label="Only use these routes"
+                            placeholder="Search routes…"
+                            selected={onlyRoutes}
+                            onChange={onOnlyRoutesChange}
+                        />
+                        <RouteMultiSelect
+                            label="Must include these routes"
+                            placeholder="Search routes…"
+                            selected={requiredRoutes}
+                            onChange={onRequiredRoutesChange}
+                        />
                     </div>
                 </CollapsibleContent>
             </Collapsible>

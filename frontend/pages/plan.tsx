@@ -10,6 +10,7 @@ import { ApiFetch, useUrl } from "@/lib/url-context"
 import { getRegionSlug } from "@/lib/url-store"
 import { useQueryParams } from "@/lib/url-params"
 import type { Location, JourneyType } from "@/components/journey/types"
+import { resolveRouteIds, type RouteOption } from "@/components/journey/route-filter"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
 import { formatTime, getTransitTripIds, latestDeparture, pruneDominatedPlans } from "@/components/journey/helpers"
 import { SearchForm } from "@/components/journey/search-form"
@@ -33,6 +34,8 @@ export default function Page() {
     const [walkSpeed, setWalkSpeed] = useState("4.8")
     const [maxTransfers, setMaxTransfers] = useState("5")
     const [minResults, setMinResults] = useState("3")
+    const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
+    const [requiredRoutes, setRequiredRoutes] = useState<RouteOption[]>([])
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
     const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now")
 
@@ -90,6 +93,8 @@ export default function Page() {
         sharedWalkSpeed: { type: "string", default: "", keys: ["walkSpeed"] },
         sharedMaxTransfers: { type: "string", default: "", keys: ["maxTransfers"] },
         sharedMinResults: { type: "string", default: "", keys: ["minResults"] },
+        sharedOnlyRoutes: { type: "string", default: "", keys: ["onlyRoutes"] },
+        sharedRequiredRoutes: { type: "string", default: "", keys: ["requiredRoutes"] },
         sharedId: { type: "string", default: "", keys: ["id"] },
         sharedDate: { type: "string", default: "", keys: ["date"] },
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
@@ -110,6 +115,12 @@ export default function Page() {
         if (shared.sharedWalkSpeed.found) setWalkSpeed(shared.sharedWalkSpeed.value)
         if (shared.sharedMaxTransfers.found) setMaxTransfers(shared.sharedMaxTransfers.value)
         if (shared.sharedMinResults.found) setMinResults(shared.sharedMinResults.value)
+        if (shared.sharedOnlyRoutes.found) {
+            resolveRouteIds(shared.sharedOnlyRoutes.value.split(",").filter(Boolean)).then(setOnlyRoutes)
+        }
+        if (shared.sharedRequiredRoutes.found) {
+            resolveRouteIds(shared.sharedRequiredRoutes.value.split(",").filter(Boolean)).then(setRequiredRoutes)
+        }
         if (shared.sharedDate.found) {
             setTimeType("leaveat")
             setSelectedDate(new Date(shared.sharedDate.value))
@@ -298,15 +309,20 @@ export default function Page() {
         tType: "now" | "leaveat" | "arriveat",
     ): Promise<JourneyType[] | null> => {
         try {
-            const response = await ApiFetch<JourneyType[]>(
-                `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}&minResults=${minResults}`
-            )
+            let url = `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}&minResults=${minResults}`
+            if (onlyRoutes.length > 0) {
+                url += `&onlyRoutes=${encodeURIComponent(onlyRoutes.map((r) => r.route_id).join(","))}`
+            }
+            if (requiredRoutes.length > 0) {
+                url += `&requiredRoutes=${encodeURIComponent(requiredRoutes.map((r) => r.route_id).join(","))}`
+            }
+            const response = await ApiFetch<JourneyType[]>(url)
             return response.ok ? pruneDominatedPlans(response.data) : null
         } catch (error) {
             console.error("Error planning journey:", error)
             return null
         }
-    }, [maxWalkKm, walkSpeed, maxTransfers, minResults])
+    }, [maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, requiredRoutes])
 
     const planJourney = async () => {
         if (!startLocation || !endLocation) return
@@ -435,6 +451,10 @@ export default function Page() {
                     onMaxTransfersChange={setMaxTransfers}
                     minResults={minResults}
                     onMinResultsChange={setMinResults}
+                    onlyRoutes={onlyRoutes}
+                    onOnlyRoutesChange={setOnlyRoutes}
+                    requiredRoutes={requiredRoutes}
+                    onRequiredRoutesChange={setRequiredRoutes}
                     isSearching={isSearching}
                     canSave={canSave}
                     justSaved={justSaved}

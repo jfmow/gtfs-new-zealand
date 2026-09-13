@@ -8,6 +8,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -350,20 +351,24 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		timeType := queryString(c, "timeType", "now")
+		onlyRoutes := queryStringSlice(c, "onlyRoutes")
+		requiredRoutes := queryStringSlice(c, "requiredRoutes")
 		jplan := gtfs.JourneyRequest{
-			StartLat:        startLat,
-			StartLon:        startLon,
-			EndLat:          endLat,
-			EndLon:          endLon,
-			MaxWalkKm:       maxWalkKm,
-			WalkSpeedKmph:   walkSpeed,
-			MaxTransfers:    maxTransfers,
-			MaxNearbyStops:  50,
-			MaxResults:      maxResults,
-			MinResults:      minResults,
-			OsrmURL:         osrmApiUrl,
-			IncludeChildren: true,
-			Realtime:        &realtime,
+			StartLat:         startLat,
+			StartLon:         startLon,
+			EndLat:           endLat,
+			EndLon:           endLon,
+			MaxWalkKm:        maxWalkKm,
+			WalkSpeedKmph:    walkSpeed,
+			MaxTransfers:     maxTransfers,
+			MaxNearbyStops:   50,
+			MaxResults:       maxResults,
+			MinResults:       minResults,
+			OsrmURL:          osrmApiUrl,
+			IncludeChildren:  true,
+			OnlyRouteIDs:     onlyRoutes,
+			RequiredRouteIDs: requiredRoutes,
+			Realtime:         &realtime,
 		}
 
 		switch timeType {
@@ -481,6 +486,27 @@ func queryString(
 		return def
 	}
 	return v
+}
+
+// queryStringSlice parses a comma-separated query param into a trimmed,
+// non-empty slice of values, or nil if the param is absent/empty.
+func queryStringSlice(c echo.Context, key string) []string {
+	v := c.QueryParam(key)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Services
