@@ -15,6 +15,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { addJourneyReminder } from "@/lib/notifications"
 import type { JourneyType, Location } from "./types"
+import type { RouteOption } from "./route-filter"
 import {
     getFirstTransitLeg,
     leadingAccessSeconds,
@@ -29,6 +30,8 @@ export interface LeaveReminderContext {
     maxWalkKm: string
     walkSpeed: string
     maxTransfers: string
+    onlyRoutes: RouteOption[]
+    requiredRoutes: RouteOption[]
     timeType: "now" | "leaveat" | "arriveat"
     selectedDate: Date
 }
@@ -164,11 +167,17 @@ export function LeaveReminderDialog({
         // A recurring reminder resolves a different trip each day, so the
         // fixed-trip share deeplink (with a stale plan id) is wrong for it -
         // point it at a pre-filled planner search instead.
-        const recurringDeeplink =
+        let recurringDeeplink =
             `/plan?startLat=${start.lat}&startLon=${start.lon}&startLabel=${encodeURIComponent(start.label)}` +
             `&endLat=${end.lat}&endLon=${end.lon}&endLabel=${encodeURIComponent(end.label)}` +
             `&maxWalkKm=${requestContext.maxWalkKm}&walkSpeed=${requestContext.walkSpeed}&maxTransfers=${requestContext.maxTransfers}` +
             `&timeType=${arriveAt ? "arriveat" : "leaveat"}`
+        if (requestContext.onlyRoutes.length > 0) {
+            recurringDeeplink += `&onlyRoutes=${encodeURIComponent(requestContext.onlyRoutes.map((r) => r.route_id).join(","))}`
+        }
+        if (requestContext.requiredRoutes.length > 0) {
+            recurringDeeplink += `&requiredRoutes=${encodeURIComponent(requestContext.requiredRoutes.map((r) => r.route_id).join(","))}`
+        }
 
         const common = {
             start: { lat: start.lat, lon: start.lon, label: start.label },
@@ -176,6 +185,8 @@ export function LeaveReminderDialog({
             maxWalkKm: requestContext.maxWalkKm,
             walkSpeed: requestContext.walkSpeed,
             maxTransfers: requestContext.maxTransfers,
+            onlyRoutes: requestContext.onlyRoutes.map((r) => r.route_id),
+            requiredRoutes: requestContext.requiredRoutes.map((r) => r.route_id),
             offsets: usableOffsets,
         }
 

@@ -198,12 +198,14 @@ export default function Page() {
             maxWalkKm,
             walkSpeed,
             maxTransfers,
+            onlyRoutes,
+            requiredRoutes,
         })
         setJustSaved(true)
         setTimeout(() => setJustSaved(false), 2500)
     }
 
-    const handleLoadTrip = useCallback((trip: { startLocation: Location; endLocation: Location; maxWalkKm: string; walkSpeed: string; maxTransfers: string }) => {
+    const handleLoadTrip = useCallback((trip: { startLocation: Location; endLocation: Location; maxWalkKm: string; walkSpeed: string; maxTransfers: string; onlyRoutes?: RouteOption[]; requiredRoutes?: RouteOption[] }) => {
         setStartLocation(trip.startLocation)
         setEndLocation(trip.endLocation)
         setTimeType("now")
@@ -211,6 +213,8 @@ export default function Page() {
         setMaxWalkKm(trip.maxWalkKm)
         setWalkSpeed(trip.walkSpeed)
         setMaxTransfers(trip.maxTransfers)
+        setOnlyRoutes(trip.onlyRoutes ?? [])
+        setRequiredRoutes(trip.requiredRoutes ?? [])
         setManageOpen(false)
     }, [])
 
@@ -546,6 +550,8 @@ export default function Page() {
                     maxWalkKm,
                     walkSpeed,
                     maxTransfers,
+                    onlyRoutes,
+                    requiredRoutes,
                     timeType,
                     selectedDate,
                 }}

@@ -79,7 +79,7 @@ export function RouteMultiSelect({ label, placeholder, selected, onChange }: Rou
 
     return (
         <div className="flex flex-col gap-1.5 w-full sm:w-auto" ref={containerRef}>
-            <span className="text-xs text-muted-foreground">{label}</span>
+            {label && <span className="text-xs text-muted-foreground">{label}</span>}
             <div className="relative">
                 <Input
                     value={searchTerm}

@@ -117,6 +117,8 @@ export default function JourneyPage() {
         maxWalkKm: "1",
         walkSpeed: "4.8",
         maxTransfers: "5",
+        onlyRoutes: [],
+        requiredRoutes: [],
         timeType: "leaveat" as const,
         selectedDate: route ? new Date(route.DepartureTime) : new Date(),
     }), [startLocation, endLocation, route])

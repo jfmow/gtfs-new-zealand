@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-filter"
 
 interface GlobalTripSettingsDialogProps {
   open: boolean
@@ -27,10 +28,12 @@ interface GlobalTripSettingsDialogProps {
     maxWalkKm?: string
     walkSpeed?: string
     maxTransfers?: string
+    onlyRoutes?: RouteOption[]
+    requiredRoutes?: RouteOption[]
   }) => void
 }
 
-type OverrideKey = "maxWalkKm" | "walkSpeed" | "maxTransfers"
+type OverrideKey = "maxWalkKm" | "walkSpeed" | "maxTransfers" | "onlyRoutes" | "requiredRoutes"
 
 export function GlobalTripSettingsDialog({
   open,
@@ -41,11 +44,15 @@ export function GlobalTripSettingsDialog({
   const [maxWalkKm, setMaxWalkKm] = useState("1")
   const [walkSpeed, setWalkSpeed] = useState("4.8")
   const [maxTransfers, setMaxTransfers] = useState("5")
+  const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
+  const [requiredRoutes, setRequiredRoutes] = useState<RouteOption[]>([])
 
   const [checked, setChecked] = useState<Record<OverrideKey, boolean>>({
     maxWalkKm: false,
     walkSpeed: false,
     maxTransfers: false,
+    onlyRoutes: false,
+    requiredRoutes: false,
   })
 
   const toggle = (key: OverrideKey) =>
@@ -54,10 +61,18 @@ export function GlobalTripSettingsDialog({
   const anyChecked = Object.values(checked).some(Boolean)
 
   const handleApply = () => {
-    const settings: { maxWalkKm?: string; walkSpeed?: string; maxTransfers?: string } = {}
+    const settings: {
+      maxWalkKm?: string
+      walkSpeed?: string
+      maxTransfers?: string
+      onlyRoutes?: RouteOption[]
+      requiredRoutes?: RouteOption[]
+    } = {}
     if (checked.maxWalkKm) settings.maxWalkKm = maxWalkKm
     if (checked.walkSpeed) settings.walkSpeed = walkSpeed
     if (checked.maxTransfers) settings.maxTransfers = maxTransfers
+    if (checked.onlyRoutes) settings.onlyRoutes = onlyRoutes
+    if (checked.requiredRoutes) settings.requiredRoutes = requiredRoutes
     onApply(settings)
     onOpenChange(false)
   }
@@ -147,6 +162,50 @@ export function GlobalTripSettingsDialog({
               {control}
             </div>
           ))}
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="onlyRoutes"
+              checked={checked.onlyRoutes}
+              onCheckedChange={() => toggle("onlyRoutes")}
+            />
+            <Label
+              htmlFor="onlyRoutes"
+              className={`text-sm cursor-pointer ${!checked.onlyRoutes ? "text-muted-foreground" : ""}`}
+            >
+              Only use these routes
+            </Label>
+          </div>
+          {checked.onlyRoutes && (
+            <RouteMultiSelect
+              label=""
+              placeholder="Search routes…"
+              selected={onlyRoutes}
+              onChange={setOnlyRoutes}
+            />
+          )}
+
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="requiredRoutes"
+              checked={checked.requiredRoutes}
+              onCheckedChange={() => toggle("requiredRoutes")}
+            />
+            <Label
+              htmlFor="requiredRoutes"
+              className={`text-sm cursor-pointer ${!checked.requiredRoutes ? "text-muted-foreground" : ""}`}
+            >
+              Must include these routes
+            </Label>
+          </div>
+          {checked.requiredRoutes && (
+            <RouteMultiSelect
+              label=""
+              placeholder="Search routes…"
+              selected={requiredRoutes}
+              onChange={setRequiredRoutes}
+            />
+          )}
         </div>
 
         <DialogFooter>

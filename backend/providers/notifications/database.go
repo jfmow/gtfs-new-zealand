@@ -191,6 +191,8 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             max_walk_km REAL NOT NULL DEFAULT 1.0,
             walk_speed REAL NOT NULL DEFAULT 4.8,
             max_transfers INTEGER NOT NULL DEFAULT 5,
+            only_route_ids TEXT NOT NULL DEFAULT '[]',
+            required_route_ids TEXT NOT NULL DEFAULT '[]',
             -- prep_buffer_seconds: removed. The leave anchor is now the journey's
             -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
@@ -248,6 +250,28 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		}
 		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
 			return fmt.Errorf("ensure schema: migrate stops.%s: %w", m.column, err)
+		}
+	}
+
+	// journey_reminders predates only_route_ids/required_route_ids - same
+	// ADD COLUMN-if-missing treatment as the stops migration above.
+	jrExistingColumns, err := d.columnNames(ctx, "journey_reminders")
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	jrMigrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"only_route_ids", `ALTER TABLE journey_reminders ADD COLUMN only_route_ids TEXT NOT NULL DEFAULT '[]';`},
+		{"required_route_ids", `ALTER TABLE journey_reminders ADD COLUMN required_route_ids TEXT NOT NULL DEFAULT '[]';`},
+	}
+	for _, m := range jrMigrations {
+		if jrExistingColumns[m.column] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
+			return fmt.Errorf("ensure schema: migrate journey_reminders.%s: %w", m.column, err)
 		}
 	}
 
@@ -391,6 +415,31 @@ func decodeIntSlice(raw sql.NullString) []int {
 		return nil
 	}
 	var values []int
+	if err := json.Unmarshal([]byte(raw.String), &values); err != nil {
+		return nil
+	}
+	return values
+}
+
+// encodeStringSlice / decodeStringSlice back the JSON []string columns on
+// journey_reminders (only_route_ids, required_route_ids), same round-trip
+// convention as encodeIntSlice/decodeIntSlice above.
+func encodeStringSlice(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(values)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+func decodeStringSlice(raw sql.NullString) []string {
+	if !raw.Valid || raw.String == "" || raw.String == "[]" {
+		return nil
+	}
+	var values []string
 	if err := json.Unmarshal([]byte(raw.String), &values); err != nil {
 		return nil
 	}

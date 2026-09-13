@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { SWATCH_COLORS } from "@/lib/colors"
 import type { Location } from "./types"
+import type { RouteOption } from "./route-filter"
 
 export interface SavedTrip {
     id: string
@@ -12,6 +13,8 @@ export interface SavedTrip {
     walkSpeed: string
     maxTransfers: string
     color: string
+    onlyRoutes: RouteOption[]
+    requiredRoutes: RouteOption[]
 }
 
 const STORAGE_KEY = "savedJourneyTrips"
@@ -20,12 +23,16 @@ const TRIPS_UPDATED_EVENT = "tripsUpdated"
 function readTrips(): SavedTrip[] {
     if (typeof window === "undefined") return []
     try {
-        const raw: Array<Omit<SavedTrip, "color"> & { color?: string }> = JSON.parse(
-            localStorage.getItem(STORAGE_KEY) ?? "[]"
-        )
+        const raw: Array<Omit<SavedTrip, "color" | "onlyRoutes" | "requiredRoutes"> & {
+            color?: string
+            onlyRoutes?: RouteOption[]
+            requiredRoutes?: RouteOption[]
+        }> = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]")
         return raw.map((t, i) => ({
             ...t,
             color: t.color || SWATCH_COLORS[i % SWATCH_COLORS.length].value,
+            onlyRoutes: t.onlyRoutes ?? [],
+            requiredRoutes: t.requiredRoutes ?? [],
         }))
     } catch {
         return []
@@ -78,6 +85,8 @@ export function useSavedTrips() {
         maxWalkKm?: string
         walkSpeed?: string
         maxTransfers?: string
+        onlyRoutes?: RouteOption[]
+        requiredRoutes?: RouteOption[]
     }) => {
         writeTrips(
             readTrips().map((t) => ({
@@ -85,6 +94,8 @@ export function useSavedTrips() {
                 ...(settings.maxWalkKm !== undefined && { maxWalkKm: settings.maxWalkKm }),
                 ...(settings.walkSpeed !== undefined && { walkSpeed: settings.walkSpeed }),
                 ...(settings.maxTransfers !== undefined && { maxTransfers: settings.maxTransfers }),
+                ...(settings.onlyRoutes !== undefined && { onlyRoutes: settings.onlyRoutes }),
+                ...(settings.requiredRoutes !== undefined && { requiredRoutes: settings.requiredRoutes }),
             }))
         )
     }

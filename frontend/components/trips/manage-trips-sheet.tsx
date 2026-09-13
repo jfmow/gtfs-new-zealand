@@ -42,6 +42,7 @@ import { toast } from "sonner"
 import { useIsMobile } from "@/lib/utils"
 import { SWATCH_COLORS } from "@/lib/colors"
 import type { SavedTrip } from "@/components/journey/use-saved-trips"
+import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-filter"
 
 interface ManageTripsSheetProps {
   open: boolean
@@ -69,9 +70,11 @@ function EditTripDialog({
   const [maxWalkKm, setMaxWalkKm] = useState(trip.maxWalkKm)
   const [walkSpeed, setWalkSpeed] = useState(trip.walkSpeed)
   const [maxTransfers, setMaxTransfers] = useState(trip.maxTransfers)
+  const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>(trip.onlyRoutes ?? [])
+  const [requiredRoutes, setRequiredRoutes] = useState<RouteOption[]>(trip.requiredRoutes ?? [])
 
   const handleSave = () => {
-    onSave({ ...trip, name: name.trim() || trip.name, color, maxWalkKm, walkSpeed, maxTransfers })
+    onSave({ ...trip, name: name.trim() || trip.name, color, maxWalkKm, walkSpeed, maxTransfers, onlyRoutes, requiredRoutes })
     onOpenChange(false)
     toast.success("Trip updated")
   }
@@ -154,6 +157,21 @@ function EditTripDialog({
               </Select>
             </div>
           </div>
+
+          <div className="space-y-2">
+            <RouteMultiSelect
+              label="Only use these routes"
+              placeholder="Search routes…"
+              selected={onlyRoutes}
+              onChange={setOnlyRoutes}
+            />
+            <RouteMultiSelect
+              label="Must include these routes"
+              placeholder="Search routes…"
+              selected={requiredRoutes}
+              onChange={setRequiredRoutes}
+            />
+          </div>
         </div>
 
         <DialogFooter>
@@ -213,6 +231,13 @@ function TripRow({
           {trip.walkSpeed === "3" ? "Slow" : trip.walkSpeed === "4.8" ? "Normal" : "Brisk"} &middot;{" "}
           {trip.maxTransfers === "0" ? "Direct" : `≤${trip.maxTransfers} transfers`}
         </p>
+        {(trip.onlyRoutes?.length > 0 || trip.requiredRoutes?.length > 0) && (
+          <p className="text-[11px] text-muted-foreground/60 mt-0.5 truncate">
+            {trip.onlyRoutes?.length > 0 && `Only: ${trip.onlyRoutes.map((r) => r.name).join(", ")}`}
+            {trip.onlyRoutes?.length > 0 && trip.requiredRoutes?.length > 0 && " · "}
+            {trip.requiredRoutes?.length > 0 && `Requires: ${trip.requiredRoutes.map((r) => r.name).join(", ")}`}
+          </p>
+        )}
       </button>
 
       <DropdownMenu>
