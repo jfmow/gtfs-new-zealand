@@ -31,7 +31,6 @@ export interface LeaveReminderContext {
     walkSpeed: string
     maxTransfers: string
     onlyRoutes: RouteOption[]
-    requiredRoutes: RouteOption[]
     timeType: "now" | "leaveat" | "arriveat"
     selectedDate: Date
 }
@@ -175,9 +174,6 @@ export function LeaveReminderDialog({
         if (requestContext.onlyRoutes.length > 0) {
             recurringDeeplink += `&onlyRoutes=${encodeURIComponent(requestContext.onlyRoutes.map((r) => r.route_id).join(","))}`
         }
-        if (requestContext.requiredRoutes.length > 0) {
-            recurringDeeplink += `&requiredRoutes=${encodeURIComponent(requestContext.requiredRoutes.map((r) => r.route_id).join(","))}`
-        }
 
         const common = {
             start: { lat: start.lat, lon: start.lon, label: start.label },
@@ -186,7 +182,6 @@ export function LeaveReminderDialog({
             walkSpeed: requestContext.walkSpeed,
             maxTransfers: requestContext.maxTransfers,
             onlyRoutes: requestContext.onlyRoutes.map((r) => r.route_id),
-            requiredRoutes: requestContext.requiredRoutes.map((r) => r.route_id),
             offsets: usableOffsets,
         }
 

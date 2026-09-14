@@ -341,34 +341,34 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				ResponseDetails("maxTransfers", c.QueryParam("maxTransfers"), "error", err.Error()))
 		}
 
+		// minResults is really "how many journeys to show" from the UI's single
+		// "Show: N journeys" selector - there's no separate max control, so it
+		// doubles as maxResults directly. (It used to be floored to 5 here,
+		// which made "Show: 3" and "Show: 5" behave identically - the request's
+		// own diversify target still guarantees at least 3 regardless.)
 		minResults, err := queryInt(c, "minResults", 3)
 		if err != nil || minResults < 1 || minResults > 10 {
 			minResults = 3
 		}
 		maxResults := minResults
-		if maxResults < 5 {
-			maxResults = 5
-		}
 
 		timeType := queryString(c, "timeType", "now")
 		onlyRoutes := queryStringSlice(c, "onlyRoutes")
-		requiredRoutes := queryStringSlice(c, "requiredRoutes")
 		jplan := gtfs.JourneyRequest{
-			StartLat:         startLat,
-			StartLon:         startLon,
-			EndLat:           endLat,
-			EndLon:           endLon,
-			MaxWalkKm:        maxWalkKm,
-			WalkSpeedKmph:    walkSpeed,
-			MaxTransfers:     maxTransfers,
-			MaxNearbyStops:   50,
-			MaxResults:       maxResults,
-			MinResults:       minResults,
-			OsrmURL:          osrmApiUrl,
-			IncludeChildren:  true,
-			OnlyRouteIDs:     onlyRoutes,
-			RequiredRouteIDs: requiredRoutes,
-			Realtime:         &realtime,
+			StartLat:        startLat,
+			StartLon:        startLon,
+			EndLat:          endLat,
+			EndLon:          endLon,
+			MaxWalkKm:       maxWalkKm,
+			WalkSpeedKmph:   walkSpeed,
+			MaxTransfers:    maxTransfers,
+			MaxNearbyStops:  50,
+			MaxResults:      maxResults,
+			MinResults:      minResults,
+			OsrmURL:         osrmApiUrl,
+			IncludeChildren: true,
+			OnlyRouteIDs:    onlyRoutes,
+			Realtime:        &realtime,
 		}
 
 		switch timeType {
@@ -391,7 +391,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		plans, err := gtfsData.PlanJourneyRaptor(jplan)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "No valid journey found", nil, ResponseDetails("error", err.Error()))
+			// The planner's error text is plain English written for exactly this
+			// purpose (e.g. "no journey found using only the selected routes -
+			// they may not connect these two locations within the allowed
+			// walking distance") - relay it as the message instead of a generic
+			// placeholder so the UI can actually tell the rider what's wrong.
+			return JsonApiResponse(c, http.StatusInternalServerError, err.Error(), nil, ResponseDetails("error", err.Error()))
 		}
 
 		if plans != nil {

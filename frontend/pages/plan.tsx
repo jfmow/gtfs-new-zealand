@@ -35,7 +35,6 @@ export default function Page() {
     const [maxTransfers, setMaxTransfers] = useState("5")
     const [minResults, setMinResults] = useState("3")
     const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
-    const [requiredRoutes, setRequiredRoutes] = useState<RouteOption[]>([])
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
     const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now")
 
@@ -64,6 +63,9 @@ export default function Page() {
     const [isRouteMapOpen, setIsRouteMapOpen] = useState(false)
     const [locationMode, setLocationMode] = useState<'start' | 'end'>('start')
     const [locationError, setLocationError] = useState<string | null>(null)
+    // Set only after a completed search comes back empty/failed - cleared the
+    // instant a new search starts.
+    const [planError, setPlanError] = useState<string | null>(null)
 
     const canSave = !!(startLocation && endLocation)
 
@@ -94,7 +96,6 @@ export default function Page() {
         sharedMaxTransfers: { type: "string", default: "", keys: ["maxTransfers"] },
         sharedMinResults: { type: "string", default: "", keys: ["minResults"] },
         sharedOnlyRoutes: { type: "string", default: "", keys: ["onlyRoutes"] },
-        sharedRequiredRoutes: { type: "string", default: "", keys: ["requiredRoutes"] },
         sharedId: { type: "string", default: "", keys: ["id"] },
         sharedDate: { type: "string", default: "", keys: ["date"] },
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
@@ -117,9 +118,6 @@ export default function Page() {
         if (shared.sharedMinResults.found) setMinResults(shared.sharedMinResults.value)
         if (shared.sharedOnlyRoutes.found) {
             resolveRouteIds(shared.sharedOnlyRoutes.value.split(",").filter(Boolean)).then(setOnlyRoutes)
-        }
-        if (shared.sharedRequiredRoutes.found) {
-            resolveRouteIds(shared.sharedRequiredRoutes.value.split(",").filter(Boolean)).then(setRequiredRoutes)
         }
         if (shared.sharedDate.found) {
             setTimeType("leaveat")
@@ -199,13 +197,12 @@ export default function Page() {
             walkSpeed,
             maxTransfers,
             onlyRoutes,
-            requiredRoutes,
         })
         setJustSaved(true)
         setTimeout(() => setJustSaved(false), 2500)
     }
 
-    const handleLoadTrip = useCallback((trip: { startLocation: Location; endLocation: Location; maxWalkKm: string; walkSpeed: string; maxTransfers: string; onlyRoutes?: RouteOption[]; requiredRoutes?: RouteOption[] }) => {
+    const handleLoadTrip = useCallback((trip: { startLocation: Location; endLocation: Location; maxWalkKm: string; walkSpeed: string; maxTransfers: string; onlyRoutes?: RouteOption[] }) => {
         setStartLocation(trip.startLocation)
         setEndLocation(trip.endLocation)
         setTimeType("now")
@@ -214,7 +211,6 @@ export default function Page() {
         setWalkSpeed(trip.walkSpeed)
         setMaxTransfers(trip.maxTransfers)
         setOnlyRoutes(trip.onlyRoutes ?? [])
-        setRequiredRoutes(trip.requiredRoutes ?? [])
         setManageOpen(false)
     }, [])
 
@@ -311,22 +307,20 @@ export default function Page() {
         to: { lat: number; lon: number },
         date: Date,
         tType: "now" | "leaveat" | "arriveat",
-    ): Promise<JourneyType[] | null> => {
+    ): Promise<{ plans: JourneyType[] | null; error: string | null }> => {
         try {
             let url = `/services/plan?startLat=${from.lat}&startLon=${from.lon}&endLat=${to.lat}&endLon=${to.lon}&date=${date.toISOString()}&timeType=${tType}&maxWalkKm=${maxWalkKm}&walkSpeed=${walkSpeed}&maxTransfers=${maxTransfers}&minResults=${minResults}`
             if (onlyRoutes.length > 0) {
                 url += `&onlyRoutes=${encodeURIComponent(onlyRoutes.map((r) => r.route_id).join(","))}`
             }
-            if (requiredRoutes.length > 0) {
-                url += `&requiredRoutes=${encodeURIComponent(requiredRoutes.map((r) => r.route_id).join(","))}`
-            }
             const response = await ApiFetch<JourneyType[]>(url)
-            return response.ok ? pruneDominatedPlans(response.data) : null
+            if (response.ok) return { plans: pruneDominatedPlans(response.data), error: null }
+            return { plans: null, error: response.error || "Couldn't plan that journey." }
         } catch (error) {
             console.error("Error planning journey:", error)
-            return null
+            return { plans: null, error: "Something went wrong reaching the planner. Check your connection and try again." }
         }
-    }, [maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, requiredRoutes])
+    }, [maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes])
 
     const planJourney = async () => {
         if (!startLocation || !endLocation) return
@@ -336,9 +330,11 @@ export default function Page() {
 
         setIsSearching(true)
         setApiResponse([])
+        setPlanError(null)
         setReplanSnapshot(null)
-        const data = await fetchPlans(startLocation, endLocation, searchDate, timeType)
-        if (data) setApiResponse(data)
+        const { plans, error } = await fetchPlans(startLocation, endLocation, searchDate, timeType)
+        if (plans) setApiResponse(plans)
+        else setPlanError(error)
         setIsSearching(false)
     }
 
@@ -353,10 +349,12 @@ export default function Page() {
         setSelectedDate(departAt)
         setIsSearching(true)
         setApiResponse([])
+        setPlanError(null)
         setSelectedRoute(undefined)
         setIsRouteMapOpen(false)
-        const data = await fetchPlans(origin, endLocation, departAt, "leaveat")
-        if (data) setApiResponse(data)
+        const { plans, error } = await fetchPlans(origin, endLocation, departAt, "leaveat")
+        if (plans) setApiResponse(plans)
+        else setPlanError(error)
         setIsSearching(false)
         setTimeout(() => document.getElementById("journey-results")?.scrollIntoView({ behavior: "smooth" }), 100)
     }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate])
@@ -371,6 +369,7 @@ export default function Page() {
         setSelectedDate(replanSnapshot.date)
         setIsRouteMapOpen(!!replanSnapshot.route)
         setReplanSnapshot(null)
+        setPlanError(null)
     }, [replanSnapshot])
 
     // Builds a link that reopens (and starts tracking) this exact journey, so
@@ -457,8 +456,6 @@ export default function Page() {
                     onMinResultsChange={setMinResults}
                     onlyRoutes={onlyRoutes}
                     onOnlyRoutesChange={setOnlyRoutes}
-                    requiredRoutes={requiredRoutes}
-                    onRequiredRoutesChange={setRequiredRoutes}
                     isSearching={isSearching}
                     canSave={canSave}
                     justSaved={justSaved}
@@ -514,6 +511,12 @@ export default function Page() {
                     )
                 })()}
 
+                {planError && !isSearching && (
+                    <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+                        {planError}
+                    </p>
+                )}
+
                 <ResultsList
                     routes={apiResponse}
                     onSelect={(route) => {
@@ -551,7 +554,6 @@ export default function Page() {
                     walkSpeed,
                     maxTransfers,
                     onlyRoutes,
-                    requiredRoutes,
                     timeType,
                     selectedDate,
                 }}

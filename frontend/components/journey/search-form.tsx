@@ -49,8 +49,6 @@ interface SearchFormProps {
     onMinResultsChange: (v: string) => void
     onlyRoutes: RouteOption[]
     onOnlyRoutesChange: (routes: RouteOption[]) => void
-    requiredRoutes: RouteOption[]
-    onRequiredRoutesChange: (routes: RouteOption[]) => void
 
     isSearching: boolean
     canSave: boolean
@@ -83,8 +81,6 @@ export function SearchForm({
     onMinResultsChange,
     onlyRoutes,
     onOnlyRoutesChange,
-    requiredRoutes,
-    onRequiredRoutesChange,
     isSearching,
     canSave,
     justSaved,
@@ -224,12 +220,6 @@ export function SearchForm({
                             placeholder="Search routes…"
                             selected={onlyRoutes}
                             onChange={onOnlyRoutesChange}
-                        />
-                        <RouteMultiSelect
-                            label="Must include these routes"
-                            placeholder="Search routes…"
-                            selected={requiredRoutes}
-                            onChange={onRequiredRoutesChange}
                         />
                     </div>
                 </CollapsibleContent>

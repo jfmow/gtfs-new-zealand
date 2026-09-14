@@ -1003,35 +1003,30 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if oErr != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid onlyRoutes"})
 		}
-		requiredRouteIDs, rErr := parseJourneyReminderRouteIDs(c.FormValue("requiredRoutes"))
-		if rErr != nil {
-			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid requiredRoutes"})
-		}
 
 		reminder := JourneyReminder{
-			ClientId:         client.Id,
-			Region:           region,
-			Kind:             kind,
-			Status:           "scheduled",
-			StartLat:         startLat,
-			StartLon:         startLon,
-			StartLabel:       c.FormValue("startLabel"),
-			EndLat:           endLat,
-			EndLon:           endLon,
-			EndLabel:         c.FormValue("endLabel"),
-			TimeType:         timeType,
-			TargetHHMM:       targetHHMM,
-			MaxWalkKm:        maxWalkKm,
-			WalkSpeed:        walkSpeed,
-			MaxTransfers:     maxTransfers,
-			OnlyRouteIDs:     onlyRouteIDs,
-			RequiredRouteIDs: requiredRouteIDs,
-			Offsets:          offsets,
-			Recurrence:       recurrence,
-			RecurrenceUntil:  recurrenceUntil,
-			Deeplink:         deeplink,
-			ServiceDate:      serviceDate,
-			TargetUnix:       targetUnix,
+			ClientId:        client.Id,
+			Region:          region,
+			Kind:            kind,
+			Status:          "scheduled",
+			StartLat:        startLat,
+			StartLon:        startLon,
+			StartLabel:      c.FormValue("startLabel"),
+			EndLat:          endLat,
+			EndLon:          endLon,
+			EndLabel:        c.FormValue("endLabel"),
+			TimeType:        timeType,
+			TargetHHMM:      targetHHMM,
+			MaxWalkKm:       maxWalkKm,
+			WalkSpeed:       walkSpeed,
+			MaxTransfers:    maxTransfers,
+			OnlyRouteIDs:    onlyRouteIDs,
+			Offsets:         offsets,
+			Recurrence:      recurrence,
+			RecurrenceUntil: recurrenceUntil,
+			Deeplink:        deeplink,
+			ServiceDate:     serviceDate,
+			TargetUnix:      targetUnix,
 		}
 
 		if kind == "fixed_trip" {

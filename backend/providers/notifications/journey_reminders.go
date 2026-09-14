@@ -76,7 +76,6 @@ type JourneyReminder struct {
 	WalkSpeed          float64
 	MaxTransfers       int
 	OnlyRouteIDs       []string
-	RequiredRouteIDs   []string
 	Offsets            []int
 	Recurrence         string
 	RecurrenceUntil    string
@@ -105,7 +104,7 @@ const jrColumns = `
 	id, clientId, region, dedup_key, kind, status,
 	start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 	time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-	only_route_ids, required_route_ids,
+	only_route_ids,
 	offsets, recurrence, recurrence_until, deeplink,
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
@@ -114,15 +113,15 @@ const jrColumns = `
 
 func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 	var (
-		r                                    JourneyReminder
-		offsetsRaw, sentRaw                  sql.NullString
-		onlyRouteIDsRaw, requiredRouteIDsRaw sql.NullString
+		r                   JourneyReminder
+		offsetsRaw, sentRaw sql.NullString
+		onlyRouteIDsRaw     sql.NullString
 	)
 	if err := rows.Scan(
 		&r.Id, &r.ClientId, &r.Region, &r.DedupKey, &r.Kind, &r.Status,
 		&r.StartLat, &r.StartLon, &r.StartLabel, &r.EndLat, &r.EndLon, &r.EndLabel,
 		&r.TimeType, &r.TargetHHMM, &r.MaxWalkKm, &r.WalkSpeed, &r.MaxTransfers,
-		&onlyRouteIDsRaw, &requiredRouteIDsRaw,
+		&onlyRouteIDsRaw,
 		&offsetsRaw, &r.Recurrence, &r.RecurrenceUntil, &r.Deeplink,
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
@@ -133,7 +132,6 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 	r.Offsets = decodeIntSlice(offsetsRaw)
 	r.SentOffsets = decodeIntSlice(sentRaw)
 	r.OnlyRouteIDs = decodeStringSlice(onlyRouteIDsRaw)
-	r.RequiredRouteIDs = decodeStringSlice(requiredRouteIDsRaw)
 	return r, nil
 }
 
@@ -251,19 +249,19 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			clientId, region, dedup_key, kind, status,
 			start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 			time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-			only_route_ids, required_route_ids,
+			only_route_ids,
 			offsets, recurrence, recurrence_until, deeplink,
 			service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 			scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
-		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
 		ON CONFLICT(clientId, dedup_key) DO UPDATE SET
 			region=excluded.region, kind=excluded.kind, status=excluded.status,
 			start_lat=excluded.start_lat, start_lon=excluded.start_lon, start_label=excluded.start_label,
 			end_lat=excluded.end_lat, end_lon=excluded.end_lon, end_label=excluded.end_label,
 			time_type=excluded.time_type, target_hhmm=excluded.target_hhmm,
 			max_walk_km=excluded.max_walk_km, walk_speed=excluded.walk_speed, max_transfers=excluded.max_transfers,
-			only_route_ids=excluded.only_route_ids, required_route_ids=excluded.required_route_ids,
+			only_route_ids=excluded.only_route_ids,
 			offsets=excluded.offsets,
 			recurrence=excluded.recurrence, recurrence_until=excluded.recurrence_until, deeplink=excluded.deeplink,
 			service_date=excluded.service_date, target_unix=excluded.target_unix,
@@ -275,7 +273,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 		r.ClientId, r.Region, r.DedupKey, r.Kind, r.Status,
 		r.StartLat, r.StartLon, r.StartLabel, r.EndLat, r.EndLon, r.EndLabel,
 		r.TimeType, r.TargetHHMM, r.MaxWalkKm, r.WalkSpeed, r.MaxTransfers,
-		encodeStringSlice(r.OnlyRouteIDs), encodeStringSlice(r.RequiredRouteIDs),
+		encodeStringSlice(r.OnlyRouteIDs),
 		encodeIntSlice(r.Offsets), r.Recurrence, r.RecurrenceUntil, r.Deeplink,
 		r.ServiceDate, r.TargetUnix, r.BoardTripID, r.BoardStopID, r.BoardStopSequence,
 		r.ScheduledDepartureUnix, r.AccessSeconds, r.RouteShortName, r.BoardStopName,
@@ -601,8 +599,8 @@ func sortedDescInts(in []int) []int {
 	return out
 }
 
-// parseJourneyReminderRouteIDs decodes the onlyRoutes/requiredRoutes form
-// fields - a JSON array of route ID strings, or "" for no filter. Trims
+// parseJourneyReminderRouteIDs decodes the onlyRoutes form field - a JSON
+// array of route ID strings, or "" for no filter. Trims
 // whitespace, drops empties, and caps the list well above any real route
 // selection to keep a malformed request cheap to reject.
 func parseJourneyReminderRouteIDs(raw string) ([]string, error) {

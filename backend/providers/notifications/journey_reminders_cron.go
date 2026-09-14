@@ -356,21 +356,20 @@ func notifyJourneyReminderClient(db *Database, r JourneyReminder, eventKey, titl
 
 func buildJourneyRequest(r JourneyReminder, osrmURL string, rt *realtime.Realtime, tz *time.Location) gtfs.JourneyRequest {
 	req := gtfs.JourneyRequest{
-		StartLat:         r.StartLat,
-		StartLon:         r.StartLon,
-		EndLat:           r.EndLat,
-		EndLon:           r.EndLon,
-		MaxWalkKm:        r.MaxWalkKm,
-		WalkSpeedKmph:    r.WalkSpeed,
-		MaxTransfers:     r.MaxTransfers,
-		MaxNearbyStops:   50,
-		MaxResults:       5,
-		MinResults:       3,
-		OsrmURL:          osrmURL,
-		IncludeChildren:  true,
-		OnlyRouteIDs:     r.OnlyRouteIDs,
-		RequiredRouteIDs: r.RequiredRouteIDs,
-		Realtime:         rt,
+		StartLat:        r.StartLat,
+		StartLon:        r.StartLon,
+		EndLat:          r.EndLat,
+		EndLon:          r.EndLon,
+		MaxWalkKm:       r.MaxWalkKm,
+		WalkSpeedKmph:   r.WalkSpeed,
+		MaxTransfers:    r.MaxTransfers,
+		MaxNearbyStops:  50,
+		MaxResults:      5,
+		MinResults:      3,
+		OsrmURL:         osrmURL,
+		IncludeChildren: true,
+		OnlyRouteIDs:    r.OnlyRouteIDs,
+		Realtime:        rt,
 	}
 	target := time.Unix(r.TargetUnix, 0).In(tz)
 	if r.TimeType == "departat" {

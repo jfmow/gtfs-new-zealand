@@ -192,7 +192,6 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             walk_speed REAL NOT NULL DEFAULT 4.8,
             max_transfers INTEGER NOT NULL DEFAULT 5,
             only_route_ids TEXT NOT NULL DEFAULT '[]',
-            required_route_ids TEXT NOT NULL DEFAULT '[]',
             -- prep_buffer_seconds: removed. The leave anchor is now the journey's
             -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
@@ -253,8 +252,8 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		}
 	}
 
-	// journey_reminders predates only_route_ids/required_route_ids - same
-	// ADD COLUMN-if-missing treatment as the stops migration above.
+	// journey_reminders predates only_route_ids - same ADD COLUMN-if-missing
+	// treatment as the stops migration above.
 	jrExistingColumns, err := d.columnNames(ctx, "journey_reminders")
 	if err != nil {
 		return fmt.Errorf("ensure schema: %w", err)
@@ -264,7 +263,6 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		ddl    string
 	}{
 		{"only_route_ids", `ALTER TABLE journey_reminders ADD COLUMN only_route_ids TEXT NOT NULL DEFAULT '[]';`},
-		{"required_route_ids", `ALTER TABLE journey_reminders ADD COLUMN required_route_ids TEXT NOT NULL DEFAULT '[]';`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {
@@ -421,9 +419,9 @@ func decodeIntSlice(raw sql.NullString) []int {
 	return values
 }
 
-// encodeStringSlice / decodeStringSlice back the JSON []string columns on
-// journey_reminders (only_route_ids, required_route_ids), same round-trip
-// convention as encodeIntSlice/decodeIntSlice above.
+// encodeStringSlice / decodeStringSlice back the JSON []string column on
+// journey_reminders (only_route_ids), same round-trip convention as
+// encodeIntSlice/decodeIntSlice above.
 func encodeStringSlice(values []string) string {
 	if len(values) == 0 {
 		return "[]"

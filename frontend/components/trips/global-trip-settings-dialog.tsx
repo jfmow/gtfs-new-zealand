@@ -29,11 +29,10 @@ interface GlobalTripSettingsDialogProps {
     walkSpeed?: string
     maxTransfers?: string
     onlyRoutes?: RouteOption[]
-    requiredRoutes?: RouteOption[]
   }) => void
 }
 
-type OverrideKey = "maxWalkKm" | "walkSpeed" | "maxTransfers" | "onlyRoutes" | "requiredRoutes"
+type OverrideKey = "maxWalkKm" | "walkSpeed" | "maxTransfers" | "onlyRoutes"
 
 export function GlobalTripSettingsDialog({
   open,
@@ -45,14 +44,12 @@ export function GlobalTripSettingsDialog({
   const [walkSpeed, setWalkSpeed] = useState("4.8")
   const [maxTransfers, setMaxTransfers] = useState("5")
   const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
-  const [requiredRoutes, setRequiredRoutes] = useState<RouteOption[]>([])
 
   const [checked, setChecked] = useState<Record<OverrideKey, boolean>>({
     maxWalkKm: false,
     walkSpeed: false,
     maxTransfers: false,
     onlyRoutes: false,
-    requiredRoutes: false,
   })
 
   const toggle = (key: OverrideKey) =>
@@ -66,13 +63,11 @@ export function GlobalTripSettingsDialog({
       walkSpeed?: string
       maxTransfers?: string
       onlyRoutes?: RouteOption[]
-      requiredRoutes?: RouteOption[]
     } = {}
     if (checked.maxWalkKm) settings.maxWalkKm = maxWalkKm
     if (checked.walkSpeed) settings.walkSpeed = walkSpeed
     if (checked.maxTransfers) settings.maxTransfers = maxTransfers
     if (checked.onlyRoutes) settings.onlyRoutes = onlyRoutes
-    if (checked.requiredRoutes) settings.requiredRoutes = requiredRoutes
     onApply(settings)
     onOpenChange(false)
   }
@@ -182,28 +177,6 @@ export function GlobalTripSettingsDialog({
               placeholder="Search routes…"
               selected={onlyRoutes}
               onChange={setOnlyRoutes}
-            />
-          )}
-
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="requiredRoutes"
-              checked={checked.requiredRoutes}
-              onCheckedChange={() => toggle("requiredRoutes")}
-            />
-            <Label
-              htmlFor="requiredRoutes"
-              className={`text-sm cursor-pointer ${!checked.requiredRoutes ? "text-muted-foreground" : ""}`}
-            >
-              Must include these routes
-            </Label>
-          </div>
-          {checked.requiredRoutes && (
-            <RouteMultiSelect
-              label=""
-              placeholder="Search routes…"
-              selected={requiredRoutes}
-              onChange={setRequiredRoutes}
             />
           )}
         </div>

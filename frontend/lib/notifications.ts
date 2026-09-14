@@ -253,7 +253,6 @@ export interface JourneyReminderInput {
     walkSpeed: string
     maxTransfers: string
     onlyRoutes?: string[]
-    requiredRoutes?: string[]
     offsets: number[]
     recurrence?: string
     recurrenceUntil?: string
@@ -302,7 +301,6 @@ export async function addJourneyReminder(
     form.set("walkSpeed", p.walkSpeed)
     form.set("maxTransfers", p.maxTransfers)
     if (p.onlyRoutes && p.onlyRoutes.length > 0) form.set("onlyRoutes", JSON.stringify(p.onlyRoutes))
-    if (p.requiredRoutes && p.requiredRoutes.length > 0) form.set("requiredRoutes", JSON.stringify(p.requiredRoutes))
     form.set("offsets", JSON.stringify(p.offsets))
     if (p.recurrence) form.set("recurrence", p.recurrence)
     if (p.recurrenceUntil) form.set("recurrenceUntil", p.recurrenceUntil)
