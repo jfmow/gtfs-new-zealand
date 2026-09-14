@@ -397,16 +397,14 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 
 }
 
-type VehicleDistanceResult struct {
-	TripID          string  `json:"tripId"`
-	VehicleDistance float64 `json:"vehicleDistanceM"`
-	StopDistance    float64 `json:"stopDistanceM"`
-	DistanceToStop  float64 `json:"distanceToStopM"`
-}
-
 type TripShapeDistance struct {
 	TripID string
 	Line   orb.LineString
+	// cumDist[i] is the arc-length from Line[0] to Line[i], precomputed once
+	// so a nearest-point search can look up "distance to segment start" in
+	// O(1) instead of re-summing a prefix every time it finds a better
+	// candidate - see nearestPointOnLineString.
+	cumDist []float64
 }
 
 func NewTripShapeDistance(tripId string, gtfsData gtfs.Database) (*TripShapeDistance, error) {
@@ -436,36 +434,30 @@ func NewTripShapeDistance(tripId string, gtfsData gtfs.Database) (*TripShapeDist
 	}
 
 	return &TripShapeDistance{
-		TripID: tripId,
-		Line:   line,
+		TripID:  tripId,
+		Line:    line,
+		cumDist: cumulativeLineDistances(line),
 	}, nil
 }
 
-func (t *TripShapeDistance) Dist(vehicleLat, vehicleLon, stopLat, stopLon float64) (*VehicleDistanceResult, error) {
-	vehiclePoint := orb.Point{vehicleLon, vehicleLat}
-	stopPoint := orb.Point{stopLon, stopLat}
-
-	vehicleDist, err := computeShapeDistance(t.Line, vehiclePoint)
-	if err != nil {
-		return nil, fmt.Errorf("error computing vehicle distance: %w", err)
+// cumulativeLineDistances precomputes running arc-length along a shape in a
+// single O(n) pass.
+func cumulativeLineDistances(line orb.LineString) []float64 {
+	cum := make([]float64, len(line))
+	for i := 1; i < len(line); i++ {
+		cum[i] = cum[i-1] + geo.Distance(line[i-1], line[i])
 	}
+	return cum
+}
 
-	stopDist, err := computeShapeDistance(t.Line, stopPoint)
-	if err != nil {
-		return nil, fmt.Errorf("error computing stop distance: %w", err)
-	}
-
-	distanceRemaining := stopDist - vehicleDist
-	if distanceRemaining < 0 {
-		distanceRemaining = 0
-	}
-
-	return &VehicleDistanceResult{
-		TripID:          t.TripID,
-		VehicleDistance: vehicleDist,
-		StopDistance:    stopDist,
-		DistanceToStop:  distanceRemaining,
-	}, nil
+// DistanceAlongShape returns how far along the trip's shape the given point
+// projects to. It's the primitive both a vehicle's and a stop's
+// distance-along-trip are built from - exposed separately (rather than
+// bundled into a single "vehicle to stop" call) so a caller checking many
+// stops against one fixed vehicle position, as /stop-times does, pays for
+// the vehicle's projection once instead of once per stop.
+func (t *TripShapeDistance) DistanceAlongShape(lat, lon float64) (float64, error) {
+	return computeShapeDistance(t.Line, t.cumDist, orb.Point{lon, lat})
 }
 
 func projectPointOntoSegment(p, a, b orb.Point) (orb.Point, float64) {
@@ -489,8 +481,15 @@ func projectPointOntoSegment(p, a, b orb.Point) (orb.Point, float64) {
 	return proj, t
 }
 
-// NearestPointOnLineString projects p onto the line string, returns projected point, index of segment start, and distance along line to projection.
-func nearestPointOnLineString(line orb.LineString, p orb.Point) (proj orb.Point, segmentIndex int, distAlong float64) {
+// nearestPointOnLineString projects p onto the line string in a single O(n)
+// pass, returning the projected point, the index of the segment it landed
+// on, and the distance along the line to that projection. cumDist must be
+// cumulativeLineDistances(line) - passing it in (rather than recomputing a
+// distance-to-segment-start prefix sum on every improving candidate, as this
+// used to) is what keeps this O(n) instead of O(n^2) on a shape with many
+// points, which made /stop-times slow for a trip whose vehicle (or a late
+// stop) sits far along a detailed shape.
+func nearestPointOnLineString(line orb.LineString, cumDist []float64, p orb.Point) (proj orb.Point, segmentIndex int, distAlong float64) {
 	minDist := math.MaxFloat64
 	var closestProj orb.Point
 	var closestIndex int
@@ -508,15 +507,8 @@ func nearestPointOnLineString(line orb.LineString, p orb.Point) (proj orb.Point,
 			closestProj = projPoint
 			closestIndex = i
 
-			// distance along line up to segment start
-			distToSegmentStart := 0.0
-			for j := 0; j < i; j++ {
-				distToSegmentStart += geo.Distance(line[j], line[j+1])
-			}
-
-			// add projected partial segment distance
 			segmentLen := geo.Distance(a, b)
-			distAtClosest = distToSegmentStart + t*segmentLen
+			distAtClosest = cumDist[i] + t*segmentLen
 		}
 	}
 
@@ -524,8 +516,8 @@ func nearestPointOnLineString(line orb.LineString, p orb.Point) (proj orb.Point,
 }
 
 // computeShapeDistance computes distance along shape line from start to projected point.
-func computeShapeDistance(shape orb.LineString, point orb.Point) (float64, error) {
-	_, _, distAlong := nearestPointOnLineString(shape, point)
+func computeShapeDistance(shape orb.LineString, cumDist []float64, point orb.Point) (float64, error) {
+	_, _, distAlong := nearestPointOnLineString(shape, cumDist, point)
 	return distAlong, nil
 }
 

@@ -573,6 +573,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 		}
 
+		// The vehicle's position on the shape doesn't change per stop - project
+		// it once here rather than inside the loop below. Re-doing it for every
+		// stop was the main reason this endpoint got slow well into a long
+		// trip's shape.
+		vehicleDistAlong, vehicleDistErr := line.DistanceAlongShape(float64(vLat), float64(vLon))
+
 		for _, stop := range stopsForTrip {
 			var data StopTimes
 
@@ -626,8 +632,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				data.DepartureTime = scheduledDeparture.UnixMilli()
 			}
 
-			if dist, err := line.Dist(float64(vLat), float64(vLon), stop.StopLat, stop.StopLon); err == nil {
-				data.DistanceAway = dist.DistanceToStop
+			if vehicleDistErr == nil {
+				if stopDistAlong, err := line.DistanceAlongShape(stop.StopLat, stop.StopLon); err == nil {
+					remaining := stopDistAlong - vehicleDistAlong
+					if remaining < 0 {
+						remaining = 0
+					}
+					data.DistanceAway = remaining
+				}
 			}
 
 			result = append(result, data)
