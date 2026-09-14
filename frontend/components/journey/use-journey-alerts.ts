@@ -103,6 +103,11 @@ export function useJourneyAlerts({
     const firedRef = useRef<Set<string>>(new Set())
     const idRef = useRef(0)
     const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+    // Alert key -> the id it was fired with, so a later, more current alert
+    // (e.g. "get on now") can clear an earlier one it makes redundant (e.g.
+    // "one stop away") instead of leaving two half-contradictory cards on
+    // screen together.
+    const keyToIdRef = useRef<Map<string, string>>(new Map())
     // Per-trip high-water mark of the vehicle's stop_sequence - guards alert
     // firing against a stale/out-of-order position update (e.g. a slow poll
     // resolving after a fresher one) so alerts can only ever be evaluated
@@ -139,13 +144,23 @@ export function useJourneyAlerts({
         }
     }, [])
 
-    const fire = useRef((key: string, variant: JourneyAlertVariant, title: string, body?: string) => {
+    const fire = useRef((key: string, variant: JourneyAlertVariant, title: string, body?: string, supersedes?: string[]) => {
         if (firedRef.current.has(key)) return
         firedRef.current.add(key)
 
         const urgent = variant === "action" || variant === "error"
         const duration = urgent ? URGENT_DURATION_MS : ALERT_DURATION_MS
         const id = String(++idRef.current)
+        keyToIdRef.current.set(key, id)
+
+        // Clear any still-visible alert this one makes redundant (e.g. "get on
+        // now" replacing "one stop away" for the same leg) - it was correct
+        // when it fired, but showing it alongside the newer one reads as a
+        // contradiction rather than an update.
+        supersedes?.forEach((oldKey) => {
+            const oldId = keyToIdRef.current.get(oldKey)
+            if (oldId) dismiss(oldId)
+        })
 
         setAlerts((prev) => [...prev, { id, variant, title, body, duration }].slice(-MAX_STACK))
         timersRef.current.set(id, setTimeout(() => dismiss(id), duration))
@@ -259,6 +274,7 @@ export function useJourneyAlerts({
                     "action",
                     `Get on the ${name} now`,
                     trackedBoardStop ? `It's arriving at ${trackedBoardStop.stop_name} - flag it down if needed.` : undefined,
+                    [`${tripId}:board-soon`, `${tripId}:transfer`],
                 )
             }
         }
@@ -296,6 +312,7 @@ export function useJourneyAlerts({
                     "action",
                     "This is your stop",
                     trackedAlightStop ? `Get off the ${name} here — ${trackedAlightStop.stop_name}.` : `Get off the ${name} here.`,
+                    [`${tripId}:alight-soon`],
                 )
             }
         }

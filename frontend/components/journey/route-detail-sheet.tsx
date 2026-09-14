@@ -17,12 +17,16 @@ import {
     Accessibility,
     ArrowRight,
     Bus,
+    CableCar,
     ChevronLeft,
     Clock,
     Footprints,
     Navigation,
     RefreshCw,
     Share2,
+    Ship,
+    TrainFront,
+    TramFront,
     WifiOff,
     X,
 } from "lucide-react"
@@ -81,10 +85,45 @@ const PHASE_LABEL: Record<JourneyPhase, string> = {
 }
 
 function journeyStopCount(route: JourneyType): number {
-    return route.Legs.reduce((sum, leg) => {
-        if (leg.Mode !== 'transit' || !leg.FromStop || !leg.ToStop) return sum
-        return sum + Math.max(1, Math.abs(leg.ToStop.stop_sequence - leg.FromStop.stop_sequence))
-    }, 0)
+    return route.Legs.reduce((sum, leg) => sum + legStopCount(leg), 0)
+}
+
+function legStopCount(leg: Leg): number {
+    if (leg.Mode !== 'transit' || !leg.FromStop || !leg.ToStop) return 0
+    return Math.max(1, Math.abs(leg.ToStop.stop_sequence - leg.FromStop.stop_sequence))
+}
+
+/** Icon for a leg's mode - keyed on the GTFS-derived vehicle_type string the backend sends (bus/train/ferry/tram/...). */
+function vehicleIcon(vehicleType?: string) {
+    switch ((vehicleType || "").toLowerCase()) {
+        case "train":
+        case "rail":
+        case "metro":
+        case "subway":
+            return TrainFront
+        case "ferry":
+        case "ship":
+            return Ship
+        case "tram":
+        case "light rail":
+        case "streetcar":
+            return TramFront
+        case "cable car":
+        case "gondola":
+        case "funicular":
+            return CableCar
+        default:
+            return Bus
+    }
+}
+
+/** Appends an alpha channel to a "#rrggbb" color - used to tint a leg's rail/fill by its route color without a separate opacity layer. */
+function withAlpha(hexColor: string, alphaHex: string): string {
+    return /^#[0-9a-fA-F]{6}$/.test(hexColor) ? `${hexColor}${alphaHex}` : hexColor
+}
+
+function clamp01(n: number): number {
+    return Math.min(1, Math.max(0, n))
 }
 
 function journeyHeadsign(route: JourneyType): string | null {
@@ -545,6 +584,12 @@ export function RouteDetailSheet({
             route={shownRoute}
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
+            nowMs={now.getTime()}
+            liveLegIndex={journeyStarted ? trackedLegIndex : -1}
+            trackingLevel={trackingLevel}
+            stopsAway={trackedStopsAway}
+            occupancy={trackedOccupancy}
+            platform={trackedPlatform}
         />
     )
 
@@ -921,14 +966,27 @@ function RouteItinerary({
     route,
     currentLegIndex,
     currentPhase,
+    nowMs,
+    liveLegIndex = -1,
+    trackingLevel,
+    stopsAway,
+    occupancy,
+    platform,
 }: {
     route: JourneyType
     /** -1 when not tracking. */
     currentLegIndex: number
     currentPhase?: JourneyPhase
+    nowMs: number
+    /** Index of the leg the live vehicle info below belongs to - not always the same as currentLegIndex (e.g. still walking to the stop). -1 when not tracking. */
+    liveLegIndex?: number
+    trackingLevel?: "live" | "predicted" | "scheduled"
+    stopsAway?: number
+    occupancy?: number
+    platform?: string
 }) {
     return (
-        <div className="space-y-1">
+        <div>
             {route.Legs.map((leg, legIndex) => {
                 const status: LegStatus =
                     currentLegIndex < 0 ? "upcoming"
@@ -938,6 +996,18 @@ function RouteItinerary({
                 const currentLabel = status === "current" && currentPhase ? PHASE_LABEL[currentPhase] : undefined
                 // Don't warn about a connection the rider has already made.
                 const risk = status === "done" ? null : connectionRisk(route.Legs, legIndex)
+
+                // How far through this leg's own scheduled span "now" is - only
+                // meaningful for the leg actually being tracked, and only for a
+                // ride in progress (clamps to 0 before departure, 1 after arrival).
+                const isLiveLeg = legIndex === liveLegIndex
+                const progress = isLiveLeg && leg.Mode !== "walk"
+                    ? clamp01(
+                        (nowMs - new Date(leg.DepartureTime).getTime()) /
+                        Math.max(1, new Date(leg.ArrivalTime).getTime() - new Date(leg.DepartureTime).getTime())
+                    )
+                    : undefined
+
                 return (
                     <LegRow
                         key={legIndex}
@@ -947,6 +1017,8 @@ function RouteItinerary({
                         status={status}
                         currentLabel={currentLabel}
                         connectionRisk={risk}
+                        progress={progress}
+                        liveInfo={isLiveLeg && trackingLevel === "live" ? { stopsAway, occupancy, platform } : undefined}
                     />
                 )
             })}
@@ -956,12 +1028,25 @@ function RouteItinerary({
 
 type LegStatus = "done" | "current" | "upcoming"
 
-function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk }: { leg: Leg; isLast: boolean; nextLeg?: Leg; status?: LegStatus; currentLabel?: string; connectionRisk?: ConnectionRisk | null }) {
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo }: {
+    leg: Leg
+    isLast: boolean
+    nextLeg?: Leg
+    status?: LegStatus
+    currentLabel?: string
+    connectionRisk?: ConnectionRisk | null
+    /** 0-1 progress through this leg's scheduled span - only set for the leg currently being ridden/waited for. */
+    progress?: number
+    liveInfo?: { stopsAway?: number; occupancy?: number; platform?: string }
+}) {
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
     const isEarly = leg.realtime_status === RealtimeStatus.Early
     const routeColor = leg.Route?.route_color ? `#${leg.Route.route_color}` : "#424242"
+    const routeTextColor = leg.Route?.route_text_color ? `#${leg.Route.route_text_color}` : "#ffffff"
+    const VehicleIcon = vehicleIcon(leg.Route?.vehicle_type)
     const waitNs = nextLeg ? getWaitingTimeNs(leg, nextLeg) : null
+    const stopCount = legStopCount(leg)
 
     // Backend sanitises this now, but a plan cached before a realtime feed
     // corrected itself can still carry an adjusted arrival that lands before its
@@ -980,14 +1065,14 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
         <div
             className={
                 status === "current"
-                    ? "relative -mx-2 rounded-lg bg-primary/[0.06] px-2 py-1 ring-1 ring-primary/30"
+                    ? "relative -mx-2 rounded-xl bg-primary/[0.05] px-2 py-1.5 ring-1 ring-primary/25"
                     : status === "done"
-                        ? "relative opacity-45"
+                        ? "relative opacity-40"
                         : "relative"
             }
         >
             {currentLabel && (
-                <span className="mb-1 inline-flex items-center gap-1.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
+                <span className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-primary-foreground">
                     <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground animate-pulse" />
                     {currentLabel}
                 </span>
@@ -1011,93 +1096,151 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                 </div>
             )}
 
-            <div className="flex items-center gap-2 py-1">
-                {isWalk ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium text-pink-500">
-                        <Footprints className="h-3 w-3" />
-                        Walk · {Math.max(0, Math.round(leg.Duration / 60000000000))} min
-                        {leg.DistanceKm > 0 && <span className="text-muted-foreground/70">· {leg.DistanceKm.toFixed(2)} km</span>}
+            {!isWalk && (
+                <div className="flex items-center gap-2 py-1 flex-wrap sm:flex-nowrap">
+                    <span
+                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold"
+                        style={{
+                            backgroundColor: routeColor,
+                            color: routeTextColor,
+                            filter: "brightness(0.9) contrast(1.1)",
+                            opacity: leg.trip_usable === false ? 0.5 : 1,
+                        }}
+                    >
+                        {leg.Route?.route_short_name || leg.RouteID}
                     </span>
-                ) : (
-                    <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                        <span
-                            className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-semibold"
-                            style={{
-                                backgroundColor: routeColor,
-                                color: leg.Route?.route_text_color ? `#${leg.Route.route_text_color}` : "#ffffff",
-                                filter: "brightness(0.9) contrast(1.1)",
-                                opacity: leg.trip_usable === false ? 0.5 : 1,
-                            }}
-                        >
-                            {leg.Route?.vehicle_type && <span className="opacity-80">{leg.Route.vehicle_type}</span>}
-                            {leg.Route?.route_short_name || leg.RouteID}
+                    {showEarlyLateBadge && (
+                        <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isDelayed ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
+                            <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`} />
+                            {isDelayed ? 'Late' : 'Early'}
                         </span>
-                        {showEarlyLateBadge && (
-                            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${isDelayed ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'}`}>
-                                <span className={`h-1.5 w-1.5 rounded-full animate-pulse ${isDelayed ? 'bg-amber-500' : 'bg-green-500'}`} />
-                                {isDelayed ? 'Late' : 'Early'}
-                            </span>
-                        )}
-                        {showOnTimeBadge && (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                                On time
-                            </span>
-                        )}
-                        {leg.realtime_status === RealtimeStatus.Scheduled && (
-                            <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                                Scheduled
-                            </span>
-                        )}
-                        <span className="text-xs text-muted-foreground">· {formatDuration(displayDurationNs)}</span>
-                    </div>
-                )}
-            </div>
+                    )}
+                    {showOnTimeBadge && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                            On time
+                        </span>
+                    )}
+                    {leg.realtime_status === RealtimeStatus.Scheduled && (
+                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                            Scheduled
+                        </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                        {formatDuration(displayDurationNs)}
+                        {stopCount > 0 && ` · ${stopCount} stop${stopCount !== 1 ? 's' : ''}`}
+                    </span>
+                </div>
+            )}
 
             {isWalk ? (
                 // Walk legs don't need the full two-row board/alight timeline
                 // (no platform/headsign to show at either end) - a single line
                 // covers it, and walks show up between nearly every transit leg
                 // so collapsing this is most of the win on a multi-leg journey.
-                <div className="ml-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 border-l-2 border-border py-1.5 pl-4 text-sm">
-                    <span className="font-medium">{formatTime(displayDeparture)}</span>
-                    <span className="text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
-                    <ArrowRight className="h-3 w-3 text-muted-foreground/70 shrink-0" />
-                    <span className="font-medium">{formatTime(displayArrival)}</span>
-                    <span className="text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
+                <div className="flex items-center gap-3 py-1.5">
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 text-muted-foreground">
+                        <Footprints className="h-3.5 w-3.5" />
+                    </span>
+                    <div className="flex flex-1 flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-sm min-w-0">
+                        <span className="font-medium tabular-nums">{formatTime(displayDeparture)}</span>
+                        <span className="text-muted-foreground truncate">{leg.FromStop?.stop_name || 'Start'}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground/60 shrink-0" />
+                        <span className="text-muted-foreground truncate">{leg.ToStop?.stop_name || 'Destination'}</span>
+                        <span className="text-muted-foreground/70">
+                            · {Math.max(0, Math.round(leg.Duration / 60000000000))} min
+                            {leg.DistanceKm > 0 && ` · ${leg.DistanceKm.toFixed(2)} km`}
+                        </span>
+                    </div>
                 </div>
             ) : (
-                <div className="ml-2 space-y-0 border-l-2 border-border pl-4">
-                    <div className="relative py-1.5">
-                        <span className="absolute -left-[21px] top-2.5 h-3 w-3 rounded-full border-2 border-background bg-green-500 ring-1 ring-green-500" />
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="font-medium text-sm">{formatTime(displayDeparture)}</span>
-                            <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
-                            <div className="flex items-center gap-1">
-                                {leg.FromStop?.platform_number && (
-                                    <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.FromStop.platform_number}</Badge>
+                // A two-column flex "rail": a fixed-width icon column (board dot,
+                // connecting line, alight dot - all centered in it by flexbox) next
+                // to the content column. The line is a flex child sized by flex-1,
+                // not an absolute offset guessed from the text next to it, so it
+                // stretches to match however tall the board row's content turns out
+                // to be (wrapped headsign, live-info chip, etc.) without any of the
+                // markers drifting off the rail.
+                <div>
+                    <div className="flex gap-3">
+                        <div className="flex w-7 shrink-0 flex-col items-center">
+                            <span
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 border-background shadow-sm"
+                                style={{ backgroundColor: routeColor, opacity: leg.trip_usable === false ? 0.5 : 1 }}
+                            >
+                                <VehicleIcon className="h-3 w-3" style={{ color: routeTextColor }} />
+                            </span>
+                            <span
+                                className="relative mt-0.5 w-0.5 flex-1 overflow-hidden rounded-full"
+                                style={{ backgroundColor: withAlpha(routeColor, status === "done" ? "33" : "59") }}
+                            >
+                                {progress !== undefined && (
+                                    <span
+                                        className="absolute inset-x-0 top-0 rounded-full transition-[height] duration-1000 ease-linear"
+                                        style={{ backgroundColor: routeColor, height: `${progress * 100}%` }}
+                                    />
                                 )}
-                                {leg.FromStop?.stop_headsign && (
-                                    <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
-                                )}
-                                {leg.FromStop?.wheelchair_boarding === 1 && (
-                                    <Accessibility className="h-3 w-3 text-muted-foreground" />
-                                )}
+                            </span>
+                        </div>
+                        <div className="min-w-0 flex-1 pb-2.5">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+                                <span className="font-semibold text-sm tabular-nums">{formatTime(displayDeparture)}</span>
+                                <span className="text-sm text-muted-foreground">{leg.FromStop?.stop_name || 'Start'}</span>
+                                <div className="flex items-center gap-1">
+                                    {leg.FromStop?.platform_number && (
+                                        <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.FromStop.platform_number}</Badge>
+                                    )}
+                                    {leg.FromStop?.stop_headsign && (
+                                        <span className="text-xs text-muted-foreground">towards {leg.FromStop.stop_headsign}</span>
+                                    )}
+                                    {leg.FromStop?.wheelchair_boarding === 1 && (
+                                        <Accessibility className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                </div>
                             </div>
+
+                            {liveInfo && (liveInfo.stopsAway !== undefined || liveInfo.platform || liveInfo.occupancy !== undefined) && (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md bg-muted/50 px-2 py-1 text-xs text-muted-foreground">
+                                    <span className="flex items-center gap-1 font-medium text-foreground">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+                                        Live
+                                    </span>
+                                    {liveInfo.stopsAway !== undefined && (
+                                        <span>{liveInfo.stopsAway} {liveInfo.stopsAway === 1 ? "stop" : "stops"} away</span>
+                                    )}
+                                    {liveInfo.platform && <span>Platform {liveInfo.platform}</span>}
+                                    {liveInfo.occupancy !== undefined && (
+                                        <span className="flex items-center gap-1">
+                                            <OccupancyIcons occupancy={liveInfo.occupancy} />
+                                            {getOccupancyLabel(liveInfo.occupancy)}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
 
-                    <div className="relative py-1.5">
-                        <span className="absolute -left-[21px] top-2.5 h-3 w-3 rounded-full border-2 border-background bg-destructive ring-1 ring-destructive" />
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="font-medium text-sm">{formatTime(displayArrival)}</span>
-                            <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
-                            <div className="flex items-center gap-1">
-                                {leg.ToStop?.platform_number && (
-                                    <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.ToStop.platform_number}</Badge>
-                                )}
-                                {leg.ToStop?.wheelchair_boarding === 1 && (
-                                    <Accessibility className="h-3 w-3 text-muted-foreground" />
-                                )}
+                    <div className="flex gap-3">
+                        <div className="flex w-7 shrink-0 items-start justify-center pt-1">
+                            <span
+                                className={
+                                    isLast
+                                        ? "h-[18px] w-[18px] rounded-full border-2 border-background bg-destructive shadow-sm"
+                                        : "h-3.5 w-3.5 rounded-full border-2 border-muted-foreground/50 bg-background"
+                                }
+                            />
+                        </div>
+                        <div className="min-w-0 flex-1 pb-1">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                <span className="font-semibold text-sm tabular-nums">{formatTime(displayArrival)}</span>
+                                <span className="text-sm text-muted-foreground">{leg.ToStop?.stop_name || 'Destination'}</span>
+                                <div className="flex items-center gap-1">
+                                    {leg.ToStop?.platform_number && (
+                                        <Badge variant="outline" className="text-xs py-0 h-5">Plat. {leg.ToStop.platform_number}</Badge>
+                                    )}
+                                    {leg.ToStop?.wheelchair_boarding === 1 && (
+                                        <Accessibility className="h-3 w-3 text-muted-foreground" />
+                                    )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1105,8 +1248,10 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
             )}
 
             {!isLast && waitNs && waitNs >= 60000000000 && (
-                <div className="ml-2 flex items-center gap-2 py-1 text-xs text-muted-foreground">
-                    <Clock className="h-3 w-3" />
+                <div className="flex items-center gap-3 py-1 text-xs text-muted-foreground">
+                    <span className="flex w-7 shrink-0 items-center justify-center">
+                        <Clock className="h-3 w-3" />
+                    </span>
                     <span>{formatDuration(waitNs)} wait</span>
                 </div>
             )}
