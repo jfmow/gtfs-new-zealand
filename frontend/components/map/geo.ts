@@ -40,7 +40,13 @@ export function whenStyleReady(map: maplibregl.Map, cb: () => void): void {
         }
     };
 
-    if (map.isStyleLoaded() && attempt()) return;
+    // Try unconditionally first. isStyleLoaded() waits for every source's
+    // tiles to finish (background basemap imagery included), not just the
+    // style definition being parsed - gating on it here meant adding our own
+    // route-line layer/source could stall for many seconds behind slow
+    // basemap tiles that have nothing to do with whether *our* call would
+    // actually succeed. It only throws if the style itself isn't parsed yet.
+    if (attempt()) return;
 
     const retry = () => {
         if (attempt()) {
