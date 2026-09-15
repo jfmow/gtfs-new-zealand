@@ -76,6 +76,15 @@ const AT_STOP_EXIT_M = 120
 // How close to a transit leg's departure counts as "boarding" rather than "waiting".
 const BOARDING_WINDOW_MS = 90 * 1000
 
+// How long past a transit leg's own (live-adjusted) arrival to keep treating it
+// as "still might be riding it" when there's no GPS confirmation either way -
+// e.g. a live vehicle simply isn't reporting right now. Past this, a leg with
+// no vehicle at all is assumed over even without hasDepartedStop ever firing
+// (its feed likely went quiet exactly as the trip ended). This is deliberately
+// generous: understating it is what let the walking leg go "current" while the
+// rider was still on the train.
+const ALIGHT_GRACE_MS = 3 * 60 * 1000
+
 type JourneyPhase = "walking" | "waiting" | "boarding" | "onboard"
 const PHASE_LABEL: Record<JourneyPhase, string> = {
     walking: "Walking",
@@ -272,7 +281,36 @@ export function RouteDetailSheet({
         )
         return idx === -1 ? displayRoute.Legs.length - 1 : idx
     }, [displayRoute, now])
-    const currentLeg = currentLegIndex >= 0 ? displayRoute?.Legs[currentLegIndex] : undefined
+    // The earliest transit leg the rider could still be riding: the first one
+    // (from just past any confirmed alighting) that either has a live vehicle
+    // right now, or hasn't been silent for longer than ALIGHT_GRACE_MS past its
+    // own predicted arrival. Legs.length once every transit leg has either been
+    // confirmed alighted or given up on. This - not the raw clock - is what
+    // gates advancing past a transit leg: a merely late-running train must not
+    // be able to push the rider onto the next (often walking) leg before
+    // there's real signal they've actually got off.
+    const transitFloor = useMemo(() => {
+        if (!route) return 0
+        const legs = displayRoute?.Legs ?? route.Legs
+        for (let i = Math.max(0, alightedThroughLeg + 1); i < route.Legs.length; i++) {
+            const leg = route.Legs[i]
+            if (leg.Mode !== "transit") continue
+            if (vehiclesByTripId[leg.TripID]) return i
+            const arrivalMs = new Date((legs[i] ?? leg).ArrivalTime).getTime()
+            if (now.getTime() - arrivalMs <= ALIGHT_GRACE_MS) return i
+            // No vehicle and well past its predicted arrival - assume this leg
+            // is over even without GPS confirmation of alighting, and keep
+            // looking at the next transit leg.
+        }
+        return route.Legs.length
+    }, [route, displayRoute, alightedThroughLeg, vehiclesByTripId, now])
+
+    // The rider-facing "which leg are they on" index: normally the clock-based
+    // currentLegIndex, but clamped to transitFloor so it can't run ahead of a
+    // transit leg that isn't yet confirmed (or assumed) finished, and clamped up
+    // to alightedThroughLeg + 1 so a vehicle that ran early doesn't leave the
+    // rider looking "stuck" on a leg GPS already confirms they've left.
+    const guardedLegIndex = Math.min(Math.max(currentLegIndex, alightedThroughLeg + 1), transitFloor)
 
     // The transit leg to track: the current leg if it's transit, otherwise the
     // next transit leg coming up - always in journey order, so a later bus that
@@ -282,12 +320,9 @@ export function RouteDetailSheet({
     // later leg that does (bad schedule data / a cancelled-but-not-flagged run).
     const activeTransitLeg = useMemo(() => {
         if (!route || currentLegIndex < 0) return undefined
-        // Never re-select a leg the rider has already been carried past, even if
-        // the schedule clock still thinks they're on it (vehicle ran early).
-        const floor = Math.max(currentLegIndex, alightedThroughLeg + 1)
         const upcoming = route.Legs
             .map((l, i) => ({ l, i }))
-            .filter(({ l, i }) => i >= floor && l.Mode === "transit")
+            .filter(({ l, i }) => i >= transitFloor && l.Mode === "transit")
         if (upcoming.length === 0) return undefined
         const first = upcoming[0].l
         // DepartureTime is already realtime-adjusted by the backend.
@@ -297,7 +332,7 @@ export function RouteDetailSheet({
             if (live) return live.l
         }
         return first
-    }, [route, currentLegIndex, alightedThroughLeg, vehiclesByTripId, now])
+    }, [route, currentLegIndex, transitFloor, vehiclesByTripId, now])
 
     const trackedTripId =
         journeyStarted && activeTransitLeg && vehiclesByTripId[activeTransitLeg.TripID]
@@ -346,7 +381,11 @@ export function RouteDetailSheet({
 
     // Camera: follow the rider while they're still walking to a stop (and not
     // already waiting at it / on board); otherwise follow the tracked vehicle.
-    const riderWalking = journeyStarted && currentLeg?.Mode === "walk" && !waitingAtStop && !boarded
+    // Uses guardedLegIndex (not the raw clock-based currentLeg) so a delayed
+    // train's own schedule can't switch the camera to "follow on foot" before
+    // the rider has actually got off.
+    const guardedLeg = displayRoute?.Legs[guardedLegIndex]
+    const riderWalking = journeyStarted && guardedLeg?.Mode === "walk" && !waitingAtStop && !boarded
     const followMarkerId = trackedVehicle && !riderWalking ? `vehicle-${trackedVehicle.trip_id}` : undefined
 
     // While waiting at the stop for the tracked vehicle, frame the vehicle and
@@ -394,15 +433,13 @@ export function RouteDetailSheet({
 
     // Vehicles to show on the map: drop the ones for legs the rider has already
     // ridden and alighted - once you're off a train you don't want to keep
-    // watching it drive away while you wait for the next. alightedThroughLeg
-    // only advances once the vehicle's own GPS confirms it passed the alight
-    // stop, which never fires if that vehicle's feed goes quiet right as the
-    // leg ends (trip completed, no more updates) - so it's paired with
-    // currentLegIndex, which is time-based and keeps advancing regardless,
-    // to make sure a finished leg's vehicle doesn't linger on the map.
+    // watching it drive away while you wait for the next. Gated by transitFloor
+    // (confirmed alighted, or its own feed gone quiet past ALIGHT_GRACE_MS) so a
+    // vehicle isn't dropped from the map while it's still plausibly the one the
+    // rider is on.
     const alightedTripIds = new Set(
         (route?.Legs ?? [])
-            .filter((l, i) => l.Mode === "transit" && !!l.TripID && (i <= alightedThroughLeg || i < currentLegIndex))
+            .filter((l, i) => l.Mode === "transit" && !!l.TripID && i < transitFloor)
             .map((l) => l.TripID)
     )
     const visibleVehicles = alightedTripIds.size === 0
@@ -410,12 +447,16 @@ export function RouteDetailSheet({
         : Object.fromEntries(Object.entries(vehiclesByTripId).filter(([id]) => !alightedTripIds.has(id)))
 
     // The leg index to mark as "current" in the itinerary/header while tracking.
-    // Once the final leg's arrival has passed the whole journey reads as done.
+    // Once the final leg's arrival has passed the whole journey reads as done -
+    // but only once transitFloor agrees every transit leg is actually finished,
+    // so a late-running last-leg train can't flip the whole journey to
+    // "arrived" (and clear the tracked-journey banner) before the rider is off.
     const lastLeg = shownRoute?.Legs[shownRoute.Legs.length - 1]
     const journeyArrived =
         !!shownRoute && journeyStarted && currentLegIndex === shownRoute.Legs.length - 1 &&
+        transitFloor >= shownRoute.Legs.length &&
         !!lastLeg && now.getTime() >= new Date(lastLeg.ArrivalTime).getTime()
-    const progressLegIndex = !shownRoute || !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : currentLegIndex
+    const progressLegIndex = !shownRoute || !journeyStarted ? -1 : journeyArrived ? shownRoute.Legs.length : guardedLegIndex
 
     // Persist the tracked journey so a closed/reloaded tab can resume it; drop it
     // once the rider has arrived. Keyed so it fires on the transitions, not every render.
