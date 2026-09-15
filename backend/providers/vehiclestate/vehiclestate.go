@@ -79,6 +79,14 @@ func stateFromCurrentStatus(vehicle *proto.VehiclePosition, lowestSequence int, 
 	case proto.VehiclePosition_INCOMING_AT:
 		return idx, "Arriving", true
 	case proto.VehiclePosition_IN_TRANSIT_TO:
+		// AT's feed sometimes flips CurrentStatus to IN_TRANSIT_TO a beat
+		// before it bumps CurrentStopSequence past the stop just departed,
+		// so idx can still be that (stale) stop rather than the real target.
+		// A live position still sitting at idx's own location is the tell;
+		// bump to the stop after it so "stops away" doesn't jump backward.
+		if hasPosition && IsNearStop(stopsForTrip, idx, vehicleLat, vehicleLon) {
+			return idx + 1, "Leaving", true
+		}
 		// Still close to the stop it just left ("pulling away") vs genuinely
 		// mid-route - only distinguishable when we have a live position.
 		if hasPosition && IsNearStop(stopsForTrip, idx-1, vehicleLat, vehicleLon) {
