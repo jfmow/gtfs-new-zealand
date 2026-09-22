@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -83,6 +84,23 @@ func validateSeverity(severity string) error {
 	return nil
 }
 
+// identityFromRequest reads a request's client identity - the native
+// X-Device-Id/X-Device-Secret header pair if present, else the legacy web
+// push endpoint/p256dh/auth form fields. Every notification endpoint below
+// resolves its caller through this (and Database.ResolveClient /
+// ResolveOrCreateClient), so a native iOS device and a web push subscriber
+// are handled by exactly the same handler code.
+func identityFromRequest(c echo.Context) ClientIdentity {
+	if deviceID := c.Request().Header.Get("X-Device-Id"); deviceID != "" {
+		return ClientIdentity{DeviceID: deviceID, DeviceSecret: c.Request().Header.Get("X-Device-Secret")}
+	}
+	return ClientIdentity{
+		Endpoint: c.FormValue("endpoint"),
+		P256dh:   c.FormValue("p256dh"),
+		Auth:     c.FormValue("auth"),
+	}
+}
+
 // parseSubscriptionFilters reads the alert-type fields shared by the stop and
 // route subscribe/edit endpoints. notifyCancellations defaults to true
 // (unfiltered) when the field is omitted, so requests from an app version
@@ -121,6 +139,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	var alertsCronMutex sync.Mutex
 	var journeyRemindersCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
+	deviceRoute := primaryRoute.Group("/devices")
 
 	// Region tag for journey_reminders rows - every region process shares one
 	// notifications.db, so the journey-reminders cron must only act on its own.
@@ -136,6 +155,64 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	// one-shot reminders check both operate on the whole (unscoped) table, so
 	// only one region needs to run them.
 	primaryRegion := region == "at"
+
+	// ─────────────── native (iOS) device registration ───────────────
+	//
+	// A device registers once (storing its own deviceId/secret pair, e.g. in
+	// the Keychain) and from then on authenticates every /notifications/*
+	// call with X-Device-Id/X-Device-Secret headers instead of the web push
+	// endpoint/p256dh/auth triple - see identityFromRequest.
+
+	deviceRoute.POST("/register", func(c echo.Context) error {
+		client, err := notificationDB.RegisterIOSDevice(
+			c.FormValue("deviceId"),
+			c.FormValue("secret"),
+			c.FormValue("apnsToken"),
+			c.FormValue("env"),
+			c.FormValue("pushToStartToken"),
+		)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, ErrDeviceSecretMismatch) {
+				status = http.StatusForbidden
+			}
+			return c.JSON(status, Response{Code: status, Message: err.Error(), Data: nil})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "registered", Data: map[string]any{"id": client.Id}})
+	})
+
+	deviceRoute.POST("/update-token", func(c echo.Context) error {
+		client, err := notificationDB.UpdateIOSDeviceTokens(
+			c.FormValue("deviceId"),
+			c.FormValue("secret"),
+			c.FormValue("apnsToken"),
+			c.FormValue("env"),
+			c.FormValue("pushToStartToken"),
+		)
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, ErrDeviceSecretMismatch) || errors.Is(err, ErrClientNotFound) {
+				status = http.StatusForbidden
+			}
+			return c.JSON(status, Response{Code: status, Message: err.Error(), Data: nil})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated", Data: map[string]any{"id": client.Id}})
+	})
+
+	deviceRoute.POST("/unregister", func(c echo.Context) error {
+		client, err := notificationDB.FindIOSDeviceClient(c.FormValue("deviceId"), c.FormValue("secret"))
+		if err != nil {
+			status := http.StatusBadRequest
+			if errors.Is(err, ErrDeviceSecretMismatch) {
+				status = http.StatusForbidden
+			}
+			return c.JSON(status, Response{Code: status, Message: "device not found", Data: nil})
+		}
+		if err := client.DeleteNotificationClient(""); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to unregister", Data: nil})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "unregistered", Data: nil})
+	})
 
 	c := cron.New(cron.WithLocation(localTimeZone))
 
@@ -188,6 +265,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				offset += limit
 
 				for _, client := range clients {
+					if !client.isExpiringWeb() {
+						continue // native devices don't expire on a fixed schedule
+					}
 					if client.ExpiryWarningSent == 1 {
 						continue //already warned
 					}
@@ -369,9 +449,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
+		identity := identityFromRequest(c)
 
 		parentStop, found := resolveParentStop(gtfsData, parentStopsCache(), stopIdOrName)
 		if !found {
@@ -382,7 +460,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
+		newClient, err := notificationDB.ResolveOrCreateClient(identity, gtfsData)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -448,9 +526,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	notificationRoute.POST("/find-client", func(c echo.Context) error {
 		stopIdOrName := c.FormValue("stopIdOrName")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
+		identity := identityFromRequest(c)
 
 		var stopId string = ""
 
@@ -462,7 +538,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			stopId = parentStop.StopId
 		}
 
-		notification, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, stopId)
+		notification, err := notificationDB.ResolveClient(identity, stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -480,9 +556,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	notificationRoute.POST("/remove", func(c echo.Context) error {
 		stopIdOrName := c.FormValue("stopIdOrName")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
+		identity := identityFromRequest(c)
 
 		var stopId string = ""
 
@@ -494,7 +568,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			stopId = parentStop.StopId
 		}
 
-		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, stopId)
+		foundClient, err := notificationDB.ResolveClient(identity, stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -520,9 +594,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	notificationRoute.POST("/edit", func(c echo.Context) error {
 		stopIdOrName := c.FormValue("stopIdOrName")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
+		identity := identityFromRequest(c)
 
 		unParsedroutes := c.FormValue("routes")
 		var routes []string
@@ -564,7 +636,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			stopId = parentStop.StopId
 		}
 
-		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, stopId)
+		foundClient, err := notificationDB.ResolveClient(identity, stopId)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -597,9 +669,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	notificationRoute.POST("/reminder", func(c echo.Context) error {
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
+		identity := identityFromRequest(c)
 
 		tripId := c.FormValue("tripId")
 		stopId := c.FormValue("stopId")
@@ -623,17 +693,13 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			}
 		}
 
-		client, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		client, err := notificationDB.ResolveOrCreateClient(identity, gtfsData)
 		if err != nil {
-			newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
-			if err != nil {
-				return c.JSON(http.StatusBadRequest, Response{
-					Code:    http.StatusBadRequest,
-					Message: "invalid subscription data",
-					Data:    nil,
-				})
-			}
-			client = newClient
+			return c.JSON(http.StatusBadRequest, Response{
+				Code:    http.StatusBadRequest,
+				Message: "invalid subscription data",
+				Data:    nil,
+			})
 		}
 
 		stop, err := gtfsData.GetStopByStopID(stopId)
@@ -721,11 +787,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		newClient, err := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
+		newClient, err := notificationDB.ResolveOrCreateClient(identityFromRequest(c), gtfsData)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -771,11 +833,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			})
 		}
 
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		foundClient, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -801,11 +859,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	notificationRoute.POST("/route/remove", func(c echo.Context) error {
 		routeId := c.FormValue("routeId")
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
 
-		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		foundClient, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -834,11 +889,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	// in-app bell/badge, neither of which existed before this endpoint
 	// (find-client only ever checked one stop at a time).
 	notificationRoute.POST("/mine", func(c echo.Context) error {
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		foundClient, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		foundClient, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{
 				Code:    http.StatusBadRequest,
@@ -867,17 +918,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	// Create or update (upsert on the template identity) a leave-by reminder.
 	notificationRoute.POST("/journey-reminder", func(c echo.Context) error {
-		endpoint := c.FormValue("endpoint")
-		p256dh := c.FormValue("p256dh")
-		auth := c.FormValue("auth")
-
-		client, err := notificationDB.FindNotificationClient(endpoint, p256dh, auth, "")
+		client, err := notificationDB.ResolveOrCreateClient(identityFromRequest(c), gtfsData)
 		if err != nil {
-			newClient, cErr := notificationDB.CreateNotificationClient(endpoint, p256dh, auth, gtfsData)
-			if cErr != nil {
-				return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid subscription data"})
-			}
-			client = newClient
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid subscription data"})
 		}
 
 		if count, cErr := notificationDB.CountActiveJourneyReminders(client.Id); cErr == nil && count >= jrMaxActivePerClient {
@@ -1121,7 +1164,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	// List the current device's active leave-by reminders.
 	notificationRoute.POST("/journey-reminders", func(c echo.Context) error {
-		client, err := notificationDB.FindNotificationClient(c.FormValue("endpoint"), c.FormValue("p256dh"), c.FormValue("auth"), "")
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
 		}
@@ -1137,7 +1180,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	notificationRoute.POST("/journey-reminder/remove", func(c echo.Context) error {
-		client, err := notificationDB.FindNotificationClient(c.FormValue("endpoint"), c.FormValue("p256dh"), c.FormValue("auth"), "")
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
 		}
@@ -1156,7 +1199,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	// Soft-hide one history entry from the in-app list (the row stays so the
 	// push de-dup keeps working).
 	notificationRoute.POST("/history/dismiss", func(c echo.Context) error {
-		client, err := notificationDB.FindNotificationClient(c.FormValue("endpoint"), c.FormValue("p256dh"), c.FormValue("auth"), "")
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
 		}
@@ -1172,7 +1215,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 
 	// Soft-hide every history entry for this device.
 	notificationRoute.POST("/history/clear", func(c echo.Context) error {
-		client, err := notificationDB.FindNotificationClient(c.FormValue("endpoint"), c.FormValue("p256dh"), c.FormValue("auth"), "")
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
 		}
