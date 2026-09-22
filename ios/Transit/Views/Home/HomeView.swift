@@ -32,7 +32,9 @@ struct HomeView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
             .navigationTitle(environment.region.displayName)
             .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search stops")
             .onChange(of: searchText) { _, newValue in scheduleSearch(for: newValue) }
@@ -48,12 +50,13 @@ struct HomeView: View {
             if isSearching, searchResults.isEmpty {
                 ProgressView()
             } else if searchResults.isEmpty {
-                Text("No stops found").foregroundStyle(.secondary)
+                Text("No stops found").foregroundStyle(Theme.steel)
             } else {
                 ForEach(searchResults) { result in
                     NavigationLink(value: BoardDestination(stopQuery: result.name, title: result.name)) {
                         StopRow(name: result.name, subtitle: result.typeOfStop.capitalized)
                     }
+                    .boardRow()
                 }
             }
         }
@@ -71,6 +74,7 @@ struct HomeView: View {
                         Text(favourite.displayName)
                     }
                 }
+                .boardRow()
             }
             .onDelete { offsets in
                 for index in offsets { modelContext.delete(favourites[index]) }
@@ -91,14 +95,15 @@ struct HomeView: View {
             } else if isLoadingNearby, nearbyStops.isEmpty {
                 ProgressView()
             } else if let errorMessage {
-                Text(errorMessage).foregroundStyle(.secondary)
+                Text(errorMessage).foregroundStyle(Theme.steel)
             } else if nearbyStops.isEmpty {
-                Text("No stops found nearby").foregroundStyle(.secondary)
+                Text("No stops found nearby").foregroundStyle(Theme.steel)
             } else {
                 ForEach(nearbyStops.prefix(6)) { stop in
                     NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
                         StopRow(name: stop.stopName, subtitle: stop.stopCode)
                     }
+                    .boardRow()
                 }
             }
         }
@@ -164,9 +169,10 @@ struct StopRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(name)
-            Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            Text(name).foregroundStyle(Theme.ink)
+            Text(subtitle).font(.caption).foregroundStyle(Theme.steel)
         }
+        .padding(.vertical, 2)
     }
 }
 

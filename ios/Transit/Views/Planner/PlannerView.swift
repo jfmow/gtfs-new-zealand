@@ -28,8 +28,11 @@ struct PlannerView: View {
                 formSection
                 if hasPlanned { resultsSection }
             }
-            .listStyle(.insetGrouped)
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
             .navigationTitle("Planner")
+            .tint(Theme.accent(for: environment.region))
             .navigationDestination(for: JourneyPlan.self) { plan in
                 JourneyDetailView(plan: plan)
             }
@@ -86,12 +89,14 @@ struct PlannerView: View {
                 Task { await plan() }
             } label: {
                 if isPlanning {
-                    ProgressView()
+                    ProgressView().tint(.white)
                 } else {
-                    Text("Plan journey").frame(maxWidth: .infinity)
+                    Text("Plan journey")
                 }
             }
+            .buttonStyle(.transitPrimary(Theme.accent(for: environment.region)))
             .disabled(start == nil || end == nil || isPlanning)
+            .listRowBackground(Color.clear)
 
             if start != nil, end != nil {
                 Button("Save this trip") { saveTrip() }
@@ -104,14 +109,15 @@ struct PlannerView: View {
     private var resultsSection: some View {
         Section("Results") {
             if let errorMessage {
-                Text(errorMessage).foregroundStyle(.secondary)
+                Text(errorMessage).foregroundStyle(Theme.steel)
             } else if results.isEmpty {
-                Text("No journeys found").foregroundStyle(.secondary)
+                Text("No journeys found").foregroundStyle(Theme.steel)
             } else {
                 ForEach(results) { plan in
                     NavigationLink(value: plan) {
                         JourneyResultCard(plan: plan)
                     }
+                    .boardRow()
                 }
             }
         }
@@ -164,19 +170,20 @@ struct JourneyResultCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.heroNumber(20))
                 Spacer()
-                Text(transfersLabel).font(.caption).foregroundStyle(.secondary)
+                Text(transfersLabel).font(.caption).foregroundStyle(Theme.steel)
             }
-            HStack {
+            HStack(spacing: 4) {
                 if let departure = plan.departureTime.date, let arrival = plan.arrivalTime.date {
                     Text(departure, style: .time)
                     Text("–")
                     Text(arrival, style: .time)
                 }
             }
-            .font(.subheadline)
+            .font(.subheadline.monospacedDigit())
+            .foregroundStyle(Theme.steel)
 
             HStack(spacing: 4) {
                 ForEach(Array(plan.legs.enumerated()), id: \.offset) { _, leg in
@@ -184,7 +191,7 @@ struct JourneyResultCard: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     private var transfersLabel: String {
@@ -195,8 +202,8 @@ struct JourneyResultCard: View {
     private func legChip(_ leg: JourneyLeg) -> some View {
         if leg.mode == "walk" {
             Label("\(Int((leg.duration.timeInterval / 60).rounded()))m", systemImage: "figure.walk")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(Theme.steel)
         } else if let route = leg.route {
             Text(route.routeShortName)
                 .font(.caption2.bold())

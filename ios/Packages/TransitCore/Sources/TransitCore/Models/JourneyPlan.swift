@@ -12,12 +12,15 @@ public struct JourneyPlan: Codable, Hashable, Sendable, Identifiable {
     public let startLon: Double
     public let endLat: Double
     public let endLon: Double
-    public let departureTime: GoTime
-    public let arrivalTime: GoTime
-    public let totalDuration: GoDuration
+    // `var`, not `let`: JourneyPlanLiveAdjuster.buildLiveJourney produces a
+    // realtime-shifted copy of a plan by mutating a `var plan = original`
+    // it took as input - see its doc comment.
+    public var departureTime: GoTime
+    public var arrivalTime: GoTime
+    public var totalDuration: GoDuration
     public let transfers: Int
     public let transferStops: [Stop]?
-    public let legs: [JourneyLeg]
+    public var legs: [JourneyLeg]
     /// A FeatureCollection combining every leg's shape (each leg's
     /// `properties.mode`/`to_stop_id` distinguish its pieces) - see
     /// `GeoJSONFeatureCollection`.
@@ -53,9 +56,10 @@ public struct JourneyLeg: Codable, Hashable, Sendable {
     public let route: Route?
     /// Realtime-adjusted departure/arrival - use these for display; use
     /// `scheduledDepartureTime`/`scheduledArrivalTime` only to compute delay.
-    public let departureTime: GoTime
-    public let arrivalTime: GoTime
-    public let duration: GoDuration
+    /// `var`: shifted in place by JourneyPlanLiveAdjuster.buildLiveJourney.
+    public var departureTime: GoTime
+    public var arrivalTime: GoTime
+    public var duration: GoDuration
     public let distanceKm: Double
     public let stopSequenceID: Int
     /// Zero-valued (`date == nil`) on a walk leg, which has no schedule.
@@ -63,8 +67,8 @@ public struct JourneyLeg: Codable, Hashable, Sendable {
     public let scheduledArrivalTime: GoTime
     /// "scheduled" | "on_time" | "delayed" | "early" | "canceled" | "skipped"
     /// - only present on a transit leg.
-    public let realtimeStatus: String?
-    public let delaySeconds: Int?
+    public var realtimeStatus: String?
+    public var delaySeconds: Int?
     /// False when this transit leg's trip has gone stale/unusable (e.g. its
     /// data disappeared from the realtime feed) - the web app flags the
     /// whole journey as "service disruption" when any leg has this false.

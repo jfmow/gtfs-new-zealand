@@ -67,11 +67,16 @@ struct StopBoardView: View {
                         NavigationLink(value: departure.tripID) {
                             DepartureRow(departure: departure)
                         }
+                        .boardRow()
                     } else {
                         DepartureRow(departure: departure)
+                            .boardRow()
                     }
                 }
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
             .navigationDestination(for: String.self) { tripID in
                 VehicleQuickLookView(tripID: tripID)
             }
@@ -164,9 +169,9 @@ struct DepartureRow: View {
                 .frame(width: 4)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(departure.route.name).font(.headline)
-                    Text(departure.headsign).font(.subheadline).foregroundStyle(.secondary).lineLimit(1)
+                HStack(spacing: 6) {
+                    Text(departure.route.name).font(.system(size: 15, weight: .semibold, design: .rounded))
+                    Text(departure.headsign).font(.subheadline).foregroundStyle(Theme.steel).lineLimit(1)
                 }
                 statusLine
             }
@@ -175,14 +180,15 @@ struct DepartureRow: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text(countdownText)
-                    .font(.headline)
-                    .foregroundStyle(departure.canceled ? .red : .primary)
+                    .font(.heroNumber(19))
+                    .foregroundStyle(departure.canceled ? Theme.alert : Theme.ink)
                 if !departure.platform.isEmpty {
-                    Text("Platform \(departure.platform)").font(.caption2).foregroundStyle(.secondary)
+                    Text("Platform \(departure.platform)").font(.caption2.monospacedDigit()).foregroundStyle(Theme.steel)
                 }
             }
         }
-        .opacity(departure.departed ? 0.5 : 1)
+        .opacity(departure.departed ? 0.45 : 1)
+        .padding(.vertical, 3)
     }
 
     private var countdownText: String {
@@ -194,15 +200,15 @@ struct DepartureRow: View {
     @ViewBuilder
     private var statusLine: some View {
         if departure.canceled {
-            Label("Cancelled", systemImage: "xmark.circle").font(.caption).foregroundStyle(.red)
+            Label("Cancelled", systemImage: "xmark.circle").font(.caption).foregroundStyle(Theme.alert)
         } else if departure.platformChanged {
-            Label("Platform changed", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(.orange)
+            Label("Platform changed", systemImage: "arrow.triangle.2.circlepath").font(.caption).foregroundStyle(Theme.delayed)
         } else if !departure.locationTracking, !departure.tripUpdateTracking {
-            Text("Timetable only").font(.caption).foregroundStyle(.secondary)
+            Text("Timetable only").font(.caption).foregroundStyle(Theme.steel)
         } else if !departure.locationTracking {
-            Text("Limited tracking").font(.caption).foregroundStyle(.secondary)
+            Text("Limited tracking").font(.caption).foregroundStyle(Theme.steel)
         } else if departure.stopsAway == 0 {
-            Label("At this stop", systemImage: "location.fill").font(.caption).foregroundStyle(.green)
+            Label("At this stop", systemImage: "location.fill").font(.caption).foregroundStyle(Theme.onTime)
         }
     }
 }

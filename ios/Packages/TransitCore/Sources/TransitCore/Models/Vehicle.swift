@@ -11,7 +11,7 @@ public struct Vehicle: Codable, Hashable, Sendable, Identifiable {
     public let occupancy: Int
     public let licensePlate: String
     public let position: VehiclePosition
-    /// "bus" | "train" | "ferry" | "school_bus" - lowercase, unlike
+    /// "bus" | "train" | "ferry" | "school bus" - lowercase, unlike
     /// `route.type`.
     public let type: String
     /// Only present when `trip` is - one of "AtStop", "Arriving",

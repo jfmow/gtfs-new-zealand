@@ -10,6 +10,7 @@
 		05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC603ED48D2D68656FFD4A94 /* PlannerView.swift */; };
 		0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97361DD773747781B3551E93 /* TransitMapView.swift */; };
 		136B4A8556AB059619756417 /* JourneyDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C078B9BE4C49BE5FF57277B9 /* JourneyDetailView.swift */; };
+		21ACF9F838ED7F90C4F9388E /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561D49DE86ADCD03A767B01F /* Theme.swift */; };
 		2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */; };
 		267E26CB3BFB31C783FFD039 /* TransitCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4ADF43D1975320A2612A72F /* TransitCore */; };
 		396541F22D0F2D81C7ADEDCD /* MapTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D388DD7DC32872BFAA726D /* MapTabView.swift */; };
@@ -23,6 +24,7 @@
 		9C0C7DA48A1923FB9413416D /* StopBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DD162B883DBFFCFC218A88 /* StopBoardView.swift */; };
 		9C6C09428E8557C04DE909F2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B967C20C0A167A8F989E5C5 /* HomeView.swift */; };
 		9EF1F7F1111BCE512A59D5F9 /* VehicleQuickLookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95CDEBAD9C6E847311DB012 /* VehicleQuickLookView.swift */; };
+		A4DCC987D238BA7E22AFFFFC /* JourneyTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */; };
 		BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DED3D41B8B950C705520D7 /* LocationProvider.swift */; };
 		C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D8AC61ACC94225604566A3 /* SettingsView.swift */; };
 		D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */; };
@@ -37,11 +39,13 @@
 		10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComingSoonView.swift; sourceTree = "<group>"; };
 		3A9E1A8F0724FC6149CED75A /* LocationField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationField.swift; sourceTree = "<group>"; };
 		3B967C20C0A167A8F989E5C5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		561D49DE86ADCD03A767B01F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		5D014E99D90750C0745D985C /* TransitCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TransitCore; path = Packages/TransitCore; sourceTree = SOURCE_ROOT; };
 		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
 		7818A7A98B32F728BFDDA7F0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7A884A001E19B7831038060C /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
 		83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkPresentationView.swift; sourceTree = "<group>"; };
+		9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingView.swift; sourceTree = "<group>"; };
 		97361DD773747781B3551E93 /* TransitMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitMapView.swift; sourceTree = "<group>"; };
 		B7D8AC61ACC94225604566A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		B8AB5EC6CD9EF2B870BB5A08 /* DeepLinkRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkRouter.swift; sourceTree = "<group>"; };
@@ -73,6 +77,14 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		0F25C1DD2492135809E66A93 /* Tracker */ = {
+			isa = PBXGroup;
+			children = (
+				9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */,
+			);
+			path = Tracker;
+			sourceTree = "<group>";
+		};
 		39A0CF2DF72809D8C020D9EB = {
 			isa = PBXGroup;
 			children = (
@@ -102,9 +114,18 @@
 				794B225BF868DC8894661AD9 /* MapBrowse */,
 				848C667F5C7C51E4305B0D5E /* Planner */,
 				56626E08A153B4D11D500E84 /* Settings */,
+				0F25C1DD2492135809E66A93 /* Tracker */,
 				3C4D30F98054510DD9AF5895 /* Vehicle */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		4F5F38C0AE5E1FF74AC19E23 /* DesignSystem */ = {
+			isa = PBXGroup;
+			children = (
+				561D49DE86ADCD03A767B01F /* Theme.swift */,
+			);
+			path = DesignSystem;
 			sourceTree = "<group>";
 		};
 		56626E08A153B4D11D500E84 /* Settings */ = {
@@ -192,6 +213,7 @@
 			children = (
 				D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */,
 				7FDED07024094DD723E16377 /* App */,
+				4F5F38C0AE5E1FF74AC19E23 /* DesignSystem */,
 				835BF738EA375311B457F0B1 /* Map */,
 				80AB2A53B3A85A3D83842503 /* Services */,
 				3E6030E2894A5114FF678628 /* Views */,
@@ -299,6 +321,7 @@
 				50B19908C51FE73E7762A9C6 /* DeepLinkRouter.swift in Sources */,
 				9C6C09428E8557C04DE909F2 /* HomeView.swift in Sources */,
 				136B4A8556AB059619756417 /* JourneyDetailView.swift in Sources */,
+				A4DCC987D238BA7E22AFFFFC /* JourneyTrackingView.swift in Sources */,
 				5A25392A5932D553B0AA9EAA /* LocationField.swift in Sources */,
 				BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */,
 				5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */,
@@ -309,6 +332,7 @@
 				C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */,
 				9C0C7DA48A1923FB9413416D /* StopBoardView.swift in Sources */,
 				DF2F88155A3D1D9D4BA80A93 /* StopsMapView.swift in Sources */,
+				21ACF9F838ED7F90C4F9388E /* Theme.swift in Sources */,
 				DFFF4669C80F59B5DB27ADFC /* TransitApp.swift in Sources */,
 				0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */,
 				9EF1F7F1111BCE512A59D5F9 /* VehicleQuickLookView.swift in Sources */,

@@ -32,12 +32,22 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
+            List {
                 Section("Region") {
-                    Picker("Region", selection: Binding(get: { environment.region }, set: { environment.region = $0 })) {
-                        ForEach(Region.all) { region in
-                            Text(region.displayName).tag(region)
+                    ForEach(Region.all) { region in
+                        Button {
+                            environment.region = region
+                        } label: {
+                            HStack {
+                                Circle().fill(Theme.accent(for: region)).frame(width: 12, height: 12)
+                                Text(region.displayName).foregroundStyle(Theme.ink)
+                                Spacer()
+                                if environment.region == region {
+                                    Image(systemName: "checkmark").foregroundStyle(Theme.accent(for: region))
+                                }
+                            }
                         }
+                        .boardRow()
                     }
                 }
 
@@ -48,13 +58,20 @@ struct SettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .boardRow()
                 }
 
                 Section {
                     LabeledContent("Version", value: Bundle.main.appVersionString)
+                        .foregroundStyle(Theme.steel)
                 }
+                .boardRow()
             }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(Theme.paper)
             .navigationTitle("Settings")
+            .tint(Theme.accent(for: environment.region))
         }
     }
 }

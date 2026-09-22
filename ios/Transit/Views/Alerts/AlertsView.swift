@@ -46,10 +46,14 @@ struct AlertsView: View {
                 } else {
                     List(alerts, id: \.title) { alert in
                         AlertCard(alert: alert)
+                            .boardRow()
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    .background(Theme.paper)
                 }
             }
+            .background(Theme.paper)
         }
     }
 
@@ -83,21 +87,23 @@ struct AlertCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            HStack(alignment: .top) {
                 Image(systemName: causeIcon(alert.cause))
+                    .foregroundStyle(Theme.steel)
                 Text(alert.title.isEmpty ? humanize(alert.effect) : alert.title)
-                    .font(.headline)
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.ink)
                 Spacer()
                 statusBadge
             }
-            Text(truncatedDescription).font(.subheadline).foregroundStyle(.secondary)
+            Text(truncatedDescription).font(.subheadline).foregroundStyle(Theme.steel)
             if canExpand {
                 Button(expanded ? "Show less" : "Read more") { expanded.toggle() }
                     .font(.caption)
             }
-            Text(dateRange).font(.caption2).foregroundStyle(.tertiary)
+            Text(dateRange).font(.caption2.monospacedDigit()).foregroundStyle(Theme.steel.opacity(0.7))
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
     }
 
     private var statusBadge: some View {
@@ -112,9 +118,9 @@ struct AlertCard: View {
 
     private var badgeColor: Color {
         switch status.kind {
-        case .active: return .red
-        case .soon: return .orange
-        case .inactive: return .secondary
+        case .active: return Theme.alert
+        case .soon: return Theme.delayed
+        case .inactive: return Theme.steel
         }
     }
 

@@ -6,6 +6,7 @@ import SwiftUI
 struct RootView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
         TabView {
@@ -24,6 +25,7 @@ struct RootView: View {
             SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .tint(Theme.accent(for: environment.region))
         .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
         .fullScreenCover(item: Binding(get: { router.activeLink }, set: { router.activeLink = $0 })) { link in
             DeepLinkPresentationView(link: link)
