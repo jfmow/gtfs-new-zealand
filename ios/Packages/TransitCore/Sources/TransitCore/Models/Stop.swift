@@ -22,6 +22,11 @@ public struct Stop: Codable, Hashable, Sendable, Identifiable {
     public var id: String { stopID }
     public var coordinate: Coordinate { Coordinate(latitude: stopLat, longitude: stopLon) }
 
+    /// The "name + code" string `GET /{region}/services/{stop}` (the
+    /// departures board) expects, e.g. "Papatoetoe Train Station 100" -
+    /// confirmed against a live board response (2026-09-22).
+    public var boardQuery: String { "\(stopName) \(stopCode)" }
+
     enum CodingKeys: String, CodingKey {
         case stopID = "stop_id"
         case parentStation = "parent_station"

@@ -7,24 +7,46 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97361DD773747781B3551E93 /* TransitMapView.swift */; };
 		2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */; };
 		267E26CB3BFB31C783FFD039 /* TransitCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4ADF43D1975320A2612A72F /* TransitCore */; };
+		396541F22D0F2D81C7ADEDCD /* MapTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1D388DD7DC32872BFAA726D /* MapTabView.swift */; };
+		44481E59E5FFAF85EF21A5E4 /* AlertsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */; };
+		5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDBF602A69FD73D1C0D82358 /* MapAnnotations.swift */; };
+		5B0D4B4D4291E266D5352BDA /* VehiclesMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC7EA77D8B9AB395C7C6770B /* VehiclesMapView.swift */; };
 		6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BD8A6BDA69E3FF448D272B /* AppEnvironment.swift */; };
-		7CAA22C32A51362128ABD0D2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6FF69784BD2C866A8F676EB /* HomeView.swift */; };
+		9C0C7DA48A1923FB9413416D /* StopBoardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2DD162B883DBFFCFC218A88 /* StopBoardView.swift */; };
+		9C6C09428E8557C04DE909F2 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B967C20C0A167A8F989E5C5 /* HomeView.swift */; };
+		9EF1F7F1111BCE512A59D5F9 /* VehicleQuickLookView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D95CDEBAD9C6E847311DB012 /* VehicleQuickLookView.swift */; };
+		BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DED3D41B8B950C705520D7 /* LocationProvider.swift */; };
+		C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D8AC61ACC94225604566A3 /* SettingsView.swift */; };
+		DF2F88155A3D1D9D4BA80A93 /* StopsMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC04636C2AB5C715F467C538 /* StopsMapView.swift */; };
 		DFFF4669C80F59B5DB27ADFC /* TransitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A2FEDC5AE691129B9962CD /* TransitApp.swift */; };
 		E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7818A7A98B32F728BFDDA7F0 /* RootView.swift */; };
 		E150E623D21A1C9EE54950AD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */; };
+		FF1D5596A3B3FFC97FDBD2CD /* AlertsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A884A001E19B7831038060C /* AlertsView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComingSoonView.swift; sourceTree = "<group>"; };
+		3B967C20C0A167A8F989E5C5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		5D014E99D90750C0745D985C /* TransitCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TransitCore; path = Packages/TransitCore; sourceTree = SOURCE_ROOT; };
+		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
 		7818A7A98B32F728BFDDA7F0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		7A884A001E19B7831038060C /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
+		97361DD773747781B3551E93 /* TransitMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitMapView.swift; sourceTree = "<group>"; };
+		B7D8AC61ACC94225604566A3 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		D2DD162B883DBFFCFC218A88 /* StopBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopBoardView.swift; sourceTree = "<group>"; };
 		D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		D95CDEBAD9C6E847311DB012 /* VehicleQuickLookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleQuickLookView.swift; sourceTree = "<group>"; };
+		DC04636C2AB5C715F467C538 /* StopsMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopsMapView.swift; sourceTree = "<group>"; };
 		E0A2FEDC5AE691129B9962CD /* TransitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitApp.swift; sourceTree = "<group>"; };
-		E6FF69784BD2C866A8F676EB /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		EC7EA77D8B9AB395C7C6770B /* VehiclesMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesMapView.swift; sourceTree = "<group>"; };
+		F1D388DD7DC32872BFAA726D /* MapTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapTabView.swift; sourceTree = "<group>"; };
 		F1DFD8622EA93AB001CE7019 /* Transit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Transit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F7DED3D41B8B950C705520D7 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
 		F8BD8A6BDA69E3FF448D272B /* AppEnvironment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEnvironment.swift; sourceTree = "<group>"; };
+		FDBF602A69FD73D1C0D82358 /* MapAnnotations.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapAnnotations.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -48,14 +70,35 @@
 			);
 			sourceTree = "<group>";
 		};
+		3C4D30F98054510DD9AF5895 /* Vehicle */ = {
+			isa = PBXGroup;
+			children = (
+				D95CDEBAD9C6E847311DB012 /* VehicleQuickLookView.swift */,
+			);
+			path = Vehicle;
+			sourceTree = "<group>";
+		};
 		3E6030E2894A5114FF678628 /* Views */ = {
 			isa = PBXGroup;
 			children = (
 				10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */,
-				E6FF69784BD2C866A8F676EB /* HomeView.swift */,
 				7818A7A98B32F728BFDDA7F0 /* RootView.swift */,
+				D1CF1FE49B6342295A86FF23 /* Alerts */,
+				F300CDD55F81A46A3F81EF56 /* Board */,
+				8140877ADC55D6B54719199A /* Home */,
+				794B225BF868DC8894661AD9 /* MapBrowse */,
+				56626E08A153B4D11D500E84 /* Settings */,
+				3C4D30F98054510DD9AF5895 /* Vehicle */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		56626E08A153B4D11D500E84 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				B7D8AC61ACC94225604566A3 /* SettingsView.swift */,
+			);
+			path = Settings;
 			sourceTree = "<group>";
 		};
 		6583B4B57ECCCC0B0A02B6F2 /* Products */ = {
@@ -66,6 +109,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		794B225BF868DC8894661AD9 /* MapBrowse */ = {
+			isa = PBXGroup;
+			children = (
+				F1D388DD7DC32872BFAA726D /* MapTabView.swift */,
+				DC04636C2AB5C715F467C538 /* StopsMapView.swift */,
+				EC7EA77D8B9AB395C7C6770B /* VehiclesMapView.swift */,
+			);
+			path = MapBrowse;
+			sourceTree = "<group>";
+		};
 		7FDED07024094DD723E16377 /* App */ = {
 			isa = PBXGroup;
 			children = (
@@ -73,6 +126,31 @@
 				E0A2FEDC5AE691129B9962CD /* TransitApp.swift */,
 			);
 			path = App;
+			sourceTree = "<group>";
+		};
+		80AB2A53B3A85A3D83842503 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				F7DED3D41B8B950C705520D7 /* LocationProvider.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		8140877ADC55D6B54719199A /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				3B967C20C0A167A8F989E5C5 /* HomeView.swift */,
+			);
+			path = Home;
+			sourceTree = "<group>";
+		};
+		835BF738EA375311B457F0B1 /* Map */ = {
+			isa = PBXGroup;
+			children = (
+				FDBF602A69FD73D1C0D82358 /* MapAnnotations.swift */,
+				97361DD773747781B3551E93 /* TransitMapView.swift */,
+			);
+			path = Map;
 			sourceTree = "<group>";
 		};
 		AA9A6750FB429F07597CEA52 /* Packages */ = {
@@ -88,9 +166,28 @@
 			children = (
 				D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */,
 				7FDED07024094DD723E16377 /* App */,
+				835BF738EA375311B457F0B1 /* Map */,
+				80AB2A53B3A85A3D83842503 /* Services */,
 				3E6030E2894A5114FF678628 /* Views */,
 			);
 			path = Transit;
+			sourceTree = "<group>";
+		};
+		D1CF1FE49B6342295A86FF23 /* Alerts */ = {
+			isa = PBXGroup;
+			children = (
+				730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */,
+				7A884A001E19B7831038060C /* AlertsView.swift */,
+			);
+			path = Alerts;
+			sourceTree = "<group>";
+		};
+		F300CDD55F81A46A3F81EF56 /* Board */ = {
+			isa = PBXGroup;
+			children = (
+				D2DD162B883DBFFCFC218A88 /* StopBoardView.swift */,
+			);
+			path = Board;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -168,11 +265,22 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				44481E59E5FFAF85EF21A5E4 /* AlertsTabView.swift in Sources */,
+				FF1D5596A3B3FFC97FDBD2CD /* AlertsView.swift in Sources */,
 				6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */,
 				2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */,
-				7CAA22C32A51362128ABD0D2 /* HomeView.swift in Sources */,
+				9C6C09428E8557C04DE909F2 /* HomeView.swift in Sources */,
+				BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */,
+				5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */,
+				396541F22D0F2D81C7ADEDCD /* MapTabView.swift in Sources */,
 				E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */,
+				C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */,
+				9C0C7DA48A1923FB9413416D /* StopBoardView.swift in Sources */,
+				DF2F88155A3D1D9D4BA80A93 /* StopsMapView.swift in Sources */,
 				DFFF4669C80F59B5DB27ADFC /* TransitApp.swift in Sources */,
+				0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */,
+				9EF1F7F1111BCE512A59D5F9 /* VehicleQuickLookView.swift in Sources */,
+				5B0D4B4D4291E266D5352BDA /* VehiclesMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -9,6 +9,7 @@ import TransitCore
 @Observable
 final class AppEnvironment {
     let api: APIClient
+    let location = LocationProvider()
     var region: Region {
         didSet {
             guard region != oldValue else { return }

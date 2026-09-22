@@ -2,10 +2,10 @@ import SwiftUI
 
 /// The 5-tab shell matching the web app's nav (`components/nav.tsx`):
 /// Schedule ("/"), Planner ("/plan"), Map ("/stops" + "/vehicles" merged),
-/// Alerts ("/alerts"), Settings ("/settings"). Each tab beyond Home is a
-/// placeholder until its phase lands - see the parity table in the project
-/// plan.
+/// Alerts ("/alerts"), Settings ("/settings").
 struct RootView: View {
+    @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
+
     var body: some View {
         TabView {
             HomeView()
@@ -14,15 +14,16 @@ struct RootView: View {
             ComingSoonView(title: "Planner", systemImage: "point.topleft.down.curvedto.point.bottomright.up", phase: "Phase 4")
                 .tabItem { Label("Planner", systemImage: "point.topleft.down.curvedto.point.bottomright.up") }
 
-            ComingSoonView(title: "Map", systemImage: "map", phase: "Phase 3")
+            MapTabView()
                 .tabItem { Label("Map", systemImage: "map") }
 
-            ComingSoonView(title: "Alerts", systemImage: "exclamationmark.bubble", phase: "Phase 3")
+            AlertsTabView()
                 .tabItem { Label("Alerts", systemImage: "exclamationmark.bubble") }
 
-            ComingSoonView(title: "Settings", systemImage: "gearshape", phase: "Phase 6")
+            SettingsView()
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
+        .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
     }
 }
 
