@@ -29,13 +29,24 @@ targets:
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
+        NSSupportsLiveActivities: true
         CFBundleURLTypes:
           - CFBundleURLName: dev.suddsy.transit
             CFBundleURLSchemes: [transit]
+    # aps-environment: development is right for a Debug/simulator/ad-hoc
+    # build talking to APNs' sandbox host; an App Store archive needs this
+    # flipped to "production" (Xcode does this automatically for a
+    # Release-configuration archive when using automatic signing, but it's
+    # worth double-checking at that point).
+    entitlements:
+      path: Transit.entitlements
+      properties:
+        aps-environment: development
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
-        DEVELOPMENT_TEAM: ""
+        DEVELOPMENT_TEAM: 2A422A733W
+        CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1" # iPhone only
         SWIFT_VERSION: "5.10"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
