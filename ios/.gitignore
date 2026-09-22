@@ -14,3 +14,6 @@ Packages/TransitCore/.swiftpm/
 
 # Simulator/test artifacts
 *.xcresult
+
+# macOS
+.DS_Store

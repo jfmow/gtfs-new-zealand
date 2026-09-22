@@ -17,6 +17,21 @@ targets:
       - path: Transit
     dependencies:
       - package: TransitCore
+    # An actual generated Info.plist file (rather than build-setting
+    # synthesis via GENERATE_INFOPLIST_FILE) - needed because
+    # CFBundleURLTypes is a nested array-of-dicts that INFOPLIST_KEY_*
+    # synthesis can't express. Every Info.plist key the app needs lives here
+    # now, not split across INFOPLIST_KEY_* build settings.
+    info:
+      path: Generated-Info.plist
+      properties:
+        CFBundleDisplayName: Transit
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
+        CFBundleURLTypes:
+          - CFBundleURLName: dev.suddsy.transit
+            CFBundleURLSchemes: [transit]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
@@ -25,11 +40,6 @@ targets:
         SWIFT_VERSION: "5.10"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        GENERATE_INFOPLIST_FILE: true
-        INFOPLIST_KEY_UILaunchScreen_Generation: true
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_CFBundleDisplayName: Transit
-        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
 
 schemes:
   Transit:

@@ -5,6 +5,7 @@ import TransitCore
 @main
 struct TransitApp: App {
     @State private var environment = AppEnvironment()
+    @State private var router = DeepLinkRouter()
     private let modelContainer: ModelContainer = {
         do {
             return try ModelContainer(for: FavouriteStop.self, SavedTrip.self, ActiveJourney.self, RecentSearchEntry.self)
@@ -17,6 +18,8 @@ struct TransitApp: App {
         WindowGroup {
             RootView()
                 .environment(environment)
+                .environment(router)
+                .onOpenURL { router.handle($0) }
         }
         .modelContainer(modelContainer)
     }

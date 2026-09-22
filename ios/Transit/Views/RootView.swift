@@ -5,13 +5,14 @@ import SwiftUI
 /// Alerts ("/alerts"), Settings ("/settings").
 struct RootView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
+    @Environment(DeepLinkRouter.self) private var router
 
     var body: some View {
         TabView {
             HomeView()
                 .tabItem { Label("Schedule", systemImage: "clock") }
 
-            ComingSoonView(title: "Planner", systemImage: "point.topleft.down.curvedto.point.bottomright.up", phase: "Phase 4")
+            PlannerView()
                 .tabItem { Label("Planner", systemImage: "point.topleft.down.curvedto.point.bottomright.up") }
 
             MapTabView()
@@ -24,10 +25,14 @@ struct RootView: View {
                 .tabItem { Label("Settings", systemImage: "gearshape") }
         }
         .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
+        .fullScreenCover(item: Binding(get: { router.activeLink }, set: { router.activeLink = $0 })) { link in
+            DeepLinkPresentationView(link: link)
+        }
     }
 }
 
 #Preview {
     RootView()
         .environment(AppEnvironment())
+        .environment(DeepLinkRouter())
 }
