@@ -27,8 +27,22 @@ struct HomeView: View {
                 } else {
                     if !favourites.isEmpty { favouritesSection }
                     nearbySection
-                    NavigationLink("Browse all stops on the map") {
-                        StopsMapView()
+                    Section {
+                        NavigationLink {
+                            StopsMapView()
+                        } label: {
+                            TransitCard {
+                                HStack(spacing: 12) {
+                                    CircularBadge(fill: Theme.accent(for: environment.region)) {
+                                        Image(systemName: "map.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
+                                    }
+                                    Text("Browse all stops on the map").foregroundStyle(Theme.ink)
+                                    Spacer()
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .cardListRow()
                     }
                 }
             }
@@ -54,9 +68,10 @@ struct HomeView: View {
             } else {
                 ForEach(searchResults) { result in
                     NavigationLink(value: BoardDestination(stopQuery: result.name, title: result.name)) {
-                        StopRow(name: result.name, subtitle: result.typeOfStop.capitalized)
+                        TransitCard { StopRow(name: result.name, subtitle: result.typeOfStop.capitalized, kind: result.typeOfStop) }
                     }
-                    .boardRow()
+                    .buttonStyle(.plain)
+                    .cardListRow()
                 }
             }
         }
@@ -67,18 +82,35 @@ struct HomeView: View {
 
     private var favouritesSection: some View {
         Section("Favourites") {
-            ForEach(favourites) { favourite in
-                NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
-                    HStack {
-                        Circle().fill(Color(hex: favourite.colorHex)).frame(width: 10, height: 10)
-                        Text(favourite.displayName)
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 14) {
+                    ForEach(favourites) { favourite in
+                        NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
+                            VStack(spacing: 8) {
+                                CircularBadge(diameter: 52, fill: Color(hex: favourite.colorHex)) {
+                                    Text(String(favourite.displayName.prefix(1)))
+                                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white)
+                                }
+                                Text(favourite.displayName)
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(Theme.ink)
+                                    .lineLimit(1)
+                                    .frame(width: 68)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button("Remove", role: .destructive) { modelContext.delete(favourite) }
+                        }
                     }
                 }
-                .boardRow()
+                .padding(.horizontal, 2)
+                .padding(.vertical, 4)
             }
-            .onDelete { offsets in
-                for index in offsets { modelContext.delete(favourites[index]) }
-            }
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .padding(.horizontal, 14)
         }
         .navigationDestination(for: BoardDestination.self) { destination in
             StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
@@ -92,6 +124,7 @@ struct HomeView: View {
                 Button("Allow location to see nearby stops") {
                     environment.location.requestPermission()
                 }
+                .cardListRow()
             } else if isLoadingNearby, nearbyStops.isEmpty {
                 ProgressView()
             } else if let errorMessage {
@@ -101,9 +134,10 @@ struct HomeView: View {
             } else {
                 ForEach(nearbyStops.prefix(6)) { stop in
                     NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
-                        StopRow(name: stop.stopName, subtitle: stop.stopCode)
+                        TransitCard { StopRow(name: stop.stopName, subtitle: stop.stopCode, kind: stop.stopType) }
                     }
-                    .boardRow()
+                    .buttonStyle(.plain)
+                    .cardListRow()
                 }
             }
         }
@@ -166,13 +200,39 @@ struct BoardDestination: Hashable {
 struct StopRow: View {
     let name: String
     let subtitle: String
+    var kind: String = "other"
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(name).foregroundStyle(Theme.ink)
-            Text(subtitle).font(.caption).foregroundStyle(Theme.steel)
+        HStack(spacing: 12) {
+            CircularBadge(fill: modeColor) {
+                Image(systemName: modeIcon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).foregroundStyle(Theme.ink)
+                Text(subtitle).font(.caption).foregroundStyle(Theme.steel)
+            }
+            Spacer()
         }
-        .padding(.vertical, 2)
+    }
+
+    private var modeIcon: String {
+        switch kind {
+        case "train": return "tram.fill"
+        case "ferry": return "ferry.fill"
+        case "bus": return "bus.fill"
+        default: return "mappin"
+        }
+    }
+
+    private var modeColor: Color {
+        switch kind {
+        case "train": return Color(hex: "0073BD")
+        case "ferry": return Color(hex: "2A286B")
+        case "bus": return Color(hex: "D52923")
+        default: return Theme.steel
+        }
     }
 }
 

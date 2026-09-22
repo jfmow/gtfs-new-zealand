@@ -38,34 +38,45 @@ struct SettingsView: View {
                         Button {
                             environment.region = region
                         } label: {
-                            HStack {
-                                Circle().fill(Theme.accent(for: region)).frame(width: 12, height: 12)
-                                Text(region.displayName).foregroundStyle(Theme.ink)
-                                Spacer()
-                                if environment.region == region {
-                                    Image(systemName: "checkmark").foregroundStyle(Theme.accent(for: region))
+                            TransitCard {
+                                HStack(spacing: 12) {
+                                    CircularBadge(diameter: 34, fill: Theme.accent(for: region)) {
+                                        Text(String(region.displayName.prefix(1)))
+                                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                                            .foregroundStyle(.white)
+                                    }
+                                    Text(region.displayName).foregroundStyle(Theme.ink)
+                                    Spacer()
+                                    if environment.region == region {
+                                        Image(systemName: "checkmark.circle.fill").foregroundStyle(Theme.accent(for: region))
+                                    }
                                 }
                             }
                         }
-                        .boardRow()
+                        .buttonStyle(.plain)
+                        .cardListRow()
                     }
                 }
 
                 Section("Appearance") {
-                    Picker("Appearance", selection: $appearanceModeRaw) {
-                        ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
-                            Text(mode.label).tag(mode.rawValue)
+                    TransitCard {
+                        Picker("Appearance", selection: $appearanceModeRaw) {
+                            ForEach(AppearanceMode.allCases, id: \.rawValue) { mode in
+                                Text(mode.label).tag(mode.rawValue)
+                            }
                         }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
-                    .boardRow()
+                    .cardListRow()
                 }
 
                 Section {
-                    LabeledContent("Version", value: Bundle.main.appVersionString)
-                        .foregroundStyle(Theme.steel)
+                    TransitCard {
+                        LabeledContent("Version", value: Bundle.main.appVersionString)
+                            .foregroundStyle(Theme.steel)
+                    }
                 }
-                .boardRow()
+                .cardListRow()
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)

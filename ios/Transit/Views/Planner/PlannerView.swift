@@ -54,9 +54,10 @@ struct PlannerView: View {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
-                            .padding(10)
-                            .background(Color(hex: trip.colorHex).opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .padding(12)
+                            .background(Color(hex: trip.colorHex).opacity(0.12))
+                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(hex: trip.colorHex).opacity(0.25), lineWidth: 1))
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                         .buttonStyle(.plain)
                     }
@@ -115,9 +116,10 @@ struct PlannerView: View {
             } else {
                 ForEach(results) { plan in
                     NavigationLink(value: plan) {
-                        JourneyResultCard(plan: plan)
+                        TransitCard { JourneyResultCard(plan: plan) }
                     }
-                    .boardRow()
+                    .buttonStyle(.plain)
+                    .cardListRow()
                 }
             }
         }
@@ -207,9 +209,9 @@ struct JourneyResultCard: View {
         } else if let route = leg.route {
             Text(route.routeShortName)
                 .font(.caption2.bold())
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color(hex: route.routeColor.isEmpty ? "6b7280" : route.routeColor))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background(Color(hex: route.routeColor.isEmpty ? "6b7280" : route.routeColor).gradient)
                 .foregroundStyle(.white)
                 .clipShape(Capsule())
         }

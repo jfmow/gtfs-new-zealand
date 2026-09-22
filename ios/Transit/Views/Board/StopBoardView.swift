@@ -65,12 +65,13 @@ struct StopBoardView: View {
                 ForEach(visibleDepartures) { departure in
                     if departure.isTrackable {
                         NavigationLink(value: departure.tripID) {
-                            DepartureRow(departure: departure)
+                            TransitCard { DepartureRow(departure: departure) }
                         }
-                        .boardRow()
+                        .buttonStyle(.plain)
+                        .cardListRow()
                     } else {
-                        DepartureRow(departure: departure)
-                            .boardRow()
+                        TransitCard { DepartureRow(departure: departure) }
+                            .cardListRow()
                     }
                 }
             }
@@ -162,17 +163,21 @@ struct StopBoardView: View {
 struct DepartureRow: View {
     let departure: Departure
 
+    private var routeColor: Color { Color(hex: departure.route.color.isEmpty ? "6b7280" : departure.route.color) }
+
     var body: some View {
         HStack(spacing: 12) {
-            RoundedRectangle(cornerRadius: 2)
-                .fill(Color(hex: departure.route.color.isEmpty ? "6b7280" : departure.route.color))
-                .frame(width: 4)
+            CircularBadge(fill: routeColor) {
+                Text(routeBadgeText)
+                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .minimumScaleFactor(0.6)
+                    .lineLimit(1)
+                    .padding(.horizontal, 4)
+            }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(departure.route.name).font(.system(size: 15, weight: .semibold, design: .rounded))
-                    Text(departure.headsign).font(.subheadline).foregroundStyle(Theme.steel).lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                Text(departure.headsign).font(.system(size: 15, weight: .semibold, design: .rounded)).foregroundStyle(Theme.ink).lineLimit(1)
                 statusLine
             }
 
@@ -188,7 +193,10 @@ struct DepartureRow: View {
             }
         }
         .opacity(departure.departed ? 0.45 : 1)
-        .padding(.vertical, 3)
+    }
+
+    private var routeBadgeText: String {
+        String(departure.route.name.prefix(4))
     }
 
     private var countdownText: String {

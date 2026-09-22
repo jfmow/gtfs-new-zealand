@@ -23,36 +23,41 @@ struct JourneyDetailView: View {
 
             List {
                 Section {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Departs").font(.caption).foregroundStyle(Theme.steel)
-                            if let date = plan.departureTime.date { Text(date, style: .time).font(.heroNumber(26)) }
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.right").foregroundStyle(Theme.steel)
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Arrives").font(.caption).foregroundStyle(Theme.steel)
-                            if let date = plan.arrivalTime.date { Text(date, style: .time).font(.heroNumber(26)) }
+                    TransitCard {
+                        VStack(spacing: 8) {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Departs").font(.caption).foregroundStyle(Theme.steel)
+                                    if let date = plan.departureTime.date { Text(date, style: .time).font(.heroNumber(26)) }
+                                }
+                                Spacer()
+                                Image(systemName: "arrow.right").foregroundStyle(accent)
+                                Spacer()
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    Text("Arrives").font(.caption).foregroundStyle(Theme.steel)
+                                    if let date = plan.arrivalTime.date { Text(date, style: .time).font(.heroNumber(26)) }
+                                }
+                            }
+                            Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.subheadline).foregroundStyle(Theme.steel)
                         }
                     }
-                    .padding(.vertical, 4)
-                    Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.subheadline).foregroundStyle(Theme.steel)
                 }
-                .boardRow()
+                .cardListRow()
 
                 Section("Legs") {
                     ForEach(Array(plan.legs.enumerated()), id: \.offset) { _, leg in
-                        LegRow(leg: leg).boardRow()
+                        TransitCard { LegRow(leg: leg) }.cardListRow()
                     }
                 }
 
                 if plan.legs.contains(where: { !$0.tripUsable }) {
                     Section {
-                        Label("Service disruption on this route", systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(Theme.alert)
+                        TransitCard {
+                            Label("Service disruption on this route", systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(Theme.alert)
+                        }
                     }
-                    .boardRow()
+                    .cardListRow()
                 }
 
                 Section {
@@ -62,6 +67,7 @@ struct JourneyDetailView: View {
                     .buttonStyle(.transitPrimary(accent))
                     .disabled(isActive)
                     .listRowBackground(Color.clear)
+                    .cardListRow()
                 }
             }
             .listStyle(.plain)
@@ -101,13 +107,12 @@ struct LegRow: View {
     let leg: JourneyLeg
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: leg.mode == "walk" ? "figure.walk" : "tram.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(leg.mode == "walk" ? Theme.steel : Color.white)
-                .frame(width: 26, height: 26)
-                .background(leg.mode == "walk" ? Color.clear : Color(hex: leg.route?.routeColor ?? "0073bd"))
-                .clipShape(Circle())
+        HStack(alignment: .top, spacing: 12) {
+            CircularBadge(diameter: 36, fill: leg.mode == "walk" ? Theme.steel.opacity(0.5) : Color(hex: leg.route?.routeColor ?? "0073bd")) {
+                Image(systemName: leg.mode == "walk" ? "figure.walk" : "tram.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 if leg.mode == "walk" {

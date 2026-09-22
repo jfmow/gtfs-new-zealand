@@ -45,8 +45,8 @@ struct AlertsView: View {
                     ContentUnavailableView("No alerts for this route", systemImage: "checkmark.circle")
                 } else {
                     List(alerts, id: \.title) { alert in
-                        AlertCard(alert: alert)
-                            .boardRow()
+                        TransitCard { AlertCard(alert: alert) }
+                            .cardListRow()
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -86,24 +86,28 @@ struct AlertCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top) {
-                Image(systemName: causeIcon(alert.cause))
-                    .foregroundStyle(Theme.steel)
-                Text(alert.title.isEmpty ? humanize(alert.effect) : alert.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.ink)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                CircularBadge(diameter: 36, fill: badgeColor) {
+                    Image(systemName: causeIcon(alert.cause))
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(alert.title.isEmpty ? humanize(alert.effect) : alert.title)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Theme.ink)
+                    Text(dateRange).font(.caption2.monospacedDigit()).foregroundStyle(Theme.steel.opacity(0.8))
+                }
                 Spacer()
                 statusBadge
             }
             Text(truncatedDescription).font(.subheadline).foregroundStyle(Theme.steel)
             if canExpand {
                 Button(expanded ? "Show less" : "Read more") { expanded.toggle() }
-                    .font(.caption)
+                    .font(.caption.weight(.medium))
             }
-            Text(dateRange).font(.caption2.monospacedDigit()).foregroundStyle(Theme.steel.opacity(0.7))
         }
-        .padding(.vertical, 6)
     }
 
     private var statusBadge: some View {
