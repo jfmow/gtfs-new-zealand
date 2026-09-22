@@ -1,0 +1,33 @@
+{
+  "trip_id": "257-870013-56460-2-A134C145262-2ddf6b2e",
+  "headsign": "City Centre via Grafton",
+  "arrival_time": "16:22:13",
+  "platform": "1",
+  "stops_away": -3,
+  "occupancy": 1,
+  "canceled": false,
+  "skipped": false,
+  "bikes_allowed": 0,
+  "wheelchairs_allowed": 0,
+  "route": {
+    "id": "S-C-201",
+    "name": "S-C",
+    "color": "D52923"
+  },
+  "stop": {
+    "lat": -36.97766,
+    "lon": 174.84925,
+    "parent_stop_id": "100-56c57897",
+    "name": "Papatoetoe Train Station 100",
+    "platform": "1",
+    "sequence": 9,
+    "child_stop_id": "9214-6ac64c01"
+  },
+  "location_tracking": true,
+  "trip_update_tracking": true,
+  "departed": true,
+  "time_till_arrival": -7,
+  "stop_state": "Travelling",
+  "trip_started": true,
+  "platform_changed": false
+}
