@@ -21,6 +21,7 @@ struct StopBoardView: View {
     @State private var selectedDate: Date?
     @State private var platformFilter: String?
     @State private var pollTask: Task<Void, Never>?
+    @State private var isShowingSubscriptionSheet = false
 
     init(stopQuery: String, title: String) {
         self.stopQuery = stopQuery
@@ -36,11 +37,21 @@ struct StopBoardView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        isShowingSubscriptionSheet = true
+                    } label: {
+                        Image(systemName: "bell")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         toggleFavourite()
                     } label: {
                         Image(systemName: favourites.isEmpty ? "star" : "star.fill")
                     }
                 }
+            }
+            .sheet(isPresented: $isShowingSubscriptionSheet) {
+                StopSubscriptionSheet(stopQuery: stopQuery, title: title)
             }
             .task { await start() }
             .onDisappear { pollTask?.cancel() }

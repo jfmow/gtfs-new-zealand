@@ -33,6 +33,24 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             List {
+                Section {
+                    NavigationLink {
+                        NotificationsInboxView()
+                    } label: {
+                        TransitCard {
+                            HStack(spacing: 12) {
+                                CircularBadge(diameter: 34, fill: Theme.accent(for: environment.region)) {
+                                    Image(systemName: "bell.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                                }
+                                Text("Notifications").foregroundStyle(Theme.ink)
+                                Spacer()
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .cardListRow()
+                }
+
                 Section("Region") {
                     ForEach(Region.all) { region in
                         Button {

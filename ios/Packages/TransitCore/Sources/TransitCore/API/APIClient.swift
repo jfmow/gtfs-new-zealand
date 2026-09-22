@@ -12,6 +12,7 @@ public actor APIClient {
     private let session: URLSession
     private let traceID: String
     private let decoder: JSONDecoder
+    private var deviceIdentity: DeviceIdentity?
 
     public init(region: Region = .auckland, session: URLSession = .shared, traceID: String? = nil) {
         self.region = region
@@ -22,6 +23,14 @@ public actor APIClient {
 
     public func setRegion(_ region: Region) {
         self.region = region
+    }
+
+    /// Every `POST` from here on carries `X-Device-Id`/`X-Device-Secret`, so
+    /// `/notifications/*` calls resolve to this device without needing to
+    /// pass its identity as form fields each time (see backend
+    /// `identityFromRequest`, which reads these headers first).
+    public func setDeviceIdentity(_ identity: DeviceIdentity?) {
+        self.deviceIdentity = identity
     }
 
     /// GET a path relative to the current region's base URL (e.g. "stops",
@@ -37,6 +46,36 @@ public actor APIClient {
     @discardableResult
     public func postForm<T: Decodable>(_ path: String, form: [String: String]) async throws -> T {
         try await send(buildFormRequest(path: path, form: form), envelope: NotificationsEnvelope<T>.self)
+    }
+
+    /// `postForm` for the many `/notifications/*` endpoints that return
+    /// `{code,message}` with a `data` of `null` on success (e.g. `/add`,
+    /// `/remove`, `/history/clear`) - `postForm`'s "empty `data` means
+    /// error" rule is right for endpoints that promise a payload, but wrong
+    /// here, so this only checks `code`.
+    public func postFormExpectingNoData(_ path: String, form: [String: String]) async throws {
+        let request = try buildFormRequest(path: path, form: form)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw APIError.transport(underlying: error)
+        }
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        do {
+            let decoded = try decoder.decode(CodeAndMessage.self, from: data)
+            guard (200..<300).contains(decoded.code) else {
+                throw APIError.server(code: decoded.code, message: decoded.message, traceID: nil)
+            }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            guard (200..<300).contains(statusCode) else {
+                throw APIError.server(code: statusCode, message: "request failed", traceID: nil)
+            }
+            throw APIError.decoding(underlying: error, traceID: nil)
+        }
     }
 
     // MARK: - Request building
@@ -63,6 +102,10 @@ public actor APIClient {
     private func buildFormRequest(path: String, form: [String: String]) throws -> URLRequest {
         var request = try buildRequest(method: "POST", path: path, query: [])
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        if let deviceIdentity {
+            request.setValue(deviceIdentity.id, forHTTPHeaderField: "X-Device-Id")
+            request.setValue(deviceIdentity.secret, forHTTPHeaderField: "X-Device-Secret")
+        }
         request.httpBody = form
             .map { key, value in "\(formEncode(key))=\(formEncode(value))" }
             .sorted()
@@ -136,4 +179,11 @@ extension Envelope: EnvelopeDecoding {
 extension NotificationsEnvelope: EnvelopeDecoding {
     fileprivate var value: T? { data }
     fileprivate var envelopeTraceID: String? { nil }
+}
+
+/// Just enough of the notifications envelope to check success -
+/// `postFormExpectingNoData`'s decode target.
+private struct CodeAndMessage: Decodable {
+    let code: Int
+    let message: String
 }

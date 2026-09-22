@@ -13,6 +13,11 @@ struct JourneyDetailView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var isActive = false
     @State private var isTracking = false
+    @State private var reminderState: ReminderState = .idle
+
+    private enum ReminderState: Equatable {
+        case idle, saving, saved, failed(String)
+    }
 
     private var accent: Color { Theme.accent(for: environment.region) }
 
@@ -68,6 +73,12 @@ struct JourneyDetailView: View {
                     .disabled(isActive)
                     .listRowBackground(Color.clear)
                     .cardListRow()
+
+                    if plan.legs.contains(where: { $0.mode == "transit" }) {
+                        reminderButton
+                            .listRowBackground(Color.clear)
+                            .cardListRow()
+                    }
                 }
             }
             .listStyle(.plain)
@@ -80,6 +91,44 @@ struct JourneyDetailView: View {
             JourneyTrackingView(plan: plan)
         }
         .tint(accent)
+    }
+
+    @ViewBuilder
+    private var reminderButton: some View {
+        switch reminderState {
+        case .idle:
+            Button {
+                Task { await setLeaveByReminder() }
+            } label: {
+                Label("Remind me when to leave", systemImage: "bell")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .tint(accent)
+        case .saving:
+            ProgressView().frame(maxWidth: .infinity)
+        case .saved:
+            Label("We'll remind you when to leave", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(Theme.onTime)
+                .frame(maxWidth: .infinity)
+        case .failed(let message):
+            VStack(spacing: 4) {
+                Label("Couldn't set reminder", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(Theme.alert)
+                Text(message).font(.caption).foregroundStyle(Theme.steel)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func setLeaveByReminder() async {
+        reminderState = .saving
+        do {
+            try await environment.api.addLeaveByReminder(for: plan)
+            reminderState = .saved
+        } catch {
+            reminderState = .failed(error.localizedDescription)
+        }
     }
 
     private var polylines: [RoutePolylineData] {

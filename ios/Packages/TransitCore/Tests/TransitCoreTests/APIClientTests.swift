@@ -92,6 +92,46 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(capturedURLs[1].absoluteString.hasPrefix("https://trainapi.suddsy.dev/christ"))
     }
 
+    func testPostFormExpectingNoDataSucceedsOnNullData() async throws {
+        // Several /notifications/* endpoints (e.g. /add, /remove) return
+        // {code,message,data:null} on success - postFormExpectingNoData must
+        // treat that as success, not as an "empty response" error the way
+        // plain postForm would.
+        let client = makeMockedClient { request in
+            self.jsonResponse(request.url!, body: #"{"code":200,"message":"added","data":null}"#)
+        }
+        try await client.postFormExpectingNoData("notifications/add", form: ["stopIdOrName": "Britomart"])
+    }
+
+    func testPostFormExpectingNoDataThrowsOnErrorCode() async {
+        let client = makeMockedClient { request in
+            self.jsonResponse(request.url!, status: 400, body: #"{"code":400,"message":"invalid stop id","data":null}"#)
+        }
+        do {
+            try await client.postFormExpectingNoData("notifications/add", form: [:])
+            XCTFail("expected an error")
+        } catch let APIError.server(code, message, _) {
+            XCTAssertEqual(code, 400)
+            XCTAssertEqual(message, "invalid stop id")
+        } catch {
+            XCTFail("wrong error type: \(error)")
+        }
+    }
+
+    func testDeviceIdentityHeadersAreAttachedToPostRequests() async throws {
+        var capturedRequest: URLRequest?
+        let client = makeMockedClient { request in
+            capturedRequest = request
+            return self.jsonResponse(request.url!, body: #"{"code":200,"message":"ok","data":null}"#)
+        }
+        await client.setDeviceIdentity(DeviceIdentity(id: "device-123", secret: "s3cret"))
+        try await client.postFormExpectingNoData("notifications/mine", form: [:])
+
+        let request = try XCTUnwrap(capturedRequest)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Device-Id"), "device-123")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Device-Secret"), "s3cret")
+    }
+
     func testPostFormEncodesBodyAndDecodesNotificationsEnvelope() async throws {
         var capturedRequest: URLRequest?
         var capturedBody: String?

@@ -10,6 +10,7 @@ import TransitCore
 final class AppEnvironment {
     let api: APIClient
     let location = LocationProvider()
+    let push: PushRegistrationService
     var region: Region {
         didSet {
             guard region != oldValue else { return }
@@ -21,6 +22,8 @@ final class AppEnvironment {
 
     init(region: Region = .auckland) {
         self.region = region
-        self.api = APIClient(region: region)
+        let api = APIClient(region: region)
+        self.api = api
+        self.push = PushRegistrationService(api: api)
     }
 }
