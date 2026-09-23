@@ -29,6 +29,20 @@ final class APIClientTests: XCTestCase {
         XCTAssertEqual(stops.first?.stopName, "Test")
     }
 
+    /// Stop names are path segments and some contain "/" - it must be
+    /// escaped or the backend 404s ("Customs St/Britomart", found
+    /// 2026-09-23 as a permanent "No upcoming services" on Home).
+    func testStopNameWithSlashIsEncodedAsOneSegment() async throws {
+        var requested: URL?
+        let client = makeMockedClient { request in
+            requested = request.url
+            return self.jsonResponse(request.url!, body: #"{"code":200,"message":"","data":[],"trace_id":"t"}"#)
+        }
+        _ = try await client.departures(stop: "Customs St/Britomart 11815", limit: 8)
+        let url = try XCTUnwrap(requested)
+        XCTAssertEqual(url.absoluteString, "https://trainapi.suddsy.dev/at/services/Customs%20St%2FBritomart%2011815?limit=8")
+    }
+
     func testGetThrowsServerErrorForNon2xxEnvelopeCode() async {
         let client = makeMockedClient { request in
             self.jsonResponse(request.url!, status: 400, body: """

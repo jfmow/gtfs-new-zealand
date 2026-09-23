@@ -80,13 +80,43 @@ public actor APIClient {
 
     // MARK: - Request building
 
+    /// Percent-encodes one path segment, including "/" - stop names like
+    /// "Customs St/Britomart 11815" are path segments on the backend
+    /// (`/services/{stop}`), and an unencoded slash 404s.
+    static func pathSegment(_ value: String) -> String {
+        var allowed = CharacterSet.urlPathAllowed
+        allowed.remove(charactersIn: "/?#")
+        return value.addingPercentEncoding(withAllowedCharacters: allowed) ?? value
+    }
+
+    /// `TRANSIT_API_BASE` (e.g. `http://localhost:8090`) swaps the API host
+    /// for every region, to run the app against a local backend. Read from
+    /// the environment (scheme / UI test) or, so it also applies when iOS
+    /// launches the app in the background (push-to-start, background
+    /// fetch), from UserDefaults:
+    /// `xcrun simctl spawn booted defaults write dev.suddsy.transit TRANSIT_API_BASE http://localhost:8090`.
+    /// Ignored in Release builds.
+    static func effectiveBaseURL(for region: Region) -> URL {
+        #if DEBUG
+        let override = ProcessInfo.processInfo.environment["TRANSIT_API_BASE"]
+            ?? UserDefaults.standard.string(forKey: "TRANSIT_API_BASE")
+        if let override, !override.isEmpty, let base = URL(string: override) {
+            return base.appendingPathComponent(region.slug)
+        }
+        #endif
+        return region.baseURL
+    }
+
     private func buildRequest(method: String, path: String, query: [URLQueryItem]) throws -> URLRequest {
-        guard var components = URLComponents(
-            url: region.baseURL.appendingPathComponent(path),
-            resolvingAgainstBaseURL: false
-        ) else {
+        // `path` arrives percent-encoded (dynamic parts go through
+        // `pathSegment`), so it's appended verbatim - appendingPathComponent
+        // would encode it again, and can't tell a "/" inside a stop name
+        // ("Customs St/Britomart") from a path separator.
+        guard var components = URLComponents(url: Self.effectiveBaseURL(for: region), resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL
         }
+        let basePath = components.percentEncodedPath.hasSuffix("/") ? String(components.percentEncodedPath.dropLast()) : components.percentEncodedPath
+        components.percentEncodedPath = basePath + "/" + path
         if !query.isEmpty {
             components.queryItems = query
         }

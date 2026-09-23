@@ -76,4 +76,23 @@ public enum TimeFormatting {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }
+
+    /// `formatTextToNiceLookingWords` from `lib/formating.ts` - AT's raw
+    /// headsigns are often shouty caps ("WAIKOWHAI"); this strips digits
+    /// (route-number suffixes some feeds tack on), collapses whitespace,
+    /// and title-cases every word.
+    public static func niceLookingWords(_ text: String, retainDigits: Bool = false) -> String {
+        var words = text
+        if !retainDigits {
+            words = words.replacingOccurrences(of: #"\d+"#, with: "", options: .regularExpression)
+        }
+        words = words
+            .replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return words
+            .split(separator: " ")
+            .map { $0.prefix(1).uppercased() + $0.dropFirst() }
+            .joined(separator: " ")
+    }
 }

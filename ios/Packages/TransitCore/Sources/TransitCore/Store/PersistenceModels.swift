@@ -50,6 +50,11 @@ public final class SavedTrip {
     public var colorHex: String
     /// Route ids this trip's planner results are filtered to; empty = no filter.
     public var onlyRouteIDs: [String]
+    /// Display names for `onlyRouteIDs`, same order ("Only: 70, NX1").
+    /// Added 2026-09-23 - defaulted so existing stores migrate in place.
+    public var onlyRouteNames: [String] = []
+    /// "Show N journeys" (3/5/8). Added 2026-09-23.
+    public var minResults: Int = 3
     public var sortOrder: Int
 
     public init(

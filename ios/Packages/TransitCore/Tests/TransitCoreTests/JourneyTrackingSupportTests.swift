@@ -26,6 +26,38 @@ final class JourneyTrackingSupportTests: XCTestCase {
         XCTAssertNil(JourneyTracking.findStopSequence(in: stops, for: nil))
     }
 
+    /// Real trip 257-870008 (Southern line, 2026-09-23): starts at Newmarket
+    /// (seq 1), loops through the CRL, and calls at Newmarket again (seq 7,
+    /// a different platform). Riding Te Waihorotiu (seq 4) -> Newmarket must
+    /// resolve the alighting stop to 7, not the origin at 1 - which made
+    /// tracking think the rider had got off as soon as the train left.
+    func testStationVisitedTwiceResolvesToTheVisitAfterBoarding() {
+        let stops = [
+            makeStopRef(parentID: "115-96c3c7be", childID: "9103-0e65d9b8", sequence: 1), // Newmarket (origin)
+            makeStopRef(parentID: "140-4f49e4da", childID: "9105-5aefbb78", sequence: 2),
+            makeStopRef(parentID: "133-08da14b5", childID: "9004-91807f00", sequence: 3),
+            makeStopRef(parentID: "131-50330e47", childID: "9298-64abb539", sequence: 4), // Te Waihorotiu
+            makeStopRef(parentID: "132-c139f454", childID: "9296-52e7c2b6", sequence: 5),
+            makeStopRef(parentID: "277-dfb27cf9", childID: "9300-9efd20bf", sequence: 6),
+            makeStopRef(parentID: "115-96c3c7be", childID: "9104-87b89d4a", sequence: 7), // Newmarket again
+        ]
+        let board = makeStop(stopID: "9298-64abb539", parentStation: "131-50330e47")
+        let alight = makeStop(stopID: "9104-87b89d4a", parentStation: "115-96c3c7be")
+
+        let boardSeq = JourneyTracking.findStopSequence(in: stops, for: board)
+        XCTAssertEqual(boardSeq, 4)
+        XCTAssertEqual(JourneyTracking.findStopSequence(in: stops, for: alight, after: boardSeq), 7)
+
+        // Even by parent station alone, the visit after boarding wins.
+        let alightByParentOnly = makeStop(stopID: "unknown-platform", parentStation: "115-96c3c7be")
+        XCTAssertEqual(JourneyTracking.findStopSequence(in: stops, for: alightByParentOnly, after: boardSeq), 7)
+    }
+
+    func testEmptyParentStationDoesNotMatchEmptyParents() {
+        let stops = [makeStopRef(parentID: "", childID: "C1", sequence: 1)]
+        XCTAssertNil(JourneyTracking.findStopSequence(in: stops, for: makeStop(stopID: "other", parentStation: "")))
+    }
+
     // MARK: - hasDepartedStop
 
     private func makeVehicle(currentSeq: Int?, nextSeq: Int?, state: String?) -> Vehicle {

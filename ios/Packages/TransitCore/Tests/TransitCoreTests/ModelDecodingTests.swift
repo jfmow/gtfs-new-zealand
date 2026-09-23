@@ -14,6 +14,20 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(stop.coordinate.latitude, -36.97766, accuracy: 0.0001)
     }
 
+    /// Regression test for a real bug (found 2026-09-22): `boundingBox` was
+    /// typed `[Double]?` but the live API sends it as an array of numeric
+    /// *strings*, so any address/POI result with a populated bounding box
+    /// failed to decode - which, since this decodes as part of an array,
+    /// failed the whole array and made the planner's address search look
+    /// like it silently found nothing for every real query.
+    func testDecodeLocationSearchResults() throws {
+        let results = try JSONDecoder().decode([LocationSearchResult].self, from: FixtureLoader.data("location_search"))
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[1].label, "Westfield Newmarket 277 Broadway Newmarket Auckland 1023 New Zealand / Aotearoa")
+        XCTAssertEqual(results[1].boundingBox?.count, 4)
+        XCTAssertEqual(results[1].coordinate.latitude, -36.8708593, accuracy: 0.0001)
+    }
+
     func testDecodeDeparture() throws {
         let departure = try JSONDecoder().decode(Departure.self, from: FixtureLoader.data("departure"))
         XCTAssertFalse(departure.tripID.isEmpty)

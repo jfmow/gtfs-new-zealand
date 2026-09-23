@@ -32,6 +32,95 @@ public struct StopSubscription: Codable, Sendable, Identifiable {
     }
 }
 
+/// `notifications/find-client` - the backend marshals its client struct
+/// without JSON tags, hence the capitalised keys.
+public struct StopSubscriptionState: Codable, Sendable, Equatable {
+    public let routes: [String]?
+    public let causes: [String]?
+    public let minSeverity: String
+    public let notifyCancellations: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case routes = "Routes"
+        case causes = "Causes"
+        case minSeverity = "MinSeverity"
+        case notifyCancellations = "NotifyCancellations"
+    }
+}
+
+/// The alert-type groups the subscription pickers offer - the web's
+/// `ALERT_CAUSE_GROUPS` (lib/alert-causes.ts). The backend only filters on
+/// raw GTFS causes; grouping is purely a picker concern.
+public enum AlertCauseGroup: String, CaseIterable, Sendable {
+    case delaysCancellations = "delays_cancellations"
+    case safetyIncidents = "safety_incidents"
+    case weather
+    case plannedWorks = "planned_works"
+
+    public var label: String {
+        switch self {
+        case .delaysCancellations: return "Delays & cancellations"
+        case .safetyIncidents: return "Safety & incidents"
+        case .weather: return "Weather"
+        case .plannedWorks: return "Planned works"
+        }
+    }
+
+    public var causes: [String] {
+        switch self {
+        case .delaysCancellations: return ["TECHNICAL_PROBLEM", "MEDICAL_EMERGENCY", "OTHER_CAUSE", "UNKNOWN_CAUSE"]
+        case .safetyIncidents: return ["ACCIDENT", "POLICE_ACTIVITY", "STRIKE", "DEMONSTRATION"]
+        case .weather: return ["WEATHER"]
+        case .plannedWorks: return ["MAINTENANCE", "CONSTRUCTION", "HOLIDAY"]
+        }
+    }
+
+    /// Groups whose every cause is selected - a group only reads "on" when
+    /// all of it is (`groupKeysFor`).
+    public static func groups(for causes: [String]) -> Set<AlertCauseGroup> {
+        Set(allCases.filter { group in group.causes.allSatisfy(causes.contains) })
+    }
+
+    public static func causes(for groups: Set<AlertCauseGroup>) -> [String] {
+        allCases.filter(groups.contains).flatMap(\.causes)
+    }
+}
+
+/// "All alert types · warning+ · no cancellations" - the manage sheet's
+/// detail line (`subscriptionDetail` on the web).
+public enum SubscriptionDetail {
+    public static func text(causes: [String]?, minSeverity: String, notifyCancellations: Bool, extra: String? = nil) -> String {
+        var parts: [String] = []
+        if let extra { parts.append(extra) }
+        if let causes, !causes.isEmpty {
+            let groups = AlertCauseGroup.groups(for: causes).count
+            parts.append(groups > 0 ? "\(groups) alert type\(groups == 1 ? "" : "s")" : "Custom alert types")
+        } else {
+            parts.append("All alert types")
+        }
+        if !minSeverity.isEmpty { parts.append("\(minSeverity.lowercased())+") }
+        if !notifyCancellations { parts.append("no cancellations") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// `journeyReminderDetail` on the web.
+    public static func text(for reminder: JourneyReminderDTO) -> String {
+        var parts = [JourneyReminderMath.weekdayMaskLabel(reminder.recurrence)]
+        parts.append("\(reminder.timeType == "arriveat" ? "arrive by" : "leave") \(reminder.targetHHMM)")
+        if reminder.status == "pending_resolve" {
+            parts.append("finding your trip…")
+        } else if reminder.status == "scheduled" {
+            parts.append("next \(reminder.serviceDate)")
+        } else if let local = reminder.nextLeaveLocal, !local.isEmpty {
+            parts.append("leave ~\(local)")
+        }
+        if !reminder.recurrence.isEmpty, let until = reminder.recurrenceUntil, !until.isEmpty {
+            parts.append("until \(until)")
+        }
+        return parts.joined(separator: " · ")
+    }
+}
+
 public struct RouteSubscription: Codable, Sendable, Identifiable {
     public let routeID: String
     public let causes: [String]?
@@ -100,6 +189,16 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
 /// `POST .../devices/register` / `.../update-token` response.
 public struct DeviceRegistrationResult: Codable, Sendable {
     public let id: Int
+}
+
+/// `POST .../notifications/test` response - whether the server could push
+/// to this device, and why not if it couldn't.
+public struct PushTestResult: Codable, Sendable, Equatable {
+    public let platform: String
+    public let hasToken: Bool
+    public let env: String
+    public let sent: Bool
+    public let error: String
 }
 
 /// `POST .../notifications/journey-reminder` response.

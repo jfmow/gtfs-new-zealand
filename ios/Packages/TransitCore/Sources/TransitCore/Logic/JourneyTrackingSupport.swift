@@ -7,9 +7,21 @@ public enum JourneyTracking {
     /// stop list, matching by id rather than sequence (`JourneyLeg`'s own
     /// `fromStop`/`toStop` sequence isn't populated by `/services/plan`).
     /// Returns the trustworthy `sequence` from the trip's stop list.
-    public static func findStopSequence(in stops: [TripStopRef], for legStop: Stop?) -> Int? {
+    public static func findStopSequence(in stops: [TripStopRef], for legStop: Stop?, after afterSeq: Int? = nil) -> Int? {
         guard let legStop else { return nil }
-        return stops.first { $0.parentStopID == legStop.parentStation || $0.childStopID == legStop.stopID }?.sequence
+        // A trip can call at the same station twice - Southern line trains
+        // start at Newmarket and pass through it again after the City Rail
+        // Link loop. Matching the parent station alone picked the first
+        // visit, so the rider's alighting stop resolved to the trip's
+        // origin and tracking decided they'd already got off (fixed
+        // 2026-09-23). Prefer the exact platform, and look for the
+        // alighting stop only after the boarding one.
+        let candidates = afterSeq.map { after in stops.filter { $0.sequence > after } } ?? stops
+        if let exact = candidates.first(where: { $0.childStopID == legStop.stopID }) {
+            return exact.sequence
+        }
+        guard !legStop.parentStation.isEmpty else { return nil }
+        return candidates.first { $0.parentStopID == legStop.parentStation }?.sequence
     }
 
     /// Has the tracked vehicle actually pulled away from the stop at

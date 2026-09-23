@@ -40,10 +40,41 @@ extension APIClient {
         try await postFormExpectingNoData("notifications/remove", form: ["stopIdOrName": stopIdOrName])
     }
 
+    /// Updates an existing stop subscription's routes/filters
+    /// (`notifications/edit`, as the web's `updateSubToStop`).
+    public func updateStopSubscription(_ stopIdOrName: String, routes: [String], causes: [String], minSeverity: String, notifyCancellations: Bool) async throws {
+        try await postFormExpectingNoData("notifications/edit", form: [
+            "stopIdOrName": stopIdOrName,
+            "routes": jsonArray(routes),
+            "causes": jsonArray(causes),
+            "minSeverity": minSeverity,
+            "notifyCancellations": notifyCancellations ? "true" : "false",
+        ])
+    }
+
+    /// This device's subscription to one stop, resolved by the server from
+    /// a name/code or id - nil when not subscribed. The web's
+    /// `checkStopSubscription` (`notifications/find-client`).
+    public func stopSubscription(_ stopIdOrName: String) async -> StopSubscriptionState? {
+        try? await postForm("notifications/find-client", form: ["stopIdOrName": stopIdOrName])
+    }
+
+    /// Turns off alerts for every stop ("Disable all notifications").
+    public func unsubscribeFromAllStops() async throws {
+        try await postFormExpectingNoData("notifications/remove", form: ["stopIdOrName": ""])
+    }
+
     // MARK: - Route alert subscriptions
 
     public func subscribeToRoute(_ routeID: String, causes: [String] = [], minSeverity: String = "", notifyCancellations: Bool = true) async throws {
         try await postFormExpectingNoData("notifications/route/add", form: [
+            "routeId": routeID, "causes": jsonArray(causes), "minSeverity": minSeverity,
+            "notifyCancellations": notifyCancellations ? "true" : "false",
+        ])
+    }
+
+    public func updateRouteSubscription(_ routeID: String, causes: [String], minSeverity: String, notifyCancellations: Bool) async throws {
+        try await postFormExpectingNoData("notifications/route/edit", form: [
             "routeId": routeID, "causes": jsonArray(causes), "minSeverity": minSeverity,
             "notifyCancellations": notifyCancellations ? "true" : "false",
         ])
@@ -65,6 +96,12 @@ extension APIClient {
 
     public func clearNotificationHistory() async throws {
         try await postFormExpectingNoData("notifications/history/clear", form: [:])
+    }
+
+    /// Asks the server to push a test notification to this device right now,
+    /// and returns what it knows about the device's push setup.
+    public func sendTestNotification() async throws -> PushTestResult {
+        try await postForm("notifications/test", form: [:])
     }
 
     // MARK: - One-shot trip reminders (get off / arriving / N stops away)
@@ -116,6 +153,42 @@ extension APIClient {
             "offsets": jsonIntArray(offsets),
             "deeplink": "transit://journey?id=\(plan.id)",
         ])
+    }
+
+    // MARK: - Live Activities (journey progress)
+
+    /// Registers a newly-started Live Activity so the server can push
+    /// content-state updates while the app is backgrounded. The server
+    /// loads the plan itself from `planId` (the existing plan cache, see
+    /// `plan_store.go`) - the client doesn't upload leg data.
+    @discardableResult
+    public func startLiveActivity(planID: String, activityID: String, pushToken: String, region: String, environment: String = "") async throws -> LiveActivityRegistered {
+        try await postForm("live-activities", form: [
+            "planId": planID, "activityId": activityID, "pushToken": pushToken, "region": region, "env": environment,
+        ])
+    }
+
+    /// ActivityKit rotates a running activity's push token occasionally -
+    /// forward each new one so the server doesn't push into a dead token.
+    public func updateLiveActivityToken(activityID: String, pushToken: String) async throws {
+        try await postFormExpectingNoData("live-activities/update-token", form: [
+            "activityId": activityID, "pushToken": pushToken,
+        ])
+    }
+
+    /// Reports the on-device state machine's current leg/phase while the
+    /// app is foregrounded - the server's own computation is a simplified
+    /// subset (see the plan doc), so this lets the server's next push stay
+    /// aligned with what the app already knows, rather than the two
+    /// disagreeing right after a foreground update.
+    public func reportLiveActivityLeg(activityID: String, legIndex: Int, phase: String) async throws {
+        try await postFormExpectingNoData("live-activities/leg", form: [
+            "activityId": activityID, "legIndex": String(legIndex), "phase": phase,
+        ])
+    }
+
+    public func endLiveActivity(activityID: String) async throws {
+        try await postFormExpectingNoData("live-activities/end", form: ["activityId": activityID])
     }
 
     // MARK: - Helpers

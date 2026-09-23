@@ -1,0 +1,20 @@
+[
+  {
+    "id": 1785124,
+    "label": "Westfield Newmarket Newmarket Auckland New Zealand / Aotearoa",
+    "lat": -36.8722571,
+    "lon": 174.776196,
+    "type": "retail",
+    "importance": 0.08000999999999997,
+    "boundingBox": ["-36.8729445", "-36.8714952", "174.7746452", "174.7769123"]
+  },
+  {
+    "id": 1792503,
+    "label": "Westfield Newmarket 277 Broadway Newmarket Auckland 1023 New Zealand / Aotearoa",
+    "lat": -36.8708593,
+    "lon": 174.7759095,
+    "type": "mall",
+    "importance": 0.00000999999999995449,
+    "boundingBox": ["-36.8729200", "-36.8701427", "174.7746691", "174.7771529"]
+  }
+]

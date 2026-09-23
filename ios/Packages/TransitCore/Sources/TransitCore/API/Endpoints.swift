@@ -15,7 +15,7 @@ extension APIClient {
     }
 
     public func stopsForTrip(tripID: String) async throws -> [TripStopRef] {
-        try await get("stops/\(tripID)")
+        try await get("stops/\(Self.pathSegment(tripID))")
     }
 
     public func closestStops(to coordinate: Coordinate) async throws -> [Stop] {
@@ -26,11 +26,11 @@ extension APIClient {
     }
 
     public func stop(stopID: String) async throws -> Stop {
-        try await get("stops/stop/\(stopID)")
+        try await get("stops/stop/\(Self.pathSegment(stopID))")
     }
 
     public func findStop(matching query: String, includeChildren: Bool = false) async throws -> [StopSearchResult] {
-        try await get("stops/find-stop/\(query)", query: [
+        try await get("stops/find-stop/\(Self.pathSegment(query))", query: [
             .init(name: "children", value: includeChildren ? "true" : "false"),
         ])
     }
@@ -42,21 +42,21 @@ extension APIClient {
     }
 
     public func route(routeID: String) async throws -> Route {
-        try await get("routes/\(routeID)")
+        try await get("routes/\(Self.pathSegment(routeID))")
     }
 
     public func findRoute(matching query: String) async throws -> [RouteSearchResult] {
-        try await get("routes/find-route/\(query)")
+        try await get("routes/find-route/\(Self.pathSegment(query))")
     }
 
     // MARK: - Departures board
 
     public func departures(stop: String, limit: Int = 200) async throws -> [Departure] {
-        try await get("services/\(stop)", query: [.init(name: "limit", value: String(limit))])
+        try await get("services/\(Self.pathSegment(stop))", query: [.init(name: "limit", value: String(limit))])
     }
 
     public func schedule(stop: String, date: Date) async throws -> [Departure] {
-        try await get("services/\(stop)/schedule", query: [
+        try await get("services/\(Self.pathSegment(stop))/schedule", query: [
             .init(name: "date", value: String(Int64(date.timeIntervalSince1970))),
         ])
     }
@@ -71,7 +71,7 @@ extension APIClient {
     /// notification deeplink, or a resumed in-progress journey) - kept
     /// server-side for ~6h after arrival.
     public func plan(id: String) async throws -> [JourneyPlan] {
-        try await get("services/plan/\(id)")
+        try await get("services/plan/\(Self.pathSegment(id))")
     }
 
     // MARK: - Realtime
@@ -89,15 +89,15 @@ extension APIClient {
     }
 
     public func alerts(forStop stop: String, todayOnly: Bool = false) async throws -> AlertsForStop {
-        try await get("realtime/alerts/\(stop)", query: todayOnly ? [.init(name: "today", value: "true")] : [])
+        try await get("realtime/alerts/\(Self.pathSegment(stop))", query: todayOnly ? [.init(name: "today", value: "true")] : [])
     }
 
     public func alerts(forRoute routeID: String) async throws -> [TransitAlert] {
-        try await get("realtime/alerts/route/\(routeID)")
+        try await get("realtime/alerts/route/\(Self.pathSegment(routeID))")
     }
 
     public func findMyVehicle(near coordinate: Coordinate) async throws -> [NearbyVehicle] {
-        try await get("realtime/find-my-vehicle/\(coordinate.latitude)/\(coordinate.longitude)")
+        try await get("realtime/find-my-vehicle/\(Self.pathSegment(String(coordinate.latitude)))/\(Self.pathSegment(String(coordinate.longitude)))")
     }
 
     // MARK: - Map
@@ -146,6 +146,11 @@ public struct RouteSearchResult: Codable, Hashable, Sendable {
     public let name: String
     public let routeID: String
 
+    public init(name: String, routeID: String) {
+        self.name = name
+        self.routeID = routeID
+    }
+
     enum CodingKeys: String, CodingKey {
         case name
         case routeID = "route_id"
@@ -168,15 +173,38 @@ public struct NearbyVehicle: Codable, Hashable, Sendable {
 
 /// `GET /{region}/map/nav?method=walking` - turn-by-turn walking directions
 /// from OSRM. Shape per the Go handler's `GeoJSONResponse`
-/// (`backend/providers/navigation.go`); not yet verified against a live
-/// response - re-check before the walking-directions screen ships.
+/// (`backend/providers/navigation.go`); confirmed against a live response
+/// (2026-09-23) - `instructions` is one comma-joined string (each step's
+/// own `instruction` is what's actually useful), `steps` is a real object
+/// array, not `[[Double]]`.
 public struct WalkingDirections: Codable, Hashable, Sendable {
     public let type: String
     public let features: [GeoJSONFeature]
-    public let instructions: [String]?
-    public let steps: [[Double]]?
+    public let instructions: String
+    public let steps: [DirectionStep]
     public let duration: Double
     public let distance: Double
+
+    /// The route's line, flattened from every feature's geometry - for
+    /// drawing on the map.
+    public var lineCoordinates: [Coordinate] {
+        features.flatMap(\.geometry.lineCoordinates)
+    }
+}
+
+/// One turn-by-turn instruction - `"depart"`/`"arrive"`/`"turn"`/`"end of
+/// road"`/etc for `type`, `"left"`/`"right"`/`""` for `modifier`.
+public struct DirectionStep: Codable, Hashable, Sendable, Identifiable {
+    public let instruction: String
+    public let modifier: String
+    public let type: String
+    public let name: String
+    public let distance: Double
+    public let lat: Double
+    public let lon: Double
+
+    public var id: String { "\(lat),\(lon),\(type),\(distance)" }
+    public var coordinate: Coordinate { Coordinate(latitude: lat, longitude: lon) }
 }
 
 /// Parameters for `POST /{region}/services/plan`. Mirrors the web planner's

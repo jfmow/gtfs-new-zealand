@@ -156,7 +156,7 @@ public final class JourneyProgressModel {
         let trackedAlightStop = trackedLeg?.toStop
 
         let trackedBoardSeq = JourneyTracking.findStopSequence(in: trackedStops, for: trackedBoardStop)
-        let trackedAlightSeq = JourneyTracking.findStopSequence(in: trackedStops, for: trackedAlightStop)
+        let trackedAlightSeq = JourneyTracking.findStopSequence(in: trackedStops, for: trackedAlightStop, after: trackedBoardSeq)
         let boarded = JourneyTracking.hasDepartedStop(trackedVehicle, stopSeq: trackedBoardSeq)
         let waitingAtStop = atBoardStop && !boarded
 

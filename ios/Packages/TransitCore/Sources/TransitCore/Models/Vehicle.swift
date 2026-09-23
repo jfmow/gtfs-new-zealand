@@ -22,6 +22,20 @@ public struct Vehicle: Codable, Hashable, Sendable, Identifiable {
 
     public var id: String { tripID }
 
+    /// `state` as shown to a person - the raw value is an internal token
+    /// (`providers/vehiclestate`'s Go constants), not copy.
+    public var humanState: String? {
+        switch state {
+        case "AtStop": return "At stop"
+        case "Arriving": return "Arriving"
+        case "Approaching": return "Approaching"
+        case "Leaving": return "Leaving stop"
+        case "Travelling": return "Travelling"
+        case "Unknown", nil: return nil
+        case let other?: return other
+        }
+    }
+
     enum CodingKeys: String, CodingKey {
         case tripID = "trip_id"
         case route, trip, occupancy
