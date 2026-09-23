@@ -27,6 +27,9 @@ struct TransitApp: App {
         Task { @MainActor in
             await environment.push.start()
             environment.liveActivity.start()
+            #if DEBUG
+            await environment.liveActivity.startDemoIfRequested()
+            #endif
         }
     }
 

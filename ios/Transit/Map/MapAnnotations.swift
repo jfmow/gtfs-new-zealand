@@ -85,19 +85,55 @@ struct RoutePolylineData {
     let lineWidth: CGFloat
     /// Walking legs draw as a dotted grey line with no casing.
     let isWalk: Bool
+    /// Part of a vehicle's route that isn't part of your ride (before you
+    /// board, after you get off) - a faded grey line under everything else,
+    /// like the web tracker's "before"/"after" segments.
+    let isMuted: Bool
 
-    init(id: String, coordinates: [Coordinate], colorHex: String, lineWidth: CGFloat = 5, isWalk: Bool = false) {
+    init(id: String, coordinates: [Coordinate], colorHex: String, lineWidth: CGFloat = 5, isWalk: Bool = false, isMuted: Bool = false) {
         self.id = id
         self.coordinates = coordinates.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
         self.colorHex = colorHex
         self.lineWidth = lineWidth
         self.isWalk = isWalk
+        self.isMuted = isMuted
+    }
+
+    /// Splits a trip's full shape at the points nearest your board and
+    /// alight stops: the ride itself in `colorHex`, and the vehicle's route
+    /// before and after it muted. Port of the web's `splitTrackedRouteLine`.
+    static func splitRide(
+        id: String, shape: [Coordinate], board: Coordinate, alight: Coordinate, colorHex: String
+    ) -> [RoutePolylineData] {
+        guard shape.count >= 2 else { return [] }
+        func nearest(_ point: Coordinate) -> Int {
+            var best = 0, bestDistance = Double.infinity
+            for (index, c) in shape.enumerated() {
+                let d = pow(c.latitude - point.latitude, 2) + pow(c.longitude - point.longitude, 2)
+                if d < bestDistance { best = index; bestDistance = d }
+            }
+            return best
+        }
+        var boardIndex = nearest(board), alightIndex = nearest(alight)
+        if boardIndex > alightIndex { swap(&boardIndex, &alightIndex) }
+
+        var result: [RoutePolylineData] = []
+        if boardIndex > 0 {
+            result.append(.init(id: "\(id)-before", coordinates: Array(shape[...boardIndex]), colorHex: "9CA3AF", isMuted: true))
+        }
+        if alightIndex < shape.count - 1 {
+            result.append(.init(id: "\(id)-after", coordinates: Array(shape[alightIndex...]), colorHex: "9CA3AF", isMuted: true))
+        }
+        if alightIndex > boardIndex {
+            result.append(.init(id: "\(id)-ride", coordinates: Array(shape[boardIndex...alightIndex]), colorHex: colorHex))
+        }
+        return result
     }
 
     /// Cheap change check against what's already on the map - colour and
     /// style, plus the shape's length and end points.
     func matches(_ line: IdentifiedPolyline) -> Bool {
-        guard line.colorHex == colorHex, line.lineWidth == lineWidth, line.isWalk == isWalk,
+        guard line.colorHex == colorHex, line.lineWidth == lineWidth, line.isWalk == isWalk, line.isMuted == isMuted,
               line.pointCount == coordinates.count else { return false }
         guard let first = coordinates.first, let last = coordinates.last, line.pointCount > 0 else { return true }
         let points = line.points()
@@ -114,6 +150,7 @@ final class IdentifiedPolyline: MKPolyline {
     var colorHex: String = "6b7280"
     var lineWidth: CGFloat = 5
     var isWalk = false
+    var isMuted = false
 }
 
 /// A route line with a contrasting outline ("casing") drawn under it, so it

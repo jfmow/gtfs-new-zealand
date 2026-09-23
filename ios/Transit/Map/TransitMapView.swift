@@ -343,9 +343,15 @@ struct TransitMapView: UIViewRepresentable {
                 line.colorHex = data.colorHex
                 line.lineWidth = data.lineWidth
                 line.isWalk = data.isWalk
+                line.isMuted = data.isMuted
 
                 polylinesByID[data.id] = line
-                mapView.addOverlay(line)
+                // Muted lines sit under every coloured one.
+                if data.isMuted {
+                    mapView.insertOverlay(line, at: 0)
+                } else {
+                    mapView.addOverlay(line)
+                }
             }
 
             for id in polylinesByID.keys
@@ -616,7 +622,10 @@ struct TransitMapView: UIViewRepresentable {
             renderer.lineCap = .round
             renderer.lineJoin = .round
 
-            if line.isWalk {
+            if line.isMuted {
+                renderer.strokeColor = color.withAlphaComponent(0.6)
+                renderer.lineWidth = max(3, line.lineWidth - 1)
+            } else if line.isWalk {
                 renderer.lineWidth = max(3, line.lineWidth - 1)
                 renderer.lineDashPattern = [0, NSNumber(value: Double(renderer.lineWidth) * 2)]
             } else {

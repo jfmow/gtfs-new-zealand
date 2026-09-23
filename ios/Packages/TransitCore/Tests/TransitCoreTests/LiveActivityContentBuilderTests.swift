@@ -93,6 +93,30 @@ final class LiveActivityContentBuilderTests: XCTestCase {
         XCTAssertEqual(c.countdownLabel, "Arrives in")
     }
 
+    /// Mirrors TestActivity_V3RideFields.
+    func testV3RideFields() {
+        let p = LiveActivityProgress(legIndex: 1, phase: "onboard", arrived: false, stopsAway: 3, nextStopName: "Grafton",
+                                     isRealtime: true, hasVehicle: true, rideStops: 9, occupancy: 1)
+        let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: p, now: base.addingTimeInterval(900))
+        XCTAssertEqual(c.version, 3)
+        XCTAssertEqual(c.boardStopName, "Britomart")
+        XCTAssertEqual(c.alightStopName, "Newmarket")
+        XCTAssertEqual(c.nextStopName, "Grafton")
+        XCTAssertEqual(c.rideStops, 9)
+        XCTAssertEqual(c.hasVehicle, true)
+        XCTAssertEqual(c.occupancy, 1)
+    }
+
+    /// Mirrors TestActivity_WalkingShowsWalkAndApproachingVehicle.
+    func testWalkingShowsWalkAndApproachingVehicle() {
+        let p = LiveActivityProgress(legIndex: 0, phase: "walking", arrived: false, stopsAway: 5, isRealtime: true, hasVehicle: true)
+        let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: p, now: base.addingTimeInterval(60))
+        XCTAssertEqual(c.phase, "walking")
+        XCTAssertEqual(c.walkMinutes, 5)
+        XCTAssertEqual(c.stopsAway, 5)
+        XCTAssertEqual(c.boardStopName, "Britomart")
+    }
+
     func testArrived() {
         let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: LiveActivityProgress(legIndex: 3, phase: nil, arrived: true), now: base.addingTimeInterval(1900))
         XCTAssertEqual(c.status, "arrived")

@@ -105,7 +105,7 @@ final class JourneyAlertCenter {
             let arriving = (nextIsBoard && metresToBoard <= JourneyProgressModel.boardProximityThreshold(for: trackedVehicle.type)) || atOrPastBoard
 
             if nextIsBoard, !arriving {
-                fire("\(tripID):board-soon", .info, "The \(name) is one stop away", trackedLeg.fromStop.map { "Get ready to board at \($0.stopName)." } ?? "Get ready to board.")
+                fire("\(tripID):board-soon", .info, "The \(name) is almost here", trackedLeg.fromStop.map { "Your stop is its next one - get ready to board at \($0.stopName)." } ?? "Your stop is its next one - get ready to board.")
             }
             if arriving {
                 fire(

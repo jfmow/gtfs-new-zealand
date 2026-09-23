@@ -33,6 +33,9 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
         NSSupportsLiveActivities: true
+        # The server pushes on every stop the vehicle passes, not just on
+        # key moments - lifts the per-hour push budget for that.
+        NSSupportsLiveActivitiesFrequentUpdates: true
         # Geist, bundled from the web app's own `geist` package (Shared/Fonts,
         # OFL - license alongside) so both apps use the same typeface.
         UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]

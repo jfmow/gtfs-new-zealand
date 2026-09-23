@@ -121,6 +121,22 @@ final class LiveActivityCoordinator {
         self.activity = nil
     }
 
+    #if DEBUG
+    /// Debug only: `LA_DEMO_JSON` (launch environment) puts a Live Activity
+    /// with exactly that content state on screen, local-only (no push
+    /// registration) - lets UI tests screenshot every phase's layout.
+    func startDemoIfRequested() async {
+        guard let json = ProcessInfo.processInfo.environment["LA_DEMO_JSON"],
+              let state = try? JSONDecoder().decode(JourneyActivityAttributes.ContentState.self, from: Data(json.utf8)) else { return }
+        for existing in Activity<JourneyActivityAttributes>.activities {
+            await existing.end(nil, dismissalPolicy: .immediate)
+        }
+        let attributes = JourneyActivityAttributes(planID: "demo", destinationLabel: "Newmarket", regionSlug: "at")
+        let stale = ProcessInfo.processInfo.environment["LA_DEMO_STALE"] != nil ? Date().addingTimeInterval(2) : Date().addingTimeInterval(Self.staleAfter)
+        _ = try? Activity.request(attributes: attributes, content: .init(state: state, staleDate: stale), pushType: nil)
+    }
+    #endif
+
     /// Makes this the tracked activity and registers its push token with
     /// the server (every rotation, not just the first).
     private func adopt(_ activity: Activity<JourneyActivityAttributes>) {

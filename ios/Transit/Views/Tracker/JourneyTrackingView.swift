@@ -22,6 +22,9 @@ struct JourneyTrackingView: View {
     @State private var vehiclesByTripID: [String: Vehicle] = [:]
     @State private var stopTimesByTripID: [String: [StopTimeUpdate]] = [:]
     @State private var trackedStops: [TripStopRef] = []
+    /// Full route shapes of the rides, by trip id - the ride you're on (or
+    /// about to catch) shows the vehicle's whole route, greyed outside your part.
+    @State private var rideShapes: [String: RouteShape] = [:]
     @State private var snapshot: JourneyProgressModel.Snapshot?
     @State private var pollTask: Task<Void, Never>?
     @State private var lastTrackedTripID: String?
@@ -525,8 +528,8 @@ struct JourneyTrackingView: View {
                         .modifier(StatusChipStyle())
                 }
 
-                if let away = snapshot.trackedStopsToGo {
-                    Text(stopsAwayText(away, onboard: snapshot.phase == .onboard))
+                if let away = snapshot.trackedStopsAway, let toGo = snapshot.trackedStopsToGo {
+                    Text(stopsAwayText(away, atStop: toGo == 0, onboard: snapshot.phase == .onboard))
                         .modifier(StatusChipStyle())
                 }
 
@@ -557,13 +560,19 @@ struct JourneyTrackingView: View {
         }
     }
 
-    private func stopsAwayText(_ away: Int, onboard: Bool) -> String {
-        // `away` counts the stops still to reach, including the target.
+    /// `away` is the Live Activity's count - stops *between* the vehicle
+    /// and yours (0 = yours is its next stop). `atStop` is only true once
+    /// the feed says it's stopped there. Counting your own stop too (the
+    /// old `trackedStopsToGo`) read "1 stop away" while the bus was pulling
+    /// in, since AT often reports "Arriving" rather than "AtStop".
+    private func stopsAwayText(_ away: Int, atStop: Bool, onboard: Bool) -> String {
         if onboard {
-            return away == 0 ? "At your stop - get off" : away == 1 ? "Get off at the next stop" : "\(away) stops to go"
+            if atStop { return "At your stop - get off" }
+            return away == 0 ? "Get off at the next stop" : "\(away + 1) stops to go"
         }
         let name = currentOrNextTransitLeg.map(routeName) ?? "Service"
-        return away == 0 ? "\(name) at your stop" : away == 1 ? "\(name) arriving next" : "\(name) \(away) stops away"
+        if atStop { return "\(name) at your stop" }
+        return away == 0 ? "\(name) arriving" : away == 1 ? "\(name) 1 stop away" : "\(name) \(away) stops away"
     }
 
     private var upcomingConnectionRisk: JourneyTracking.ConnectionRisk? {
@@ -705,21 +714,38 @@ struct JourneyTrackingView: View {
     }
 
     /// Each ride in its own route colour, walks in grey - same as the
-    /// journey preview.
+    /// journey preview. The ride you're on (or about to catch) is drawn from
+    /// the vehicle's full route shape instead, with the parts before you
+    /// board and after you get off greyed out - like the web tracker.
     private var polylines: [RoutePolylineData] {
         guard let features = plan.routeGeoJSON?.features else { return [] }
-        let transitColors = plan.legs.filter { $0.mode == "transit" }.map { $0.route?.routeColor ?? "" }
+        let transitLegs = plan.legs.filter { $0.mode == "transit" }
+        let activeRide = activeRideLeg
         var transitIndex = 0
-        return features.enumerated().map { index, feature in
+        return features.enumerated().flatMap { index, feature -> [RoutePolylineData] in
             let mode = feature.properties?["mode"]?.stringValue ?? "walk"
-            var color = "9CA3AF"
-            if mode != "walk" {
-                let routeColor = transitIndex < transitColors.count ? transitColors[transitIndex] : ""
-                color = routeColor.isEmpty ? environment.region.brandColorHex : routeColor
-                transitIndex += 1
+            guard mode != "walk" else {
+                return [RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: "9CA3AF", isWalk: true)]
             }
-            return RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color, isWalk: mode == "walk")
+            let leg = transitIndex < transitLegs.count ? transitLegs[transitIndex] : nil
+            transitIndex += 1
+            let routeColor = leg?.route?.routeColor ?? ""
+            let color = routeColor.isEmpty ? environment.region.brandColorHex : routeColor
+            if let leg, leg.tripID == activeRide?.tripID,
+               let shape = rideShapes[leg.tripID]?.geojson.geometry.lineCoordinates,
+               let board = leg.fromStop?.coordinate, let alight = leg.toStop?.coordinate {
+                let split = RoutePolylineData.splitRide(id: "leg-\(index)", shape: shape, board: board, alight: alight, colorHex: color)
+                if !split.isEmpty { return split }
+            }
+            return [RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color)]
         }
+    }
+
+    /// Fetches the active ride's full route shape once per trip.
+    private func loadRideShapeIfNeeded() async {
+        guard let tripID = activeRideLeg?.tripID, rideShapes[tripID] == nil,
+              let shape = try? await environment.api.routeShape(tripID: tripID) else { return }
+        rideShapes[tripID] = shape
     }
 
     /// Where the map looks at each stage of the journey:
@@ -802,6 +828,16 @@ struct JourneyTrackingView: View {
         environment.location.startUpdating()
         if let saved = activeJourneys.first(where: { $0.planID == plan.id }) {
             progressModel.restore(alightedThroughLeg: saved.alightedThroughLeg)
+        } else if let arrival = plan.arrivalTime.date {
+            // Opened from a link, a Live Activity or a reminder rather than
+            // the planner's "Start": record it as the tracked journey too,
+            // so leaving the tracker leaves the resume pill behind instead
+            // of losing the journey. Only one journey is tracked at a time.
+            for old in (try? modelContext.fetch(FetchDescriptor<ActiveJourney>())) ?? [] { modelContext.delete(old) }
+            modelContext.insert(ActiveJourney(
+                planID: plan.id, regionSlug: environment.region.slug,
+                endLabel: plan.legs.last?.toStop?.stopName ?? "your destination", arrivalTime: arrival
+            ))
         }
         startPolling()
     }
@@ -852,6 +888,7 @@ struct JourneyTrackingView: View {
         saveProgress()
 
         await loadWalkDirectionsIfNeeded(legIndex: newSnapshot.progressLegIndex)
+        await loadRideShapeIfNeeded()
         evaluateJourneyAlerts(with: newSnapshot)
         await updateLiveActivity(with: newSnapshot)
     }
@@ -953,10 +990,24 @@ struct JourneyTrackingView: View {
             arrived: snapshot.journeyArrived,
             stopsAway: snapshot.trackedStopsAway,
             nextStopName: trackedVehicle?.trip?.nextStop?.name,
-            isRealtime: snapshot.trackingLevel != .scheduled
+            isRealtime: snapshot.trackingLevel != .scheduled,
+            hasVehicle: trackedVehicle != nil && trackedVehicle?.state != "Unknown",
+            rideStops: rideStopCount(tripID: snapshot.trackedTripID),
+            occupancy: trackedVehicle.flatMap { $0.occupancy >= 0 ? $0.occupancy : nil }
         )
         let content = LiveActivityContentBuilder.build(legs: displayPlan.legs, progress: progress)
         return JourneyActivityAttributes.ContentState(content)
+    }
+
+    /// Stops the rider travels on the tracked ride (board -> alight), from
+    /// its stop list - nil until that list has loaded.
+    private func rideStopCount(tripID: String?) -> Int? {
+        guard let tripID, tripID == lastTrackedTripID,
+              let leg = displayPlan.legs.first(where: { $0.tripID == tripID }),
+              let board = JourneyTracking.findStopSequence(in: trackedStops, for: leg.fromStop),
+              let alight = JourneyTracking.findStopSequence(in: trackedStops, for: leg.toStop, after: board) else { return nil }
+        let count = trackedStops.filter { $0.sequence > board && $0.sequence <= alight }.count
+        return count > 0 ? count : nil
     }
 
     private func fetchStopTimes(tripIDs: [String]) async -> [String: [StopTimeUpdate]] {

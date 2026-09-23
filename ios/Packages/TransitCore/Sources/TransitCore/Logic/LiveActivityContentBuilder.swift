@@ -21,7 +21,7 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
         public var colorHex: String
     }
 
-    public var version = 2
+    public var version = 3
     public var legIndex = 0
     public var phase = "walking"
     public var routeShortName = ""
@@ -42,6 +42,17 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
     public var legChain: [LegChip] = []
     public var updatedUnix: Double = 0
     public var isRealtime = false
+    // v3 - structured fields for the widget's phase row.
+    public var boardStopName: String?
+    public var alightStopName: String?
+    public var nextStopName: String?
+    /// Stops ridden, board -> alight.
+    public var rideStops: Int?
+    public var walkMinutes: Int?
+    public var walkMeters: Int?
+    public var hasVehicle: Bool?
+    /// GTFS-RT occupancy status (0 empty ... 6 full), when the vehicle reports it.
+    public var occupancy: Int?
 
     public init() {}
 }
@@ -57,14 +68,23 @@ public struct LiveActivityProgress: Sendable {
     public var stopsAway: Int?
     public var nextStopName: String?
     public var isRealtime: Bool
+    /// The ride's live vehicle is placed on its trip.
+    public var hasVehicle: Bool
+    /// Stops from the ride's boarding stop to its alighting stop.
+    public var rideStops: Int?
+    public var occupancy: Int?
 
-    public init(legIndex: Int, phase: String?, arrived: Bool, stopsAway: Int? = nil, nextStopName: String? = nil, isRealtime: Bool = false) {
+    public init(legIndex: Int, phase: String?, arrived: Bool, stopsAway: Int? = nil, nextStopName: String? = nil, isRealtime: Bool = false,
+                hasVehicle: Bool = false, rideStops: Int? = nil, occupancy: Int? = nil) {
         self.legIndex = legIndex
         self.phase = phase
         self.arrived = arrived
         self.stopsAway = stopsAway
         self.nextStopName = nextStopName
         self.isRealtime = isRealtime
+        self.hasVehicle = hasVehicle
+        self.rideStops = rideStops
+        self.occupancy = occupancy
     }
 }
 
@@ -93,7 +113,7 @@ public enum LiveActivityContentBuilder {
         c.legIndex = idx
         let leg = legs[idx]
         if leg.mode == "walk" {
-            fillWalking(&c, legs: legs, idx: idx, now: now)
+            fillWalking(&c, legs: legs, idx: idx, progress: progress, now: now)
         } else {
             fillTransit(&c, legs: legs, idx: idx, progress: progress, now: now)
         }
@@ -103,10 +123,14 @@ public enum LiveActivityContentBuilder {
 
     // MARK: - Phases
 
-    private static func fillWalking(_ c: inout LiveActivityContent, legs: [JourneyLeg], idx: Int, now: Date) {
+    private static func fillWalking(_ c: inout LiveActivityContent, legs: [JourneyLeg], idx: Int, progress: LiveActivityProgress, now: Date) {
         let leg = legs[idx]
         c.phase = "walking"
         c.headsign = stopLabel(leg.toStop)
+        if let d = leg.departureTime.date, let a = leg.arrivalTime.date {
+            c.walkMinutes = max(1, Int((a.timeIntervalSince(d) / 60).rounded()))
+        }
+        if leg.distanceKm > 0 { c.walkMeters = Int((leg.distanceKm * 1000).rounded()) }
 
         guard let f = nextTransit(legs, after: idx) else {
             c.primaryText = leg.toStop.map { $0.stopName.isEmpty ? "Walk to your destination" : "Walk to \($0.stopName)" } ?? "Walk to your destination"
@@ -121,6 +145,8 @@ public enum LiveActivityContentBuilder {
         c.routeShortName = shortName(next)
         c.routeColorHex = next.route?.routeColor ?? ""
         c.platform = platform(next)
+        fillRide(&c, next, progress: progress)
+        if progress.hasVehicle, let away = progress.stopsAway, away >= 0 { c.stopsAway = away }
         c.status = status(next, phase: "waiting")
         c.delayMinutes = delayMinutes(next)
         let boardAt = stopLabel(next.fromStop)
@@ -150,6 +176,7 @@ public enum LiveActivityContentBuilder {
         c.routeShortName = shortName(leg)
         c.routeColorHex = leg.route?.routeColor ?? ""
         c.headsign = stopLabel(leg.toStop)
+        fillRide(&c, leg, progress: progress)
 
         let onboard = progress.phase == "onboard"
         if !onboard {
@@ -195,6 +222,17 @@ public enum LiveActivityContentBuilder {
                 applyConnection(&c, legs: legs, from: idx, to: f)
             }
         }
+    }
+
+    /// Same as the Go builder's `fillRide`: the ride you're on, or walking
+    /// or waiting to catch.
+    private static func fillRide(_ c: inout LiveActivityContent, _ leg: JourneyLeg, progress: LiveActivityProgress) {
+        c.boardStopName = leg.fromStop?.stopName
+        c.alightStopName = leg.toStop?.stopName
+        c.hasVehicle = progress.hasVehicle
+        if progress.hasVehicle, let next = progress.nextStopName, !next.isEmpty { c.nextStopName = next }
+        if let n = progress.rideStops, n > 0 { c.rideStops = n }
+        c.occupancy = progress.occupancy
     }
 
     /// Same rule as `JourneyTracking.connectionRisk` and the Go builder:

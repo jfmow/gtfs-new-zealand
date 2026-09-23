@@ -406,6 +406,13 @@ final class TransitDebugUITests: XCTestCase {
             attach("dc-02-after-pull-\(step)")
         }
         XCTAssertFalse(nextTag.exists && nextTag.isHittable, "drawer didn't close when pulled down from its list")
+
+        // Drag the header back up to the top: the list must come back.
+        live.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.12)))
+        sleep(2)
+        attach("dc-03-dragged-up")
+        XCTAssertTrue(nextTag.exists && nextTag.isHittable, "drawer didn't open when its header was dragged up")
     }
 
     /// Stop on the map -> its board -> a service: the tracker must be on
@@ -963,6 +970,60 @@ final class TransitDebugUITests: XCTestCase {
         add(later)
     }
 
+    /// Every Live Activity layout from fixture states (`LA_DEMO_JSON`, a
+    /// Debug-only hook in LiveActivityCoordinator): compact + expanded
+    /// Dynamic Island and the Lock Screen for walking, waiting, on board
+    /// (with a tight connection), and arrived.
+    func testLiveActivityLayouts() throws {
+        let now = Date().timeIntervalSince1970
+        let chain = #"[{"mode":"walk","shortName":"","colorHex":""},{"mode":"transit","shortName":"S-C","colorHex":"EE3524"},{"mode":"walk","shortName":"","colorHex":""},{"mode":"transit","shortName":"70","colorHex":"0073BD"}]"#
+        let fixtures: [(String, String)] = [
+            ("walking", #"{"version":3,"legIndex":0,"phase":"walking","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Te Waihorotiu","primaryText":"Leave by 7:52am","secondaryText":"Walk to Te Waihorotiu for the S-C","countdownLabel":"Leave in","targetUnix":\#(now + 400),"delayMinutes":0,"status":"onTime","arrivalUnix":\#(now + 2400),"progressFraction":0,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","walkMinutes":4,"walkMeters":320,"hasVehicle":false}"#),
+            ("waiting", #"{"version":3,"legIndex":1,"phase":"waiting","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Newmarket","primaryText":"Board the S-C","secondaryText":"at Te Waihorotiu · Platform 2 · 3 stops away","countdownLabel":"Departs in","targetUnix":\#(now + 250),"delayMinutes":3,"status":"delayed","stopsAway":3,"arrivalUnix":\#(now + 2400),"progressFraction":0.2,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","hasVehicle":true,"occupancy":1}"#),
+            ("onboard", #"{"version":3,"legIndex":1,"phase":"onboard","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Newmarket","primaryText":"Get off at Newmarket","secondaryText":"Then 70 at 8:14am · 2 min to change","countdownLabel":"Arrives in","targetUnix":\#(now + 420),"delayMinutes":0,"status":"tightConnection","stopsAway":2,"arrivalUnix":\#(now + 2400),"progressFraction":0.5,"totalLegs":4,"legChain":\#(chain),"nextLeg":{"routeShortName":"70","routeColorHex":"0073BD","departureUnix":\#(now + 660),"connectMinutes":2},"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","nextStopName":"Grafton","rideStops":7,"hasVehicle":true,"occupancy":2}"#),
+            ("arrived", #"{"version":3,"legIndex":3,"phase":"arrived","primaryText":"You've arrived","secondaryText":"","countdownLabel":"","targetUnix":\#(now),"delayMinutes":0,"status":"arrived","arrivalUnix":\#(now),"progressFraction":1,"totalLegs":4,"legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"hasVehicle":false}"#),
+        ]
+        for (name, json) in fixtures {
+            app.launchEnvironment["LA_DEMO_JSON"] = json
+            app.launch()
+            dismissSystemAlertIfPresent(timeout: 3)
+            for label in ["Allow", "Always Allow"] {
+                let allow = springboard.buttons[label]
+                if allow.waitForExistence(timeout: 2) { allow.tap(); break }
+            }
+            sleep(3)
+            XCUIDevice.shared.press(.home)
+            sleep(2)
+            let compact = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            compact.name = "la-\(name)-1-compact"
+            compact.lifetime = .keepAlways
+            add(compact)
+
+            // Long-press the island to expand it.
+            springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03)).press(forDuration: 1.2)
+            sleep(2)
+            let expanded = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            expanded.name = "la-\(name)-2-expanded"
+            expanded.lifetime = .keepAlways
+            add(expanded)
+            XCUIDevice.shared.press(.home)
+            sleep(1)
+
+            XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
+            sleep(2)
+            XCUIDevice.shared.press(.home)
+            sleep(3)
+            let lock = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            lock.name = "la-\(name)-3-lock"
+            lock.lifetime = .keepAlways
+            add(lock)
+            // Unlock (no passcode on the simulator) for the next round.
+            XCUIDevice.shared.press(.home)
+            sleep(2)
+            app.terminate()
+        }
+    }
+
     /// The rebuilt planner end to end: form, options, results, detail,
     /// and the leave-by reminder sheet.
     func testPlannerFlow() throws {
@@ -1044,6 +1105,12 @@ final class TransitDebugUITests: XCTestCase {
         let minimise = app.buttons["Minimise"]
         XCTAssertTrue(minimise.waitForExistence(timeout: 5))
         minimise.tap()
+        sleep(2)
+        attach("rs-02-detail")
+        // The detail screen has its own "Resume tracking" button - no bar there.
+        let resumeBar = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Resume journey to")).firstMatch
+        XCTAssertFalse(resumeBar.exists, "resume bar shown over the journey's own detail screen")
+        app.navigationBars.buttons.firstMatch.tap()
         sleep(2)
         attach("rs-02-pill")
         let pill = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Resume journey to")).firstMatch

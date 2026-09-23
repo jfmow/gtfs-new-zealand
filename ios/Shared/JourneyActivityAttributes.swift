@@ -50,6 +50,15 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         public var legChain: [LegChip]
         public var updatedUnix: Double
         public var isRealtime: Bool
+        // v3
+        public var boardStopName: String?
+        public var alightStopName: String?
+        public var nextStopName: String?
+        public var rideStops: Int?
+        public var walkMinutes: Int?
+        public var walkMeters: Int?
+        public var hasVehicle: Bool
+        public var occupancy: Int?
 
         public var targetDate: Date { Date(timeIntervalSince1970: targetUnix) }
         public var arrivalDate: Date { Date(timeIntervalSince1970: arrivalUnix) }
@@ -59,6 +68,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             case version, legIndex, phase, routeShortName, routeColorHex, headsign, primaryText, secondaryText
             case countdownLabel, targetUnix, delayMinutes, status, stopsAway, arrivalUnix, progressFraction
             case totalLegs, platform, nextLeg, legChain, updatedUnix, isRealtime
+            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy
         }
 
         public init(from decoder: Decoder) throws {
@@ -84,6 +94,14 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             legChain = (try? c.decodeIfPresent([LegChip].self, forKey: .legChain)) ?? []
             updatedUnix = (try? c.decodeIfPresent(Double.self, forKey: .updatedUnix)) ?? 0
             isRealtime = (try? c.decodeIfPresent(Bool.self, forKey: .isRealtime)) ?? false
+            boardStopName = try? c.decodeIfPresent(String.self, forKey: .boardStopName)
+            alightStopName = try? c.decodeIfPresent(String.self, forKey: .alightStopName)
+            nextStopName = try? c.decodeIfPresent(String.self, forKey: .nextStopName)
+            rideStops = try? c.decodeIfPresent(Int.self, forKey: .rideStops)
+            walkMinutes = try? c.decodeIfPresent(Int.self, forKey: .walkMinutes)
+            walkMeters = try? c.decodeIfPresent(Int.self, forKey: .walkMeters)
+            hasVehicle = (try? c.decodeIfPresent(Bool.self, forKey: .hasVehicle)) ?? false
+            occupancy = try? c.decodeIfPresent(Int.self, forKey: .occupancy)
         }
     }
 

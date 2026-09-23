@@ -40,6 +40,8 @@
 	<string>Used to show nearby stops, your position on the map, and to time walking directions.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Geist-Regular.ttf</string>
