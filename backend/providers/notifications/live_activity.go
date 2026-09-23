@@ -314,6 +314,10 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 		l.DepartureDelay = clampJRDelay(l.DepartureDelay)
 		l.ArrivalDelay = clampJRDelay(l.ArrivalDelay)
 
+		if boardIdx >= 0 && alightIdx > boardIdx {
+			l.RideStops = alightIdx - boardIdx
+		}
+
 		// Stop counting needs a running vehicle placed on the trip - AT's
 		// trip updates alone don't mean the trip has started.
 		if vehicles != nil && haveStops && stopsData.LowestSequence >= 0 && boardIdx >= 0 && alightIdx >= 0 {

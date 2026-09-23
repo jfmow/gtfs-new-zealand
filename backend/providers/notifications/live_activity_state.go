@@ -28,7 +28,7 @@ import (
 // activityStateVersion is bumped whenever the content-state shape changes -
 // the widget decodes every field leniently, so older/newer payloads still
 // render.
-const activityStateVersion = 2
+const activityStateVersion = 3
 
 // journeyActivityState mirrors `JourneyActivityAttributes.ContentState`
 // (ios/Shared/JourneyActivityAttributes.swift) field for field. Times are
@@ -56,6 +56,17 @@ type journeyActivityState struct {
 	LegChain         []activityLegChip `json:"legChain"`
 	UpdatedUnix      float64           `json:"updatedUnix"`
 	IsRealtime       bool              `json:"isRealtime"`
+
+	// v3 - what the widget's phase row draws (stop track, vehicle approach,
+	// walk distance) instead of parsing it back out of the copy.
+	BoardStopName  string  `json:"boardStopName,omitempty"`
+	AlightStopName string  `json:"alightStopName,omitempty"`
+	NextStopName   string  `json:"nextStopName,omitempty"`
+	RideStops      *int    `json:"rideStops,omitempty"` // stops ridden, board -> alight
+	WalkMinutes    *int    `json:"walkMinutes,omitempty"`
+	WalkMeters     *int    `json:"walkMeters,omitempty"`
+	HasVehicle     bool    `json:"hasVehicle"`
+	Occupancy      *int    `json:"occupancy,omitempty"` // GTFS-RT occupancy status; device-only for now
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -101,6 +112,9 @@ type legLive struct {
 	StopsToBoard  int // stops before the boarding stop (0 = it's next, <0 = passed)
 	StopsToAlight int // stops before the alighting stop (0 = it's next, <0 = passed)
 	NextStopName  string
+	// RideStops is how many stops the rider travels (board -> alight), from
+	// the trip's stop list - 0 when it isn't known.
+	RideStops int
 }
 
 // liveLegLookup returns realtime for the transit leg at index i, or false
@@ -244,6 +258,12 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	leg, t := plan.Legs[idx], timings[idx]
 	state.Phase = "walking"
 	state.Headsign = stopLabel(leg.ToStop)
+	walkMin := int(math.Max(1, math.Round(leg.ArrivalTime.Sub(leg.DepartureTime).Minutes())))
+	state.WalkMinutes = &walkMin
+	if leg.DistanceKm > 0 {
+		m := int(math.Round(leg.DistanceKm * 1000))
+		state.WalkMeters = &m
+	}
 
 	f := nextTransit(plan, idx)
 	if f < 0 {
@@ -263,6 +283,11 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.RouteShortName = routeShortNameOrEmpty(next)
 	state.RouteColorHex = routeColorOrEmpty(next)
 	state.Platform = platformOf(next)
+	fillRide(state, next, nt)
+	if state.HasVehicle && nt.live.StopsToBoard >= 0 {
+		away := nt.live.StopsToBoard
+		state.StopsAway = &away
+	}
 	state.Status = statusFor(next, nt, "waiting")
 	state.DelayMinutes = delayMinutes(nt.live.DepartureDelay, nt.hasLive && nt.live.HasTripUpdate)
 	boardAt := stopLabel(next.FromStop)
@@ -304,6 +329,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.RouteShortName = routeShortNameOrEmpty(leg)
 	state.RouteColorHex = routeColorOrEmpty(leg)
 	state.Headsign = stopLabel(leg.ToStop)
+	fillRide(state, leg, t)
 
 	onboard := !now.Before(t.dep)
 	if hasVehicle {
@@ -391,6 +417,28 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 			Title: fmt.Sprintf("The %s has been cancelled", route),
 			Body:  "Tap to find another way.",
 		}
+	}
+}
+
+// fillRide sets the widget's structured fields for the ride the rider is
+// on, or walking/waiting to catch.
+func fillRide(state *journeyActivityState, leg gtfs.JourneyLeg, t legTiming) {
+	if leg.FromStop != nil {
+		state.BoardStopName = leg.FromStop.StopName
+	}
+	if leg.ToStop != nil {
+		state.AlightStopName = leg.ToStop.StopName
+	}
+	if !t.hasLive {
+		return
+	}
+	state.HasVehicle = t.live.HasVehicle
+	if t.live.HasVehicle {
+		state.NextStopName = t.live.NextStopName
+	}
+	if t.live.RideStops > 0 {
+		n := t.live.RideStops
+		state.RideStops = &n
 	}
 }
 
@@ -581,9 +629,9 @@ func (s journeyActivityState) stateHash() string {
 	if s.NextLeg != nil {
 		connect = fmt.Sprintf("%s@%d/%d", s.NextLeg.RouteShortName, int64(s.NextLeg.DepartureUnix)/60, s.NextLeg.ConnectMinutes)
 	}
-	raw := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%d|%d|%d|%s",
+	raw := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%d|%d|%d|%s|%s|%t",
 		s.LegIndex, s.Phase, s.RouteShortName, s.PrimaryText, s.SecondaryText, s.Status,
-		s.DelayMinutes, stopsAway, int64(s.TargetUnix)/60, connect)
+		s.DelayMinutes, stopsAway, int64(s.TargetUnix)/60, connect, s.NextStopName, s.HasVehicle)
 	sum := sha1.Sum([]byte(raw))
 	return hex.EncodeToString(sum[:])
 }

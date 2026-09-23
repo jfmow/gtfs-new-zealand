@@ -296,3 +296,30 @@ func TestReminderPlanID(t *testing.T) {
 		}
 	}
 }
+
+func TestActivity_V3RideFields(t *testing.T) {
+	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: -1, StopsToAlight: 3, NextStopName: "Grafton", RideStops: 9}})
+	state := computeJourneyActivityState(testPlan(base), base.Add(15*time.Minute), live, noHint)
+	if state.Version != 3 || state.Phase != "onboard" {
+		t.Fatalf("version/phase = %d/%s", state.Version, state.Phase)
+	}
+	if state.BoardStopName != "Britomart" || state.AlightStopName != "Newmarket" || state.NextStopName != "Grafton" {
+		t.Errorf("stop names = %q %q %q", state.BoardStopName, state.AlightStopName, state.NextStopName)
+	}
+	if state.RideStops == nil || *state.RideStops != 9 || !state.HasVehicle {
+		t.Errorf("rideStops = %v hasVehicle = %v", state.RideStops, state.HasVehicle)
+	}
+}
+
+func TestActivity_WalkingShowsWalkAndApproachingVehicle(t *testing.T) {
+	plan := testPlan(base)
+	plan.Legs[0].DistanceKm = 0.42
+	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: 5, StopsToAlight: 14}})
+	state := computeJourneyActivityState(plan, base.Add(1*time.Minute), live, noHint)
+	if state.Phase != "walking" || state.WalkMinutes == nil || *state.WalkMinutes != 5 || state.WalkMeters == nil || *state.WalkMeters != 420 {
+		t.Fatalf("walk = %v %v %v", state.Phase, state.WalkMinutes, state.WalkMeters)
+	}
+	if state.StopsAway == nil || *state.StopsAway != 5 || state.BoardStopName != "Britomart" {
+		t.Errorf("approach = %v %q", state.StopsAway, state.BoardStopName)
+	}
+}
