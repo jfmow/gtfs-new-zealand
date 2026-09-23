@@ -27,6 +27,10 @@ struct BottomDrawer<Header: View, Content: View>: View {
     @ViewBuilder var content: Content
 
     @GestureState private var dragOffset: CGFloat = 0
+    /// Pulling down on the content while its list is scrolled to the top
+    /// moves the drawer (like a system sheet) instead of doing nothing.
+    @State private var pullOffset: CGFloat = 0
+    @State private var contentAtTop = true
 
     static func height(for detent: DrawerDetent, collapsed: CGFloat, available: CGFloat, topClearance: CGFloat) -> CGFloat {
         switch detent {
@@ -41,7 +45,7 @@ struct BottomDrawer<Header: View, Content: View>: View {
     }
 
     private var currentHeight: CGFloat {
-        let proposed = height(for: detent) - dragOffset
+        let proposed = height(for: detent) - dragOffset - pullOffset
         return min(max(proposed, collapsedHeight * 0.7), height(for: .expanded))
     }
 
@@ -66,6 +70,9 @@ struct BottomDrawer<Header: View, Content: View>: View {
             if detent != .collapsed || dragOffset < 0 {
                 content
                     .frame(maxHeight: .infinity, alignment: .top)
+                    .coordinateSpace(name: DrawerScrollAnchor.space)
+                    .onPreferenceChange(DrawerScrollOffsetKey.self) { contentAtTop = $0 >= -2 }
+                    .simultaneousGesture(pullToCollapse)
             }
         }
         .frame(height: currentHeight, alignment: .top)
@@ -92,6 +99,26 @@ struct BottomDrawer<Header: View, Content: View>: View {
             }
     }
 
+    private var pullToCollapse: some Gesture {
+        DragGesture(minimumDistance: 10)
+            .onChanged { value in
+                guard contentAtTop, value.translation.height > 0 else { return }
+                pullOffset = value.translation.height
+            }
+            .onEnded { value in
+                guard pullOffset > 0 else { return }
+                let pulled = pullOffset
+                pullOffset = 0
+                // Predictable steps: a real pull drops one size (full ->
+                // half -> collapsed); a quick fling goes straight down.
+                if value.predictedEndTranslation.height > 500 {
+                    detent = .collapsed
+                } else if pulled > 50 {
+                    detent = detent == .expanded ? .medium : .collapsed
+                }
+            }
+    }
+
     private func cycle() {
         switch detent {
         case .collapsed: detent = .medium
@@ -99,4 +126,23 @@ struct BottomDrawer<Header: View, Content: View>: View {
         case .expanded: detent = .collapsed
         }
     }
+}
+
+/// Put at the very top of a drawer's scroll view content, so the drawer
+/// knows when the list is scrolled to the top (and a pull down should move
+/// the drawer rather than the list).
+struct DrawerScrollAnchor: View {
+    static let space = "bottomDrawerContent"
+
+    var body: some View {
+        GeometryReader { geo in
+            Color.clear.preference(key: DrawerScrollOffsetKey.self, value: geo.frame(in: .named(Self.space)).minY)
+        }
+        .frame(height: 0)
+    }
+}
+
+struct DrawerScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
 }

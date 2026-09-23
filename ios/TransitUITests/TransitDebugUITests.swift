@@ -373,6 +373,41 @@ final class TransitDebugUITests: XCTestCase {
         }
     }
 
+    /// The service tracker's drawer, once expanded, closes again by pulling
+    /// down on its stop list (not only by the header).
+    func testTrackerDrawerCollapsesFromList() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        let search = app.textFields["Search for stop..."]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Ponsonby Road 8100")
+        sleep(2)
+        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "8100")).firstMatch.tap()
+        let row = app.buttons.matching(identifier: "departure-row").firstMatch
+        guard row.waitForExistence(timeout: 10) else { throw XCTSkip("no services at this stop right now") }
+        row.tap()
+        let nextTag = app.staticTexts["Next stop"]
+        guard nextTag.waitForExistence(timeout: 10) else { attach("dc-00-no-list"); throw XCTSkip("no live vehicle on this service") }
+
+        // Expand: tap the drawer's header (half -> full).
+        let live = app.staticTexts["Live"].firstMatch
+        live.tap()
+        sleep(2)
+        attach("dc-01-expanded")
+
+        // Pull down on the list itself (below the header): full -> half,
+        // then half -> collapsed.
+        let window = app.windows.firstMatch
+        for step in 1...2 where nextTag.exists && nextTag.isHittable {
+            nextTag.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.99)))
+            sleep(2)
+            attach("dc-02-after-pull-\(step)")
+        }
+        XCTAssertFalse(nextTag.exists && nextTag.isHittable, "drawer didn't close when pulled down from its list")
+    }
+
     /// Stop on the map -> its board -> a service: the tracker must be on
     /// top (it used to render behind the board), and after going back the
     /// same stop must open again on the first tap.

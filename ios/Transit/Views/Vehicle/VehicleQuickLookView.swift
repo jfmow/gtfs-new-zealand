@@ -363,8 +363,11 @@ struct VehicleQuickLookView: View {
         if rows.isEmpty {
             if !hasLoaded { ProgressView().padding(24) }
         } else {
-            ScrollViewReader { scrollProxy in
-                ScrollView {
+            // No auto-scroll to the next stop: earlier stops are folded
+            // away, so it's already at the top - and staying scrolled to the
+            // top lets a pull down close the drawer straight away.
+            ScrollView {
+                    DrawerScrollAnchor()
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Tap a stop to get a reminder", systemImage: "bell")
                             .font(.meta)
@@ -405,10 +408,6 @@ struct VehicleQuickLookView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
                 }
-                .onChange(of: nextSequence) { _, next in
-                    if let next { withAnimation { scrollProxy.scrollTo(next, anchor: .top) } }
-                }
-            }
         }
     }
 
