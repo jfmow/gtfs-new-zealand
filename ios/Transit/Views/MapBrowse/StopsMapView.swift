@@ -103,33 +103,38 @@ struct StopsMapView: View {
     }
 
     private func previewCard(_ stop: Stop) -> some View {
-        Button {
-            onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
-        } label: {
-            HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: stop.stopCode.isEmpty ? nil : "Stop \(stop.stopCode)") {
-                StopModeTile(stopType: stop.stopType)
+        HStack(alignment: .top, spacing: 0) {
+            Button {
+                onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+            } label: {
+                HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: stop.stopCode.isEmpty ? nil : "Stop \(stop.stopCode)") {
+                    StopModeTile(stopType: stop.stopType)
+                }
             }
-        }
-        .buttonStyle(.plain)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-        .overlay(alignment: .topLeading) {
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("stop-preview")
+            .accessibilityHint("Opens departures")
+
+            // Inside the card (not hanging off its corner) so it's always
+            // tappable.
             Button {
                 withAnimation(.spring(duration: 0.3)) { previewStop = nil }
             } label: {
                 Image(systemName: "xmark")
                     .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.foreground)
-                    .frame(width: 24, height: 24)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .frame(width: 26, height: 26)
                     .background(Theme.muted, in: Circle())
-                    .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
             }
-            .offset(x: -8, y: -8)
+            .buttonStyle(.plain)
+            .padding(.top, 2)
             .accessibilityLabel("Close")
         }
-        .accessibilityIdentifier("stop-preview")
-        .accessibilityHint("Opens departures")
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
     }
 
     /// A hard ceiling on live annotations, independent of the viewport

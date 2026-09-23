@@ -441,7 +441,8 @@ final class TransitDebugUITests: XCTestCase {
         sameStop.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(preview.waitForExistence(timeout: 5), "re-tapping the same stop didn't preview it")
         preview.tap()
-        XCTAssertTrue(row.waitForExistence(timeout: 10), "re-tapping the same stop didn't open it")
+        // The board screen itself (its departures can take a while to load).
+        XCTAssertTrue(app.navigationBars.buttons["Get alerts for this stop"].waitForExistence(timeout: 10), "re-tapping the stop didn't open its board")
         attach("st-03-reopened")
     }
 
