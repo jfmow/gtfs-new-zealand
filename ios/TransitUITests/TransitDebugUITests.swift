@@ -477,6 +477,18 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 2)
         sleep(2)
         attach("vp-01-home")
+        app.swipeUp()
+        sleep(1)
+        attach("vp-01b-home-scrolled")
+        app.swipeDown()
+        let bell = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Notifications")).firstMatch
+        if bell.waitForExistence(timeout: 2) {
+            bell.tap()
+            sleep(2)
+            attach("vp-01c-bell")
+            app.swipeDown(velocity: .fast)
+            sleep(1)
+        }
 
         let scheduleTab = app.tabBars.buttons["Schedule"]
         let searchField = app.textFields["Search for stop..."]
@@ -504,6 +516,12 @@ final class TransitDebugUITests: XCTestCase {
                 button.tap()
                 sleep(3)
                 attach(name)
+            }
+            if tab == "Planner", app.buttons["Options"].waitForExistence(timeout: 2) {
+                app.buttons["Options"].tap()
+                sleep(1)
+                attach("vp-05b-planner-options")
+                app.buttons["Options"].tap()
             }
         }
 
