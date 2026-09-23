@@ -96,7 +96,9 @@ struct JourneyTrackingView: View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
                 TransitMapView(
-                    vehicles: vehiclesByTripID.values.map(VehicleAnnotation.init),
+                    // Only the vehicle for the ride you're on or about to
+                    // take - never the others in the plan.
+                    vehicles: activeRideVehicle.map { [VehicleAnnotation(vehicle: $0)] } ?? [],
                     waypoints: waypoints,
                     polylines: polylines,
                     camera: autoFollow ? camera : .none,
@@ -720,41 +722,54 @@ struct JourneyTrackingView: View {
         }
     }
 
-    /// Where the map looks at each stage - the web's live map
-    /// (`followUser` / `followFitWith` / `followMarkerId`), tuned for a
-    /// phone with a drawer over half the screen:
+    /// Where the map looks at each stage of the journey:
+    /// - walking (to a stop, a transfer, or the destination): you and where
+    ///   you're walking to - or, without your location, the walk's start
+    ///   and end
+    /// - waiting / boarding (including between rides): you and the vehicle
+    ///   you're about to catch (the stop, until it's live)
+    /// - on board: follow the vehicle
     /// - before starting, and once arrived: the whole route
-    /// - walking: on the rider; once the ride's vehicle is live, the rider,
-    ///   the stop and the vehicle together, so you can see it coming
-    /// - waiting: the vehicle and your stop together
-    /// - riding: follow the vehicle at street level
     private var camera: MapCamera {
-        guard let snapshot, snapshot.phase != nil, !snapshot.journeyArrived else { return .fitAll }
+        guard let snapshot, let phase = snapshot.phase, !snapshot.journeyArrived else { return .fitAll }
         let rider = environment.location.coordinate
-        let boardStop = currentOrNextTransitLeg?.fromStop?.coordinate
+        let legs = displayPlan.legs
+        let index = snapshot.progressLegIndex
+        let leg: JourneyLeg? = legs.indices.contains(index) ? legs[index] : nil
 
-        if snapshot.phase == .onboard, let tripID = snapshot.trackedTripID, vehiclesByTripID[tripID] != nil {
-            return .follow(annotationID: tripID, spanMeters: 1600)
-        }
-
-        if snapshot.riderWalking {
-            guard let rider else { return .fitAll }
-            if let vehicle = nextTransitLegVehicle {
-                let points = [rider, vehicle.position.coordinate] + (boardStop.map { [$0] } ?? [])
-                return .frame(points: points, minSpanMeters: 600)
+        switch phase {
+        case .onboard:
+            if let vehicle = activeRideVehicle {
+                return .follow(annotationID: vehicle.tripID, spanMeters: 1600)
             }
-            return .region(center: rider, radiusMeters: 600)
-        }
+            // No live position: the ride's two ends (and you, if known).
+            let points = [activeRideLeg?.fromStop?.coordinate, activeRideLeg?.toStop?.coordinate, rider].compactMap { $0 }
+            return points.isEmpty ? .fitAll : .frame(points: points, minSpanMeters: 800)
 
-        // Waiting or boarding.
-        if let tripID = snapshot.trackedTripID, let vehicle = vehiclesByTripID[tripID] {
-            let stop = snapshot.followFitWithStop ?? boardStop
-            return .frame(points: [vehicle.position.coordinate] + (stop.map { [$0] } ?? []), minSpanMeters: 500)
+        case .walking:
+            let target: Coordinate? = {
+                if let leg, leg.mode == "walk" {
+                    if let stop = leg.toStop?.coordinate { return stop }
+                    return index == legs.count - 1 ? Coordinate(latitude: plan.endLat, longitude: plan.endLon) : nil
+                }
+                return activeRideLeg?.fromStop?.coordinate
+            }()
+            let origin: Coordinate? = rider ?? {
+                if let from = leg?.fromStop?.coordinate { return from }
+                if index > 0, let previous = legs[index - 1].toStop?.coordinate { return previous }
+                return Coordinate(latitude: plan.startLat, longitude: plan.startLon)
+            }()
+            let points = [origin, target].compactMap { $0 }
+            return points.isEmpty ? .fitAll : .frame(points: points, minSpanMeters: 300)
+
+        case .waiting, .boarding:
+            let stop = activeRideLeg?.fromStop?.coordinate
+            let vehicle = activeRideVehicle?.position.coordinate
+            // You (or the stop you're waiting at) and the vehicle coming;
+            // until it's live, you and the stop.
+            let points = [rider ?? stop, vehicle ?? (rider != nil ? stop : nil)].compactMap { $0 }
+            return points.isEmpty ? .fitAll : .frame(points: points, minSpanMeters: 400)
         }
-        if let boardStop {
-            return .frame(points: [boardStop] + (rider.map { [$0] } ?? []), minSpanMeters: 500)
-        }
-        return .fitAll
     }
 
     /// The part of the map not covered by the top controls or the drawer,
@@ -767,14 +782,17 @@ struct JourneyTrackingView: View {
         return UIEdgeInsets(top: top, left: 0, bottom: min(drawer, fullHeight - top - 120), right: 0)
     }
 
-    /// The vehicle for whichever transit leg comes next (from the rider's
-    /// current position in the plan onward) - `nil` until it's actually
-    /// broadcasting a live position, same set `vehiclesByTripID` already
-    /// holds for every transit leg regardless of tracking phase.
-    private var nextTransitLegVehicle: Vehicle? {
-        guard let legIndex = snapshot?.progressLegIndex, displayPlan.legs.indices.contains(legIndex) else { return nil }
-        guard let tripID = displayPlan.legs[legIndex...].first(where: { $0.mode == "transit" })?.tripID else { return nil }
-        return vehiclesByTripID[tripID]
+    /// The ride you're on, or the next one you'll take - nil on the final
+    /// walk (nothing left to catch).
+    private var activeRideLeg: JourneyLeg? {
+        let index = max(0, snapshot?.progressLegIndex ?? 0)
+        guard displayPlan.legs.indices.contains(index) else { return nil }
+        return displayPlan.legs[index...].first { $0.mode == "transit" }
+    }
+
+    /// That ride's vehicle, once it's sending a live position.
+    private var activeRideVehicle: Vehicle? {
+        activeRideLeg.flatMap { vehiclesByTripID[$0.tripID] }
     }
 
     // MARK: - Data
