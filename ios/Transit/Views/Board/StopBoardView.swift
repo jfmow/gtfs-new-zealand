@@ -23,6 +23,7 @@ struct StopBoardView: View {
     @State private var pollTask: Task<Void, Never>?
     @State private var isShowingSubscriptionSheet = false
     @State private var isPickingDate = false
+    @State private var isShowingAlerts = false
     @State private var draftDate = Date()
     @State private var showAllPlatforms = false
     @State private var loadError: Error?
@@ -81,9 +82,10 @@ struct StopBoardView: View {
                         if let coordinate = stopCoordinate {
                             Button { openDirections(to: coordinate) } label: { Label("Directions to stop", systemImage: "location.north.line") }
                         }
-                        NavigationLink {
-                            AlertsView(stopQuery: stopQuery, title: title)
-                        } label: { Label("Service alerts", systemImage: "exclamationmark.bubble") }
+                        // A sheet, not a push: a view-based NavigationLink
+                        // inside a toolbar menu is unreliable in the tabs'
+                        // path-driven stacks.
+                        Button { isShowingAlerts = true } label: { Label("Service alerts", systemImage: "exclamationmark.bubble") }
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
@@ -96,6 +98,13 @@ struct StopBoardView: View {
             }
             .sheet(isPresented: $isPickingDate) {
                 datePickerSheet
+            }
+            .sheet(isPresented: $isShowingAlerts) {
+                NavigationStack {
+                    AlertsView(stopQuery: stopQuery, title: title)
+                        .toolbar { DoneButton() }
+                }
+                .shadSheet(detents: [.large])
             }
             .task { await start() }
             .onDisappear { pollTask?.cancel() }
@@ -145,6 +154,7 @@ struct StopBoardView: View {
             .background(departure.departed && !preview ? Theme.warning.opacity(0.06) : .clear)
         if departure.isTrackable && !preview {
             NavigationLink(value: departure.tripID) { rowView.contentShape(Rectangle()) }
+                .accessibilityIdentifier("departure-row")
                 .buttonStyle(DropdownRowStyle())
         } else {
             rowView

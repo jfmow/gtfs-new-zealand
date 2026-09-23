@@ -293,21 +293,37 @@ struct ResumeJourneyPill: View {
 // MARK: - Stops / Vehicles tab roots (separate routes, as on the web)
 
 struct StopsTabView: View {
+    @State private var path = NavigationPath()
+
     var body: some View {
-        NavigationStack {
-            StopsMapView().appToolbar()
+        NavigationStack(path: $path) {
+            StopsMapView(onOpenStop: { path.append($0) }).appToolbar()
                 .toolbarBackground(Theme.background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
+                .navigationDestination(for: BoardDestination.self) { destination in
+                    StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
+                }
         }
     }
 }
 
 struct VehiclesTabView: View {
+    @State private var path = NavigationPath()
+
     var body: some View {
-        NavigationStack {
-            VehiclesMapView().appToolbar()
+        NavigationStack(path: $path) {
+            VehiclesMapView(onOpenVehicle: { path.append(TripDestination(tripID: $0)) }).appToolbar()
                 .toolbarBackground(Theme.background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
+                .navigationDestination(for: TripDestination.self) { destination in
+                    VehicleQuickLookView(tripID: destination.tripID)
+                }
         }
     }
+}
+
+/// A service-tracker navigation target (its own type so it can't collide
+/// with other `String` destinations in the same stack).
+struct TripDestination: Hashable {
+    let tripID: String
 }

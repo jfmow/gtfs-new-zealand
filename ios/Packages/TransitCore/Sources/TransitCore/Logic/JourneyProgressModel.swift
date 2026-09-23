@@ -20,6 +20,13 @@ public final class JourneyProgressModel {
 
     public init() {}
 
+    /// Restores the "already got off" ratchet after the app was relaunched
+    /// (it's persisted on `ActiveJourney`), so tracking doesn't fall back to
+    /// an earlier leg while the first live data loads. Only moves forward.
+    public func restore(alightedThroughLeg: Int) {
+        self.alightedThroughLeg = max(self.alightedThroughLeg, alightedThroughLeg)
+    }
+
     // How far past its delay-adjusted departure the earliest pending transit
     // leg must be - while still showing no live vehicle - before tracking is
     // allowed to skip ahead to a later leg that does have one.

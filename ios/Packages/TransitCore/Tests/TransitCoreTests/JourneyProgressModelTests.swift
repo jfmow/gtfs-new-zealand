@@ -155,6 +155,27 @@ final class JourneyProgressModelTests: XCTestCase {
         XCTAssertEqual(snapshot2.transitFloor, plan.legs.count)
     }
 
+    /// A relaunched tracker restores the saved ratchet, so with no live
+    /// data at all yet it still shows the walking leg after the ride, not
+    /// the ride again.
+    func testRestoredRatchetKeepsProgressWithoutLiveData() {
+        let board = makeStop(id: "board")
+        let alight = makeStop(id: "alight")
+        let scheduledDeparture = base.addingTimeInterval(300)
+        let scheduledArrival = scheduledDeparture.addingTimeInterval(600)
+        let plan = makeThreeLegJourney(boardStop: board, alightStop: alight, transitDeparture: scheduledDeparture, transitArrival: scheduledArrival)
+        let model = JourneyProgressModel()
+        model.restore(alightedThroughLeg: 1)
+        model.restore(alightedThroughLeg: 0)  // never moves backwards
+        XCTAssertEqual(model.alightedThroughLeg, 1)
+
+        let snapshot = model.update(
+            plan: plan, displayPlan: plan, now: scheduledArrival.addingTimeInterval(-120),
+            vehiclesByTripID: [:], stopTimesByTripID: [:], journeyStarted: true, trackedStops: [], userLocation: nil
+        )
+        XCTAssertEqual(snapshot.progressLegIndex, 2)
+    }
+
     // MARK: - Phase machine
 
     func testWalkingPhaseBeforeReachingBoardStop() {

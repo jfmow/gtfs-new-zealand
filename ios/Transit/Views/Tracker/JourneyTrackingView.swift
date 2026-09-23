@@ -14,6 +14,7 @@ struct JourneyTrackingView: View {
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
 
     @Query private var activeJourneys: [ActiveJourney]
     @State private var progressModel = JourneyProgressModel()
@@ -24,6 +25,13 @@ struct JourneyTrackingView: View {
     @State private var snapshot: JourneyProgressModel.Snapshot?
     @State private var pollTask: Task<Void, Never>?
     @State private var lastTrackedTripID: String?
+    /// When live vehicle positions last loaded. A failed poll (typically the
+    /// first one after coming back from the background, while the network
+    /// wakes up) keeps the last good data rather than wiping it - it only
+    /// counts as lost once it's older than `liveDataMaxAge`.
+    @State private var lastLiveFetch: Date?
+    @State private var isTicking = false
+    private static let liveDataMaxAge: TimeInterval = 120
 
     // Turn-by-turn walking directions for whichever leg is currently a walk
     // - matches the web's `Navigate` component in `liveMode`
@@ -129,6 +137,13 @@ struct JourneyTrackingView: View {
             walkStep = walkTracker.update(steps: steps, location: newValue)
         }
         .task { await start() }
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: startPolling()
+            case .background: pollTask?.cancel()  // the Live Activity is server-driven meanwhile
+            default: break
+            }
+        }
         .onAppear {
             router.isTrackingVisible = true
             router.openTracker = (planID: plan.id, inLink: presentedFromLink)
@@ -490,8 +505,13 @@ struct JourneyTrackingView: View {
                 switch snapshot.trackingLevel {
                 case .live:
                     HStack(spacing: 5) {
-                        LiveDot(color: Theme.success)
-                        Text("Live")
+                        if isLiveDataStale {
+                            ProgressView().controlSize(.mini)
+                            Text("Updating")
+                        } else {
+                            LiveDot(color: Theme.success)
+                            Text("Live")
+                        }
                     }
                     .modifier(StatusChipStyle())
                 case .predicted:
@@ -694,7 +714,7 @@ struct JourneyTrackingView: View {
                 color = routeColor.isEmpty ? environment.region.brandColorHex : routeColor
                 transitIndex += 1
             }
-            return RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color)
+            return RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color, isWalk: mode == "walk")
         }
     }
 
@@ -760,40 +780,81 @@ struct JourneyTrackingView: View {
     private func start() async {
         environment.location.requestPermission()
         environment.location.startUpdating()
-        await tick()
+        if let saved = activeJourneys.first(where: { $0.planID == plan.id }) {
+            progressModel.restore(alightedThroughLeg: saved.alightedThroughLeg)
+        }
+        startPolling()
+    }
+
+    /// Refreshes now, then every 10s. Also called when the app comes back
+    /// to the foreground, so the tracker catches up immediately instead of
+    /// waiting out the rest of an interval.
+    private func startPolling() {
+        pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { continue }
                 await tick()
+                try? await Task.sleep(for: .seconds(10))
             }
         }
     }
 
     private func tick() async {
+        guard !isTicking else { return }
+        isTicking = true
+        defer { isTicking = false }
+
         let tripIDs = plan.transitLegs.map(\.tripID)
         async let vehicles = try? environment.api.liveVehicles(tripIDs: tripIDs)
         async let times = fetchStopTimes(tripIDs: tripIDs)
-        vehiclesByTripID = Dictionary(uniqueKeysWithValues: (await vehicles ?? []).map { ($0.tripID, $0) })
-        stopTimesByTripID = await times
+        if let fresh = await vehicles {
+            vehiclesByTripID = Dictionary(uniqueKeysWithValues: fresh.map { ($0.tripID, $0) })
+            lastLiveFetch = Date()
+        } else if let last = lastLiveFetch, Date().timeIntervalSince(last) > Self.liveDataMaxAge {
+            vehiclesByTripID = [:]
+        }
+        // Only trips that actually loaded replace what we had.
+        stopTimesByTripID.merge(await times) { _, new in new }
 
         displayPlan = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: stopTimesByTripID)
 
-        let newSnapshot = progressModel.update(
-            plan: plan, displayPlan: displayPlan, now: Date(), vehiclesByTripID: vehiclesByTripID,
-            stopTimesByTripID: stopTimesByTripID, journeyStarted: true, trackedStops: trackedStops,
-            userLocation: environment.location.coordinate
-        )
-        snapshot = newSnapshot
-
-        if let tripID = newSnapshot.trackedTripID, tripID != lastTrackedTripID {
+        var newSnapshot = computeSnapshot()
+        if let tripID = newSnapshot.trackedTripID, tripID != lastTrackedTripID,
+           let stops = try? await environment.api.stopsForTrip(tripID: tripID) {
             lastTrackedTripID = tripID
-            trackedStops = (try? await environment.api.stopsForTrip(tripID: tripID)) ?? []
+            trackedStops = stops
+            // Recompute with the stops: without them "boarded" and stops-away
+            // can't be worked out, so a resumed tracker would briefly show
+            // the rider as still waiting.
+            newSnapshot = computeSnapshot()
         }
+        snapshot = newSnapshot
+        saveProgress()
 
         await loadWalkDirectionsIfNeeded(legIndex: newSnapshot.progressLegIndex)
         evaluateJourneyAlerts(with: newSnapshot)
         await updateLiveActivity(with: newSnapshot)
+    }
+
+    private func computeSnapshot() -> JourneyProgressModel.Snapshot {
+        progressModel.update(
+            plan: plan, displayPlan: displayPlan, now: Date(), vehiclesByTripID: vehiclesByTripID,
+            stopTimesByTripID: stopTimesByTripID, journeyStarted: true, trackedStops: trackedStops,
+            userLocation: environment.location.coordinate
+        )
+    }
+
+    private func saveProgress() {
+        guard let saved = activeJourneys.first(where: { $0.planID == plan.id }),
+              saved.alightedThroughLeg != progressModel.alightedThroughLeg else { return }
+        saved.alightedThroughLeg = progressModel.alightedThroughLeg
+    }
+
+    /// Live data hasn't refreshed for a while (poll failing) - shown as an
+    /// "Updating" chip rather than dropping straight to "no live vehicle".
+    private var isLiveDataStale: Bool {
+        guard let lastLiveFetch else { return false }
+        return Date().timeIntervalSince(lastLiveFetch) > 25
     }
 
     /// Fetches turn-by-turn directions for the current leg exactly once per

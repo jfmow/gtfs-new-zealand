@@ -83,12 +83,27 @@ struct RoutePolylineData {
     let coordinates: [CLLocationCoordinate2D]
     let colorHex: String
     let lineWidth: CGFloat
+    /// Walking legs draw as a dotted grey line with no casing.
+    let isWalk: Bool
 
-    init(id: String, coordinates: [Coordinate], colorHex: String, lineWidth: CGFloat = 4) {
+    init(id: String, coordinates: [Coordinate], colorHex: String, lineWidth: CGFloat = 5, isWalk: Bool = false) {
         self.id = id
         self.coordinates = coordinates.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
         self.colorHex = colorHex
         self.lineWidth = lineWidth
+        self.isWalk = isWalk
+    }
+
+    /// Cheap change check against what's already on the map - colour and
+    /// style, plus the shape's length and end points.
+    func matches(_ line: IdentifiedPolyline) -> Bool {
+        guard line.colorHex == colorHex, line.lineWidth == lineWidth, line.isWalk == isWalk,
+              line.pointCount == coordinates.count else { return false }
+        guard let first = coordinates.first, let last = coordinates.last, line.pointCount > 0 else { return true }
+        let points = line.points()
+        let a = points[0].coordinate, b = points[line.pointCount - 1].coordinate
+        return abs(a.latitude - first.latitude) < 1e-7 && abs(a.longitude - first.longitude) < 1e-7
+            && abs(b.latitude - last.latitude) < 1e-7 && abs(b.longitude - last.longitude) < 1e-7
     }
 }
 
@@ -97,10 +112,48 @@ struct RoutePolylineData {
 final class IdentifiedPolyline: MKPolyline {
     var polylineID: String = ""
     var colorHex: String = "6b7280"
-    var lineWidth: CGFloat = 4
+    var lineWidth: CGFloat = 5
+    var isWalk = false
+}
+
+/// A route line with a contrasting outline ("casing") drawn under it, so it
+/// stands out from roads on both light and dark basemaps - the web map's
+/// line-casing layer.
+final class CasedPolylineRenderer: MKPolylineRenderer {
+    var casingColor: UIColor = .clear
+    var casingWidth: CGFloat = 0
+
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        if casingWidth > 0 {
+            if path == nil { createPath() }
+            if let path {
+                context.saveGState()
+                context.addPath(path)
+                context.setStrokeColor(casingColor.cgColor)
+                context.setLineWidth((lineWidth + casingWidth * 2) / zoomScale)
+                context.setLineCap(.round)
+                context.setLineJoin(.round)
+                context.strokePath()
+                context.restoreGState()
+            }
+        }
+        super.draw(mapRect, zoomScale: zoomScale, in: context)
+    }
 }
 
 extension UIColor {
+    /// WCAG relative luminance, 0 (black) ... 1 (white) - for picking a
+    /// contrasting outline or text colour against a route colour.
+    var relativeLuminance: Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard getRed(&r, green: &g, blue: &b, alpha: &a) else { return 0.5 }
+        func channel(_ c: CGFloat) -> Double {
+            let c = Double(c)
+            return c <= 0.03928 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+
     /// Parses a "RRGGBB" (no '#') hex string, as the backend sends route
     /// colours - falls back to a neutral grey for an empty/invalid string.
     convenience init(hex: String) {

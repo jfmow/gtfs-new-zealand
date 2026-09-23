@@ -150,10 +150,10 @@ struct JourneyDetailView: View {
             var color = "9CA3AF"
             if mode != "walk" {
                 let routeColor = transitIndex < transitColors.count ? transitColors[transitIndex] : ""
-                color = routeColor.isEmpty ? "404040" : routeColor
+                color = routeColor.isEmpty ? environment.region.brandColorHex : routeColor
                 transitIndex += 1
             }
-            return RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color)
+            return RoutePolylineData(id: "leg-\(index)", coordinates: feature.geometry.lineCoordinates, colorHex: color, isWalk: mode == "walk")
         }
     }
 

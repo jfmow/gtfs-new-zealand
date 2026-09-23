@@ -9,7 +9,9 @@ struct VehiclesMapView: View {
     @Environment(AppEnvironment.self) private var environment
     @State private var vehicles: [Vehicle] = []
     @State private var typeFilter: VehicleFilterType = .all
-    @State private var selectedVehicleID: String?
+    /// Opens a vehicle's tracker - pushed by value by the owning tab (see
+    /// `StopsMapView.onOpenStop`).
+    var onOpenVehicle: (String) -> Void = { _ in }
     @State private var pollTask: Task<Void, Never>?
     @State private var recenterTrigger = 0
     @AppStorage("vehicles.showStops") private var showStops = false
@@ -22,7 +24,7 @@ struct VehiclesMapView: View {
                 vehicles: vehicles.map(VehicleAnnotation.init),
                 camera: .region(center: environment.region.defaultMapCenter, radiusMeters: 15000),
                 showsUserLocation: environment.location.isAuthorized,
-                onSelectVehicle: { selectedVehicleID = $0 },
+                onSelectVehicle: { onOpenVehicle($0) },
                 centerOnUserLocationTrigger: recenterTrigger
             )
             .ignoresSafeArea(edges: .bottom)
@@ -76,9 +78,6 @@ struct VehiclesMapView: View {
         .task(id: showStops) {
             if showStops, allStops.isEmpty { allStops = (try? await environment.api.stops()) ?? [] }
         }
-        .navigationDestination(item: Binding(get: { selectedVehicleID }, set: { selectedVehicleID = $0 })) { tripID in
-            VehicleQuickLookView(tripID: tripID)
-        }
     }
 
     private func start() async {
@@ -86,7 +85,7 @@ struct VehiclesMapView: View {
         pollTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled, selectedVehicleID == nil else { continue }
+                guard !Task.isCancelled else { continue }
                 await refresh()
             }
         }

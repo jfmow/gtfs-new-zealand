@@ -109,6 +109,9 @@ public final class ActiveJourney {
     /// The device-generated id of the Live Activity started for this
     /// journey, if any (nil until Live Activities are wired up).
     public var liveActivityID: String?
+    /// `JourneyProgressModel.alightedThroughLeg`, saved as it advances so a
+    /// relaunched tracker resumes on the right leg (-1 = none yet).
+    public var alightedThroughLeg: Int = -1
 
     public init(planID: String, regionSlug: String, startedAt: Date = Date(), endLabel: String, arrivalTime: Date, liveActivityID: String? = nil) {
         self.planID = planID

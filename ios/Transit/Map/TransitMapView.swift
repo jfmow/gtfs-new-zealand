@@ -282,9 +282,16 @@ struct TransitMapView: UIViewRepresentable {
         ) {
             let newIDs = Set(newPolylines.map(\.id))
 
+            // Gone, or changed (e.g. a shape first drawn in the fallback grey
+            // before its route colour loaded) - changed ones are re-added
+            // below. Matching on id alone left such lines grey for good.
+            let changed = Set(newPolylines.compactMap { data in
+                polylinesByID[data.id].flatMap { data.matches($0) ? nil : data.id }
+            })
             let toRemove = polylinesByID
-                .filter { !newIDs.contains($0.key) }
+                .filter { !newIDs.contains($0.key) || changed.contains($0.key) }
                 .values
+            for id in changed { polylinesByID.removeValue(forKey: id) }
 
             if !toRemove.isEmpty {
                 mapView.removeOverlays(Array(toRemove))
@@ -300,6 +307,7 @@ struct TransitMapView: UIViewRepresentable {
                 line.polylineID = data.id
                 line.colorHex = data.colorHex
                 line.lineWidth = data.lineWidth
+                line.isWalk = data.isWalk
 
                 polylinesByID[data.id] = line
                 mapView.addOverlay(line)
@@ -482,7 +490,10 @@ struct TransitMapView: UIViewRepresentable {
 
                 view.annotation = stop
                 view.clusteringIdentifier = "stop"
-                view.canShowCallout = true
+                // Tapping opens the stop straight away (see `didSelect`), so
+                // no callout - it would only flash.
+                view.canShowCallout = false
+                view.accessibilityIdentifier = "stop-\(stop.id)"
 
                 view.markerTintColor = UIColor(
                     hex: stop.stopType == "train"
@@ -548,12 +559,30 @@ struct TransitMapView: UIViewRepresentable {
                 return MKOverlayRenderer(overlay: overlay)
             }
 
-            let renderer = MKPolylineRenderer(polyline: line)
+            let renderer = CasedPolylineRenderer(polyline: line)
+            let color = UIColor(hex: line.colorHex)
 
-            renderer.strokeColor = UIColor(hex: line.colorHex)
+            renderer.strokeColor = color
             renderer.lineWidth = line.lineWidth
             renderer.lineCap = .round
             renderer.lineJoin = .round
+
+            if line.isWalk {
+                renderer.lineWidth = max(3, line.lineWidth - 1)
+                renderer.lineDashPattern = [0, NSNumber(value: Double(renderer.lineWidth) * 2)]
+            } else {
+                // Dark outline for light/mid colours; a light one for dark
+                // colours (navy ferries, black routes) that would otherwise
+                // vanish into a dark basemap - and the reverse on light maps.
+                let isDarkMap = mapView.traitCollection.userInterfaceStyle == .dark
+                let luminance = color.relativeLuminance
+                if isDarkMap {
+                    renderer.casingColor = luminance < 0.12 ? UIColor.white.withAlphaComponent(0.85) : UIColor.black.withAlphaComponent(0.6)
+                } else {
+                    renderer.casingColor = luminance > 0.6 ? UIColor.black.withAlphaComponent(0.55) : UIColor.white.withAlphaComponent(0.95)
+                }
+                renderer.casingWidth = 1.75
+            }
 
             return renderer
         }
@@ -568,8 +597,13 @@ struct TransitMapView: UIViewRepresentable {
                 parent.onUserInteraction?()
                 mapView.setVisibleMapRect(Self.expansionRect(for: cluster, in: mapView), animated: true)
             } else if let stop = annotation as? StopAnnotation {
+                // Deselect straight away: MapKit never reports a second tap
+                // on an annotation that's still selected, so coming back
+                // from the board and tapping the same stop did nothing.
+                mapView.deselectAnnotation(stop, animated: false)
                 parent.onSelectStop?(stop.id)
             } else if let vehicle = annotation as? VehicleAnnotation {
+                mapView.deselectAnnotation(vehicle, animated: false)
                 parent.onSelectVehicle?(vehicle.id)
             }
         }

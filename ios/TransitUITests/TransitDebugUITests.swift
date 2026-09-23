@@ -212,6 +212,77 @@ final class TransitDebugUITests: XCTestCase {
                        "cluster didn't expand")
     }
 
+    /// Coming back from the background mustn't drop live tracking while
+    /// the first poll after resuming loads.
+    func testTrackerSurvivesBackground() throws {
+        guard planAndStartJourney() else { return }
+        let live = app.staticTexts["Live"]
+        guard live.waitForExistence(timeout: 25) else { throw XCTSkip("the planned trip has no live vehicle right now") }
+        attach("bg-01-before")
+        XCUIDevice.shared.press(.home)
+        sleep(20)
+        app.activate()
+        let stillTracking = app.staticTexts["Live"].waitForExistence(timeout: 2) || app.staticTexts["Updating"].exists
+        attach("bg-02-after")
+        XCTAssertTrue(stillTracking, "tracking dropped after returning from the background")
+        XCTAssertFalse(app.staticTexts["Timetable only"].exists)
+    }
+
+    /// Stop on the map -> its board -> a service: the tracker must be on
+    /// top (it used to render behind the board), and after going back the
+    /// same stop must open again on the first tap.
+    func testMapStopToServiceStack() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.tabBars.buttons["Stops"].tap()
+        sleep(4)
+        let stopMarkers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stop-"))
+        let groups = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Group of "))
+        // Zoom right in so stops stand alone - a stop folded into a group
+        // keeps its accessibility element (under the group's marker), so
+        // tapping it would hit the group instead.
+        // (Home's embedded map is in the tree too - use the one on screen.)
+        let maps = app.maps.allElementsBoundByIndex.filter { $0.isHittable && $0.frame.height > 300 }
+        guard let map = maps.last else { return XCTFail("no map on screen") }
+        for _ in 0..<2 {
+            map.pinch(withScale: 3, velocity: 3)
+            sleep(2)
+        }
+        let groupFrames = groups.allElementsBoundByIndex.map(\.frame)
+        // The map's accessibility tree includes markers just off screen -
+        // pick one that's actually visible (and clear of the chips/pill).
+        let window = app.windows.firstMatch.frame
+        let visible = (0..<min(stopMarkers.count, 60)).lazy.map { stopMarkers.element(boundBy: $0) }.first { marker in
+            let f = marker.frame
+            return marker.isHittable && !groupFrames.contains(where: { $0.insetBy(dx: -6, dy: -6).intersects(f) })
+                && f.minY > window.height * 0.2 && f.maxY < window.height * 0.75 && f.minX > 20 && f.maxX < window.width - 20
+        }
+        guard let marker = visible else { attach("st-00-no-marker"); return XCTFail("no single stop marker on screen") }
+        let stopID = marker.identifier
+        // A real touch at the marker - an element tap on a map annotation's
+        // accessibility element doesn't reliably select it.
+        marker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        let row = app.buttons.matching(identifier: "departure-row").firstMatch
+        guard row.waitForExistence(timeout: 10) else { attach("st-00-no-board"); return XCTFail("board didn't open") }
+        attach("st-01-board")
+        row.tap()
+        sleep(3)
+        attach("st-02-tracker")
+        XCTAssertTrue(app.navigationBars["Live tracking"].waitForExistence(timeout: 5), "tracker not shown")
+        XCTAssertFalse(row.isHittable, "board is still on top of the tracker")
+
+        app.navigationBars["Live tracking"].buttons.element(boundBy: 0).tap()
+        sleep(1)
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        sleep(2)
+        let sameStop = app.descendants(matching: .any).matching(identifier: stopID).firstMatch
+        guard sameStop.waitForExistence(timeout: 3) else { return XCTFail("stop marker gone after going back") }
+        sameStop.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10), "re-tapping the same stop didn't open it")
+        attach("st-03-reopened")
+    }
+
     /// Regression check for the address-search decode bug (boundingBox
     /// `[Double]?` vs the wire's `[String]?`, fixed 2026-09-22): types a
     /// real street address into the Planner's From field and confirms at
@@ -785,7 +856,9 @@ final class TransitDebugUITests: XCTestCase {
     }
 
     /// Start a journey, re-plan from the tracker, then keep the original.
-    func testReplanFromTracker() throws {
+    /// Plans from the current location to Newmarket and starts tracking
+    /// the first result. False if planning found nothing.
+    private func planAndStartJourney() -> Bool {
         app.launch()
         dismissSystemAlertIfPresent(timeout: 4)
         app.tabBars.buttons["Planner"].tap()
@@ -803,7 +876,7 @@ final class TransitDebugUITests: XCTestCase {
         app.buttons["Plan journey"].tap()
         sleep(8)
         let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
-        guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
+        guard card.waitForExistence(timeout: 5) else { XCTFail("no results"); return false }
         card.tap()
         let start = app.buttons["Start this journey"].exists ? app.buttons["Start this journey"] : app.buttons["Resume tracking"]
         XCTAssertTrue(start.waitForExistence(timeout: 5))
@@ -811,6 +884,11 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 3)
         sleep(5)
 
+        return true
+    }
+
+    func testReplanFromTracker() throws {
+        guard planAndStartJourney() else { return }
         let better = app.buttons["Find a better route"]
         guard better.waitForExistence(timeout: 8) else {
             attach("rp-00-no-button")

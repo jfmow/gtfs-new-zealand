@@ -7,11 +7,15 @@ struct StopsMapView: View {
     /// Shown inside another screen (Home) rather than as its own tab: no
     /// nav title of its own.
     var embedded = false
+    /// Opens a stop's board. The owning screen pushes it onto its own
+    /// stack by value - a push from here via `navigationDestination(item:)`
+    /// mixed with the board's own value-based pushes made the service
+    /// tracker render *behind* the board.
+    var onOpenStop: (BoardDestination) -> Void = { _ in }
 
     @Environment(AppEnvironment.self) private var environment
     @State private var stops: [Stop] = []
     @State private var typeFilter: StopType = .all
-    @State private var selectedStopID: String?
     @State private var errorMessage: String?
     // Captured once (on first real GPS fix, or the region's default centre
     // if location never becomes available) rather than read live from
@@ -38,7 +42,10 @@ struct StopsMapView: View {
                 stops: visibleStops.map(StopAnnotation.init),
                 camera: .region(center: mapCenter ?? environment.region.defaultMapCenter, radiusMeters: 6000),
                 showsUserLocation: environment.location.isAuthorized,
-                onSelectStop: { selectedStopID = $0 },
+                onSelectStop: { id in
+                    guard let stop = stops.first(where: { $0.stopID == id }) else { return }
+                    onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+                },
                 onVisibleRegionChange: { visibleRegion = $0 },
                 centerOnUserLocationTrigger: recenterTrigger
             )
@@ -83,13 +90,6 @@ struct StopsMapView: View {
             guard mapCenter == nil, let newValue else { return }
             mapCenter = newValue
         }
-        .navigationDestination(item: Binding(get: { selectedStop }, set: { selectedStopID = $0?.stopID })) { stop in
-            StopBoardView(stopQuery: stop.boardQuery, title: stop.stopName)
-        }
-    }
-
-    private var selectedStop: Stop? {
-        stops.first { $0.stopID == selectedStopID }
     }
 
     /// A hard ceiling on live annotations, independent of the viewport

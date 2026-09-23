@@ -36,7 +36,7 @@ struct HomeView: View {
                         }
                         .padding(.horizontal, 16)
 
-                        StopsMapView(embedded: true)
+                        StopsMapView(embedded: true, onOpenStop: { path.append($0) })
                             .frame(height: 420)
                             .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
                             .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
