@@ -58,6 +58,7 @@ struct TransitApp: App {
         }
         .modelContainer(modelContainer)
         .onChange(of: scenePhase) { _, phase in
+            environment.journey.setAppActive(phase != .background)
             if phase == .active {
                 Task { await environment.push.refreshAuthorizationStatus() }
             }

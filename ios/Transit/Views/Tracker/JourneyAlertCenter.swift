@@ -33,6 +33,10 @@ final class JourneyAlertCenter {
     private var firedKeys: Set<String> = []
     private var hasFiredArrived = false
     private var hasFiredMissedConnection = false
+    /// Every alert as it fires - `JourneyTrackingSession` turns them into
+    /// notifications while the app is in the background with no connection
+    /// (the server can't push them then).
+    var onFire: ((JourneyAlert) -> Void)?
 
     private func fire(_ key: String, _ variant: JourneyAlert.Variant, _ title: String, _ body: String? = nil, supersedes: [String] = [], urgent: Bool = false) {
         guard !firedKeys.contains(key) else { return }
@@ -43,6 +47,7 @@ final class JourneyAlertCenter {
         if stack.count > Self.maxStack { stack.removeFirst(stack.count - Self.maxStack) }
         // Buzz with it - the rider is often not looking at the screen.
         UINotificationFeedbackGenerator().notificationOccurred(urgent ? .warning : .success)
+        onFire?(alert)
     }
 
     func dismiss(_ id: String) {
@@ -133,6 +138,21 @@ final class JourneyAlertCenter {
                 )
             }
         }
+    }
+}
+
+extension JourneyAlertCenter {
+    /// With no live vehicle to watch (offline, or the feed has nothing for
+    /// it), the boarding heads-up comes from the clock instead: the next
+    /// ride's (last known) departure time. Same key as the vehicle-based
+    /// "almost here", so whichever comes first is the only one shown.
+    func evaluateTimetable(plan: JourneyPlan, progressLegIndex: Int, onboard: Bool, hasVehicle: Bool, now: Date) {
+        guard !hasVehicle else { return }
+        // Only the boarding moment: on board, the rider's GPS drives the
+        // get-off alerts (and "your stop is coming up" from the clock alone
+        // is what the Live Activity countdown is for).
+        guard let board = OfflineJourneyMoments.dueBoarding(legs: plan.legs, progressLegIndex: progressLegIndex, onboard: onboard, now: now) else { return }
+        fire(board.key, .info, board.title, board.body)
     }
 }
 

@@ -7,6 +7,7 @@ struct RootView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @Environment(DeepLinkRouter.self) private var router
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
         @Bindable var router = router
@@ -42,6 +43,9 @@ struct RootView: View {
         .toastOverlay(environment.toasts)
         .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
         .task { await environment.notificationFeed.poll() }
+        // A journey still on from before the app was closed carries on
+        // tracking (from its saved offline data) straight away.
+        .task { environment.journey.restoreIfNeeded(modelContext: modelContext, region: environment.region) }
         .fullScreenCover(item: Binding(get: { router.activeLink }, set: { router.activeLink = $0 })) { link in
             DeepLinkPresentationView(link: link)
         }

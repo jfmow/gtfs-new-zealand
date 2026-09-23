@@ -59,6 +59,9 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         public var walkMeters: Int?
         public var hasVehicle: Bool
         public var occupancy: Int?
+        /// Set by the app only (never the server): no connection, so times
+        /// are timetable-based and on-board progress is from the rider's GPS.
+        public var offline: Bool
 
         public var targetDate: Date { Date(timeIntervalSince1970: targetUnix) }
         public var arrivalDate: Date { Date(timeIntervalSince1970: arrivalUnix) }
@@ -68,7 +71,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             case version, legIndex, phase, routeShortName, routeColorHex, headsign, primaryText, secondaryText
             case countdownLabel, targetUnix, delayMinutes, status, stopsAway, arrivalUnix, progressFraction
             case totalLegs, platform, nextLeg, legChain, updatedUnix, isRealtime
-            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy
+            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline
         }
 
         public init(from decoder: Decoder) throws {
@@ -102,6 +105,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             walkMeters = try? c.decodeIfPresent(Int.self, forKey: .walkMeters)
             hasVehicle = (try? c.decodeIfPresent(Bool.self, forKey: .hasVehicle)) ?? false
             occupancy = try? c.decodeIfPresent(Int.self, forKey: .occupancy)
+            offline = (try? c.decodeIfPresent(Bool.self, forKey: .offline)) ?? false
         }
     }
 

@@ -53,6 +53,9 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
     public var hasVehicle: Bool?
     /// GTFS-RT occupancy status (0 empty ... 6 full), when the vehicle reports it.
     public var occupancy: Int?
+    /// The phone has no connection: times are the timetable plus the last
+    /// delay seen, and progress on board comes from the rider's own GPS.
+    public var offline: Bool?
 
     public init() {}
 }
@@ -73,9 +76,10 @@ public struct LiveActivityProgress: Sendable {
     /// Stops from the ride's boarding stop to its alighting stop.
     public var rideStops: Int?
     public var occupancy: Int?
+    public var offline: Bool
 
     public init(legIndex: Int, phase: String?, arrived: Bool, stopsAway: Int? = nil, nextStopName: String? = nil, isRealtime: Bool = false,
-                hasVehicle: Bool = false, rideStops: Int? = nil, occupancy: Int? = nil) {
+                hasVehicle: Bool = false, rideStops: Int? = nil, occupancy: Int? = nil, offline: Bool = false) {
         self.legIndex = legIndex
         self.phase = phase
         self.arrived = arrived
@@ -85,6 +89,7 @@ public struct LiveActivityProgress: Sendable {
         self.hasVehicle = hasVehicle
         self.rideStops = rideStops
         self.occupancy = occupancy
+        self.offline = offline
     }
 }
 
@@ -97,6 +102,7 @@ public enum LiveActivityContentBuilder {
         c.legChain = legChain(legs)
         c.updatedUnix = now.timeIntervalSince1970.rounded(.down)
         c.isRealtime = progress.isRealtime
+        if progress.offline { c.offline = true }
         c.arrivalUnix = unix(legs.last?.arrivalTime.date) ?? c.updatedUnix
 
         let idx = progress.legIndex

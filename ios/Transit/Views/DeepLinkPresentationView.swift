@@ -67,6 +67,13 @@ struct DeepLinkPresentationView: View {
     }
 
     private func loadPlan(id: String) async {
+        // The journey being tracked (the resume pill, a Live Activity tap,
+        // one of its notifications): no need to - and with no connection,
+        // no way to - fetch it again.
+        if environment.journey.isTracking(id), let current = environment.journey.plan {
+            plan = current
+            return
+        }
         do {
             let plans = try await environment.api.plan(id: id)
             guard let first = plans.first else {
@@ -75,7 +82,12 @@ struct DeepLinkPresentationView: View {
             }
             plan = first
         } catch {
-            errorMessage = error.localizedDescription
+            // Offline: the copy saved when the journey was started.
+            if let saved = environment.journey.offlinePlan(id: id) {
+                plan = saved
+            } else {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

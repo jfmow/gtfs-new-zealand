@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC603ED48D2D68656FFD4A94 /* PlannerView.swift */; };
+		06B32DC2183F46A52E10CD4F /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC7FAECA81EA5EBB21D85948 /* NetworkMonitor.swift */; };
 		08FA57D675CCD6F52AC93975 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
 		09E1349894230E6DF7716258 /* RouteColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447CE7E4167D087A53D88ACF /* RouteColors.swift */; };
 		0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97361DD773747781B3551E93 /* TransitMapView.swift */; };
@@ -18,6 +19,7 @@
 		1FC524C37E82C192F6D3A7CA /* JourneyActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B5FEA401D5F0CFFE22BEFD /* JourneyActivityAttributes.swift */; };
 		21ACF9F838ED7F90C4F9388E /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 561D49DE86ADCD03A767B01F /* Theme.swift */; };
 		2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */; };
+		22EDEC5B08CB976CF167DB8B /* JourneyTrackingSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */; };
 		2606E31600678736BFBEFD42 /* OFL-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 288949DB4B8429132B54B591 /* OFL-LICENSE.txt */; };
 		267E26CB3BFB31C783FFD039 /* TransitCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4ADF43D1975320A2612A72F /* TransitCore */; };
 		2CB10F4764053C265F44F9FE /* StopSearchField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0C64D9A0AF6AA67A9DED78 /* StopSearchField.swift */; };
@@ -67,6 +69,7 @@
 		D1B2D1C33EF981B4E2C381B9 /* TrackedLegRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED9263CC89B1BCDDEDBEA9F /* TrackedLegRow.swift */; };
 		D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9734DB8F92D662AE92B8F808 /* PushStatusCard.swift */; };
 		D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */; };
+		D4031F8CBDBB692F8CF08AE4 /* JourneyOfflineNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */; };
 		D79FCAFA0204273B56A8E423 /* Geist-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4B999CF18305B715D1B381F6 /* Geist-SemiBold.ttf */; };
 		DF2F88155A3D1D9D4BA80A93 /* StopsMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC04636C2AB5C715F467C538 /* StopsMapView.swift */; };
 		DFFF4669C80F59B5DB27ADFC /* TransitApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0A2FEDC5AE691129B9962CD /* TransitApp.swift */; };
@@ -117,6 +120,7 @@
 		1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCards.swift; sourceTree = "<group>"; };
 		288949DB4B8429132B54B591 /* OFL-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-LICENSE.txt"; sourceTree = "<group>"; };
 		2A0C64D9A0AF6AA67A9DED78 /* StopSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopSearchField.swift; sourceTree = "<group>"; };
+		315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingSession.swift; sourceTree = "<group>"; };
 		3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedTripsViews.swift; sourceTree = "<group>"; };
 		3A9E1A8F0724FC6149CED75A /* LocationField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationField.swift; sourceTree = "<group>"; };
 		3B967C20C0A167A8F989E5C5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -134,6 +138,7 @@
 		59E8800859E3E6FF0485748F /* MapControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapControls.swift; sourceTree = "<group>"; };
 		5D014E99D90750C0745D985C /* TransitCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TransitCore; path = Packages/TransitCore; sourceTree = SOURCE_ROOT; };
 		630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Regular.ttf"; sourceTree = "<group>"; };
+		6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyOfflineNotifications.swift; sourceTree = "<group>"; };
 		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
 		7818A7A98B32F728BFDDA7F0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		7A884A001E19B7831038060C /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
@@ -159,12 +164,13 @@
 		D95CDEBAD9C6E847311DB012 /* VehicleQuickLookView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehicleQuickLookView.swift; sourceTree = "<group>"; };
 		DC04636C2AB5C715F467C538 /* StopsMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopsMapView.swift; sourceTree = "<group>"; };
 		DC603ED48D2D68656FFD4A94 /* PlannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerView.swift; sourceTree = "<group>"; };
+		DC7FAECA81EA5EBB21D85948 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkMonitor.swift; sourceTree = "<group>"; };
 		E0A2FEDC5AE691129B9962CD /* TransitApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitApp.swift; sourceTree = "<group>"; };
 		E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMono-Regular.ttf"; sourceTree = "<group>"; };
 		E6679205AD13C763D7EAE51E /* Geist-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Bold.ttf"; sourceTree = "<group>"; };
 		EC7EA77D8B9AB395C7C6770B /* VehiclesMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VehiclesMapView.swift; sourceTree = "<group>"; };
 		EDE6E8A2AB86BD098EB9CBDF /* JourneyAlertCenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyAlertCenter.swift; sourceTree = "<group>"; };
-		F1DFD8622EA93AB001CE7019 /* Transit.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Transit.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1DFD8622EA93AB001CE7019 /* Transit.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Transit.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		F37BEC943B0050ED9D7E4E37 /* AlertSubscriptionSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertSubscriptionSheet.swift; sourceTree = "<group>"; };
 		F7DED3D41B8B950C705520D7 /* LocationProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationProvider.swift; sourceTree = "<group>"; };
 		F80D10048B073FB6A99284CE /* GeistMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "GeistMono-Medium.ttf"; sourceTree = "<group>"; };
@@ -333,8 +339,11 @@
 			isa = PBXGroup;
 			children = (
 				B8AB5EC6CD9EF2B870BB5A08 /* DeepLinkRouter.swift */,
+				6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */,
+				315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */,
 				B9688C841EB837031FC494A7 /* LiveActivityCoordinator.swift */,
 				F7DED3D41B8B950C705520D7 /* LocationProvider.swift */,
+				DC7FAECA81EA5EBB21D85948 /* NetworkMonitor.swift */,
 				FE62F2F13BB499E8A5DED257 /* PushRegistrationService.swift */,
 			);
 			path = Services;
@@ -605,6 +614,8 @@
 				EF58183A535A969F5ECD0873 /* JourneyActivityAttributes.swift in Sources */,
 				B327BDCF76C3F69410561F2B /* JourneyAlertCenter.swift in Sources */,
 				136B4A8556AB059619756417 /* JourneyDetailView.swift in Sources */,
+				D4031F8CBDBB692F8CF08AE4 /* JourneyOfflineNotifications.swift in Sources */,
+				22EDEC5B08CB976CF167DB8B /* JourneyTrackingSession.swift in Sources */,
 				A4DCC987D238BA7E22AFFFFC /* JourneyTrackingView.swift in Sources */,
 				CBBB26C921CCFDDFB0485022 /* LeaveReminderSheet.swift in Sources */,
 				808AE404E59DB50626AA6677 /* LiveActivityCoordinator.swift in Sources */,
@@ -613,6 +624,7 @@
 				5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */,
 				EA987E588AB7E725036D9225 /* MapControls.swift in Sources */,
 				55613541D06874817DB6E3B6 /* MapLocationPickerView.swift in Sources */,
+				06B32DC2183F46A52E10CD4F /* NetworkMonitor.swift in Sources */,
 				66C0021A0F5697C77A78BB4E /* NotificationCenterViews.swift in Sources */,
 				3D0E420829F8C392BADCED92 /* PlannerLocation.swift in Sources */,
 				05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */,
@@ -773,15 +785,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Transit.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2A422A733W;
 				INFOPLIST_FILE = "Generated-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Transit;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
@@ -834,15 +850,19 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = Transit.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 2A422A733W;
 				INFOPLIST_FILE = "Generated-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Transit;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MARKETING_VERSION = 1;
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;

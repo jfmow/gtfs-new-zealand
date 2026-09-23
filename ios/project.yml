@@ -31,7 +31,11 @@ targets:
         CFBundleDisplayName: Transit
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
+        NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, to time walking directions, and to follow a journey you're on - including with no mobile data."
+        # Location keeps running in the background only while a journey is
+        # being tracked (JourneyTrackingSession), so it can follow the ride
+        # and send get-off alerts from GPS when there's no connection.
+        UIBackgroundModes: [location]
         NSSupportsLiveActivities: true
         # The server pushes on every stop the vehicle passes, not just on
         # key moments - lifts the per-hour push budget for that.

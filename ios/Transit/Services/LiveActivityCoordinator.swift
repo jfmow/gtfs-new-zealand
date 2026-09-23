@@ -96,21 +96,29 @@ final class LiveActivityCoordinator {
 
     /// Local, in-app update while the app has a fresh snapshot - immediate,
     /// no server round trip.
-    func update(_ state: JourneyActivityAttributes.ContentState) async {
+    /// - Parameter staleDate: When the widget should start showing the
+    ///   state as out of date - pass it anchored to when the data behind
+    ///   the state last loaded, so a tracker that keeps redrawing old data
+    ///   doesn't keep it looking fresh.
+    func update(_ state: JourneyActivityAttributes.ContentState, staleDate: Date? = nil) async {
         guard let activity else { return }
-        await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(Self.staleAfter)))
+        await activity.update(.init(state: state, staleDate: staleDate ?? Date().addingTimeInterval(Self.staleAfter)))
     }
 
-    func end(finalState: JourneyActivityAttributes.ContentState?) async {
-        guard let activity else { return }
-        stopObservingToken(for: activity.id)
-        if let finalState {
-            await activity.end(.init(state: finalState, staleDate: nil), dismissalPolicy: .after(.now.addingTimeInterval(60)))
-        } else {
+    /// The rider ended the journey: takes every journey activity off the
+    /// Lock Screen and Dynamic Island straight away - not just the tracked
+    /// one, in case a reminder push-started another that was never adopted
+    /// - and tells the server to stop pushing to them.
+    func endAll() async {
+        let tracked = activity
+        activity = nil
+        var ending = Activity<JourneyActivityAttributes>.activities
+        if let tracked, !ending.contains(where: { $0.id == tracked.id }) { ending.append(tracked) }
+        for activity in ending {
+            stopObservingToken(for: activity.id)
             await activity.end(nil, dismissalPolicy: .immediate)
+            try? await api.endLiveActivity(activityID: activity.id)
         }
-        try? await api.endLiveActivity(activityID: activity.id)
-        self.activity = nil
     }
 
     private func endCurrent() async {

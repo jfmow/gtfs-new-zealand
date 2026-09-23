@@ -557,7 +557,16 @@ private struct StatusFooter: View {
     }
 
     @ViewBuilder private var trackingChip: some View {
-        if isStale {
+        if state.offline && !isStale {
+            // The app is still updating this from GPS and the timetable -
+            // not stale, just not live.
+            Chip {
+                HStack(spacing: 4) {
+                    Image(systemName: "wifi.slash").font(.system(size: 9, weight: .semibold))
+                    Text(state.hasVehicle ? "Offline · GPS" : "Offline")
+                }
+            }
+        } else if isStale {
             Chip {
                 HStack(spacing: 4) {
                     Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 9, weight: .semibold))

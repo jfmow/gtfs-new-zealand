@@ -37,7 +37,7 @@
 		<true/>
 	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Used to show nearby stops, your position on the map, and to time walking directions.</string>
+	<string>Used to show nearby stops, your position on the map, to time walking directions, and to follow a journey you're on - including with no mobile data.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
@@ -50,6 +50,10 @@
 		<string>Geist-Bold.ttf</string>
 		<string>GeistMono-Regular.ttf</string>
 		<string>GeistMono-Medium.ttf</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict/>

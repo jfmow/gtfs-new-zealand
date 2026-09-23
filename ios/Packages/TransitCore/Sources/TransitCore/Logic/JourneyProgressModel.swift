@@ -52,7 +52,10 @@ public final class JourneyProgressModel {
     private static let nearBoardBusMeters: Double = 350
 
     public enum Phase: String, Sendable { case walking, waiting, boarding, onboard }
-    public enum TrackingLevel: String, Sendable { case live, predicted, scheduled }
+    /// `estimated`: the tracked "vehicle" is really the rider's own GPS
+    /// (`OfflineRideEstimator`), matched against the trip's stops - used
+    /// while offline, once the rider is detected riding.
+    public enum TrackingLevel: String, Sendable { case live, estimated, predicted, scheduled }
 
     public struct Snapshot: Sendable {
         /// The first leg (of the live-adjusted plan) whose arrival is still
@@ -138,7 +141,8 @@ public final class JourneyProgressModel {
         stopTimesByTripID: [String: [StopTimeUpdate]],
         journeyStarted: Bool,
         trackedStops: [TripStopRef],
-        userLocation: Coordinate?
+        userLocation: Coordinate?,
+        estimatedTripIDs: Set<String> = []
     ) -> Snapshot {
         let legs = plan.legs
         let displayLegs = displayPlan.legs
@@ -215,6 +219,7 @@ public final class JourneyProgressModel {
         )
 
         let trackingLevel: TrackingLevel = {
+            if let trackedTripID, estimatedTripIDs.contains(trackedTripID) { return .estimated }
             if trackedVehicle != nil { return .live }
             if let idx = activeTransitLegIndex, !(stopTimesByTripID[legs[idx].tripID] ?? []).isEmpty { return .predicted }
             return .scheduled

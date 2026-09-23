@@ -19,7 +19,7 @@ final class TransitDebugUITests: XCTestCase {
     /// automation - these live in SpringBoard, not our app, so XCUITest's
     /// normal element queries against `app` never see them.
     private func dismissSystemAlertIfPresent(timeout: TimeInterval = 4) {
-        for label in ["Allow While Using App", "Allow Once", "Open", "OK"] {
+        for label in ["Allow While Using App", "Allow Once", "Allow", "Open", "OK"] {
             let button = springboard.buttons[label]
             if button.waitForExistence(timeout: timeout) {
                 button.tap()
@@ -1185,4 +1185,62 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Minimise"].waitForExistence(timeout: 8), "tracking didn't reopen")
     }
 
+
+    /// Offline journey walkthrough, driven from outside: the shell opens a
+    /// journey (`OFFLINE_JOURNEY_ID`), then cuts the API off and moves the
+    /// simulated location along the ride while this takes screenshots -
+    /// foreground first, then with the app in the background (for the
+    /// notifications) and back.
+    func testOfflineJourneyWalkthrough() throws {
+        let id = ProcessInfo.processInfo.environment["OFFLINE_JOURNEY_ID"] ?? ""
+        guard !id.isEmpty, let url = URL(string: "transit://journey?id=\(id)&region=at&track=1") else { throw XCTSkip("no OFFLINE_JOURNEY_ID") }
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.open(url)
+        for _ in 0..<3 { dismissSystemAlertIfPresent(timeout: 3) }
+        XCTAssertTrue(app.buttons["Minimise"].waitForExistence(timeout: 15), "tracker didn't open")
+        let env = ProcessInfo.processInfo.environment
+        let foregroundShots = Int(env["OFFLINE_FG_SHOTS"] ?? "") ?? 12
+        let backgroundShots = Int(env["OFFLINE_BG_SHOTS"] ?? "") ?? 12
+        for n in 0..<foregroundShots {
+            sleep(20)
+            attach(String(format: "off-fg-%02d", n))
+        }
+        XCUIDevice.shared.press(.home)
+        for n in 0..<backgroundShots {
+            sleep(20)
+            let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            shot.name = String(format: "off-bg-%02d", n)
+            shot.lifetime = .keepAlways
+            add(shot)
+        }
+        app.activate()
+        sleep(3)
+        attach("off-back")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// End on the tracker takes the Live Activity off straight away.
+    func testEndDismissesLiveActivity() throws {
+        let id = ProcessInfo.processInfo.environment["OFFLINE_JOURNEY_ID"] ?? ""
+        guard !id.isEmpty, let url = URL(string: "transit://journey?id=\(id)&region=at&track=1") else { throw XCTSkip("no OFFLINE_JOURNEY_ID") }
+        app.launch()
+        app.open(url)
+        dismissSystemAlertIfPresent(timeout: 3)
+        XCTAssertTrue(app.buttons["End"].waitForExistence(timeout: 15), "tracker didn't open")
+        sleep(3)
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        let before = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); before.name = "end-01-before"; before.lifetime = .keepAlways; add(before)
+        app.activate()
+        sleep(2)
+        attach("end-01b-tracker")
+        app.buttons["End"].tap()
+        sleep(1)
+        attach("end-01c-after-tap")
+        sleep(2)
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); after.name = "end-02-after"; after.lifetime = .keepAlways; add(after)
+    }
 }

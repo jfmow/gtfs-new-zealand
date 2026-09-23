@@ -9,11 +9,13 @@ import TransitCore
 @Observable
 final class AppEnvironment {
     let api: APIClient
-    let location = LocationProvider()
+    let location: LocationProvider
+    let network: NetworkMonitor
     let push: PushRegistrationService
     let liveActivity: LiveActivityCoordinator
     let toasts = ToastCenter()
     let notificationFeed: NotificationFeed
+    let journey: JourneyTrackingSession
     var region: Region {
         didSet {
             guard region != oldValue else { return }
@@ -29,8 +31,14 @@ final class AppEnvironment {
         self.api = api
         let push = PushRegistrationService(api: api)
         self.push = push
-        self.liveActivity = LiveActivityCoordinator(api: api)
+        let liveActivity = LiveActivityCoordinator(api: api)
+        self.liveActivity = liveActivity
         self.notificationFeed = NotificationFeed(api: api)
+        let location = LocationProvider()
+        let network = NetworkMonitor()
+        self.location = location
+        self.network = network
+        self.journey = JourneyTrackingSession(api: api, location: location, network: network, liveActivity: liveActivity, push: push)
         liveActivity.uploadPushToStartToken = { [weak push] token in
             await push?.uploadPushToStartToken(token)
         }
