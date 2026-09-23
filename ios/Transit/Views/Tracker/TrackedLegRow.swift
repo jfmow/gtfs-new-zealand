@@ -13,9 +13,23 @@ struct JourneyTimeline: View {
     let waitMinutes: (Int) -> Int?
     let destinationName: String
     let accent: Color
+    /// Where the journey starts - adds a "Leave from" row at the top (the
+    /// journey preview; the tracker leaves it out).
+    var startName: String?
+
+    /// A wait right before a ride that follows another ride is a transfer.
+    private func isTransfer(before index: Int) -> Bool {
+        legs.indices.contains(index) && legs[index].mode == "transit" && legs[..<index].contains { $0.mode == "transit" }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
+            if let startName, let first = legs.first {
+                TimelineRow(time: first.departureTime.date, rail: .dotted(Theme.mutedForeground.opacity(0.5)), marker: .start, highlighted: false) {
+                    Text("Leave from \(startName)").font(.bodyMedium).padding(.vertical, 10)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
                 TrackedLegRow(
                     leg: leg,
@@ -24,9 +38,11 @@ struct JourneyTimeline: View {
                     destinationName: index == legs.count - 1 ? destinationName : nil,
                     accent: accent
                 )
-                if index < legs.count - 1, let wait = waitMinutes(index), wait >= 1 {
+                if index < legs.count - 1, let wait = waitMinutes(index), wait >= 1 || isTransfer(before: index + 1) {
+                    let transfer = isTransfer(before: index + 1)
                     TimelineRow(time: nil, rail: .dotted(Theme.mutedForeground.opacity(0.4)), marker: .none, highlighted: false) {
-                        Label("\(wait) min wait", systemImage: "clock")
+                        Label(transfer ? (wait >= 1 ? "Transfer · \(wait) min wait" : "Transfer") : "\(wait) min wait",
+                              systemImage: transfer ? "arrow.left.arrow.right" : "clock")
                             .font(.geist(12, relativeTo: .caption))
                             .foregroundStyle(Theme.mutedForeground)
                             .padding(.vertical, 6)
@@ -167,6 +183,7 @@ struct TimelineRow<Content: View>: View {
 
     enum Marker {
         case none
+        case start
         case icon(String, Color)
         case route(String, String)  // name, colour hex
         case stop(Color)
@@ -250,6 +267,10 @@ struct TimelineRow<Content: View>: View {
         switch marker {
         case .none:
             Color.clear.frame(width: 1, height: 24)
+        case .start:
+            Circle().fill(Theme.card).frame(width: 16, height: 16)
+                .overlay(Circle().strokeBorder(Theme.foreground, lineWidth: 3))
+                .padding(.top, 4)
         case .icon(let name, let color):
             Image(systemName: name)
                 .font(.system(size: 11, weight: .semibold))

@@ -35,8 +35,13 @@ struct RouteMultiSelect: View {
                 Button {
                     isAdding = true
                 } label: {
-                    Label(selected.isEmpty ? "Add route" : "Add", systemImage: "plus")
-                        .font(.geist(13, .medium, relativeTo: .footnote))
+                    // Not a Label: inside a Form row it collapses to its icon.
+                    HStack(spacing: 4) {
+                        Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
+                        Text(selected.isEmpty ? "Add route" : "Add")
+                    }
+                    .font(.geist(13, .medium, relativeTo: .footnote))
+                    .fixedSize()
                 }
                 .buttonStyle(.shad(.outline, size: .sm))
             }

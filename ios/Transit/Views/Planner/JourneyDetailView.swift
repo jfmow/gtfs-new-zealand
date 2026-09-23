@@ -44,14 +44,18 @@ struct JourneyDetailView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    SectionLabel(text: "\(plan.legs.count) leg\(plan.legs.count == 1 ? "" : "s")")
-                    VStack(spacing: 0) {
-                        ForEach(Array(plan.legs.enumerated()), id: \.offset) { index, leg in
-                            if index > 0 { RowDivider() }
-                            LegRow(leg: leg).padding(.horizontal, 14).padding(.vertical, 12)
-                        }
-                    }
-                    .shadCardBackground()
+                    SectionLabel(text: "Your trip")
+                    // The same timeline as live tracking, so the preview and
+                    // the tracker read the same way.
+                    JourneyTimeline(
+                        legs: plan.legs,
+                        status: { _ in .upcoming },
+                        progress: { _ in nil },
+                        waitMinutes: waitMinutes(after:),
+                        destinationName: context?.end?.label ?? plan.legs.last?.toStop?.stopName ?? "your destination",
+                        accent: Theme.live,
+                        startName: context?.start?.label ?? plan.legs.first?.fromStop?.stopName
+                    )
                 }
 
                 actions
@@ -126,6 +130,13 @@ struct JourneyDetailView: View {
         }
     }
 
+    private func waitMinutes(after index: Int) -> Int? {
+        guard index + 1 < plan.legs.count,
+              let end = plan.legs[index].arrivalTime.date,
+              let start = plan.legs[index + 1].departureTime.date else { return nil }
+        return max(0, Int((start.timeIntervalSince(end) / 60).rounded()))
+    }
+
     private var defaultContext: PlannerSearchContext {
         PlannerSearchContext(start: nil, end: nil, arriveBy: false, maxWalkKm: 1, walkSpeed: 4.8, maxTransfers: 5, onlyRoutes: [])
     }
@@ -179,63 +190,5 @@ struct JourneyDetailView: View {
         modelContext.insert(journey)
         isActive = true
         isTracking = true
-    }
-}
-
-/// One leg: a route badge (or walker), what to do, where from, and live
-/// status.
-struct LegRow: View {
-    let leg: JourneyLeg
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if leg.mode == "walk" {
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Theme.mutedForeground)
-                        .frame(width: 36, height: 24)
-                } else {
-                    RouteBadge(name: leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID,
-                               colorHex: leg.route?.routeColor ?? "", dimmed: !leg.tripUsable, size: 12)
-                        .frame(minWidth: 36, alignment: .leading)
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                if leg.mode == "walk" {
-                    Text("Walk \(TimeFormatting.formatDistance(meters: leg.distanceKm * 1000))")
-                        .font(.bodyMedium)
-                    if let to = leg.toStop {
-                        Text("to \(to.stopName)").font(.meta).foregroundStyle(Theme.mutedForeground)
-                    }
-                } else {
-                    Text("To \(leg.toStop?.stopName ?? "")").font(.bodyMedium).fixedSize(horizontal: false, vertical: true)
-                    if let from = leg.fromStop {
-                        Text("from \(from.stopName)\(from.platformNumber.isEmpty ? "" : " · Platform \(from.platformNumber)")")
-                            .font(.meta).foregroundStyle(Theme.mutedForeground)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if !leg.tripUsable {
-                        Text("Not running").font(.metaMedium).foregroundStyle(Theme.danger)
-                    } else if let delay = leg.delaySeconds, delay >= 60 {
-                        Text("Delayed \(delay / 60) min").font(.metaMedium).foregroundStyle(Theme.warning)
-                    } else if let delay = leg.delaySeconds, delay <= -60 {
-                        Text("Early \(-delay / 60) min").font(.metaMedium).foregroundStyle(Theme.success)
-                    } else if leg.realtimeStatus == "on_time" {
-                        Text("On time").font(.metaMedium).foregroundStyle(Theme.success)
-                    }
-                }
-            }
-
-            Spacer(minLength: 8)
-
-            VStack(alignment: .trailing, spacing: 2) {
-                if let departure = leg.departureTime.date {
-                    Text(departure, style: .time).font(.metaMedium).monospacedDigit()
-                }
-                Text(TimeFormatting.formatDuration(leg.duration)).font(.meta).foregroundStyle(Theme.mutedForeground).monospacedDigit()
-            }
-        }
     }
 }

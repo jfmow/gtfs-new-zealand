@@ -32,79 +32,78 @@ extension SavedTrip {
 
 // MARK: - Rail (quick-trips-rail.tsx)
 
-struct QuickTripsRail: View {
+/// Saved trips under the planner form: full-width rows (colour tile, name,
+/// from -> to), tap to plan. Long-press to rename, recolour or delete;
+/// reordering lives in the Manage sheet.
+struct SavedTripsList: View {
     let trips: [SavedTrip]
     let onLoad: (SavedTrip) -> Void
+    let onManage: () -> Void
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Saved trips").font(.metaMedium).foregroundStyle(Theme.mutedForeground)
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(Array(trips.enumerated()), id: \.element.persistentModelID) { index, trip in
-                        TripCard(
-                            trip: trip,
-                            canMoveLeft: index > 0,
-                            canMoveRight: index < trips.count - 1,
-                            onLoad: { onLoad(trip) },
-                            onMove: { move(from: index, by: $0) },
-                            onDelete: {
-                                modelContext.delete(trip)
-                                environment.toasts.show("Trip deleted")
-                            }
-                        )
+            HStack {
+                SectionLabel(text: "Saved trips")
+                Spacer()
+                Button("Manage", action: onManage)
+                    .font(.metaMedium)
+                    .foregroundStyle(Theme.mutedForeground)
+            }
+            VStack(spacing: 0) {
+                ForEach(Array(trips.enumerated()), id: \.element.persistentModelID) { index, trip in
+                    if index > 0 { RowDivider() }
+                    TripRow(trip: trip, onLoad: { onLoad(trip) }, onManage: onManage) {
+                        modelContext.delete(trip)
+                        environment.toasts.show("Trip deleted")
                     }
                 }
-                .padding(.vertical, 2)
             }
+            .shadCardBackground()
         }
-    }
-
-    private func move(from index: Int, by offset: Int) {
-        var ordered = trips
-        let target = index + offset
-        guard ordered.indices.contains(target) else { return }
-        ordered.swapAt(index, target)
-        for (i, trip) in ordered.enumerated() { trip.sortOrder = i }
     }
 }
 
-private struct TripCard: View {
+private struct TripRow: View {
     @Bindable var trip: SavedTrip
-    let canMoveLeft: Bool
-    let canMoveRight: Bool
     let onLoad: () -> Void
-    let onMove: (Int) -> Void
+    let onManage: () -> Void
     let onDelete: () -> Void
 
     @State private var isRenaming = false
     @State private var draftName = ""
 
     var body: some View {
-        let accent = Color(hex: trip.colorHex)
         Button(action: onLoad) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: "point.topleft.down.to.point.bottomright.curvepath").font(.system(size: 11, weight: .semibold)).foregroundStyle(accent)
-                    Text(trip.name).font(.bodyMedium).foregroundStyle(Theme.foreground).lineLimit(1)
+            HStack(spacing: 12) {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(Color(hex: trip.colorHex).opacity(0.18))
+                    .overlay(
+                        Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color(hex: trip.colorHex))
+                    )
+                    .frame(width: 36, height: 36)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(trip.name).font(.bodyMedium).foregroundStyle(Theme.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("\(trip.startLabel) → \(trip.endLabel)")
+                        .font(.meta)
+                        .foregroundStyle(Theme.mutedForeground)
+                        .lineLimit(2)
                 }
-                Text("\(trip.startLabel) → \(trip.endLabel)")
-                    .font(.meta)
-                    .foregroundStyle(Theme.mutedForeground)
-                    .lineLimit(1)
+                Spacer(minLength: 8)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground.opacity(0.7))
+                    .accessibilityHidden(true)
             }
-            .padding(12)
-            .frame(width: 200, alignment: .leading)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
-            .overlay(alignment: .leading) {
-                UnevenRoundedRectangle(topLeadingRadius: Theme.radiusLG, bottomLeadingRadius: Theme.radiusLG, style: .continuous)
-                    .fill(accent).frame(width: 3)
-            }
-            .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-            .contentShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -113,8 +112,7 @@ private struct TripCard: View {
                 isRenaming = true
             } label: { Label("Rename", systemImage: "pencil") }
             SwatchMenu(selectedHex: trip.colorHex) { trip.colorHex = $0 }
-            if canMoveLeft { Button { onMove(-1) } label: { Label("Move left", systemImage: "arrow.left") } }
-            if canMoveRight { Button { onMove(1) } label: { Label("Move right", systemImage: "arrow.right") } }
+            Button(action: onManage) { Label("Reorder", systemImage: "arrow.up.arrow.down") }
             Divider()
             Button(role: .destructive, action: onDelete) { Label("Delete", systemImage: "trash") }
         }
@@ -126,7 +124,7 @@ private struct TripCard: View {
             }
             Button("Cancel", role: .cancel) {}
         }
-        .accessibilityHint("Loads this trip. Touch and hold for options.")
+        .accessibilityHint("Plans this trip. Touch and hold for options.")
     }
 }
 

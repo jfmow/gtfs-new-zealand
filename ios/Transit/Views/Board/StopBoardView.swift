@@ -70,6 +70,7 @@ struct StopBoardView: View {
                             .foregroundStyle(favourites.isEmpty ? Theme.foreground : Color(hex: "eab308"))
                     }
                     .accessibilityLabel(favourites.isEmpty ? "Add to favourites" : "Remove from favourites")
+                    .accessibilityLabel(favourites.isEmpty ? "Add to favourites" : "Remove from favourites")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     // The web header's other actions: timetable for a date,

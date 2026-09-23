@@ -228,6 +228,75 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Timetable only"].exists)
     }
 
+    /// Screens touched by the UI cleanup, for review: Home with a
+    /// favourite, a bus stop's route filter, the planner (options sheet,
+    /// results, journey detail).
+    func testCleanupSurvey() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        let search = app.textFields["Search for stop..."]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+
+        // Favourite Britomart (if it isn't already), then back to Home.
+        search.tap()
+        search.typeText("Britomart")
+        sleep(2)
+        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Britomart")).firstMatch.tap()
+        sleep(3)
+        if app.buttons["Add to favourites"].waitForExistence(timeout: 3) { app.buttons["Add to favourites"].tap() }
+        app.navigationBars.buttons.element(boundBy: 0).tap()
+        sleep(3)
+        attach("cs-01-home")
+
+        // A bus stop (no platforms) - route filter chips.
+        search.tap()
+        search.typeText("Customs Street")
+        sleep(2)
+        let bus = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Customs")).firstMatch
+        if bus.waitForExistence(timeout: 3) {
+            bus.tap()
+            sleep(4)
+            attach("cs-02-bus-board")
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            sleep(1)
+        }
+
+        // Planner.
+        app.tabBars.buttons["Planner"].tap()
+        sleep(2)
+        attach("cs-03-planner")
+        let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Options")).firstMatch
+        if options.waitForExistence(timeout: 3) {
+            options.tap()
+            sleep(2)
+            attach("cs-04-options")
+            app.buttons["Done"].tap()
+            sleep(1)
+        }
+        let from = app.textFields["From"]
+        from.tap()
+        if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
+        sleep(3)
+        let to = app.textFields["To"]
+        to.tap()
+        to.typeText("Onehunga")
+        sleep(3)
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Onehunga", "Resume")).firstMatch
+        if result.waitForExistence(timeout: 5) { result.tap() }
+        app.buttons["Plan journey"].tap()
+        sleep(8)
+        attach("cs-05-results")
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
+        if card.waitForExistence(timeout: 5) {
+            card.tap()
+            sleep(3)
+            attach("cs-06-detail")
+            app.swipeUp()
+            sleep(1)
+            attach("cs-07-detail-timeline")
+        }
+    }
+
     /// Stop on the map -> its board -> a service: the tracker must be on
     /// top (it used to render behind the board), and after going back the
     /// same stop must open again on the first tap.
@@ -588,11 +657,12 @@ final class TransitDebugUITests: XCTestCase {
                 sleep(3)
                 attach(name)
             }
-            if tab == "Planner", app.buttons["Options"].waitForExistence(timeout: 2) {
-                app.buttons["Options"].tap()
+            let options = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Options")).firstMatch
+            if tab == "Planner", options.waitForExistence(timeout: 2) {
+                options.tap()
                 sleep(1)
                 attach("vp-05b-planner-options")
-                app.buttons["Options"].tap()
+                app.buttons["Done"].tap()
             }
         }
 
@@ -798,7 +868,7 @@ final class TransitDebugUITests: XCTestCase {
         sleep(8)
         attach("pl-04-results")
 
-        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
         guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
         card.tap()
         sleep(3)
@@ -832,7 +902,7 @@ final class TransitDebugUITests: XCTestCase {
         if result.waitForExistence(timeout: 5) { result.tap() }
         app.buttons["Plan journey"].tap()
         sleep(8)
-        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
         guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
         card.tap()
         let start = app.buttons["Start this journey"]
@@ -875,7 +945,7 @@ final class TransitDebugUITests: XCTestCase {
         if result.waitForExistence(timeout: 5) { result.tap() }
         app.buttons["Plan journey"].tap()
         sleep(8)
-        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
         guard card.waitForExistence(timeout: 5) else { XCTFail("no results"); return false }
         card.tap()
         let start = app.buttons["Start this journey"].exists ? app.buttons["Start this journey"] : app.buttons["Resume tracking"]

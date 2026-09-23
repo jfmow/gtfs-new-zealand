@@ -61,13 +61,13 @@ struct PlannerView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
-                    header
                     // Above everything below it, so the From/To dropdowns
-                    // draw over the saved-trips rail and results rather
-                    // than behind them.
+                    // draw over the saved trips and results rather than
+                    // behind them.
                     form.zIndex(1)
-                    if !savedTrips.isEmpty {
-                        QuickTripsRail(trips: savedTrips) { apply($0) }
+                    // Saved trips fill the page until there are results.
+                    if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
+                        SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
                     }
                     replanBanner
                     latestLeaveBanner
@@ -90,6 +90,29 @@ struct PlannerView: View {
             .navigationTitle("Planner")
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        Button { isManaging = true } label: {
+                            Label(savedTrips.isEmpty ? "Saved trips" : "Saved trips (\(savedTrips.count))", systemImage: "bookmark")
+                        }
+                        Button { isUpdatingAll = true } label: {
+                            Label("Update all trips", systemImage: "slider.horizontal.3")
+                        }
+                        .disabled(savedTrips.isEmpty)
+                    } label: {
+                        Image(systemName: "bookmark")
+                    }
+                    .accessibilityLabel("Saved trips")
+                }
+            }
+            .sheet(isPresented: $showsOptions) {
+                PlannerOptionsSheet(
+                    timeType: $timeType, date: $date, maxWalkKm: $maxWalkKm, walkSpeed: $walkSpeed,
+                    maxTransfers: $maxTransfers, minResults: $minResults, onlyRoutes: $onlyRoutes
+                )
+                .shadSheet(detents: [.medium, .large])
+            }
             .navigationDestination(for: JourneyPlan.self) { plan in
                 JourneyDetailView(plan: plan, context: resultsContext)
             }
@@ -119,35 +142,6 @@ struct PlannerView: View {
             guard let prefill else { return }
             router.pendingPlan = nil
             apply(prefill)
-        }
-    }
-
-    // MARK: - Header ("Journey Planner" + Saved (n) + update all)
-
-    private var header: some View {
-        HStack(spacing: 4) {
-            Text("Journey Planner").font(.pageTitle)
-            Spacer(minLength: 8)
-            Button {
-                isManaging = true
-            } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "list.bullet").font(.system(size: 12, weight: .medium))
-                    Text("Saved")
-                    if !savedTrips.isEmpty {
-                        Text("(\(savedTrips.count))").foregroundStyle(Theme.mutedForeground).monospacedDigit()
-                    }
-                }
-            }
-            .buttonStyle(.shad(.ghost, size: .sm))
-            Button {
-                isUpdatingAll = true
-            } label: {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .medium))
-            }
-            .buttonStyle(.shad(.ghost, size: .iconSm))
-            .disabled(savedTrips.isEmpty)
-            .accessibilityLabel("Update all trips")
         }
     }
 
@@ -216,60 +210,45 @@ struct PlannerView: View {
         }
     }
 
+    /// One row that always says what the search will use, and opens the
+    /// options sheet - rather than a wall of pickers in the page.
     private var optionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Button {
-                withAnimation(.easeOut(duration: 0.2)) { showsOptions.toggle() }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "slider.horizontal.3").font(.system(size: 12))
-                    Text("Options")
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .rotationEffect(.degrees(showsOptions ? 180 : 0))
-                    if !showsOptions, let summary = optionsSummary {
-                        Text(summary).foregroundStyle(Theme.mutedForeground).lineLimit(1)
-                    }
-                }
-                .font(.meta)
-                .foregroundStyle(Theme.mutedForeground)
+        Button {
+            showsOptions = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .medium))
+                Text(optionsSummary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
             }
-            .buttonStyle(.plain)
-            .accessibilityValue(showsOptions ? "Expanded" : "Collapsed")
-
-            if showsOptions {
-                VStack(alignment: .leading, spacing: 12) {
-                    FlowLayout(spacing: 8, lineSpacing: 8) {
-                        ShadSelect(selection: $timeType, options: [(.now, "Leave now"), (.departat, "Leave at"), (.arriveat, "Arrive by")])
-                        if timeType != .now {
-                            DatePicker("When", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                                .labelsHidden()
-                                .datePickerStyle(.compact)
-                                .tint(Theme.primary)
-                        }
-                        ShadSelect(label: "Max walk:", selection: $maxWalkKm, options: maxWalkChoices)
-                        ShadSelect(label: "Speed:", selection: $walkSpeed, options: walkSpeedChoices)
-                        ShadSelect(label: "Transfers:", selection: $maxTransfers, options: transferChoices)
-                        ShadSelect(label: "Show:", selection: $minResults, options: resultCountChoices)
-                    }
-                    RouteMultiSelect(selected: $onlyRoutes)
-                }
-                .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            .font(.meta)
+            .foregroundStyle(Theme.mutedForeground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(Theme.muted.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous))
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Options: \(optionsSummary)")
     }
 
-    /// Non-default options, shown next to the collapsed "Options" toggle so
-    /// a changed setting is never hidden.
-    private var optionsSummary: String? {
+    /// Every option in a few words - "Leave now · 1 km walk · Normal ·
+    /// up to 5 transfers".
+    private var optionsSummary: String {
         var parts: [String] = []
-        if timeType == .departat { parts.append("Leave \(date.formatted(date: .omitted, time: .shortened))") }
-        if timeType == .arriveat { parts.append("Arrive by \(date.formatted(date: .omitted, time: .shortened))") }
-        if maxWalkKm != 1 { parts.append("\(maxWalkKm == maxWalkKm.rounded() ? String(Int(maxWalkKm)) : String(maxWalkKm)) km walk") }
-        if walkSpeed != 4.8 { parts.append(walkSpeedLabel(walkSpeed)) }
-        if maxTransfers != 5 { parts.append(maxTransfers == 0 ? "Direct" : "≤\(maxTransfers) transfers") }
-        if !onlyRoutes.isEmpty { parts.append("\(onlyRoutes.count) route\(onlyRoutes.count == 1 ? "" : "s")") }
-        return parts.isEmpty ? nil : "· " + parts.joined(separator: " · ")
+        switch timeType {
+        case .now: parts.append("Leave now")
+        case .departat: parts.append("Leave \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))")
+        case .arriveat: parts.append("Arrive by \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))")
+        }
+        parts.append("\(maxWalkKm == maxWalkKm.rounded() ? String(Int(maxWalkKm)) : String(maxWalkKm)) km walk")
+        parts.append(walkSpeedLabel(walkSpeed))
+        parts.append(maxTransfers == 0 ? "Direct only" : "up to \(maxTransfers) transfer\(maxTransfers == 1 ? "" : "s")")
+        if !onlyRoutes.isEmpty { parts.append("\(onlyRoutes.count) route\(onlyRoutes.count == 1 ? "" : "s") only") }
+        return parts.joined(separator: " · ")
     }
 
     // MARK: - Re-plan mid-journey
@@ -512,23 +491,7 @@ struct JourneyResultCard: View {
                     }
                 }
 
-                FlowLayout(spacing: 4, lineSpacing: 6) {
-                    ForEach(Array(plan.legs.enumerated()), id: \.offset) { index, leg in
-                        legChip(leg)
-                        if index < plan.legs.count - 1 {
-                            chevron
-                            if let wait = waitMinutes(after: leg, before: plan.legs[index + 1]), wait >= 1 {
-                                HStack(spacing: 3) {
-                                    Image(systemName: "clock").font(.system(size: 9))
-                                    Text("\(wait) min")
-                                }
-                                .font(.geist(12, relativeTo: .caption))
-                                .foregroundStyle(Theme.mutedForeground)
-                                chevron
-                            }
-                        }
-                    }
-                }
+                LegChain(legs: plan.legs)
             }
             .padding(14)
         }
@@ -537,39 +500,231 @@ struct JourneyResultCard: View {
         .shadCardBackground()
         .accessibilityElement(children: .combine)
     }
+}
 
-    private var chevron: some View {
-        Image(systemName: "arrow.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(Theme.mutedForeground)
-    }
+// MARK: - Options sheet
 
-    @ViewBuilder
-    private func legChip(_ leg: JourneyLeg) -> some View {
-        if leg.mode == "walk" {
-            HStack(spacing: 3) {
-                Image(systemName: "figure.walk").font(.system(size: 10))
-                Text("\(max(0, Int((leg.duration.timeInterval / 60).rounded()))) min")
-            }
-            .font(.geist(12, relativeTo: .caption))
-            .foregroundStyle(Theme.mutedForeground)
-        } else {
-            RouteBadge(
-                name: leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID,
-                colorHex: leg.route?.routeColor ?? "",
-                dimmed: !leg.tripUsable,
-                size: 11
-            )
-            .overlay(alignment: .topTrailing) {
-                if let status = leg.realtimeStatus, status == "delayed" || status == "early" {
-                    LiveDot(color: status == "delayed" ? Theme.warning : Theme.success)
-                        .offset(x: 3, y: -3)
+/// The planner's search options as a native form.
+struct PlannerOptionsSheet: View {
+    @Binding var timeType: JourneyPlanRequest.TimeType
+    @Binding var date: Date
+    @Binding var maxWalkKm: Double
+    @Binding var walkSpeed: Double
+    @Binding var maxTransfers: Int
+    @Binding var minResults: Int
+    @Binding var onlyRoutes: [RouteSearchResult]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("When") {
+                    Picker("When", selection: $timeType) {
+                        Text("Leave now").tag(JourneyPlanRequest.TimeType.now)
+                        Text("Leave at").tag(JourneyPlanRequest.TimeType.departat)
+                        Text("Arrive by").tag(JourneyPlanRequest.TimeType.arriveat)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Theme.card)
+                    if timeType != .now {
+                        DatePicker(timeType == .arriveat ? "Arrive by" : "Leave at", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                            .listRowBackground(Theme.card)
+                    }
                 }
+                Section("Walking") {
+                    Picker("Max walk", selection: $maxWalkKm) {
+                        ForEach(maxWalkChoices, id: \.value) { Text($0.title).tag($0.value) }
+                    }
+                    .listRowBackground(Theme.card)
+                    Picker("Speed", selection: $walkSpeed) {
+                        ForEach(walkSpeedChoices, id: \.value) { Text($0.title).tag($0.value) }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Theme.card)
+                }
+                Section("Results") {
+                    Picker("Transfers", selection: $maxTransfers) {
+                        ForEach(transferChoices, id: \.value) { Text($0.title).tag($0.value) }
+                    }
+                    .listRowBackground(Theme.card)
+                    Picker("Show", selection: $minResults) {
+                        ForEach(resultCountChoices, id: \.value) { Text($0.title).tag($0.value) }
+                    }
+                    .listRowBackground(Theme.card)
+                }
+                Section {
+                    RouteMultiSelect(selected: $onlyRoutes)
+                        .listRowBackground(Theme.card)
+                } footer: {
+                    Text("Leave empty to use any route.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .pageBackground()
+            .tint(Theme.primary)
+            .navigationTitle("Options")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Reset") {
+                        timeType = .now
+                        date = Date()
+                        maxWalkKm = 1
+                        walkSpeed = 4.8
+                        maxTransfers = 5
+                        minResults = 3
+                        onlyRoutes = []
+                    }
+                }
+                DoneButton()
+            }
+        }
+    }
+}
+
+// MARK: - Leg chain
+
+/// A journey at a glance: start -> walk -> ride -> transfer -> ride -> end.
+/// Each ride shows its mode (bus/train/ferry) with the route badge; a
+/// change between rides gets a transfer marker with the wait.
+struct LegChain: View {
+    let legs: [JourneyLeg]
+
+    private enum Item: Identifiable {
+        case start, end
+        case walk(minutes: Int, index: Int)
+        case ride(JourneyLeg, index: Int)
+        case transfer(waitMinutes: Int?, index: Int)
+
+        var id: String {
+            switch self {
+            case .start: "start"
+            case .end: "end"
+            case .walk(_, let i): "walk-\(i)"
+            case .ride(_, let i): "ride-\(i)"
+            case .transfer(_, let i): "transfer-\(i)"
             }
         }
     }
 
-    private func waitMinutes(after previous: JourneyLeg, before next: JourneyLeg) -> Int? {
-        guard let end = previous.arrivalTime.date, let start = next.departureTime.date else { return nil }
-        let minutes = Int((start.timeIntervalSince(end) / 60).rounded(.down))
-        return minutes > 0 ? minutes : nil
+    private var items: [Item] {
+        var out: [Item] = [.start]
+        var lastRideArrival: Date?
+        for (index, leg) in legs.enumerated() {
+            if leg.mode == "walk" {
+                out.append(.walk(minutes: max(1, Int((leg.duration.timeInterval / 60).rounded())), index: index))
+            } else {
+                if let lastRideArrival {
+                    let walkAfter = legs[..<index].reversed().prefix { $0.mode == "walk" }.reduce(0.0) { $0 + $1.duration.timeInterval }
+                    let wait = leg.departureTime.date.map { Int((($0.timeIntervalSince(lastRideArrival) - walkAfter) / 60).rounded(.down)) }
+                    out.append(.transfer(waitMinutes: wait.map { max(0, $0) }, index: index))
+                }
+                out.append(.ride(leg, index: index))
+                lastRideArrival = leg.arrivalTime.date
+            }
+        }
+        out.append(.end)
+        return out
+    }
+
+    var body: some View {
+        FlowLayout(spacing: 4, lineSpacing: 6) {
+            let all = items
+            ForEach(Array(all.enumerated()), id: \.element.id) { position, item in
+                view(for: item)
+                if position < all.count - 1 { connector }
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var connector: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 8, weight: .semibold))
+            .foregroundStyle(Theme.mutedForeground.opacity(0.7))
+    }
+
+    @ViewBuilder
+    private func view(for item: Item) -> some View {
+        switch item {
+        case .start:
+            Circle()
+                .strokeBorder(Theme.foreground, lineWidth: 2)
+                .frame(width: 10, height: 10)
+                .padding(.horizontal, 1)
+        case .end:
+            Image(systemName: "flag.checkered")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Theme.foreground)
+        case .walk(let minutes, _):
+            HStack(spacing: 2) {
+                Image(systemName: "figure.walk").font(.system(size: 11, weight: .medium))
+                Text("\(minutes)").monospacedDigit()
+            }
+            .font(.geist(12, relativeTo: .caption))
+            .foregroundStyle(Theme.mutedForeground)
+        case .ride(let leg, _):
+            HStack(spacing: 4) {
+                Image(systemName: leg.modeSymbol)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.foreground)
+                RouteBadge(
+                    name: leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID,
+                    colorHex: leg.route?.routeColor ?? "",
+                    dimmed: !leg.tripUsable,
+                    size: 11
+                )
+                .overlay(alignment: .topTrailing) {
+                    if let status = leg.realtimeStatus, status == "delayed" || status == "early" {
+                        LiveDot(color: status == "delayed" ? Theme.warning : Theme.success)
+                            .offset(x: 3, y: -3)
+                    }
+                }
+            }
+        case .transfer(let wait, _):
+            HStack(spacing: 2) {
+                Image(systemName: "arrow.left.arrow.right").font(.system(size: 10, weight: .semibold))
+                if let wait, wait > 0 { Text("\(wait)m").monospacedDigit() }
+            }
+            .font(.geist(11, .medium, relativeTo: .caption))
+            .foregroundStyle(Theme.mutedForeground)
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(Theme.muted, in: Capsule())
+        }
+    }
+
+    private var accessibilityText: String {
+        items.compactMap { item in
+            switch item {
+            case .start: return nil
+            case .end: return "arrive"
+            case .walk(let minutes, _): return "walk \(minutes) minutes"
+            case .ride(let leg, _):
+                let name = leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID
+                return "\(leg.modeName) \(name)"
+            case .transfer(let wait, _): return wait.map { "transfer, \($0) minute wait" } ?? "transfer"
+            }
+        }
+        .joined(separator: ", ")
+    }
+}
+
+extension JourneyLeg {
+    /// bus / train / ferry, from the route's vehicle type (or GTFS route
+    /// type as a fallback).
+    var modeName: String {
+        let type = route?.vehicleType.lowercased() ?? ""
+        if type.contains("train") || type.contains("rail") || route?.routeType == 2 { return "train" }
+        if type.contains("ferry") || route?.routeType == 4 { return "ferry" }
+        return "bus"
+    }
+
+    var modeSymbol: String {
+        switch modeName {
+        case "train": "tram.fill"
+        case "ferry": "ferry.fill"
+        default: "bus.fill"
+        }
     }
 }

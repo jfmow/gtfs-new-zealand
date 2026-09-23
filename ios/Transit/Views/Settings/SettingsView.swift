@@ -58,12 +58,10 @@ struct SettingsView: View {
         @Bindable var environment = environment
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Settings").font(.geist(22, .semibold, relativeTo: .title2))
-                    Text("Manage your preferences").font(.bodyText).foregroundStyle(Theme.mutedForeground)
-                }
-
                 SettingsGroup {
+                    notificationsRow
+                    RowDivider()
+
                     NavigationLink {
                         ManageNotificationsView()
                     } label: {
@@ -100,11 +98,6 @@ struct SettingsView: View {
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    SectionLabel(text: "Notifications on this device")
-                    ShadCard { PushStatusCard() }
-                }
-
                 Text("Version \(Bundle.main.appVersionString)")
                     .font(.meta)
                     .foregroundStyle(Theme.mutedForeground)
@@ -120,6 +113,32 @@ struct SettingsView: View {
                 Button("Done") { dismiss() }
             }
         }
+    }
+}
+
+extension SettingsView {
+    /// One row saying whether notifications work here; the permission /
+    /// registration / token details and the test push live one level down.
+    var notificationsRow: some View {
+        let push = environment.push
+        let ok = push.isAuthorized && push.isRegisteredWithBackend && push.hasUploadedToken
+        let detail = !push.isAuthorized ? "Off - turn on to get alerts and reminders"
+            : ok ? "On" : "Setting up - tap for details"
+        return NavigationLink {
+            ScrollView {
+                ShadCard { PushStatusCard() }.padding(16)
+            }
+            .pageBackground()
+            .navigationTitle("Notification diagnostics")
+            .navigationBarTitleDisplayMode(.inline)
+        } label: {
+            SettingsRow(icon: ok ? "bell" : "bell.slash", title: "Notifications", detail: detail) {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground)
+            }
+        }
+        .buttonStyle(.plain)
     }
 }
 

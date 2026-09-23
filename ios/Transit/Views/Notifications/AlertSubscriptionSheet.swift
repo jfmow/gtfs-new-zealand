@@ -35,6 +35,7 @@ struct AlertSubscriptionSheet: View {
     @State private var hasInteracted = false
     @State private var saveTask: Task<Void, Never>?
     @State private var confirmingDisableAll = false
+    @State private var lastSaved: Date?
 
     private var isStop: Bool { if case .stop = target { return true } else { return false } }
 
@@ -48,7 +49,7 @@ struct AlertSubscriptionSheet: View {
                 }
             }
             .pageBackground()
-            .navigationTitle(isSubscribed ? "Edit alerts" : "Enable alerts")
+            .navigationTitle(target.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -69,20 +70,12 @@ struct AlertSubscriptionSheet: View {
         }
     }
 
+    /// A native settings form: one switch to turn alerts on, then (once on)
+    /// what to be alerted about. Changes save themselves.
     private var form: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(target.title).font(.pageTitle)
-                    Text(isSubscribed
-                         ? "Your changes are saved automatically."
-                         : (isStop ? "Select routes to receive notifications for delays or cancellations." : "Get notified about delays, cancellations and disruptions on this route."))
-                        .font(.bodyText)
-                        .foregroundStyle(Theme.mutedForeground)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if !environment.push.isAuthorized {
+        Form {
+            if !environment.push.isAuthorized {
+                Section {
                     HStack(spacing: 10) {
                         Image(systemName: "bell.slash").foregroundStyle(Theme.mutedForeground)
                         Text("Notifications are off for this app.").font(.bodyText)
@@ -90,121 +83,86 @@ struct AlertSubscriptionSheet: View {
                         Button("Turn on") { Task { await environment.push.requestPermission() } }
                             .buttonStyle(.shad(.outline, size: .sm))
                     }
-                    .padding(12)
-                    .mutedPanel()
+                    .listRowBackground(Theme.card)
                 }
+            }
 
-                if isStop {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Routes").font(.meta).foregroundStyle(Theme.mutedForeground)
-                        if availableRoutes.isEmpty {
-                            Text("All routes at this stop").font(.bodyText).foregroundStyle(Theme.mutedForeground)
-                                .padding(12).frame(maxWidth: .infinity, alignment: .leading).mutedPanel()
-                        } else {
-                            VStack(spacing: 0) {
-                                ForEach(Array(availableRoutes.enumerated()), id: \.element) { index, route in
-                                    if index > 0 { RowDivider() }
-                                    checkboxRow(route, isOn: selectedRoutes.contains(route)) {
-                                        if selectedRoutes.contains(route) { selectedRoutes.remove(route) } else { selectedRoutes.insert(route) }
-                                        changed()
-                                    }
-                                }
-                            }
-                            .shadCardBackground(radius: Theme.radiusLG)
-                            Text(selectedRoutes.isEmpty ? "None selected - you'll hear about every route." : "\(selectedRoutes.count) of \(availableRoutes.count) routes")
-                                .font(.geist(12, relativeTo: .caption)).foregroundStyle(Theme.mutedForeground)
+            Section {
+                Toggle(isOn: Binding(get: { isSubscribed }, set: { on in Task { on ? await enable() : await unsubscribe() } })) {
+                    Text(isStop ? "Alerts for this stop" : "Alerts for this route").font(.bodyMedium)
+                }
+                .tint(Theme.success)
+                .listRowBackground(Theme.card)
+            } footer: {
+                Text(isStop
+                     ? "Get notified about delays, cancellations and disruptions at this stop."
+                     : "Get notified about delays, cancellations and disruptions on this route.")
+            }
+
+            if isSubscribed {
+                if isStop, !availableRoutes.isEmpty {
+                    Section {
+                        checkRow("All routes", isOn: selectedRoutes.isEmpty) {
+                            selectedRoutes = []
+                            changed()
                         }
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Alert types (leave empty for all)").font(.meta).foregroundStyle(Theme.mutedForeground)
-                    FlowLayout(spacing: 6, lineSpacing: 6) {
-                        ForEach(AlertCauseGroup.allCases, id: \.self) { group in
-                            Chip(label: group.label, isActive: causeGroups.contains(group), systemImage: icon(for: group)) {
-                                if causeGroups.contains(group) { causeGroups.remove(group) } else { causeGroups.insert(group) }
+                        ForEach(availableRoutes, id: \.self) { route in
+                            checkRow(route, isOn: selectedRoutes.contains(route)) {
+                                if selectedRoutes.contains(route) { selectedRoutes.remove(route) } else { selectedRoutes.insert(route) }
                                 changed()
                             }
                         }
+                    } header: {
+                        Text("Routes")
                     }
                 }
 
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Minimum severity").font(.meta).foregroundStyle(Theme.mutedForeground)
-                    ShadSelect(
-                        selection: Binding(get: { minSeverity }, set: { minSeverity = $0; changed() }),
-                        options: [("", "Any severity"), ("WARNING", "Warning & above"), ("SEVERE", "Severe only")],
-                        fullWidth: true
-                    )
-                }
-
-                HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Trip cancellations").font(.bodyMedium)
-                        Text(isStop ? "Notify when a service is cancelled" : "Notify when a service on this route is cancelled")
-                            .font(.meta).foregroundStyle(Theme.mutedForeground)
+                Section {
+                    NavigationLink {
+                        AlertTypesPicker(selection: Binding(get: { causeGroups }, set: { causeGroups = $0; changed() }))
+                    } label: {
+                        LabeledContent("Alert types", value: causeGroups.isEmpty ? "All" : causeGroups.map(\.label).sorted().joined(separator: ", "))
                     }
-                    Spacer(minLength: 8)
-                    Toggle("Trip cancellations", isOn: Binding(get: { notifyCancellations }, set: { notifyCancellations = $0; changed() }))
-                        .labelsHidden()
-                        .tint(Theme.primary)
-                }
-                .padding(14)
-                .shadCardBackground(radius: Theme.radiusLG)
-
-                if isSaving {
-                    Text("Saving changes...").font(.meta).foregroundStyle(Theme.mutedForeground)
-                }
-
-                VStack(spacing: 8) {
-                    if isSubscribed {
-                        Button(isStop ? "Disable alerts for this stop" : "Disable alerts for this route") {
-                            Task { await unsubscribe() }
-                        }
-                        .buttonStyle(.shad(.destructive, size: .default, fullWidth: true))
-                    } else {
-                        Button("Enable alerts") {
-                            hasInteracted = true
-                            Task { await save() }
-                        }
-                        .buttonStyle(.shad(.default, size: .default, fullWidth: true))
+                    .listRowBackground(Theme.card)
+                    Picker("Severity", selection: Binding(get: { minSeverity }, set: { minSeverity = $0; changed() })) {
+                        Text("Any").tag("")
+                        Text("Warning and above").tag("WARNING")
+                        Text("Severe only").tag("SEVERE")
                     }
-                    if isStop {
-                        Button("Disable all notifications") { confirmingDisableAll = true }
-                            .buttonStyle(.shad(.outline, size: .default, fullWidth: true))
-                    }
+                    .listRowBackground(Theme.card)
+                    Toggle("Cancelled trips", isOn: Binding(get: { notifyCancellations }, set: { notifyCancellations = $0; changed() }))
+                        .tint(Theme.success)
+                        .listRowBackground(Theme.card)
+                } footer: {
+                    Text(isSaving ? "Saving..." : lastSaved != nil ? "Saved." : "Changes save automatically.")
                 }
             }
-            .padding(16)
+
+            if isStop {
+                Section {
+                    Button("Turn off alerts for all stops", role: .destructive) { confirmingDisableAll = true }
+                        .listRowBackground(Theme.card)
+                }
+            }
         }
+        .scrollContentBackground(.hidden)
+        .tint(Theme.primary)
     }
 
-    private func checkboxRow(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+    private func checkRow(_ label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 10) {
-                Image(systemName: isOn ? "checkmark.square.fill" : "square")
-                    .font(.system(size: 18))
-                    .foregroundStyle(isOn ? Theme.primary : Theme.mutedForeground)
-                    .accessibilityHidden(true)
-                Text(label).font(.bodyText)
+            HStack {
+                Text(label).font(.bodyText).foregroundStyle(Theme.foreground)
                 Spacer()
+                if isOn {
+                    Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.primary)
+                        .accessibilityHidden(true)
+                }
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(label)
+        .listRowBackground(Theme.card)
         .accessibilityAddTraits(isOn ? .isSelected : [])
-    }
-
-    private func icon(for group: AlertCauseGroup) -> String {
-        switch group {
-        case .delaysCancellations: return "clock"
-        case .safetyIncidents: return "shield"
-        case .weather: return "cloud.rain"
-        case .plannedWorks: return "hammer"
-        }
     }
 
     // MARK: - Data
@@ -246,6 +204,13 @@ struct AlertSubscriptionSheet: View {
         }
     }
 
+    /// The switch turning alerts on: subscribe with the current settings
+    /// (all routes and types by default).
+    private func enable() async {
+        hasInteracted = true
+        await save()
+    }
+
     private func save() async {
         guard hasInteracted else { return }
         if !environment.push.isAuthorized { await environment.push.requestPermission() }
@@ -257,7 +222,7 @@ struct AlertSubscriptionSheet: View {
             case .stop(let query, let title):
                 if isSubscribed {
                     try await environment.api.updateStopSubscription(query, routes: Array(selectedRoutes).sorted(), causes: causes, minSeverity: minSeverity, notifyCancellations: notifyCancellations)
-                    environment.toasts.show("Updated alerts for \(title)")
+                    _ = title
                 } else {
                     try await environment.api.subscribeToStop(query, routes: Array(selectedRoutes).sorted(), causes: causes, minSeverity: minSeverity, notifyCancellations: notifyCancellations)
                     isSubscribed = true
@@ -266,7 +231,6 @@ struct AlertSubscriptionSheet: View {
             case .route(let id, let title):
                 if isSubscribed {
                     try await environment.api.updateRouteSubscription(id, causes: causes, minSeverity: minSeverity, notifyCancellations: notifyCancellations)
-                    environment.toasts.show("Updated alerts for \(title)")
                 } else {
                     try await environment.api.subscribeToRoute(id, causes: causes, minSeverity: minSeverity, notifyCancellations: notifyCancellations)
                     isSubscribed = true
@@ -274,6 +238,7 @@ struct AlertSubscriptionSheet: View {
                 }
             }
             hasInteracted = false
+            lastSaved = Date()
             onChanged?()
         } catch {
             environment.toasts.show("Failed to save alerts for \(target.title)", .error)
@@ -287,9 +252,9 @@ struct AlertSubscriptionSheet: View {
             case .stop(let query, _): try await environment.api.unsubscribeFromStop(query)
             case .route(let id, _): try await environment.api.unsubscribeFromRoute(id)
             }
-            environment.toasts.show("Notifications disabled for \(target.title)", .info)
+            isSubscribed = false
+            environment.toasts.show("Alerts turned off for \(target.title)", .info)
             onChanged?()
-            dismiss()
         } catch {
             environment.toasts.show("Failed to disable notifications for \(target.title)", .error)
         }
@@ -303,6 +268,56 @@ struct AlertSubscriptionSheet: View {
             dismiss()
         } catch {
             environment.toasts.show("Failed to disable notifications", .error)
+        }
+    }
+}
+
+/// Which kinds of alert to receive - none ticked means all of them.
+private struct AlertTypesPicker: View {
+    @Binding var selection: Set<AlertCauseGroup>
+
+    var body: some View {
+        Form {
+            Section {
+                row("All types", systemImage: "bell", isOn: selection.isEmpty) { selection = [] }
+                ForEach(AlertCauseGroup.allCases, id: \.self) { group in
+                    row(group.label, systemImage: icon(for: group), isOn: selection.contains(group)) {
+                        if selection.contains(group) { selection.remove(group) } else { selection.insert(group) }
+                    }
+                }
+            } footer: {
+                Text("Pick the kinds you care about, or All types.")
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .pageBackground()
+        .navigationTitle("Alert types")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func row(_ label: String, systemImage: String, isOn: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage).frame(width: 22).foregroundStyle(Theme.mutedForeground).accessibilityHidden(true)
+                Text(label).foregroundStyle(Theme.foreground)
+                Spacer()
+                if isOn {
+                    Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.primary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .listRowBackground(Theme.card)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private func icon(for group: AlertCauseGroup) -> String {
+        switch group {
+        case .delaysCancellations: return "clock"
+        case .safetyIncidents: return "shield"
+        case .weather: return "cloud.rain"
+        case .plannedWorks: return "hammer"
         }
     }
 }

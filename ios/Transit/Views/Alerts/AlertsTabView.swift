@@ -12,28 +12,32 @@ struct AlertsTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                HStack(spacing: 8) {
-                    StopSearchField { selectedStop = $0 }
-                    Button {
-                        isShowingSubscription = true
-                    } label: {
-                        Image(systemName: "bell.badge").font(.system(size: 15))
-                    }
-                    .buttonStyle(.shad(.secondary, size: .icon))
-                    .frame(height: 44)
-                    .disabled(selectedStop == nil)
-                    .accessibilityLabel("Notifications for this stop")
-                }
+                StopSearchField { selectedStop = $0 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
                 .zIndex(1)
 
                 if let selectedStop {
-                    HStack {
-                        Text(selectedStop).font(.pageTitle).lineLimit(1)
-                        Spacer()
-                        Button("Clear") { self.selectedStop = nil }.buttonStyle(.shad(.ghost, size: .sm))
+                    HStack(spacing: 8) {
+                        Text(selectedStop).font(.pageTitle).lineLimit(2)
+                        Spacer(minLength: 8)
+                        Button {
+                            isShowingSubscription = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: "bell.badge").font(.system(size: 12, weight: .medium))
+                                Text("Get alerts")
+                            }
+                        }
+                        .buttonStyle(.shad(.outline, size: .sm))
+                        Button {
+                            self.selectedStop = nil
+                        } label: {
+                            Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                        }
+                        .buttonStyle(.shad(.ghost, size: .iconSm))
+                        .accessibilityLabel("Clear stop")
                     }
                     .padding(.horizontal, 16)
                     AlertsView(stopQuery: selectedStop, title: selectedStop, standalone: false)

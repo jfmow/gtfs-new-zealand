@@ -75,83 +75,67 @@ struct LeaveReminderSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 22) {
-                    Text("\(startPlace.label) → \(endPlace.label) · \(targetText)")
-                        .font(.meta)
-                        .foregroundStyle(Theme.mutedForeground)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Heads-up before you leave").font(.meta).foregroundStyle(Theme.mutedForeground)
-                        FlowLayout(spacing: 6, lineSpacing: 6) {
-                            ForEach(Self.offsetChoices, id: \.value) { choice in
-                                Chip(label: choice.label, isActive: offsets.contains(choice.value), isDisabled: offsetPassed(choice.value)) {
-                                    if offsets.contains(choice.value) { offsets.remove(choice.value) } else { offsets.insert(choice.value) }
-                                }
-                            }
-                        }
-                        Text(repeatMode == .once && usableOffsets.isEmpty && !offsets.isEmpty
-                             ? "This journey leaves too soon to set a reminder. Try repeating it, or an earlier trip."
-                             : "\"When to leave\" is the go signal; the others are advance nudges.")
-                            .font(.geist(12, relativeTo: .caption))
-                            .foregroundStyle(Theme.mutedForeground)
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(startPlace.label) → \(endPlace.label)")
+                            .font(.bodyMedium)
                             .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Repeat").font(.meta).foregroundStyle(Theme.mutedForeground)
-                        HStack(spacing: 6) {
-                            Chip(label: "Once", isActive: repeatMode == .once) { repeatMode = .once }
-                            Chip(label: "Weekdays", isActive: repeatMode == .weekdays) { repeatMode = .weekdays }
-                            Chip(label: "Custom…", isActive: repeatMode == .custom) { repeatMode = .custom }
-                        }
-                        if repeatMode == .custom {
-                            HStack(spacing: 6) {
-                                ForEach(0..<7, id: \.self) { index in
-                                    Button {
-                                        customDays[index].toggle()
-                                    } label: {
-                                        Text(Self.dayLabels[index])
-                                            .font(.geist(13, .medium, relativeTo: .footnote))
-                                            .frame(width: 38, height: 38)
-                                            .foregroundStyle(customDays[index] ? Theme.primaryForeground : Theme.foreground)
-                                            .background(customDays[index] ? Theme.primary : Theme.background, in: Circle())
-                                            .overlay(Circle().strokeBorder(customDays[index] ? Theme.primary : Theme.input, lineWidth: 1))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .accessibilityLabel(Self.dayNames[index])
-                                    .accessibilityAddTraits(customDays[index] ? .isSelected : [])
-                                }
-                            }
-                            .padding(.top, 2)
-                        }
-                        if repeatMode != .once {
-                            Toggle(isOn: $hasUntil) {
-                                Text("Stop repeating on a date").font(.bodyText)
-                            }
-                            .tint(Theme.primary)
-                            .padding(.top, 4)
-                            if hasUntil {
-                                DatePicker("Until", selection: $until, in: Date()...(Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()), displayedComponents: .date)
-                                    .font(.bodyText)
-                                    .tint(Theme.primary)
-                                Text("Up to 90 days ahead").font(.geist(12, relativeTo: .caption)).foregroundStyle(Theme.mutedForeground)
-                            }
+                        Text(targetText.prefix(1).uppercased() + targetText.dropFirst())
+                            .font(.meta)
+                            .foregroundStyle(Theme.mutedForeground)
+                        if let leaveTime, repeatMode == .once {
+                            (Text("Leave at ").foregroundColor(Theme.mutedForeground)
+                                + Text(leaveTime.formatted(date: .omitted, time: .shortened)).fontWeight(.semibold))
+                                .font(.bodyText)
+                                .padding(.top, 4)
                         }
                     }
+                    .padding(.vertical, 4)
+                    .listRowBackground(Theme.card)
+                }
 
+                Section {
+                    ForEach(Self.offsetChoices.reversed(), id: \.value) { choice in
+                        offsetRow(choice.value)
+                    }
+                } header: {
+                    Text("Notify me")
+                } footer: {
+                    Text(repeatMode == .once && usableOffsets.isEmpty && !offsets.isEmpty
+                         ? "This journey leaves too soon to set a reminder. Try repeating it, or an earlier trip."
+                         : "\"When it's time to leave\" is the go signal; the others are early nudges.")
+                }
+
+                Section {
+                    Picker("Repeat", selection: $repeatMode) {
+                        Text("Never").tag(Repeat.once)
+                        Text("Weekdays").tag(Repeat.weekdays)
+                        Text("Custom").tag(Repeat.custom)
+                    }
+                    .listRowBackground(Theme.card)
+                    if repeatMode == .custom {
+                        dayPicker.listRowBackground(Theme.card)
+                    }
+                    if repeatMode != .once {
+                        Toggle("End repeat", isOn: $hasUntil)
+                            .tint(Theme.success)
+                            .listRowBackground(Theme.card)
+                        if hasUntil {
+                            DatePicker("Last day", selection: $until, in: Date()...(Calendar.current.date(byAdding: .day, value: 90, to: Date()) ?? Date()), displayedComponents: .date)
+                                .listRowBackground(Theme.card)
+                        }
+                    }
+                } footer: {
                     if !recurrenceMask.isEmpty {
-                        Text("We'll find the best journey matching your settings on each day and tell you when to leave.")
-                            .font(.geist(12, relativeTo: .caption))
-                            .foregroundStyle(Theme.mutedForeground)
-                            .fixedSize(horizontal: false, vertical: true)
+                        Text("Each day we'll find the best journey with these settings and tell you when to leave. Up to 90 days ahead.")
                     }
                 }
-                .padding(16)
             }
+            .scrollContentBackground(.hidden)
             .pageBackground()
-            .navigationTitle("Remind me when to leave")
+            .tint(Theme.primary)
+            .navigationTitle("Remind me")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -171,6 +155,50 @@ struct LeaveReminderSheet: View {
                 .background(Theme.background)
             }
         }
+    }
+
+    private func offsetRow(_ minutes: Int) -> some View {
+        let passed = offsetPassed(minutes)
+        let isOn = offsets.contains(minutes) && !passed
+        let title = minutes == 0 ? "When it's time to leave" : "\(minutes) minutes before"
+        return Button {
+            if offsets.contains(minutes) { offsets.remove(minutes) } else { offsets.insert(minutes) }
+        } label: {
+            HStack {
+                Text(title).foregroundStyle(passed ? Theme.mutedForeground : Theme.foreground)
+                if passed { Text("passed").font(.meta).foregroundStyle(Theme.mutedForeground) }
+                Spacer()
+                if isOn {
+                    Image(systemName: "checkmark").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.primary)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .disabled(passed)
+        .listRowBackground(Theme.card)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    private var dayPicker: some View {
+        HStack(spacing: 0) {
+            ForEach(0..<7, id: \.self) { index in
+                Button {
+                    customDays[index].toggle()
+                } label: {
+                    Text(Self.dayLabels[index])
+                        .font(.geist(13, .medium, relativeTo: .footnote))
+                        .frame(width: 36, height: 36)
+                        .foregroundStyle(customDays[index] ? Theme.primaryForeground : Theme.foreground)
+                        .background(customDays[index] ? Theme.primary : Theme.muted, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel(Self.dayNames[index])
+                .accessibilityAddTraits(customDays[index] ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 4)
     }
 
     private func submit() async {

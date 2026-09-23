@@ -66,33 +66,47 @@ struct DepartureLine: View {
     }
 }
 
-/// `StopPreviewCard` - the nearest stop on Home: name (+ code when needed),
-/// distance, and its next two departures.
-struct StopPreviewCard: View {
+/// One stop on Home (a favourite or a nearby stop): a leading tile, the
+/// name and a detail line, then its next two departures - full width, so
+/// long names and several route badges fit instead of truncating.
+struct HomeStopRow<Tile: View>: View {
     let stopQuery: String
-    let label: String
-    var code: String?
-    var meta: String?
+    let title: String
+    var detail: String?
+    @ViewBuilder var tile: Tile
 
     @Environment(AppEnvironment.self) private var environment
     @State private var loader = NextDeparturesLoader()
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                (Text(label).font(.bodyMedium)
-                    + Text(code.map { " · Stop \($0)" } ?? "").font(.bodyText).foregroundColor(Theme.mutedForeground))
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if let meta {
-                    Text(meta).font(.geistMono(12, relativeTo: .caption)).foregroundStyle(Theme.mutedForeground)
+        HStack(alignment: .top, spacing: 12) {
+            tile
+                .frame(width: 36, height: 36)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(title)
+                        .font(.bodyMedium)
+                        .foregroundStyle(Theme.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 6)
+                    if let detail {
+                        Text(detail)
+                            .font(.geistMono(12, relativeTo: .caption))
+                            .foregroundStyle(Theme.mutedForeground)
+                            .fixedSize()
+                    }
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.mutedForeground.opacity(0.6))
+                        .accessibilityHidden(true)
                 }
+                departuresContent
             }
-            departuresContent
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .shadCardBackground(radius: Theme.radiusMD)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
         .task(id: stopQuery) {
             while !Task.isCancelled {
                 await loader.load(stop: stopQuery, limit: 2, api: environment.api)
@@ -116,83 +130,105 @@ struct StopPreviewCard: View {
         } else {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.mini)
-                Text("Loading departures...").font(.meta).foregroundStyle(Theme.mutedForeground)
+                Text("Loading departures").font(.meta).foregroundStyle(Theme.mutedForeground)
             }
         }
     }
 }
 
-/// A favourite stop in the Home rail - `FavoriteCard` in
-/// `components/stops/favourites.tsx`: coloured left edge, star + name, the
-/// next departure. Long-press for rename / colour / move / remove.
-struct FavouriteCard: View {
-    @Bindable var favourite: FavouriteStop
-    let canMoveLeft: Bool
-    let canMoveRight: Bool
-    let onMove: (Int) -> Void
-    let onRemove: () -> Void
+/// The favourite's tile: its colour with a star.
+struct FavouriteTile: View {
+    let colorHex: String
 
-    @Environment(AppEnvironment.self) private var environment
-    @State private var loader = NextDeparturesLoader()
-    @State private var isRenaming = false
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Color(hex: colorHex).opacity(0.18))
+            .overlay(
+                Image(systemName: "star.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color(hex: colorHex))
+            )
+    }
+}
+
+/// A nearby stop's tile: its mode icon on a muted square.
+struct StopModeTile: View {
+    let stopType: String
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 10, style: .continuous)
+            .fill(Theme.muted)
+            .overlay(
+                Image(systemName: stopType == "train" ? "tram.fill" : stopType == "ferry" ? "ferry.fill" : "bus.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Theme.foreground)
+            )
+    }
+}
+
+/// Rename / colour / reorder / remove favourites - a native List, so
+/// drag-to-reorder and swipe-to-delete work as expected.
+struct ManageFavouritesSheet: View {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
+    @State private var renaming: FavouriteStop?
     @State private var draftName = ""
 
     var body: some View {
-        let accent = Color(hex: favourite.colorHex)
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: "star.fill").font(.system(size: 10)).foregroundStyle(accent)
-                Text(favourite.displayName).font(.bodyMedium).lineLimit(1)
+        NavigationStack {
+            List {
+                ForEach(favourites) { favourite in
+                    HStack(spacing: 12) {
+                        FavouriteTile(colorHex: favourite.colorHex).frame(width: 32, height: 32)
+                        Text(favourite.displayName).font(.bodyMedium).lineLimit(2)
+                        Spacer()
+                        Menu {
+                            Button {
+                                draftName = favourite.displayName
+                                renaming = favourite
+                            } label: { Label("Rename", systemImage: "pencil") }
+                            SwatchMenu(selectedHex: favourite.colorHex) { favourite.colorHex = $0 }
+                        } label: {
+                            Image(systemName: "ellipsis.circle").font(.system(size: 18))
+                        }
+                        .accessibilityLabel("Options for \(favourite.displayName)")
+                    }
+                    .listRowBackground(Theme.card)
+                }
+                .onMove(perform: move)
+                .onDelete(perform: delete)
             }
-            Group {
-                if let next = loader.departures?.first {
-                    DepartureLine(departure: next, showsPlatform: false)
-                } else if loader.departures != nil {
-                    Text("No upcoming services").font(.meta).foregroundStyle(Theme.mutedForeground)
-                } else if loader.failed {
-                    Text("Couldn't load departures").font(.meta).foregroundStyle(Theme.mutedForeground)
-                } else {
-                    ProgressView().controlSize(.mini)
+            .scrollContentBackground(.hidden)
+            .pageBackground()
+            .environment(\.editMode, .constant(.active))
+            .navigationTitle("Favourites")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { DoneButton() }
+            .overlay {
+                if favourites.isEmpty {
+                    EmptyState(systemImage: "star", title: "No favourites", message: "Tap the star on any stop to pin it to Home.")
                 }
             }
-            .frame(height: 18, alignment: .leading)
-        }
-        .padding(12)
-        .frame(width: 200, alignment: .leading)
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(topLeadingRadius: Theme.radiusLG, bottomLeadingRadius: Theme.radiusLG, style: .continuous)
-                .fill(accent)
-                .frame(width: 3)
-        }
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-        .contentShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
-        .contextMenu {
-            Button {
-                draftName = favourite.displayName
-                isRenaming = true
-            } label: { Label("Rename", systemImage: "pencil") }
-            SwatchMenu(selectedHex: favourite.colorHex) { favourite.colorHex = $0 }
-            if canMoveLeft { Button { onMove(-1) } label: { Label("Move left", systemImage: "arrow.left") } }
-            if canMoveRight { Button { onMove(1) } label: { Label("Move right", systemImage: "arrow.right") } }
-            Divider()
-            Button(role: .destructive, action: onRemove) { Label("Remove from favourites", systemImage: "trash") }
-        }
-        .alert("Rename favourite", isPresented: $isRenaming) {
-            TextField("Display name", text: $draftName)
-            Button("Save") {
-                let trimmed = draftName.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty { favourite.displayName = trimmed }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .task(id: favourite.stopID) {
-            while !Task.isCancelled {
-                await loader.load(stop: favourite.stopID, limit: 1, api: environment.api)
-                try? await Task.sleep(for: .seconds(30))
+            .alert("Rename favourite", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+                TextField("Display name", text: $draftName)
+                Button("Save") {
+                    let trimmed = draftName.trimmingCharacters(in: .whitespaces)
+                    if !trimmed.isEmpty { renaming?.displayName = trimmed }
+                    renaming = nil
+                }
+                Button("Cancel", role: .cancel) { renaming = nil }
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("Opens departures. Touch and hold for options.")
+    }
+
+    private func move(from source: IndexSet, to destination: Int) {
+        var ordered = favourites
+        ordered.move(fromOffsets: source, toOffset: destination)
+        for (i, favourite) in ordered.enumerated() { favourite.sortOrder = i }
+    }
+
+    private func delete(at offsets: IndexSet) {
+        for index in offsets { modelContext.delete(favourites[index]) }
     }
 }
