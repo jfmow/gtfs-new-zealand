@@ -209,7 +209,7 @@ struct TimelineRow<Content: View>: View {
     @ViewBuilder var content: Content
 
     /// Grows with Dynamic Type so "12:45 PM" never truncates at large sizes.
-    @ScaledMetric(relativeTo: .footnote) private var timeWidth: CGFloat = 58
+    @ScaledMetric(relativeTo: .footnote) private var timeWidth: CGFloat = 62
     private let railWidth: CGFloat = 34
 
     var body: some View {
@@ -234,6 +234,9 @@ struct TimelineRow<Content: View>: View {
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Leading inset too, so a wide time ("10:04 PM") doesn't run into
+        // the card's rounded edge and get clipped.
+        .padding(.leading, 8)
         .padding(.trailing, 14)
         .background(highlighted ? accent.opacity(0.08) : .clear)
         .overlay(alignment: .leading) {
