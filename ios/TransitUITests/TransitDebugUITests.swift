@@ -228,7 +228,7 @@ final class TransitDebugUITests: XCTestCase {
             toField.tap()
             toField.typeText("Newmarket")
             sleep(2)
-            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
             if result.waitForExistence(timeout: 5) { result.tap() }
         }
         sleep(1)
@@ -312,7 +312,7 @@ final class TransitDebugUITests: XCTestCase {
             toField.tap()
             toField.typeText("Newmarket")
             sleep(2)
-            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
             if result.waitForExistence(timeout: 5) { result.tap() }
         }
         sleep(1)
@@ -376,7 +376,7 @@ final class TransitDebugUITests: XCTestCase {
             toField.tap()
             toField.typeText("Newmarket")
             sleep(2)
-            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
             if result.waitForExistence(timeout: 5) { result.tap() }
         }
         sleep(1)
@@ -610,7 +610,7 @@ final class TransitDebugUITests: XCTestCase {
         toField.tap()
         toField.typeText("Newmarket")
         sleep(3)
-        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
         sleep(1)
 
@@ -677,7 +677,7 @@ final class TransitDebugUITests: XCTestCase {
         toField.typeText("Newmarket")
         sleep(3)
         attach("pl-02-to-results")
-        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
         sleep(1)
 
@@ -719,7 +719,7 @@ final class TransitDebugUITests: XCTestCase {
         to.tap()
         to.typeText("Newmarket")
         sleep(3)
-        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
         app.buttons["Plan journey"].tap()
         sleep(8)
@@ -760,7 +760,7 @@ final class TransitDebugUITests: XCTestCase {
         to.tap()
         to.typeText("Newmarket")
         sleep(3)
-        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
         app.buttons["Plan journey"].tap()
         sleep(8)
@@ -793,4 +793,5 @@ final class TransitDebugUITests: XCTestCase {
         attach("rp-03-kept")
         XCTAssertTrue(app.buttons["Minimise"].waitForExistence(timeout: 8), "tracking didn't reopen")
     }
+
 }

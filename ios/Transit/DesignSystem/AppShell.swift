@@ -232,6 +232,9 @@ struct ResumeJourneyPill: View {
     @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
     @State private var dismissedPlanID: String?
+    /// Hidden while typing - otherwise it floats above the keyboard, over
+    /// search dropdowns.
+    @State private var isKeyboardVisible = false
 
     private static let grace: TimeInterval = 45 * 60
 
@@ -240,12 +243,15 @@ struct ResumeJourneyPill: View {
             if let journey = journeys.first,
                context.date < journey.arrivalTime.addingTimeInterval(Self.grace),
                dismissedPlanID != journey.planID,
-               !router.isTrackingVisible, router.activeLink == nil {
+               !router.isTrackingVisible, router.activeLink == nil, !isKeyboardVisible {
                 pill(journey)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.spring(duration: 0.3), value: router.isTrackingVisible)
+        .animation(.easeOut(duration: 0.15), value: isKeyboardVisible)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in isKeyboardVisible = true }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in isKeyboardVisible = false }
     }
 
     private func pill(_ journey: ActiveJourney) -> some View {

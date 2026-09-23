@@ -18,6 +18,12 @@ final class DeepLinkRouter {
     /// Set by `JourneyTrackingView` while it's on screen, so the resume
     /// pill doesn't sit on top of the journey it would resume.
     var isTrackingVisible = false
+    /// The tracker that's currently open (it stays open while the rider
+    /// switches tabs, until End or minimise), and whether it's in a link's
+    /// full-screen cover or pushed in the Planner tab. A Live Activity tap
+    /// for the same journey goes back to it instead of opening a second
+    /// tracker on top.
+    var openTracker: (planID: String, inLink: Bool)?
 
     /// Set by the tracker's "Find a better route from here"; consumed by
     /// `PlannerView`, which re-plans from `origin` and offers to go back.
@@ -40,7 +46,7 @@ final class DeepLinkRouter {
     }
 
     func resume(planID: String, regionSlug: String) {
-        activeLink = .trackJourney(id: planID, region: regionSlug)
+        route(.trackJourney(id: planID, region: regionSlug))
     }
 
     func handle(_ url: URL) {
@@ -55,6 +61,10 @@ final class DeepLinkRouter {
     }
 
     private func route(_ link: DeepLink) {
+        if case .trackJourney(let id, _) = link, let open = openTracker, open.planID == id {
+            if !open.inLink { selectedTab = .planner }
+            return
+        }
         switch link {
         case .plan(let prefill):
             activeLink = nil

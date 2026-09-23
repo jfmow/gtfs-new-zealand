@@ -11,6 +11,8 @@ struct JourneyDetailView: View {
     /// The planner search this came from - reminders use its real labels
     /// and options. Nil when opened from a link.
     var context: PlannerSearchContext?
+    /// Shown inside a link's full-screen cover rather than the Planner tab.
+    var presentedFromLink = false
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
@@ -75,7 +77,7 @@ struct JourneyDetailView: View {
             isActive = ((try? modelContext.fetchCount(FetchDescriptor<ActiveJourney>(predicate: #Predicate { $0.planID == id }))) ?? 0) > 0
         }
         .navigationDestination(isPresented: $isTracking) {
-            JourneyTrackingView(plan: plan)
+            JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)
         }
         .sheet(isPresented: $isShowingReminder) {
             LeaveReminderSheet(plan: plan, context: context ?? defaultContext).shadSheet(detents: [.large])

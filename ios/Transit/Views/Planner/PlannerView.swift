@@ -62,7 +62,10 @@ struct PlannerView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
-                    form
+                    // Above everything below it, so the From/To dropdowns
+                    // draw over the saved-trips rail and results rather
+                    // than behind them.
+                    form.zIndex(1)
                     if !savedTrips.isEmpty {
                         QuickTripsRail(trips: savedTrips) { apply($0) }
                     }

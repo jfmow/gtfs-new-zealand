@@ -68,8 +68,13 @@ struct JourneyTrackingView: View {
     /// The web tracker's "live" blue for the current leg/step.
     private var accent: Color { Theme.live }
 
-    init(plan: JourneyPlan) {
+    /// Opened from a link (resume pill, Live Activity, share link) in a
+    /// full-screen cover, rather than pushed from the Planner tab.
+    var presentedFromLink = false
+
+    init(plan: JourneyPlan, presentedFromLink: Bool = false) {
         self.plan = plan
+        self.presentedFromLink = presentedFromLink
         _displayPlan = State(initialValue: plan)
     }
 
@@ -101,10 +106,6 @@ struct JourneyTrackingView: View {
             }
             .padding(.top, 8)
 
-            RecenterButton(isAuthorized: environment.location.isAuthorized) { recenterTrigger += 1 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                .padding(.trailing, 16)
-                .padding(.bottom, 8)
         }
         .sheet(isPresented: $isTrackerSheetPresented) {
             itinerarySheetContent
@@ -120,7 +121,10 @@ struct JourneyTrackingView: View {
             walkStep = walkTracker.update(steps: steps, location: newValue)
         }
         .task { await start() }
-        .onAppear { router.isTrackingVisible = true }
+        .onAppear {
+            router.isTrackingVisible = true
+            router.openTracker = (planID: plan.id, inLink: presentedFromLink)
+        }
         .onDisappear {
             router.isTrackingVisible = false
             pollTask?.cancel()
@@ -164,8 +168,12 @@ struct JourneyTrackingView: View {
                 .accessibilityLabel("Minimise")
             }
             Spacer()
+            // Up here rather than the map's bottom corner, which the
+            // drawer covers.
+            RecenterButton(isAuthorized: environment.location.isAuthorized) { recenterTrigger += 1 }
             FloatingBarButton {
                 Button("End", role: .destructive) { endJourney() }
+                    .padding(.horizontal, 12)
             }
         }
         .padding(.horizontal, 16)
@@ -174,6 +182,7 @@ struct JourneyTrackingView: View {
     /// Leaves the screen but keeps the journey running.
     private func leaveTracker() {
         pollTask?.cancel()
+        router.openTracker = nil
         isTrackerSheetPresented = false
         DispatchQueue.main.async { dismiss() }
     }
@@ -383,7 +392,8 @@ struct JourneyTrackingView: View {
                 }
                 .padding(.vertical, 8)
             }
-            .padding(.top, 4)
+            // Clear of the sheet's grab handle.
+            .padding(.top, 22)
         }
         .scrollContentBackground(.hidden)
     }
@@ -395,18 +405,13 @@ struct JourneyTrackingView: View {
     private var sheetHeader: some View {
         HStack(alignment: .top, spacing: 10) {
             if let badgeLeg = currentOrNextTransitLeg, let route = badgeLeg.route {
-                Text(route.routeShortName.isEmpty ? badgeLeg.routeID : route.routeShortName)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(Color(hex: route.routeColor.isEmpty ? "424242" : route.routeColor), in: RoundedRectangle(cornerRadius: 6))
+                RouteBadge(name: route.routeShortName.isEmpty ? badgeLeg.routeID : route.routeShortName, colorHex: route.routeColor, size: 14)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(snapshot.map(phaseLabel) ?? "Your journey")
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .lineLimit(1)
+                    .font(.cardTitle)
+                    .lineLimit(2)
                 if let snapshot, snapshot.trackingLevel != .live {
                     Label(
                         snapshot.trackingLevel == .predicted ? "No live vehicle - times are predicted" : "No realtime - times are scheduled",
@@ -422,7 +427,7 @@ struct JourneyTrackingView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                Text(remainingLabel).font(.system(size: 17, weight: .bold, design: .rounded))
+                Text(remainingLabel).font(.number(17))
                 HStack(spacing: 3) {
                     Text(displayPlan.departureTime.date ?? Date(), style: .time)
                     Text("-")
@@ -792,6 +797,7 @@ struct JourneyTrackingView: View {
 
     private func endJourney() {
         pollTask?.cancel()
+        router.openTracker = nil
         if let active = try? modelContext.fetch(FetchDescriptor<ActiveJourney>()).first(where: { $0.planID == plan.id }) {
             modelContext.delete(active)
         }

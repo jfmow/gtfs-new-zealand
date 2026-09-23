@@ -49,9 +49,9 @@ struct DeepLinkPresentationView: View {
     private func journeyContent(id: String, track: Bool) -> some View {
         if let plan {
             if track {
-                JourneyTrackingView(plan: plan)
+                JourneyTrackingView(plan: plan, presentedFromLink: true)
             } else {
-                JourneyDetailView(plan: plan)
+                JourneyDetailView(plan: plan, presentedFromLink: true)
             }
         } else if let errorMessage {
             ContentUnavailableView("This journey link has expired", systemImage: "clock.badge.xmark", description: Text(errorMessage))
