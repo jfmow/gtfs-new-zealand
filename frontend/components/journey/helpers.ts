@@ -9,13 +9,21 @@ import { RealtimeStatus, type Leg, type JourneyType, type Stop } from "./types"
  */
 export function findStopSequence(
     stops: ServicesStop[] | null | undefined,
-    legStop: Stop | null | undefined
+    legStop: Stop | null | undefined,
+    afterSeq?: number
 ): number | undefined {
     if (!legStop || !stops) return undefined
-    const match = stops.find(
-        (s) => s.parent_stop_id === legStop.parent_station || s.child_stop_id === legStop.stop_id
-    )
-    return match?.sequence
+    // A trip can call at the same station twice (Southern line trains start
+    // at Newmarket and pass it again after the CRL loop). Matching the parent
+    // station alone picked the first visit, so the alighting stop resolved to
+    // the trip's origin and tracking thought the rider had already got off.
+    // Prefer the exact platform, and look for the alighting stop only after
+    // the boarding one.
+    const candidates = afterSeq === undefined ? stops : stops.filter((s) => s.sequence > afterSeq)
+    const exact = candidates.find((s) => s.child_stop_id === legStop.stop_id)
+    if (exact) return exact.sequence
+    if (!legStop.parent_station) return undefined
+    return candidates.find((s) => s.parent_stop_id === legStop.parent_station)?.sequence
 }
 
 /**

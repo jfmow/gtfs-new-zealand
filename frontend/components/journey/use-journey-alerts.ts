@@ -212,7 +212,7 @@ export function useJourneyAlerts({
 
         const tripId = trackedLeg.TripID
         const boardSeq = findStopSequence(trackedStops, trackedBoardStop)
-        const alightSeq = findStopSequence(trackedStops, trackedAlightStop)
+        const alightSeq = findStopSequence(trackedStops, trackedAlightStop, boardSeq)
         const curSeq = trackedVehicle.trip?.current_stop?.sequence
         const nextSeq = trackedVehicle.trip?.next_stop?.sequence
         const name = routeName(trackedLeg)
