@@ -172,19 +172,7 @@ struct FavouriteCard: View {
                 draftName = favourite.displayName
                 isRenaming = true
             } label: { Label("Rename", systemImage: "pencil") }
-            Menu {
-                ForEach(Swatches.all, id: \.hex) { swatch in
-                    Button {
-                        favourite.colorHex = swatch.hex
-                    } label: {
-                        if swatch.hex == favourite.colorHex {
-                            Label(swatch.name, systemImage: "checkmark")
-                        } else {
-                            Text(swatch.name)
-                        }
-                    }
-                }
-            } label: { Label("Colour", systemImage: "paintpalette") }
+            SwatchMenu(selectedHex: favourite.colorHex) { favourite.colorHex = $0 }
             if canMoveLeft { Button { onMove(-1) } label: { Label("Move left", systemImage: "arrow.left") } }
             if canMoveRight { Button { onMove(1) } label: { Label("Move right", systemImage: "arrow.right") } }
             Divider()

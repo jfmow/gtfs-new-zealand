@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC603ED48D2D68656FFD4A94 /* PlannerView.swift */; };
 		08FA57D675CCD6F52AC93975 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
+		09E1349894230E6DF7716258 /* RouteColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447CE7E4167D087A53D88ACF /* RouteColors.swift */; };
 		0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97361DD773747781B3551E93 /* TransitMapView.swift */; };
 		0FB5BC647B4AB562AFBA7BB7 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F80D10048B073FB6A99284CE /* GeistMono-Medium.ttf */; };
 		136B4A8556AB059619756417 /* JourneyDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C078B9BE4C49BE5FF57277B9 /* JourneyDetailView.swift */; };
@@ -51,6 +52,7 @@
 		A320DFCE4EDA973F6BAE9730 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D8DD2B378093B7EA96B6677 /* AppDelegate.swift */; };
 		A4DCC987D238BA7E22AFFFFC /* JourneyTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */; };
 		A6C7DA2B0F5A35C9D335D82A /* OFL-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 288949DB4B8429132B54B591 /* OFL-LICENSE.txt */; };
+		A89376973A9D0989FF9FBC6F /* RouteColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447CE7E4167D087A53D88ACF /* RouteColors.swift */; };
 		AAC14D80B6F6E3B356420799 /* AlertSubscriptionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BEC943B0050ED9D7E4E37 /* AlertSubscriptionSheet.swift */; };
 		ADEA2951F4B0241365877AF6 /* HomeCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */; };
 		B327BDCF76C3F69410561F2B /* JourneyAlertCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDE6E8A2AB86BD098EB9CBDF /* JourneyAlertCenter.swift */; };
@@ -119,6 +121,7 @@
 		3B967C20C0A167A8F989E5C5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		3DDE427B22E3045979EED862 /* MapLocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLocationPickerView.swift; sourceTree = "<group>"; };
 		3EED87D07EBAC42A622A9029 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
+		447CE7E4167D087A53D88ACF /* RouteColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteColors.swift; sourceTree = "<group>"; };
 		4B999CF18305B715D1B381F6 /* Geist-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-SemiBold.ttf"; sourceTree = "<group>"; };
 		4DC5498A153B15318302C601 /* WidgetColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetColor.swift; sourceTree = "<group>"; };
 		4DE963D4D7D2CAD76EC6FDD2 /* TripReminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripReminders.swift; sourceTree = "<group>"; };
@@ -194,6 +197,7 @@
 			isa = PBXGroup;
 			children = (
 				C7B5FEA401D5F0CFFE22BEFD /* JourneyActivityAttributes.swift */,
+				447CE7E4167D087A53D88ACF /* RouteColors.swift */,
 				6780D9E0A148E87EC4774EE8 /* Fonts */,
 			);
 			path = Shared;
@@ -611,6 +615,7 @@
 				36FCE3C823BE4FD31FD5D529 /* PushRegistrationService.swift in Sources */,
 				D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */,
 				E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */,
+				09E1349894230E6DF7716258 /* RouteColors.swift in Sources */,
 				CBC8B058C3B764BA3D72932B /* RouteMultiSelect.swift in Sources */,
 				C824CB35FAD796C528E40D82 /* SavedTripsViews.swift in Sources */,
 				C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */,
@@ -641,6 +646,7 @@
 			files = (
 				1FC524C37E82C192F6D3A7CA /* JourneyActivityAttributes.swift in Sources */,
 				C444B7D3E128C9D9DD09B40D /* JourneyLiveActivity.swift in Sources */,
+				A89376973A9D0989FF9FBC6F /* RouteColors.swift in Sources */,
 				874EE8B5732E67809BE7F1B8 /* TransitWidgetsBundle.swift in Sources */,
 				640DCFE6E87B73FDF0F06C3A /* WidgetColor.swift in Sources */,
 			);

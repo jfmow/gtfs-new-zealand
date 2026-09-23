@@ -12,28 +12,29 @@ struct RootView: View {
         @Bindable var router = router
         TabView(selection: $router.selectedTab) {
             HomeView()
+                .resumeJourneyInset()
                 .tabItem { Label("Schedule", systemImage: "calendar") }
                 .tag(DeepLinkRouter.Tab.schedule)
 
             PlannerView()
+                .resumeJourneyInset()
                 .tabItem { Label("Planner", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
                 .tag(DeepLinkRouter.Tab.planner)
 
             StopsTabView()
+                .resumeJourneyInset()
                 .tabItem { Label("Stops", systemImage: "map") }
                 .tag(DeepLinkRouter.Tab.stops)
 
             VehiclesTabView()
+                .resumeJourneyInset()
                 .tabItem { Label("Vehicles", systemImage: "bus") }
                 .tag(DeepLinkRouter.Tab.vehicles)
 
             AlertsTabView()
+                .resumeJourneyInset()
                 .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
                 .tag(DeepLinkRouter.Tab.alerts)
-        }
-        .overlay(alignment: .bottom) {
-            // Sits just above the tab bar, like the web's bottom pill.
-            ResumeJourneyPill().padding(.bottom, 92)
         }
         .tint(Theme.primary)
         .font(.bodyText)

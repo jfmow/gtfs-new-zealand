@@ -159,7 +159,7 @@ private struct RouteBadge: View {
                     .padding(.horizontal, 2)
             }
         }
-        .foregroundStyle(.white)
+        .foregroundStyle(state.phase == "arrived" || state.routeColorHex.isEmpty ? .white : RouteColors.text(onHex: state.routeColorHex))
         .frame(width: compact ? 22 : 38, height: compact ? 22 : 38)
         .background(badgeColor, in: RoundedRectangle(cornerRadius: compact ? 6 : 8, style: .continuous))
     }

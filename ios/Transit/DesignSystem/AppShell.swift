@@ -228,10 +228,23 @@ extension View {
 /// "You're mid-journey" pill above the tab bar - shown until dismissed (for
 /// this launch), the journey ends, or it's 45 min past arrival. Tapping it
 /// reopens live tracking.
+extension View {
+    /// Docks the resume-journey pill in this tab's bottom safe area - just
+    /// above the tab bar, with lists and scroll views inset so it never
+    /// covers content (it used to float over the last rows).
+    func resumeJourneyInset() -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            ResumeJourneyPill().padding(.bottom, 8)
+        }
+    }
+}
+
 struct ResumeJourneyPill: View {
     @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
-    @State private var dismissedPlanID: String?
+    /// Shared by every tab's copy of the pill, so dismissing it once hides
+    /// it everywhere.
+    @AppStorage("dismissedResumePlanID") private var dismissedPlanID = ""
     /// Hidden while typing - otherwise it floats above the keyboard, over
     /// search dropdowns.
     @State private var isKeyboardVisible = false

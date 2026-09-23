@@ -349,7 +349,7 @@ struct DepartureRow: View {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 5) {
-                            RouteBadge(name: departure.route.name, colorHex: departure.route.color.isEmpty ? "000000" : departure.route.color, size: 12)
+                            RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 12)
 
                             if departure.platformChanged {
                                 pill("Platform changed", color: Theme.danger)

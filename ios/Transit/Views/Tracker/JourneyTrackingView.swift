@@ -401,14 +401,15 @@ struct JourneyTrackingView: View {
                 .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
                 .accessibilityHidden(true)
         } else if let leg = currentOrNextTransitLeg {
+            let hex = leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252"
             Text(routeName(leg))
                 .font(.geist(18, .bold, relativeTo: .title3))
-                .foregroundStyle(.white)
+                .foregroundStyle(RouteColors.text(onHex: hex))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .padding(.horizontal, 4)
                 .frame(width: 52, height: 52)
-                .background(Color(hex: leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252"), in: shape)
+                .background(Color(hex: hex), in: shape)
                 .accessibilityHidden(true)
         }
     }

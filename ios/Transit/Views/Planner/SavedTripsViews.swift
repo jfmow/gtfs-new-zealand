@@ -130,7 +130,9 @@ private struct TripCard: View {
     }
 }
 
-/// The swatch picker inside a context menu.
+/// The swatch picker inside a context menu - each option shows its actual
+/// colour (menus render SF Symbols as monochrome templates, so the dot is a
+/// pre-tinted image).
 struct SwatchMenu: View {
     let selectedHex: String
     let onSelect: (String) -> Void
@@ -139,10 +141,22 @@ struct SwatchMenu: View {
         Menu {
             ForEach(Swatches.all, id: \.hex) { swatch in
                 Button { onSelect(swatch.hex) } label: {
-                    if swatch.hex == selectedHex { Label(swatch.name, systemImage: "checkmark") } else { Text(swatch.name) }
+                    Label {
+                        Text(swatch.name)
+                    } icon: {
+                        Self.dot(swatch.hex, selected: swatch.hex == selectedHex)
+                    }
                 }
             }
         } label: { Label("Colour", systemImage: "paintpalette") }
+    }
+
+    static func dot(_ hex: String, selected: Bool) -> Image {
+        let symbol = selected ? "checkmark.circle.fill" : "circle.fill"
+        guard let image = UIImage(systemName: symbol)?.withTintColor(UIColor(hex: hex), renderingMode: .alwaysOriginal) else {
+            return Image(systemName: symbol)
+        }
+        return Image(uiImage: image)
     }
 }
 

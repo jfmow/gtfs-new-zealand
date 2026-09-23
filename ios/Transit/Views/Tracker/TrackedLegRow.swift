@@ -60,9 +60,8 @@ struct TrackedLegRow: View {
 
     private var isWalk: Bool { leg.mode == "walk" }
     private var isCurrent: Bool { status == .current }
-    private var routeColor: Color {
-        Color(hex: leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252")
-    }
+    private var routeHex: String { leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252" }
+    private var routeColor: Color { Color(hex: routeHex) }
 
     var body: some View {
         Group {
@@ -103,7 +102,7 @@ struct TrackedLegRow: View {
         VStack(spacing: 0) {
             // Board
             TimelineRow(time: leg.departureTime.date, rail: .solid(routeColor, progress: progress, dimmed: status == .done),
-                        marker: .route(leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID, routeColor),
+                        marker: .route(leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID, routeHex),
                         highlighted: isCurrent, accent: accent) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
@@ -169,7 +168,7 @@ struct TimelineRow<Content: View>: View {
     enum Marker {
         case none
         case icon(String, Color)
-        case route(String, Color)
+        case route(String, String)  // name, colour hex
         case stop(Color)
         case destination
     }
@@ -258,15 +257,15 @@ struct TimelineRow<Content: View>: View {
                 .frame(width: 24, height: 24)
                 .background(Theme.card, in: Circle())
                 .overlay(Circle().strokeBorder(color.opacity(0.5), lineWidth: 1.5))
-        case .route(let name, let color):
+        case .route(let name, let hex):
             Text(name)
                 .font(.geist(10, .bold, relativeTo: .caption2))
-                .foregroundStyle(.white)
+                .foregroundStyle(RouteColors.text(onHex: hex))
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
                 .padding(.horizontal, 3)
                 .frame(minWidth: 26, minHeight: 24)
-                .background(color, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .background(Color(hex: hex), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
         case .stop(let color):
             Circle().fill(Theme.card).frame(width: 14, height: 14)
                 .overlay(Circle().strokeBorder(color, lineWidth: 3))

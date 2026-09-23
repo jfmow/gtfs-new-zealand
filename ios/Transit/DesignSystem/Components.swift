@@ -172,14 +172,19 @@ struct RouteBadge: View {
     var dimmed = false
     var size: CGFloat = 12
 
+    private var fillHex: String { colorHex.isEmpty ? "424242" : colorHex }
+
     var body: some View {
         Text(name)
             .font(.geist(size, .semibold, relativeTo: .caption))
             .lineLimit(1)
-            .foregroundStyle(textColorHex.isEmpty ? Color.white : Color(hex: textColorHex))
+            // Never truncated: a route name is short and meaningless cut off.
+            .fixedSize()
+            .foregroundStyle(textColorHex.isEmpty ? RouteColors.text(onHex: fillHex) : Color(hex: textColorHex))
             .padding(.horizontal, 6)
             .padding(.vertical, 2)
-            .background(colorHex.isEmpty ? Color(hex: "424242") : Color(hex: colorHex), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+            .frame(minWidth: size * 2)
+            .background(Color(hex: fillHex), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
             .opacity(dimmed ? 0.5 : 1)
     }
 }
