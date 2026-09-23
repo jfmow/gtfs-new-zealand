@@ -21,6 +21,34 @@
                ReferencedContainer = "container:Transit.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "450E37648FEFBCB81C067AF5"
+               BuildableName = "TransitUITests.xctest"
+               BlueprintName = "TransitUITests"
+               ReferencedContainer = "container:Transit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "853646417109B52B18F98513"
+               BuildableName = "TransitWidgets.appex"
+               BlueprintName = "TransitWidgets"
+               ReferencedContainer = "container:Transit.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -40,6 +68,17 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "450E37648FEFBCB81C067AF5"
+               BuildableName = "TransitUITests.xctest"
+               BlueprintName = "TransitUITests"
+               ReferencedContainer = "container:Transit.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

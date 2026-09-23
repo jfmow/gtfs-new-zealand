@@ -11,6 +11,9 @@ final class AppEnvironment {
     let api: APIClient
     let location = LocationProvider()
     let push: PushRegistrationService
+    let liveActivity: LiveActivityCoordinator
+    let toasts = ToastCenter()
+    let notificationFeed: NotificationFeed
     var region: Region {
         didSet {
             guard region != oldValue else { return }
@@ -24,6 +27,12 @@ final class AppEnvironment {
         self.region = region
         let api = APIClient(region: region)
         self.api = api
-        self.push = PushRegistrationService(api: api)
+        let push = PushRegistrationService(api: api)
+        self.push = push
+        self.liveActivity = LiveActivityCoordinator(api: api)
+        self.notificationFeed = NotificationFeed(api: api)
+        liveActivity.uploadPushToStartToken = { [weak push] token in
+            await push?.uploadPushToStartToken(token)
+        }
     }
 }

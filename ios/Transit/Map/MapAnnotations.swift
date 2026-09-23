@@ -57,6 +57,25 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
     }
 }
 
+/// A journey's start/end marker - the web map's white "Start"/"End" pill
+/// bubbles (`components/journey/live-map.tsx`), not a route/vehicle marker.
+final class WaypointAnnotation: NSObject, MKAnnotation {
+    let id: String
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    let label: String
+    /// `true` for the journey's end (tinted with the region accent, like
+    /// the web's red "End" pin) - `false` for the start (plain/dark, like
+    /// the web's blue "Start" pill).
+    let isDestination: Bool
+
+    init(id: String, coordinate: Coordinate, label: String, isDestination: Bool) {
+        self.id = id
+        self.coordinate = CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        self.label = label
+        self.isDestination = isDestination
+    }
+}
+
 /// One coloured line segment on the map - a route shape or a journey leg's
 /// walking/transit path.
 struct RoutePolylineData {

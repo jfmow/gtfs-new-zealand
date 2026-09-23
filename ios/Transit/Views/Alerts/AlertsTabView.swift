@@ -1,49 +1,58 @@
 import SwiftUI
 import TransitCore
 
-/// The Alerts tab's landing screen. Unlike the other tabs, the web app has
-/// no "browse every alert" page - alerts are always reached scoped to a
-/// stop (`/alerts?s=`) or a route (`/alerts?r=`), usually from a departures
-/// board or tracker. This search box is that entry point for a rider who
-/// starts from the tab instead.
+/// The Alerts tab - `pages/alerts.tsx`: stop search and a "Notifications"
+/// button for that stop's alert subscription, with the stop's alerts shown
+/// right on the page (the web keeps them on the same route via `?s=`).
 struct AlertsTabView: View {
     @Environment(AppEnvironment.self) private var environment
-    @State private var searchText = ""
-    @State private var results: [StopSearchResult] = []
-    @State private var searchTask: Task<Void, Never>?
+    @State private var selectedStop: String?
+    @State private var isShowingSubscription = false
 
     var body: some View {
         NavigationStack {
-            List {
-                if searchText.isEmpty {
-                    ContentUnavailableView("Search for a stop", systemImage: "exclamationmark.bubble", description: Text("Find a stop to see its service alerts."))
-                } else {
-                    ForEach(results) { result in
-                        NavigationLink(value: BoardDestination(stopQuery: result.name, title: result.name)) {
-                            StopRow(name: result.name, subtitle: result.typeOfStop.capitalized)
-                        }
+            VStack(spacing: 0) {
+                HStack(spacing: 8) {
+                    StopSearchField { selectedStop = $0 }
+                    Button {
+                        isShowingSubscription = true
+                    } label: {
+                        Image(systemName: "bell.badge").font(.system(size: 15))
                     }
+                    .buttonStyle(.shad(.secondary, size: .icon))
+                    .frame(height: 44)
+                    .disabled(selectedStop == nil)
+                    .accessibilityLabel("Notifications for this stop")
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .zIndex(1)
+
+                if let selectedStop {
+                    HStack {
+                        Text(selectedStop).font(.pageTitle).lineLimit(1)
+                        Spacer()
+                        Button("Clear") { self.selectedStop = nil }.buttonStyle(.shad(.ghost, size: .sm))
+                    }
+                    .padding(.horizontal, 16)
+                    AlertsView(stopQuery: selectedStop, title: selectedStop, standalone: false)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                } else {
+                    EmptyState(systemImage: "exclamationmark.bubble", title: "Travel alerts",
+                               message: "Search for a stop to view alerts.")
+                        .frame(maxHeight: .infinity, alignment: .top)
                 }
             }
+            .pageBackground()
             .navigationTitle("Alerts")
-            .searchable(text: $searchText, prompt: "Search stops")
-            .onChange(of: searchText) { _, newValue in scheduleSearch(for: newValue) }
-            .navigationDestination(for: BoardDestination.self) { destination in
-                AlertsView(stopQuery: destination.stopQuery, title: destination.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .appToolbar()
+            .sheet(isPresented: $isShowingSubscription) {
+                if let selectedStop {
+                    AlertSubscriptionSheet(target: .stop(query: selectedStop, title: selectedStop)).shadSheet(detents: [.large])
+                }
             }
-        }
-    }
-
-    private func scheduleSearch(for query: String) {
-        searchTask?.cancel()
-        guard query.count >= 2 else {
-            results = []
-            return
-        }
-        searchTask = Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            results = (try? await environment.api.findStop(matching: query)) ?? []
         }
     }
 }

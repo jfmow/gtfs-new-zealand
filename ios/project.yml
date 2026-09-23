@@ -15,8 +15,11 @@ targets:
     platform: iOS
     sources:
       - path: Transit
+      - path: Shared
     dependencies:
       - package: TransitCore
+      - target: TransitWidgets
+        embed: true
     # An actual generated Info.plist file (rather than build-setting
     # synthesis via GENERATE_INFOPLIST_FILE) - needed because
     # CFBundleURLTypes is a nested array-of-dicts that INFOPLIST_KEY_*
@@ -30,6 +33,14 @@ targets:
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, and to time walking directions."
         NSSupportsLiveActivities: true
+        # Geist, bundled from the web app's own `geist` package (Shared/Fonts,
+        # OFL - license alongside) so both apps use the same typeface.
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
+        # Lets a Debug build reach a backend on localhost / the LAN via
+        # TRANSIT_API_BASE (APIClient.effectiveBaseURL). Public hosts still
+        # need HTTPS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
         CFBundleURLTypes:
           - CFBundleURLName: dev.suddsy.transit
             CFBundleURLSchemes: [transit]
@@ -52,13 +63,67 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
+  # Live Activity UI (Lock Screen + Dynamic Island) for journey progress -
+  # `JourneyActivityAttributes` (in Shared/) is the contract both this and
+  # the app target build against.
+  TransitWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: TransitWidgets
+      - path: Shared
+    dependencies:
+      - package: TransitCore
+    info:
+      path: TransitWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: Transit
+        # Geist, bundled from the web app's own `geist` package (Shared/Fonts,
+        # OFL - license alongside) so both apps use the same typeface.
+        UIAppFonts: [Geist-Regular.ttf, Geist-Medium.ttf, Geist-SemiBold.ttf, Geist-Bold.ttf, GeistMono-Regular.ttf, GeistMono-Medium.ttf]
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit.TransitWidgets
+        DEVELOPMENT_TEAM: 2A422A733W
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        SWIFT_VERSION: "5.10"
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+
+  # Debugging-only harness: no assertions, just drives the app on the
+  # simulator (taps, deep links, screenshots via XCTAttachment) since
+  # `simctl` itself has no touch-injection subcommand. Not part of any
+  # release process.
+  TransitUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TransitUITests
+    dependencies:
+      - target: Transit
+    settings:
+      base:
+        DEVELOPMENT_TEAM: 2A422A733W
+        CODE_SIGN_STYLE: Automatic
+        SWIFT_VERSION: "5.10"
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Transit
+
 schemes:
   Transit:
     build:
       targets:
         Transit: all
+        TransitWidgets: all
+        TransitUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       gatherCoverageData: true
+      targets:
+        - TransitUITests

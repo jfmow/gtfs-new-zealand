@@ -1,32 +1,41 @@
 import SwiftUI
 
-/// The 5-tab shell matching the web app's nav (`components/nav.tsx`):
-/// Schedule ("/"), Planner ("/plan"), Map ("/stops" + "/vehicles" merged),
-/// Alerts ("/alerts"), Settings ("/settings").
+/// The tab shell - the web nav's routes (`components/nav.tsx`): Schedule,
+/// Planner, Stops, Vehicles, Alerts. Settings and "My reminders" live in
+/// each tab's menu, like the web's header menu, alongside the bell.
 struct RootView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @Environment(DeepLinkRouter.self) private var router
     @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
-        TabView {
+        @Bindable var router = router
+        TabView(selection: $router.selectedTab) {
             HomeView()
-                .tabItem { Label("Schedule", systemImage: "clock") }
+                .tabItem { Label("Schedule", systemImage: "calendar") }
+                .tag(DeepLinkRouter.Tab.schedule)
 
             PlannerView()
-                .tabItem { Label("Planner", systemImage: "point.topleft.down.curvedto.point.bottomright.up") }
+                .tabItem { Label("Planner", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
+                .tag(DeepLinkRouter.Tab.planner)
 
-            MapTabView()
-                .tabItem { Label("Map", systemImage: "map") }
+            StopsTabView()
+                .tabItem { Label("Stops", systemImage: "map") }
+                .tag(DeepLinkRouter.Tab.stops)
+
+            VehiclesTabView()
+                .tabItem { Label("Vehicles", systemImage: "bus") }
+                .tag(DeepLinkRouter.Tab.vehicles)
 
             AlertsTabView()
-                .tabItem { Label("Alerts", systemImage: "exclamationmark.bubble") }
-
-            SettingsView()
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
+                .tag(DeepLinkRouter.Tab.alerts)
         }
-        .tint(Theme.accent(for: environment.region))
+        .tint(Theme.primary)
+        .font(.bodyText)
+        .toastOverlay(environment.toasts)
         .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
+        .task { await environment.notificationFeed.poll() }
         .fullScreenCover(item: Binding(get: { router.activeLink }, set: { router.activeLink = $0 })) { link in
             DeepLinkPresentationView(link: link)
         }

@@ -2,12 +2,15 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-/// The journey planner - `pages/plan.tsx`'s search form + results list.
+/// The journey planner - `pages/plan.tsx`: search form, saved trips,
+/// results.
 struct PlannerView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
+    @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
 
+    // Form
     @State private var start: PlannerLocation?
     @State private var end: PlannerLocation?
     @State private var timeType: JourneyPlanRequest.TimeType = .now
@@ -15,205 +18,477 @@ struct PlannerView: View {
     @State private var maxWalkKm: Double = 1.0
     @State private var walkSpeed: Double = 4.8
     @State private var maxTransfers: Int = 5
+    @State private var minResults: Int = 3
+    @State private var onlyRoutes: [RouteSearchResult] = []
+    @State private var showsOptions = false
 
+    // Results
     @State private var results: [JourneyPlan] = []
     @State private var isPlanning = false
-    @State private var errorMessage: String?
-    @State private var hasPlanned = false
+    @State private var planError: String?
+    /// The search that produced `results` - reminders use this, not the
+    /// (possibly since edited) form.
+    @State private var resultsContext: PlannerSearchContext?
+
+    // Sheets
+    @State private var isSaving = false
+    @State private var justSaved = false
+    @State private var isManaging = false
+    @State private var isUpdatingAll = false
+    @State private var reminderPlan: JourneyPlan?
+
+    private var canPlan: Bool { start != nil && end != nil }
 
     var body: some View {
         NavigationStack {
-            List {
-                if !savedTrips.isEmpty { savedTripsSection }
-                formSection
-                if hasPlanned { resultsSection }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    header
+                    form
+                    if !savedTrips.isEmpty {
+                        QuickTripsRail(trips: savedTrips) { apply($0) }
+                    }
+                    latestLeaveBanner
+                    if let planError, !isPlanning {
+                        Text(planError)
+                            .font(.bodyText)
+                            .foregroundStyle(Theme.danger)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Theme.danger.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.danger.opacity(0.3), lineWidth: 1))
+                    }
+                    resultsList
+                }
+                .padding(16)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.paper)
+            .scrollDismissesKeyboard(.interactively)
+            .pageBackground()
             .navigationTitle("Planner")
-            .tint(Theme.accent(for: environment.region))
+            .navigationBarTitleDisplayMode(.inline)
+            .appToolbar()
             .navigationDestination(for: JourneyPlan.self) { plan in
-                JourneyDetailView(plan: plan)
+                JourneyDetailView(plan: plan, context: resultsContext)
             }
+            .sheet(isPresented: $isSaving) {
+                if let start, let end {
+                    SaveTripSheet(start: start, end: end) { saveTrip(named: $0) }
+                        .shadSheet(detents: [.medium])
+                }
+            }
+            .sheet(isPresented: $isManaging) {
+                ManageTripsSheet { apply($0) }.shadSheet(detents: [.large])
+            }
+            .sheet(isPresented: $isUpdatingAll) {
+                GlobalTripSettingsSheet().shadSheet(detents: [.medium, .large])
+            }
+            .sheet(item: $reminderPlan) { plan in
+                LeaveReminderSheet(plan: plan, context: resultsContext ?? currentContext)
+                    .shadSheet(detents: [.large])
+            }
+        }
+        .onChange(of: router.pendingPlan, initial: true) { _, prefill in
+            guard let prefill else { return }
+            router.pendingPlan = nil
+            apply(prefill)
         }
     }
 
-    private var savedTripsSection: some View {
-        Section("Saved trips") {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack {
-                    ForEach(savedTrips) { trip in
-                        Button {
-                            apply(trip)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(trip.name).font(.subheadline.bold())
-                                Text("\(trip.startLabel) → \(trip.endLabel)")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            .padding(12)
-                            .background(Color(hex: trip.colorHex).opacity(0.12))
-                            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Color(hex: trip.colorHex).opacity(0.25), lineWidth: 1))
-                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
+    // MARK: - Header ("Journey Planner" + Saved (n) + update all)
+
+    private var header: some View {
+        HStack(spacing: 4) {
+            Text("Journey Planner").font(.pageTitle)
+            Spacer(minLength: 8)
+            Button {
+                isManaging = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "list.bullet").font(.system(size: 12, weight: .medium))
+                    Text("Saved")
+                    if !savedTrips.isEmpty {
+                        Text("(\(savedTrips.count))").foregroundStyle(Theme.mutedForeground).monospacedDigit()
                     }
                 }
             }
-            .listRowInsets(EdgeInsets())
-            .padding(.horizontal)
-        }
-    }
-
-    private var formSection: some View {
-        Section("Journey") {
-            LocationField(placeholder: "From", location: $start)
-            LocationField(placeholder: "To", location: $end)
-
-            Picker("When", selection: $timeType) {
-                Text("Leave now").tag(JourneyPlanRequest.TimeType.now)
-                Text("Leave at").tag(JourneyPlanRequest.TimeType.departat)
-                Text("Arrive by").tag(JourneyPlanRequest.TimeType.arriveat)
-            }
-            if timeType != .now {
-                DatePicker("Time", selection: $date)
-                    .datePickerStyle(.compact)
-            }
-
-            Stepper("Max walk: \(maxWalkKm.formatted(.number.precision(.fractionLength(1)))) km", value: $maxWalkKm, in: 0.2...5, step: 0.2)
-            Stepper("Max transfers: \(maxTransfers)", value: $maxTransfers, in: 0...5)
-
+            .buttonStyle(.shad(.ghost, size: .sm))
             Button {
-                Task { await plan() }
+                isUpdatingAll = true
             } label: {
-                if isPlanning {
-                    ProgressView().tint(.white)
-                } else {
-                    Text("Plan journey")
-                }
+                Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .medium))
             }
-            .buttonStyle(.transitPrimary(Theme.accent(for: environment.region)))
-            .disabled(start == nil || end == nil || isPlanning)
-            .listRowBackground(Color.clear)
+            .buttonStyle(.shad(.ghost, size: .iconSm))
+            .disabled(savedTrips.isEmpty)
+            .accessibilityLabel("Update all trips")
+        }
+    }
 
-            if start != nil, end != nil {
-                Button("Save this trip") { saveTrip() }
-                    .font(.caption)
+    // MARK: - Form (search-form.tsx)
+
+    private var form: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 10) {
+                VStack(spacing: 4) {
+                    Circle().fill(Theme.primary).frame(width: 8, height: 8)
+                    Rectangle().fill(Theme.border).frame(width: 1, height: 28)
+                    Circle().fill(Theme.danger).frame(width: 8, height: 8)
+                }
+                .accessibilityHidden(true)
+
+                VStack(spacing: 8) {
+                    LocationField(placeholder: "From", storageKey: "recentStartLocations", location: $start)
+                        .zIndex(2)
+                    LocationField(placeholder: "To", storageKey: "recentEndLocations", location: $end)
+                        .zIndex(1)
+                }
+                .zIndex(1)
+
+                Button {
+                    swap(&start, &end)
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .medium))
+                }
+                .buttonStyle(.shad(.ghost, size: .icon))
+                .disabled(start == nil && end == nil)
+                .accessibilityLabel("Swap locations")
+            }
+            .zIndex(1)
+
+            optionsSection
+
+            HStack(spacing: 8) {
+                Button {
+                    Task { await plan() }
+                } label: {
+                    HStack(spacing: 6) {
+                        if isPlanning {
+                            ProgressView().tint(Theme.primaryForeground)
+                            Text("Planning")
+                        } else {
+                            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold))
+                            Text("Plan journey")
+                        }
+                    }
+                }
+                .buttonStyle(.shad(.default, size: .pill, fullWidth: true))
+                .disabled(!canPlan || isPlanning)
+                .accessibilityLabel(isPlanning ? "Planning" : "Plan journey")
+
+                Button {
+                    isSaving = true
+                } label: {
+                    Image(systemName: justSaved ? "bookmark.fill" : "bookmark")
+                        .foregroundStyle(justSaved ? Theme.success : Theme.foreground)
+                }
+                .buttonStyle(.shad(.outline, size: .pill))
+                .frame(width: 44)
+                .disabled(!canPlan)
+                .accessibilityLabel("Save trip")
             }
         }
     }
+
+    private var optionsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) { showsOptions.toggle() }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "slider.horizontal.3").font(.system(size: 12))
+                    Text("Options")
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .rotationEffect(.degrees(showsOptions ? 180 : 0))
+                    if !showsOptions, let summary = optionsSummary {
+                        Text(summary).foregroundStyle(Theme.mutedForeground).lineLimit(1)
+                    }
+                }
+                .font(.meta)
+                .foregroundStyle(Theme.mutedForeground)
+            }
+            .buttonStyle(.plain)
+            .accessibilityValue(showsOptions ? "Expanded" : "Collapsed")
+
+            if showsOptions {
+                VStack(alignment: .leading, spacing: 12) {
+                    FlowLayout(spacing: 8, lineSpacing: 8) {
+                        ShadSelect(selection: $timeType, options: [(.now, "Leave now"), (.departat, "Leave at"), (.arriveat, "Arrive by")])
+                        if timeType != .now {
+                            DatePicker("When", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                                .labelsHidden()
+                                .datePickerStyle(.compact)
+                                .tint(Theme.primary)
+                        }
+                        ShadSelect(label: "Max walk:", selection: $maxWalkKm, options: maxWalkChoices)
+                        ShadSelect(label: "Speed:", selection: $walkSpeed, options: walkSpeedChoices)
+                        ShadSelect(label: "Transfers:", selection: $maxTransfers, options: transferChoices)
+                        ShadSelect(label: "Show:", selection: $minResults, options: resultCountChoices)
+                    }
+                    RouteMultiSelect(selected: $onlyRoutes)
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    /// Non-default options, shown next to the collapsed "Options" toggle so
+    /// a changed setting is never hidden.
+    private var optionsSummary: String? {
+        var parts: [String] = []
+        if timeType == .departat { parts.append("Leave \(date.formatted(date: .omitted, time: .shortened))") }
+        if timeType == .arriveat { parts.append("Arrive by \(date.formatted(date: .omitted, time: .shortened))") }
+        if maxWalkKm != 1 { parts.append("\(maxWalkKm == maxWalkKm.rounded() ? String(Int(maxWalkKm)) : String(maxWalkKm)) km walk") }
+        if walkSpeed != 4.8 { parts.append(walkSpeedLabel(walkSpeed)) }
+        if maxTransfers != 5 { parts.append(maxTransfers == 0 ? "Direct" : "≤\(maxTransfers) transfers") }
+        if !onlyRoutes.isEmpty { parts.append("\(onlyRoutes.count) route\(onlyRoutes.count == 1 ? "" : "s")") }
+        return parts.isEmpty ? nil : "· " + parts.joined(separator: " · ")
+    }
+
+    // MARK: - Arrive-by "latest you can leave"
 
     @ViewBuilder
-    private var resultsSection: some View {
-        Section("Results") {
-            if let errorMessage {
-                Text(errorMessage).foregroundStyle(Theme.steel)
-            } else if results.isEmpty {
-                Text("No journeys found").foregroundStyle(Theme.steel)
-            } else {
+    private var latestLeaveBanner: some View {
+        if resultsContext?.arriveBy == true, let latest = JourneyReminderMath.latestDeparture(results),
+           let leave = latest.departureTime.date, leave > Date().addingTimeInterval(60) {
+            HStack(spacing: 8) {
+                (Text("Latest you can leave: ").foregroundColor(Theme.mutedForeground)
+                    + Text(leave.formatted(date: .omitted, time: .shortened)).fontWeight(.semibold))
+                    .font(.bodyText)
+                Spacer(minLength: 8)
+                Button {
+                    reminderPlan = latest
+                } label: {
+                    Label("Remind me", systemImage: "alarm")
+                }
+                .buttonStyle(.shad(.outline, size: .sm))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .mutedPanel()
+        }
+    }
+
+    // MARK: - Results (results-list.tsx)
+
+    @ViewBuilder
+    private var resultsList: some View {
+        if !results.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("\(results.count) route\(results.count == 1 ? "" : "s") found")
+                    .font(.metaMedium)
+                    .foregroundStyle(Theme.mutedForeground)
                 ForEach(results) { plan in
                     NavigationLink(value: plan) {
-                        TransitCard { JourneyResultCard(plan: plan) }
+                        JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil)
                     }
                     .buttonStyle(.plain)
-                    .cardListRow()
                 }
             }
         }
+    }
+
+    private func canRemind(_ plan: JourneyPlan) -> Bool {
+        guard plan.legs.contains(where: { $0.mode == "transit" }), let departure = plan.departureTime.date else { return false }
+        return departure > Date().addingTimeInterval(60)
+    }
+
+    // MARK: - Actions
+
+    private var currentContext: PlannerSearchContext {
+        PlannerSearchContext(start: start, end: end, arriveBy: timeType == .arriveat, maxWalkKm: maxWalkKm,
+                             walkSpeed: walkSpeed, maxTransfers: maxTransfers, onlyRoutes: onlyRoutes)
     }
 
     private func plan() async {
         guard let start, let end else { return }
+        if timeType == .now { date = Date() }
         isPlanning = true
+        planError = nil
+        results = []
         defer { isPlanning = false }
-        hasPlanned = true
+        let context = currentContext
         do {
             let request = JourneyPlanRequest(
                 start: start.coordinate, end: end.coordinate, date: date, timeType: timeType,
-                maxWalkKm: maxWalkKm, walkSpeed: walkSpeed, maxTransfers: maxTransfers
+                maxWalkKm: maxWalkKm, walkSpeed: walkSpeed, maxTransfers: maxTransfers,
+                minResults: minResults, onlyRoutes: onlyRoutes.map(\.routeID)
             )
-            let plans = try await environment.api.planJourney(request)
-            results = JourneyPlanRanking.pruneDominatedPlans(plans)
-            errorMessage = nil
+            let plans = JourneyPlanRanking.pruneDominatedPlans(try await environment.api.planJourney(request))
+            results = plans
+            resultsContext = context
+            if plans.isEmpty { planError = "No journeys found. Try walking further or allowing more transfers." }
         } catch {
-            results = []
-            errorMessage = error.localizedDescription
+            planError = error.localizedDescription.isEmpty ? "Couldn't plan that journey." : error.localizedDescription
         }
     }
 
-    private func saveTrip() {
+    private func saveTrip(named name: String) {
         guard let start, let end else { return }
         let trip = SavedTrip(
-            name: "\(start.label) → \(end.label)",
+            name: name,
             startLabel: start.label, startCoordinate: start.coordinate,
             endLabel: end.label, endCoordinate: end.coordinate,
             maxWalkKm: maxWalkKm, walkSpeed: walkSpeed, maxTransfers: maxTransfers,
-            colorHex: ["0073bd", "d52923", "97c93d", "8b5cf6"].randomElement() ?? "0073bd",
+            colorHex: Swatches.color(at: savedTrips.count),
+            onlyRouteIDs: onlyRoutes.map(\.routeID),
             sortOrder: savedTrips.count
         )
+        trip.onlyRouteNames = onlyRoutes.map(\.name)
+        trip.minResults = minResults
         modelContext.insert(trip)
+        environment.toasts.show("Trip saved")
+        justSaved = true
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            justSaved = false
+        }
     }
 
     private func apply(_ trip: SavedTrip) {
         start = PlannerLocation(label: trip.startLabel, coordinate: trip.startCoordinate)
         end = PlannerLocation(label: trip.endLabel, coordinate: trip.endCoordinate)
+        timeType = .now
+        date = Date()
         maxWalkKm = trip.maxWalkKm
         walkSpeed = trip.walkSpeed
         maxTransfers = trip.maxTransfers
+        minResults = trip.minResults
+        onlyRoutes = trip.onlyRoutes
+        Task { await plan() }
+    }
+
+    /// A `/plan?...` link - a recurring leave-by reminder's notification
+    /// tap. Fills the form the way the web's shared-link effect does, then
+    /// plans for now (the link carries no target time).
+    private func apply(_ prefill: PlanPrefill) {
+        start = PlannerLocation(label: prefill.startLabel, coordinate: Coordinate(latitude: prefill.startLat, longitude: prefill.startLon))
+        end = PlannerLocation(label: prefill.endLabel, coordinate: Coordinate(latitude: prefill.endLat, longitude: prefill.endLon))
+        if let value = prefill.maxWalkKm { maxWalkKm = value }
+        if let value = prefill.walkSpeed { walkSpeed = value }
+        if let value = prefill.maxTransfers { maxTransfers = value }
+        if let value = prefill.minResults { minResults = value }
+        if !prefill.onlyRoutes.isEmpty {
+            onlyRoutes = prefill.onlyRoutes.map { RouteSearchResult(name: $0, routeID: $0) }
+        }
+        timeType = .now
+        date = Date()
         Task { await plan() }
     }
 }
 
+// MARK: - Result card
+
+/// One journey option - `ResultsList` row on the web: duration, leave →
+/// arrive, Direct/transfers badge, an alarm button, the leg chain with
+/// walk minutes and waits, a live dot on realtime-adjusted legs, and a
+/// disruption banner when a ride can't be used.
 struct JourneyResultCard: View {
     let plan: JourneyPlan
+    var onRemind: (() -> Void)?
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.heroNumber(20))
-                Spacer()
-                Text(transfersLabel).font(.caption).foregroundStyle(Theme.steel)
-            }
-            HStack(spacing: 4) {
-                if let departure = plan.departureTime.date, let arrival = plan.arrivalTime.date {
-                    Text(departure, style: .time)
-                    Text("–")
-                    Text(arrival, style: .time)
-                }
-            }
-            .font(.subheadline.monospacedDigit())
-            .foregroundStyle(Theme.steel)
-
-            HStack(spacing: 4) {
-                ForEach(Array(plan.legs.enumerated()), id: \.offset) { _, leg in
-                    legChip(leg)
-                }
-            }
-        }
-        .padding(.vertical, 6)
+    private var hasDisruption: Bool {
+        plan.legs.contains { $0.mode == "transit" && !$0.tripUsable }
     }
 
-    private var transfersLabel: String {
-        plan.transfers == 0 ? "Direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")"
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if hasDisruption {
+                Label("Service disruption on this route", systemImage: "exclamationmark.triangle")
+                    .font(.geist(12, .medium, relativeTo: .caption))
+                    .foregroundStyle(Theme.danger)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Theme.danger.opacity(0.1))
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.number(19))
+                        if let departure = plan.departureTime.date, let arrival = plan.arrivalTime.date {
+                            HStack(spacing: 4) {
+                                Text(departure, style: .time)
+                                Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold))
+                                Text(arrival, style: .time)
+                            }
+                            .font(.meta)
+                            .foregroundStyle(Theme.mutedForeground)
+                            .monospacedDigit()
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    ShadBadge(text: plan.transfers == 0 ? "Direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")",
+                              variant: plan.transfers == 0 ? .default : .secondary)
+                    if let onRemind {
+                        Button(action: onRemind) {
+                            Image(systemName: "alarm").font(.system(size: 14))
+                        }
+                        .buttonStyle(.shad(.ghost, size: .iconSm))
+                        .foregroundStyle(Theme.mutedForeground)
+                        .accessibilityLabel("Remind me when to leave for this journey")
+                    }
+                }
+
+                FlowLayout(spacing: 4, lineSpacing: 6) {
+                    ForEach(Array(plan.legs.enumerated()), id: \.offset) { index, leg in
+                        legChip(leg)
+                        if index < plan.legs.count - 1 {
+                            chevron
+                            if let wait = waitMinutes(after: leg, before: plan.legs[index + 1]), wait >= 1 {
+                                HStack(spacing: 3) {
+                                    Image(systemName: "clock").font(.system(size: 9))
+                                    Text("\(wait) min")
+                                }
+                                .font(.geist(12, relativeTo: .caption))
+                                .foregroundStyle(Theme.mutedForeground)
+                                chevron
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(14)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        .shadCardBackground()
+        .accessibilityElement(children: .combine)
+    }
+
+    private var chevron: some View {
+        Image(systemName: "arrow.right").font(.system(size: 8, weight: .semibold)).foregroundStyle(Theme.mutedForeground)
     }
 
     @ViewBuilder
     private func legChip(_ leg: JourneyLeg) -> some View {
         if leg.mode == "walk" {
-            Label("\(Int((leg.duration.timeInterval / 60).rounded()))m", systemImage: "figure.walk")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(Theme.steel)
-        } else if let route = leg.route {
-            Text(route.routeShortName)
-                .font(.caption2.bold())
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Color(hex: route.routeColor.isEmpty ? "6b7280" : route.routeColor).gradient)
-                .foregroundStyle(.white)
-                .clipShape(Capsule())
+            HStack(spacing: 3) {
+                Image(systemName: "figure.walk").font(.system(size: 10))
+                Text("\(max(0, Int((leg.duration.timeInterval / 60).rounded()))) min")
+            }
+            .font(.geist(12, relativeTo: .caption))
+            .foregroundStyle(Theme.mutedForeground)
+        } else {
+            RouteBadge(
+                name: leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID,
+                colorHex: leg.route?.routeColor ?? "",
+                dimmed: !leg.tripUsable,
+                size: 11
+            )
+            .overlay(alignment: .topTrailing) {
+                if let status = leg.realtimeStatus, status == "delayed" || status == "early" {
+                    LiveDot(color: status == "delayed" ? Theme.warning : Theme.success)
+                        .offset(x: 3, y: -3)
+                }
+            }
         }
+    }
+
+    private func waitMinutes(after previous: JourneyLeg, before next: JourneyLeg) -> Int? {
+        guard let end = previous.arrivalTime.date, let start = next.departureTime.date else { return nil }
+        let minutes = Int((start.timeIntervalSince(end) / 60).rounded(.down))
+        return minutes > 0 ? minutes : nil
     }
 }

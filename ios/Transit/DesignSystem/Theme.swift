@@ -1,63 +1,72 @@
 import SwiftUI
 import TransitCore
 
-// Design plan v2 (revised per direction: modern, shadcn-inspired, "2026 not
-// 2018" - soft rounded surfaces, circular badges, confident colour, not the
-// flat signage-board look v1 started with).
+// Design system v3 (2026-09-23): the web app's own tokens, translated.
 //
-// Subject: a native companion for NZ public transport (Auckland Transport,
-// Metlink Wellington, Metro Christchurch) - trains, buses, ferries. Used
-// one-handed, often mid-walk, in bright sun or at night; the job is "get me
-// there" but the *feel* should be current-generation, not a 2018 utility app.
+// The web (frontend/styles/globals.css + components/ui/*) is shadcn's
+// neutral palette: near-white/near-black surfaces, a *neutral* primary
+// (black button in light mode, white in dark), 1px borders, 10-12pt radii,
+// Geist throughout. Colour only ever means something - a route's own
+// colour, or a status (late, cancelled, live). v1/v2 of this file invented
+// their own look instead (region-blue accent on everything, SF Rounded,
+// 18pt shadowed cards), which is why the app never looked like the same
+// product as the website.
 //
-// Color (named):
-//   ink        #14171C / #F2F3F5   primary text
-//   paper      #F7F7F5 / #0D0F12   app background - cool near-white/black
-//   card       #FFFFFF / #16191E   card surface, sits above paper
-//   cardBorder #EBECEF / #262A31   hairline border on a card, not a shadow-only edge
-//   steel      #6B7280 / #8B92A0   secondary text/icons
-//   accent     dynamic per region - AT blue #0073BD / Metlink lime #CED940 /
-//              Metro indigo #2A286B - the one bold colour per screen, taken
-//              from each agency's own real branding, not invented
-//   delayed #E8A33D   alert/cancelled #D6494A   onTime #3FA66B
-//
-// Type: system (SF Pro), used with intent - `.rounded` design + bold +
-// monospaced digits for every time-critical number (countdowns, platforms),
-// `.rounded` semibold for headings, plain SF Pro for body copy.
-//
-// Layout: soft rounded cards (18pt corner radius, 1px hairline border, a
-// faint shadow - shadcn's "shadow-sm", not a heavy drop shadow) floating on
-// the paper background with breathing room between them, not edge-to-edge
-// table rows. Every row leads with a circular icon/glyph badge (route mode,
-// cause icon, region swatch) rather than a plain colour rail. Full-bleed
-// maps with pill floating controls.
-//
-// Principles: (1) soft cards, not flat rows or SaaS-shadow clichés, (2)
-// circles carry meaning - every leading badge is a circle, consistent
-// across the app, (3) one bold colour per screen - the region's own brand
-// colour - used with more confidence than a single accent line (badge
-// fills, active-state tints, gradients on the hero elements), (4) numbers
-// are the hero - countdowns/durations get the boldest, roundest, most
-// legible treatment, (5) motion only for live state changes.
+// Token names match the CSS variables one-for-one so a web component can
+// be ported by reading its Tailwind classes: `bg-muted` -> Theme.muted,
+// `text-muted-foreground` -> Theme.mutedForeground, `border` ->
+// Theme.border, `rounded-md` -> Theme.radiusMD.
 enum Theme {
-    static let ink = Color(light: 0x14171C, dark: 0xF2F3F5)
-    static let paper = Color(light: 0xF7F7F5, dark: 0x0D0F12)
-    static let card = Color(light: 0xFFFFFF, dark: 0x16191E)
-    static let cardBorder = Color(light: 0xEBECEF, dark: 0x262A31)
-    static let steel = Color(light: 0x6B7280, dark: 0x8B92A0)
-    static let hairline = Color(light: 0xE3E5E8, dark: 0x24272C)
+    // MARK: Surfaces (globals.css :root / .dark)
 
-    static let delayed = Color(light: 0xC97A17, dark: 0xE8A33D)
-    static let alert = Color(light: 0xC13A3B, dark: 0xE8595A)
-    static let onTime = Color(light: 0x2E8B57, dark: 0x4CBF7F)
+    static let background = Color(light: 0xFFFFFF, dark: 0x171717)
+    static let foreground = Color(light: 0x0A0A0A, dark: 0xF5F5F5)
+    static let card = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
+    static let cardForeground = foreground
+    static let popover = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
+    static let primary = Color(light: 0x171717, dark: 0xF5F5F5)
+    static let primaryForeground = Color(light: 0xFAFAFA, dark: 0x171717)
+    static let secondary = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
+    static let secondaryForeground = foreground
+    static let muted = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
+    static let mutedForeground = Color(light: 0x737373, dark: 0xA3A3A3)
+    static let accent = Color(light: 0xF5F5F5, dark: 0x2E2E2E)
+    static let accentForeground = foreground
+    static let destructive = Color(light: 0xEF4444, dark: 0x8D2020)
+    static let destructiveForeground = Color(light: 0xFAFAFA, dark: 0xFAFAFA)
+    static let border = Color(light: 0xE5E5E5, dark: 0x2E2E2E)
+    static let input = Color(light: 0xE5E5E5, dark: 0x2E2E2E)
+    static let ring = Color(light: 0x0A0A0A, dark: 0xCCCCCC)
 
-    static let cardRadius: CGFloat = 18
-    static let badgeRadius: CGFloat = 40
+    // MARK: Status (the web's Tailwind palette uses for these)
 
-    /// The one bold colour for the current screen - the active region's own
-    /// brand colour (AT blue / Metlink lime / Metro indigo).
-    static func accent(for region: Region) -> Color {
-        Color(hex: region.brandColorHex)
+    /// Delayed / tight connection - amber-600 / amber-500.
+    static let warning = Color(light: 0xD97706, dark: 0xF59E0B)
+    /// Cancelled / error text - red-600 / red-400 (readable, unlike the dim
+    /// dark-mode `destructive` fill).
+    static let danger = Color(light: 0xDC2626, dark: 0xF87171)
+    /// On time / success - green-600 / green-400.
+    static let success = Color(light: 0x16A34A, dark: 0x4ADE80)
+    /// "Now" / live tracking - blue-600 / blue-400.
+    static let live = Color(light: 0x2563EB, dark: 0x60A5FA)
+
+    // MARK: Radius (tailwind.config.ts: --radius 0.75rem)
+
+    static let radiusSM: CGFloat = 8
+    static let radiusMD: CGFloat = 10
+    static let radiusLG: CGFloat = 12
+    /// `rounded-xl` - cards.
+    static let radiusXL: CGFloat = 12
+
+    /// The agency's own logo asset (copied from the web app's
+    /// `public/provider logos/`), for the region picker.
+    static func providerLogoImageName(for region: Region) -> String {
+        switch region.slug {
+        case "at": return "ProviderLogoAT"
+        case "wel": return "ProviderLogoMetlink"
+        case "christ": return "ProviderLogoMetro"
+        default: return "ProviderLogoAT"
+        }
     }
 }
 
@@ -67,7 +76,7 @@ extension Color {
     }
 }
 
-private extension UIColor {
+extension UIColor {
     convenience init(rgb: UInt32) {
         self.init(
             red: CGFloat((rgb >> 16) & 0xFF) / 255,
@@ -82,99 +91,64 @@ private extension UIColor {
     }
 }
 
-// MARK: - Typography
+// MARK: - Typography (Geist, bundled from the web's `geist` package)
+
+enum GeistWeight {
+    case regular, medium, semibold, bold
+
+    var postScriptName: String {
+        switch self {
+        case .regular: return "Geist-Regular"
+        case .medium: return "Geist-Medium"
+        case .semibold: return "Geist-SemiBold"
+        case .bold: return "Geist-Bold"
+        }
+    }
+}
 
 extension Font {
-    /// The "hero number" treatment - departure countdowns, platform
-    /// numbers, delay minutes: bold, rounded, monospaced digits so they
-    /// don't jitter as they tick over.
-    static func heroNumber(_ size: CGFloat = 22) -> Font {
-        .system(size: size, weight: .bold, design: .rounded).monospacedDigit()
+    /// Geist at `size`, scaling with Dynamic Type relative to `textStyle`.
+    static func geist(_ size: CGFloat, _ weight: GeistWeight = .regular, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        .custom(weight.postScriptName, size: size, relativeTo: textStyle)
     }
 
-    static func sectionHeading(_ size: CGFloat = 20) -> Font {
-        .system(size: size, weight: .semibold, design: .rounded)
+    static func geistMono(_ size: CGFloat, medium: Bool = false, relativeTo textStyle: Font.TextStyle = .body) -> Font {
+        .custom(medium ? "GeistMono-Medium" : "GeistMono-Regular", size: size, relativeTo: textStyle)
     }
+
+    // The web's type scale (Tailwind), nudged up a point for touch.
+    /// `text-lg font-semibold` - page headings.
+    static let pageTitle = geist(19, .semibold, relativeTo: .title3)
+    /// `text-base font-semibold` - card titles, headsigns.
+    static let cardTitle = geist(16, .semibold, relativeTo: .headline)
+    /// `text-sm` - body copy, the web's default size.
+    static let bodyText = geist(15, relativeTo: .body)
+    static let bodyMedium = geist(15, .medium, relativeTo: .body)
+    /// `text-xs` - meta rows, captions.
+    static let meta = geist(13, relativeTo: .footnote)
+    static let metaMedium = geist(13, .medium, relativeTo: .footnote)
+    /// `text-[11px]` - badges.
+    static let badge = geist(11, .medium, relativeTo: .caption2)
+    /// Big tabular numbers - countdowns, durations.
+    static func number(_ size: CGFloat = 20) -> Font { geist(size, .bold, relativeTo: .title3).monospacedDigit() }
+
 }
 
-// MARK: - Cards
+/// UIKit-drawn chrome (navigation bars, tab bar, search bars, segmented
+/// controls) doesn't read SwiftUI's font environment - set Geist and the
+/// neutral palette there once at launch.
+enum ChromeAppearance {
+    static func apply() {
+        // Fonts only - the system keeps drawing the bars' own backgrounds.
+        let navBar = UINavigationBar.appearance()
+        navBar.titleTextAttributes = [.font: UIFont(name: "Geist-SemiBold", size: 17) ?? .systemFont(ofSize: 17, weight: .semibold)]
+        navBar.largeTitleTextAttributes = [.font: UIFont(name: "Geist-Bold", size: 32) ?? .systemFont(ofSize: 32, weight: .bold)]
+        UIBarButtonItem.appearance().setTitleTextAttributes([.font: UIFont(name: "Geist-Medium", size: 16) ?? .systemFont(ofSize: 16)], for: .normal)
 
-/// A soft rounded surface - the app's base unit of layout. Wrap row content
-/// in this instead of relying on List's own chrome.
-struct TransitCard<Content: View>: View {
-    var padding: CGFloat = 14
-    @ViewBuilder var content: Content
+        let tabFont = UIFont(name: "Geist-Medium", size: 10) ?? .systemFont(ofSize: 10, weight: .medium)
+        UITabBarItem.appearance().setTitleTextAttributes([.font: tabFont], for: .normal)
 
-    var body: some View {
-        content
-            .padding(padding)
-            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous)
-                    .strokeBorder(Theme.cardBorder, lineWidth: 1)
-            )
-            .shadow(color: .black.opacity(0.05), radius: 10, x: 0, y: 4)
+        let segmentFont = UIFont(name: "Geist-Medium", size: 13) ?? .systemFont(ofSize: 13, weight: .medium)
+        UISegmentedControl.appearance().setTitleTextAttributes([.font: segmentFont], for: .normal)
     }
-}
-
-/// Clears a `List` row's own chrome so a `TransitCard` inside it reads as a
-/// floating card, with breathing room between rows instead of hairline
-/// dividers - swipe actions/pull-to-refresh still work, List just gets out
-/// of the way visually.
-struct CardListRowStyle: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
-    }
-}
-
-extension View {
-    /// Use on a `TransitCard` (or any row content) placed inside a `List` -
-    /// the app's default row treatment.
-    func cardListRow() -> some View { modifier(CardListRowStyle()) }
-
-    /// Kept for call sites still using the flatter v1 treatment where a
-    /// hairline still makes sense (dense settings-style rows); prefer
-    /// `cardListRow()` for anything list-of-items shaped.
-    func boardRow() -> some View {
-        listRowBackground(Theme.paper).listRowSeparatorTint(Theme.hairline)
-    }
-}
-
-/// A circular icon/glyph badge - the app's consistent leading element
-/// (route mode, alert cause, region swatch), replacing a plain colour rail.
-struct CircularBadge<Content: View>: View {
-    var diameter: CGFloat = 40
-    var fill: Color
-    @ViewBuilder var content: Content
-
-    var body: some View {
-        content
-            .frame(width: diameter, height: diameter)
-            .background(fill.gradient, in: Circle())
-    }
-}
-
-// MARK: - Buttons
-
-/// A solid, region-accented primary action - the one bold shape per screen.
-struct PrimaryButtonStyle: ButtonStyle {
-    let accent: Color
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 16, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 14)
-            .background(accent.gradient.opacity(configuration.isPressed ? 0.85 : 1), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
-    }
-}
-
-extension ButtonStyle where Self == PrimaryButtonStyle {
-    static func transitPrimary(_ accent: Color) -> PrimaryButtonStyle { PrimaryButtonStyle(accent: accent) }
 }

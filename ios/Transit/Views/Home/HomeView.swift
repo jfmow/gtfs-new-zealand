@@ -2,189 +2,150 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-/// The Schedule tab's landing screen - stop search, favourites rail, and
-/// nearby stops. Mirrors `pages/index.tsx` (no stop selected state) +
-/// `components/stops/favourites.tsx` + `components/home/nearby-stops.tsx`.
+/// The Schedule tab's landing screen - `pages/index.tsx` with no stop
+/// selected: stop search, the favourites rail, the nearest stop's next
+/// departures ("Near you"), and the stops map filling the rest.
 struct HomeView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
 
-    @State private var searchText = ""
-    @State private var searchResults: [StopSearchResult] = []
-    @State private var isSearching = false
-    @State private var searchTask: Task<Void, Never>?
-
+    @State private var path = NavigationPath()
     @State private var nearbyStops: [Stop] = []
     @State private var isLoadingNearby = false
-    @State private var errorMessage: String?
+    @State private var nearbyError: String?
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !searchText.isEmpty {
-                    searchSection
-                } else {
-                    if !favourites.isEmpty { favouritesSection }
-                    nearbySection
-                    Section {
-                        NavigationLink {
-                            StopsMapView()
-                        } label: {
-                            TransitCard {
-                                HStack(spacing: 12) {
-                                    CircularBadge(fill: Theme.accent(for: environment.region)) {
-                                        Image(systemName: "map.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)
-                                    }
-                                    Text("Browse all stops on the map").foregroundStyle(Theme.ink)
-                                    Spacer()
-                                }
-                            }
+        NavigationStack(path: $path) {
+            VStack(spacing: 0) {
+                StopSearchField { query in
+                    path.append(BoardDestination(stopQuery: query, title: query))
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 12)
+                .zIndex(1)
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        if !favourites.isEmpty { favouritesRail }
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            SectionLabel(text: "Near you", liveDot: true)
+                            nearYou
                         }
-                        .buttonStyle(.plain)
-                        .cardListRow()
+                        .padding(.horizontal, 16)
+
+                        StopsMapView(embedded: true)
+                            .frame(height: 420)
+                            .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+                            .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 16)
                     }
                 }
+                .scrollDismissesKeyboard(.immediately)
+                .refreshable { await loadNearby() }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(Theme.paper)
+            .pageBackground()
             .navigationTitle(environment.region.displayName)
-            .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search stops")
-            .onChange(of: searchText) { _, newValue in scheduleSearch(for: newValue) }
+            .navigationBarTitleDisplayMode(.inline)
+            .appToolbar()
             .task { await loadNearby() }
-            .refreshable { await loadNearby() }
-        }
-    }
-
-    // MARK: - Sections
-
-    private var searchSection: some View {
-        Section {
-            if isSearching, searchResults.isEmpty {
-                ProgressView()
-            } else if searchResults.isEmpty {
-                Text("No stops found").foregroundStyle(Theme.steel)
-            } else {
-                ForEach(searchResults) { result in
-                    NavigationLink(value: BoardDestination(stopQuery: result.name, title: result.name)) {
-                        TransitCard { StopRow(name: result.name, subtitle: result.typeOfStop.capitalized, kind: result.typeOfStop) }
-                    }
-                    .buttonStyle(.plain)
-                    .cardListRow()
-                }
+            .onChange(of: environment.location.coordinate == nil) { _, _ in Task { await loadNearby() } }
+            // A single registration for the whole stack - registering the
+            // same type's navigationDestination more than once per stack is
+            // undefined behaviour in SwiftUI.
+            .navigationDestination(for: BoardDestination.self) { destination in
+                StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
             }
         }
-        .navigationDestination(for: BoardDestination.self) { destination in
-            StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
-        }
     }
 
-    private var favouritesSection: some View {
-        Section("Favourites") {
+    // MARK: - Favourites
+
+    private var favouritesRail: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel(text: "Favourites").padding(.horizontal, 16)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 14) {
-                    ForEach(favourites) { favourite in
+                HStack(spacing: 8) {
+                    ForEach(Array(favourites.enumerated()), id: \.element.persistentModelID) { index, favourite in
                         NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
-                            VStack(spacing: 8) {
-                                CircularBadge(diameter: 52, fill: Color(hex: favourite.colorHex)) {
-                                    Text(String(favourite.displayName.prefix(1)))
-                                        .font(.system(size: 20, weight: .bold, design: .rounded))
-                                        .foregroundStyle(.white)
-                                }
-                                Text(favourite.displayName)
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(Theme.ink)
-                                    .lineLimit(1)
-                                    .frame(width: 68)
-                            }
+                            FavouriteCard(
+                                favourite: favourite,
+                                canMoveLeft: index > 0,
+                                canMoveRight: index < favourites.count - 1,
+                                onMove: { move(from: index, by: $0) },
+                                onRemove: { remove(favourite) }
+                            )
                         }
                         .buttonStyle(.plain)
-                        .contextMenu {
-                            Button("Remove", role: .destructive) { modelContext.delete(favourite) }
-                        }
                     }
                 }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 2)
             }
-            .listRowInsets(EdgeInsets())
-            .listRowBackground(Color.clear)
-            .padding(.horizontal, 14)
-        }
-        .navigationDestination(for: BoardDestination.self) { destination in
-            StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
         }
     }
+
+    private func move(from index: Int, by offset: Int) {
+        var ordered = favourites
+        let target = index + offset
+        guard ordered.indices.contains(target) else { return }
+        ordered.swapAt(index, target)
+        for (i, favourite) in ordered.enumerated() { favourite.sortOrder = i }
+    }
+
+    private func remove(_ favourite: FavouriteStop) {
+        modelContext.delete(favourite)
+        environment.toasts.show("Removed from favourites")
+    }
+
+    // MARK: - Near you
 
     @ViewBuilder
-    private var nearbySection: some View {
-        Section("Near you") {
-            if !environment.location.isAuthorized {
-                Button("Allow location to see nearby stops") {
-                    environment.location.requestPermission()
-                }
-                .cardListRow()
-            } else if isLoadingNearby, nearbyStops.isEmpty {
-                ProgressView()
-            } else if let errorMessage {
-                Text(errorMessage).foregroundStyle(Theme.steel)
-            } else if nearbyStops.isEmpty {
-                Text("No stops found nearby").foregroundStyle(Theme.steel)
-            } else {
-                ForEach(nearbyStops.prefix(6)) { stop in
-                    NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
-                        TransitCard { StopRow(name: stop.stopName, subtitle: stop.stopCode, kind: stop.stopType) }
-                    }
-                    .buttonStyle(.plain)
-                    .cardListRow()
-                }
+    private var nearYou: some View {
+        if !environment.location.isAuthorized {
+            Button("Enable location to see stops near you") {
+                environment.location.requestPermission()
             }
-        }
-        .navigationDestination(for: BoardDestination.self) { destination in
-            StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
+            .buttonStyle(.shad(.outline, size: .sm))
+        } else if let nearest = nearbyStops.first {
+            NavigationLink(value: BoardDestination(stopQuery: nearest.boardQuery, title: nearest.stopName)) {
+                StopPreviewCard(
+                    stopQuery: nearest.boardQuery,
+                    label: nearest.stopName,
+                    code: nearbyStops.dropFirst().contains { $0.stopName == nearest.stopName } ? nearest.stopCode : nil,
+                    meta: distanceLabel(to: nearest)
+                )
+            }
+            .buttonStyle(.plain)
+        } else if isLoadingNearby {
+            Text("Finding stops near you...").font(.meta).foregroundStyle(Theme.mutedForeground)
+        } else if let nearbyError {
+            Text(nearbyError).font(.meta).foregroundStyle(Theme.mutedForeground)
+        } else {
+            Text("No stops found nearby.").font(.meta).foregroundStyle(Theme.mutedForeground)
         }
     }
 
-    // MARK: - Data
-
-    private func scheduleSearch(for query: String) {
-        searchTask?.cancel()
-        guard query.count >= 2 else {
-            searchResults = []
-            return
-        }
-        searchTask = Task {
-            try? await Task.sleep(for: .milliseconds(300))
-            guard !Task.isCancelled else { return }
-            isSearching = true
-            defer { isSearching = false }
-            do {
-                let results = try await environment.api.findStop(matching: query)
-                guard !Task.isCancelled else { return }
-                searchResults = results
-            } catch {
-                searchResults = []
-            }
-        }
+    private func distanceLabel(to stop: Stop) -> String? {
+        guard let here = environment.location.coordinate else { return nil }
+        return TimeFormatting.formatDistance(meters: Geo.haversineDistanceMeters(here, stop.coordinate))
     }
 
     private func loadNearby() async {
         environment.location.requestPermission()
         environment.location.startUpdating()
-        guard let coordinate = environment.location.coordinate ?? fallbackCoordinate() else { return }
+        guard let coordinate = environment.location.coordinate else { return }
         isLoadingNearby = true
         defer { isLoadingNearby = false }
         do {
             nearbyStops = try await environment.api.closestStops(to: coordinate)
-            errorMessage = nil
+            nearbyError = nil
         } catch {
-            errorMessage = error.localizedDescription
+            nearbyError = error.localizedDescription
         }
-    }
-
-    private func fallbackCoordinate() -> Coordinate? {
-        environment.location.isAuthorized ? nil : environment.region.defaultMapCenter
     }
 }
 
@@ -195,51 +156,6 @@ struct HomeView: View {
 struct BoardDestination: Hashable {
     let stopQuery: String
     let title: String
-}
-
-struct StopRow: View {
-    let name: String
-    let subtitle: String
-    var kind: String = "other"
-
-    var body: some View {
-        HStack(spacing: 12) {
-            CircularBadge(fill: modeColor) {
-                Image(systemName: modeIcon)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).foregroundStyle(Theme.ink)
-                Text(subtitle).font(.caption).foregroundStyle(Theme.steel)
-            }
-            Spacer()
-        }
-    }
-
-    private var modeIcon: String {
-        switch kind {
-        case "train": return "tram.fill"
-        case "ferry": return "ferry.fill"
-        case "bus": return "bus.fill"
-        default: return "mappin"
-        }
-    }
-
-    private var modeColor: Color {
-        switch kind {
-        case "train": return Color(hex: "0073BD")
-        case "ferry": return Color(hex: "2A286B")
-        case "bus": return Color(hex: "D52923")
-        default: return Theme.steel
-        }
-    }
-}
-
-extension Color {
-    init(hex: String) {
-        self.init(uiColor: UIColor(hex: hex))
-    }
 }
 
 #Preview {

@@ -21,6 +21,17 @@ struct DeepLinkPresentationView: View {
                     journeyContent(id: id)
                 case .trip(let tripID, _):
                     VehicleQuickLookView(tripID: tripID)
+                case .stop(let query):
+                    StopBoardView(stopQuery: query, title: query)
+                case .stopAlerts(let query):
+                    AlertsView(stopQuery: query, title: query)
+                case .routeAlerts(let routeID):
+                    RouteAlertsLinkView(routeID: routeID)
+                case .notifications:
+                    ManageNotificationsView()
+                case .plan:
+                    // Routed to the Planner tab by DeepLinkRouter instead.
+                    EmptyView()
                 }
             }
             .toolbar {
@@ -44,12 +55,7 @@ struct DeepLinkPresentationView: View {
     }
 
     private func applyRegionIfNeeded() async {
-        let regionSlug: String?
-        switch link {
-        case .journey(_, let region): regionSlug = region
-        case .trip(_, let region): regionSlug = region
-        }
-        if let regionSlug, let region = Region.bySlug(regionSlug), region != environment.region {
+        if let regionSlug = link.region, let region = Region.bySlug(regionSlug), region != environment.region {
             environment.region = region
         }
     }
@@ -64,6 +70,46 @@ struct DeepLinkPresentationView: View {
             plan = first
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+/// A route's service alerts, opened from a route-alert push.
+private struct RouteAlertsLinkView: View {
+    let routeID: String
+
+    @Environment(AppEnvironment.self) private var environment
+    @State private var alerts: [TransitAlert]?
+    @State private var errorMessage: String?
+
+    var body: some View {
+        Group {
+            if let alerts {
+                if alerts.isEmpty {
+                    ContentUnavailableView("No alerts for route \(routeID)", systemImage: "checkmark.circle")
+                } else {
+                    List(Array(alerts.enumerated()), id: \.offset) { _, alert in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(alert.title).font(.subheadline.weight(.semibold))
+                            Text(alert.description).font(.footnote).foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            } else if let errorMessage {
+                ContentUnavailableView("Couldn't load alerts", systemImage: "wifi.slash", description: Text(errorMessage))
+            } else {
+                ProgressView()
+            }
+        }
+        .navigationTitle("Route \(routeID)")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            do {
+                alerts = try await environment.api.alerts(forRoute: routeID)
+            } catch {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 }

@@ -3,13 +3,15 @@ import SwiftUI
 import TransitCore
 
 /// How the map should point its camera - mirrors the web map's
-/// `defaultZoom`/`followMarkerId`/`followFitWith` behaviour
-/// (`components/map/map.tsx`), simplified to the cases this app needs.
+/// `defaultZoom`/`followMarkerId`/`followFitWith` behaviour,
+/// simplified to the cases this app needs.
 enum MapCamera: Equatable {
     case region(center: Coordinate, radiusMeters: Double)
     case fitAll
+
     /// Re-centre on this annotation id every time its position updates.
     case follow(annotationID: String)
+
     /// Leave the camera alone - the user is free-panning.
     case none
 }
@@ -21,181 +23,497 @@ enum MapCamera: Equatable {
 /// simplified: no LINZ satellite overlay or speed-gradient waypoint line yet
 /// (tracked as a follow-up once the tracker screen needs them).
 struct TransitMapView: UIViewRepresentable {
+    /// Settings > Map style - basemap light/dark independent of the app
+    /// theme, like the web's map style setting.
+    @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
+
     var stops: [StopAnnotation] = []
     var vehicles: [VehicleAnnotation] = []
+    var waypoints: [WaypointAnnotation] = []
     var polylines: [RoutePolylineData] = []
     var camera: MapCamera = .none
     var showsUserLocation: Bool = false
+
     var onSelectStop: ((String) -> Void)?
     var onSelectVehicle: ((String) -> Void)?
 
+    /// Fires after every pan/zoom settles (`regionDidChangeAnimated`), with
+    /// the map's new visible region. A screen with a large candidate stop
+    /// set (`StopsMapView`) uses this to only ever hand this view the stops
+    /// actually near what's on screen, instead of every stop in the region -
+    /// MapKit's own accessibility-tree walk (VoiceOver, or XCUITest/any
+    /// other accessibility client) is O(annotation count) over
+    /// `mapView.annotations` regardless of visual clustering, and with a
+    /// whole-region stop set (thousands, for Auckland) that walk can pin
+    /// the main thread for 60s+. See `ios-swiftui-rewrite` memory.
+    var onVisibleRegionChange: ((MKCoordinateRegion) -> Void)?
+
+    /// Bump to recentre on the device's location right now (the
+    /// `RecenterButton`) - a one-shot imperative trigger rather than part
+    /// of `camera`, since `camera`'s own value-equality gate (needed so the
+    /// ambient camera doesn't fight the person's own panning every render)
+    /// would otherwise make a second tap silently do nothing whenever nothing
+    /// else about the camera value had changed since the first tap.
+    var centerOnUserLocationTrigger: Int = 0
+
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
+
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = showsUserLocation
         mapView.pointOfInterestFilter = .excludingAll
+
+        // Register every annotation view that is dequeued using
+        // dequeueReusableAnnotationView(withIdentifier:for:).
+        mapView.register(
+            MKMarkerAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: "stop"
+        )
+
+        mapView.register(
+            MKMarkerAnnotationView.self,
+            forAnnotationViewWithReuseIdentifier: "cluster"
+        )
+
+        mapView.register(
+            VehicleMarkerView.self,
+            forAnnotationViewWithReuseIdentifier: "vehicle"
+        )
+
+        mapView.register(
+            WaypointMarkerView.self,
+            forAnnotationViewWithReuseIdentifier: "waypoint"
+        )
+
         return mapView
     }
 
     func updateUIView(_ mapView: MKMapView, context: Context) {
         context.coordinator.parent = self
+        mapView.overrideUserInterfaceStyle = (MapStyle(rawValue: mapStyleRaw) ?? .auto).interfaceStyle
+
         mapView.showsUserLocation = showsUserLocation
-        context.coordinator.reconcile(stops: stops, vehicles: vehicles, polylines: polylines, in: mapView)
+
+        context.coordinator.reconcile(
+            stops: stops,
+            vehicles: vehicles,
+            waypoints: waypoints,
+            polylines: polylines,
+            in: mapView
+        )
+
         context.coordinator.applyCamera(camera, to: mapView)
+        context.coordinator.applyCenterOnUserLocationTrigger(centerOnUserLocationTrigger, to: mapView)
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
 
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate {
+
         var parent: TransitMapView
+
         private var stopsByID: [String: StopAnnotation] = [:]
         private var vehiclesByID: [String: VehicleAnnotation] = [:]
+        private var waypointsByID: [String: WaypointAnnotation] = [:]
         private var polylinesByID: [String: IdentifiedPolyline] = [:]
+
+        /// The last `.region`/`.fitAll` camera value actually applied -
+        /// `updateUIView` runs on every SwiftUI re-render (every poll tick,
+        /// every location update), and re-centring the map each time would
+        /// otherwise fight any pan/zoom the person just did. `.follow` is
+        /// exempt: that case means "keep tracking this vehicle", so it must
+        /// re-apply every time even though its enum value doesn't change.
+        private var lastAppliedCamera: MapCamera?
+
+        /// Last `centerOnUserLocationTrigger` value handled - see that
+        /// property's doc comment.
+        private var lastCenterOnUserLocationTrigger = 0
 
         init(_ parent: TransitMapView) {
             self.parent = parent
         }
 
-        func reconcile(stops: [StopAnnotation], vehicles: [VehicleAnnotation], polylines: [RoutePolylineData], in mapView: MKMapView) {
+        func reconcile(
+            stops: [StopAnnotation],
+            vehicles: [VehicleAnnotation],
+            waypoints: [WaypointAnnotation],
+            polylines: [RoutePolylineData],
+            in mapView: MKMapView
+        ) {
             reconcileStops(stops, in: mapView)
             reconcileVehicles(vehicles, in: mapView)
+            reconcileWaypoints(waypoints, in: mapView)
             reconcilePolylines(polylines, in: mapView)
         }
 
-        private func reconcileStops(_ newStops: [StopAnnotation], in mapView: MKMapView) {
+        /// Waypoints (a journey's start/end) are static for the view's
+        /// lifetime, so this is simpler than the diffing `reconcileStops`
+        /// does - just replace the set wholesale when it changes.
+        private func reconcileWaypoints(
+            _ newWaypoints: [WaypointAnnotation],
+            in mapView: MKMapView
+        ) {
+            let newIDs = Set(newWaypoints.map(\.id))
+            guard newIDs != Set(waypointsByID.keys) else { return }
+
+            mapView.removeAnnotations(Array(waypointsByID.values))
+            waypointsByID = Dictionary(uniqueKeysWithValues: newWaypoints.map { ($0.id, $0) })
+            mapView.addAnnotations(newWaypoints)
+        }
+
+        private func reconcileStops(
+            _ newStops: [StopAnnotation],
+            in mapView: MKMapView
+        ) {
             let newIDs = Set(newStops.map(\.id))
-            let toRemove = stopsByID.filter { !newIDs.contains($0.key) }.values
-            if !toRemove.isEmpty { mapView.removeAnnotations(Array(toRemove)) }
+
+            let toRemove = stopsByID
+                .filter { !newIDs.contains($0.key) }
+                .values
+
+            if !toRemove.isEmpty {
+                mapView.removeAnnotations(Array(toRemove))
+            }
 
             var toAdd: [StopAnnotation] = []
+
             for stop in newStops {
                 stopsByID[stop.id] = stop
-                if !mapView.annotations.contains(where: { ($0 as? StopAnnotation)?.id == stop.id }) {
+
+                if !mapView.annotations.contains(
+                    where: { ($0 as? StopAnnotation)?.id == stop.id }
+                ) {
                     toAdd.append(stop)
                 }
             }
-            if !toAdd.isEmpty { mapView.addAnnotations(toAdd) }
-            for id in stopsByID.keys where !newIDs.contains(id) { stopsByID.removeValue(forKey: id) }
+
+            if !toAdd.isEmpty {
+                mapView.addAnnotations(toAdd)
+            }
+
+            for id in stopsByID.keys
+            where !newIDs.contains(id) {
+                stopsByID.removeValue(forKey: id)
+            }
         }
 
-        private func reconcileVehicles(_ newVehicles: [VehicleAnnotation], in mapView: MKMapView) {
+        private func reconcileVehicles(
+            _ newVehicles: [VehicleAnnotation],
+            in mapView: MKMapView
+        ) {
             let newIDs = Set(newVehicles.map(\.id))
-            let toRemove = vehiclesByID.filter { !newIDs.contains($0.key) }.values
-            if !toRemove.isEmpty { mapView.removeAnnotations(Array(toRemove)) }
+
+            let toRemove = vehiclesByID
+                .filter { !newIDs.contains($0.key) }
+                .values
+
+            if !toRemove.isEmpty {
+                mapView.removeAnnotations(Array(toRemove))
+            }
 
             for vehicle in newVehicles {
                 if let existing = vehiclesByID[vehicle.id] {
                     UIView.animate(withDuration: 0.5) {
                         existing.coordinate = vehicle.coordinate
                     }
+
                     existing.bearing = vehicle.bearing
                     existing.routeColorHex = vehicle.routeColorHex
-                    if let view = mapView.view(for: existing) as? VehicleMarkerView {
-                        view.apply(bearing: vehicle.bearing, colorHex: vehicle.routeColorHex, vehicleType: vehicle.vehicleType)
+
+                    if let view = mapView.view(for: existing)
+                        as? VehicleMarkerView {
+                        view.apply(
+                            bearing: vehicle.bearing,
+                            colorHex: vehicle.routeColorHex,
+                            vehicleType: vehicle.vehicleType
+                        )
                     }
                 } else {
                     vehiclesByID[vehicle.id] = vehicle
                     mapView.addAnnotation(vehicle)
                 }
             }
-            for id in vehiclesByID.keys where !newIDs.contains(id) { vehiclesByID.removeValue(forKey: id) }
+
+            for id in vehiclesByID.keys
+            where !newIDs.contains(id) {
+                vehiclesByID.removeValue(forKey: id)
+            }
         }
 
-        private func reconcilePolylines(_ newPolylines: [RoutePolylineData], in mapView: MKMapView) {
+        private func reconcilePolylines(
+            _ newPolylines: [RoutePolylineData],
+            in mapView: MKMapView
+        ) {
             let newIDs = Set(newPolylines.map(\.id))
-            let toRemove = polylinesByID.filter { !newIDs.contains($0.key) }.values
-            if !toRemove.isEmpty { mapView.removeOverlays(Array(toRemove)) }
 
-            for data in newPolylines where polylinesByID[data.id] == nil {
-                let line = IdentifiedPolyline(coordinates: data.coordinates, count: data.coordinates.count)
+            let toRemove = polylinesByID
+                .filter { !newIDs.contains($0.key) }
+                .values
+
+            if !toRemove.isEmpty {
+                mapView.removeOverlays(Array(toRemove))
+            }
+
+            for data in newPolylines
+            where polylinesByID[data.id] == nil {
+                let line = IdentifiedPolyline(
+                    coordinates: data.coordinates,
+                    count: data.coordinates.count
+                )
+
                 line.polylineID = data.id
                 line.colorHex = data.colorHex
                 line.lineWidth = data.lineWidth
+
                 polylinesByID[data.id] = line
                 mapView.addOverlay(line)
             }
-            for id in polylinesByID.keys where !newIDs.contains(id) { polylinesByID.removeValue(forKey: id) }
+
+            for id in polylinesByID.keys
+            where !newIDs.contains(id) {
+                polylinesByID.removeValue(forKey: id)
+            }
         }
 
-        func applyCamera(_ camera: MapCamera, to mapView: MKMapView) {
+        func applyCamera(
+            _ camera: MapCamera,
+            to mapView: MKMapView
+        ) {
             switch camera {
+
             case .none:
                 return
+
             case .region(let center, let radiusMeters):
+                guard camera != lastAppliedCamera else {
+                    return
+                }
+
+                lastAppliedCamera = camera
+
                 let region = MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(latitude: center.latitude, longitude: center.longitude),
+                    center: CLLocationCoordinate2D(
+                        latitude: center.latitude,
+                        longitude: center.longitude
+                    ),
                     latitudinalMeters: radiusMeters,
                     longitudinalMeters: radiusMeters
                 )
+
                 mapView.setRegion(region, animated: true)
+
             case .fitAll:
-                let all = mapView.annotations
-                guard !all.isEmpty else { return }
-                mapView.showAnnotations(all, animated: true)
+                // `showAnnotations` only frames point annotations - a map
+                // showing just a route polyline (no stop/vehicle markers,
+                // e.g. JourneyDetailView's preview map) has none, so that
+                // call was a no-op and the map never actually zoomed to the
+                // route at all. Union annotation points with every overlay's
+                // bounding rect instead, so a polyline-only map still frames
+                // correctly.
+                guard camera != lastAppliedCamera else {
+                    return
+                }
+
+                var rect = MKMapRect.null
+
+                for annotation in mapView.annotations {
+                    let point = MKMapPoint(annotation.coordinate)
+
+                    rect = rect.union(
+                        MKMapRect(
+                            x: point.x,
+                            y: point.y,
+                            width: 0,
+                            height: 0
+                        )
+                    )
+                }
+
+                for overlay in mapView.overlays {
+                    rect = rect.union(overlay.boundingMapRect)
+                }
+
+                guard !rect.isNull else {
+                    return
+                }
+
+                lastAppliedCamera = camera
+
+                mapView.setVisibleMapRect(
+                    rect,
+                    edgePadding: UIEdgeInsets(
+                        top: 60,
+                        left: 40,
+                        bottom: 60,
+                        right: 40
+                    ),
+                    animated: true
+                )
+
             case .follow(let id):
                 // `vehiclesByID[id] ?? stopsByID[id]` infers the nearest
                 // common ancestor (NSObject, not MKAnnotation) since these
                 // are two different concrete classes - handle them
                 // separately instead of relying on that inference.
+
                 if let vehicle = vehiclesByID[id] {
-                    mapView.setCenter(vehicle.coordinate, animated: true)
+                    mapView.setCenter(
+                        vehicle.coordinate,
+                        animated: true
+                    )
                 } else if let stop = stopsByID[id] {
-                    mapView.setCenter(stop.coordinate, animated: true)
+                    mapView.setCenter(
+                        stop.coordinate,
+                        animated: true
+                    )
                 }
             }
         }
 
+        /// One-shot recentre on the device's own location, from
+        /// `RecenterButton` - see `centerOnUserLocationTrigger`'s doc
+        /// comment for why this bypasses `applyCamera`'s equality gate.
+        /// `mapView.userLocation` is MapKit's own tracked position (valid
+        /// once `showsUserLocation` is on and a fix has arrived) - no need
+        /// to thread the app's own `LocationProvider` coordinate through.
+        func applyCenterOnUserLocationTrigger(_ trigger: Int, to mapView: MKMapView) {
+            guard trigger != lastCenterOnUserLocationTrigger else { return }
+            lastCenterOnUserLocationTrigger = trigger
+
+            guard mapView.showsUserLocation, mapView.userLocation.location != nil else { return }
+
+            mapView.setRegion(
+                MKCoordinateRegion(
+                    center: mapView.userLocation.coordinate,
+                    latitudinalMeters: 1200,
+                    longitudinalMeters: 1200
+                ),
+                animated: true
+            )
+        }
+
         // MARK: - MKMapViewDelegate
 
-        func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            if annotation is MKUserLocation { return nil }
+        func mapView(
+            _ mapView: MKMapView,
+            regionDidChangeAnimated animated: Bool
+        ) {
+            parent.onVisibleRegionChange?(mapView.region)
+        }
+
+        func mapView(
+            _ mapView: MKMapView,
+            viewFor annotation: MKAnnotation
+        ) -> MKAnnotationView? {
+
+            if annotation is MKUserLocation {
+                return nil
+            }
 
             if let cluster = annotation as? MKClusterAnnotation {
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "cluster", for: cluster) as? MKMarkerAnnotationView
-                    ?? MKMarkerAnnotationView(annotation: cluster, reuseIdentifier: "cluster")
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "cluster",
+                    for: cluster
+                ) as! MKMarkerAnnotationView
+
                 view.markerTintColor = .systemGray
                 view.glyphText = "\(cluster.memberAnnotations.count)"
                 view.annotation = cluster
+
                 return view
             }
 
             if let stop = annotation as? StopAnnotation {
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "stop", for: stop) as? MKMarkerAnnotationView
-                    ?? MKMarkerAnnotationView(annotation: stop, reuseIdentifier: "stop")
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "stop",
+                    for: stop
+                ) as! MKMarkerAnnotationView
+
                 view.annotation = stop
                 view.clusteringIdentifier = "stop"
                 view.canShowCallout = true
-                view.markerTintColor = UIColor(hex: stop.stopType == "train" ? "0073bd" : stop.stopType == "ferry" ? "2a286b" : "64748b")
-                view.glyphImage = UIImage(systemName: symbolName(forStopType: stop.stopType))
+
+                view.markerTintColor = UIColor(
+                    hex: stop.stopType == "train"
+                        ? "0073bd"
+                        : stop.stopType == "ferry"
+                            ? "2a286b"
+                            : "64748b"
+                )
+
+                view.glyphImage = UIImage(
+                    systemName: symbolName(
+                        forStopType: stop.stopType
+                    )
+                )
+
                 return view
             }
 
             if let vehicle = annotation as? VehicleAnnotation {
-                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "vehicle", for: vehicle) as? VehicleMarkerView
-                    ?? VehicleMarkerView(annotation: vehicle, reuseIdentifier: "vehicle")
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "vehicle",
+                    for: vehicle
+                ) as! VehicleMarkerView
+
                 view.annotation = vehicle
                 view.canShowCallout = true
-                view.apply(bearing: vehicle.bearing, colorHex: vehicle.routeColorHex, vehicleType: vehicle.vehicleType)
+                // Without this, MapKit never groups nearby vehicles (e.g. a
+                // cluster of buses queued at a terminus) the way stops
+                // already are - each stayed its own marker regardless of
+                // zoom level.
+                view.clusteringIdentifier = "vehicle"
+
+                view.apply(
+                    bearing: vehicle.bearing,
+                    colorHex: vehicle.routeColorHex,
+                    vehicleType: vehicle.vehicleType
+                )
+
+                return view
+            }
+
+            if let waypoint = annotation as? WaypointAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(
+                    withIdentifier: "waypoint",
+                    for: waypoint
+                ) as! WaypointMarkerView
+
+                view.annotation = waypoint
+                view.apply(label: waypoint.label, isDestination: waypoint.isDestination)
+
                 return view
             }
 
             return nil
         }
 
-        func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        func mapView(
+            _ mapView: MKMapView,
+            rendererFor overlay: MKOverlay
+        ) -> MKOverlayRenderer {
+
             guard let line = overlay as? IdentifiedPolyline else {
                 return MKOverlayRenderer(overlay: overlay)
             }
+
             let renderer = MKPolylineRenderer(polyline: line)
+
             renderer.strokeColor = UIColor(hex: line.colorHex)
             renderer.lineWidth = line.lineWidth
             renderer.lineCap = .round
             renderer.lineJoin = .round
+
             return renderer
         }
 
-        func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+        func mapView(
+            _ mapView: MKMapView,
+            didSelect annotation: MKAnnotation
+        ) {
             if let stop = annotation as? StopAnnotation {
                 parent.onSelectStop?(stop.id)
             } else if let vehicle = annotation as? VehicleAnnotation {
@@ -205,50 +523,136 @@ struct TransitMapView: UIViewRepresentable {
 
         private func symbolName(forStopType type: String) -> String {
             switch type {
-            case "train": return "tram.fill"
-            case "ferry": return "ferry.fill"
-            case "bus": return "bus.fill"
-            default: return "mappin"
+            case "train":
+                return "tram.fill"
+
+            case "ferry":
+                return "ferry.fill"
+
+            case "bus":
+                return "bus.fill"
+
+            default:
+                return "mappin"
             }
         }
     }
 }
 
-/// A rotated, colour-tinted vehicle marker - `MKMarkerAnnotationView`'s
-/// balloon shape can't be rotated meaningfully, so this draws a plain
-/// circular badge with a directional arrow instead, mirroring the web
-/// map's rotated PNG vehicle icons.
+/// A rotated vehicle marker, using the same PNG vehicle icons as the web
+/// map (`public/vehicle_icons/`) rather than an SF Symbol, for visual
+/// parity - each already has its own rounded-badge look baked in, so this
+/// just rotates it for bearing, no extra background chrome needed.
 final class VehicleMarkerView: MKAnnotationView {
+
     private let badge = UIImageView()
 
-    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
-        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-        frame = CGRect(x: 0, y: 0, width: 30, height: 30)
+    override init(
+        annotation: MKAnnotation?,
+        reuseIdentifier: String?
+    ) {
+        super.init(
+            annotation: annotation,
+            reuseIdentifier: reuseIdentifier
+        )
+
+        frame = CGRect(
+            x: 0,
+            y: 0,
+            width: 34,
+            height: 34
+        )
+
         centerOffset = .zero
+
         badge.frame = bounds
         badge.contentMode = .scaleAspectFit
+
         addSubview(badge)
+
         canShowCallout = true
     }
 
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
 
-    func apply(bearing: Double, colorHex: String?, vehicleType: String) {
-        let symbolName: String
+    func apply(
+        bearing: Double,
+        colorHex: String?,
+        vehicleType: String
+    ) {
+        let imageName: String
+
         switch vehicleType {
-        case "train": symbolName = "tram.circle.fill"
-        case "ferry": symbolName = "ferry.fill"
-        default: symbolName = "bus.circle.fill"
+        case "train":
+            imageName = "VehicleIconTrain"
+
+        case "ferry":
+            imageName = "VehicleIconFerry"
+
+        case "school bus":
+            imageName = "VehicleIconSchoolBus"
+
+        default:
+            imageName = "VehicleIconBus"
         }
-        let color = UIColor(hex: colorHex ?? "0073bd")
-        let config = UIImage.SymbolConfiguration(paletteColors: [.white, color])
-        badge.image = UIImage(systemName: symbolName)?.applyingSymbolConfiguration(config)
+
+        badge.image = UIImage(named: imageName)
 
         // bearing == 0 means "no data" on this API - don't rotate.
         if bearing > 0 {
-            transform = CGAffineTransform(rotationAngle: CGFloat(bearing) * .pi / 180)
+            transform = CGAffineTransform(
+                rotationAngle: CGFloat(bearing) * .pi / 180
+            )
         } else {
             transform = .identity
+        }
+    }
+}
+
+/// A journey's "Start"/"End" pill bubble - the web map's own plain white
+/// (start) / accent-tinted (end) rounded labels
+/// (`components/journey/live-map.tsx`), not a route/vehicle marker style.
+final class WaypointMarkerView: MKAnnotationView {
+
+    private let pill = UILabel()
+
+    override init(
+        annotation: MKAnnotation?,
+        reuseIdentifier: String?
+    ) {
+        super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
+
+        pill.font = .systemFont(ofSize: 12, weight: .semibold)
+        pill.textAlignment = .center
+        pill.layer.cornerRadius = 11
+        pill.layer.masksToBounds = true
+        pill.layer.borderWidth = 1
+
+        addSubview(pill)
+        canShowCallout = false
+        centerOffset = CGPoint(x: 0, y: -11)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func apply(label: String, isDestination: Bool) {
+        pill.text = "  \(label)  "
+        pill.sizeToFit()
+        frame = CGRect(x: 0, y: 0, width: max(pill.frame.width, 44), height: 22)
+        pill.frame = bounds
+
+        if isDestination {
+            pill.backgroundColor = .systemRed
+            pill.textColor = .white
+            pill.layer.borderColor = UIColor.white.cgColor
+        } else {
+            pill.backgroundColor = .white
+            pill.textColor = .black
+            pill.layer.borderColor = UIColor.black.withAlphaComponent(0.15).cgColor
         }
     }
 }
