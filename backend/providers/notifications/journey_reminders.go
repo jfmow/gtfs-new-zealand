@@ -94,6 +94,12 @@ type JourneyReminder struct {
 	BaselineLeaveUnix      sql.NullInt64
 	ResolveAttempts        int
 	LastError              string
+	// PlanID is the resolved plan in the shared plan store (recurring
+	// reminders) - fixed_trip reminders carry theirs in Deeplink instead.
+	PlanID string
+	// LAStarted is set once a Live Activity has been push-started for the
+	// current occurrence.
+	LAStarted bool
 
 	Created int64
 	Updated int64
@@ -108,7 +114,8 @@ const jrColumns = `
 	offsets, recurrence, recurrence_until, deeplink,
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
-	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
+	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated,
+	plan_id, la_started
 `
 
 func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
@@ -126,6 +133,7 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
 		&sentRaw, &r.BaselineLeaveUnix, &r.ResolveAttempts, &r.LastError, &r.Created, &r.Updated,
+		&r.PlanID, &r.LAStarted,
 	); err != nil {
 		return JourneyReminder{}, err
 	}
@@ -317,6 +325,19 @@ func (v *Database) UpdateJourneyReminderResolved(id int, tripID, stopID string, 
 	return nil
 }
 
+// SetJourneyReminderPlanID records the plan a reminder resolved to.
+func (v *Database) SetJourneyReminderPlanID(id int, planID string) error {
+	_, err := v.execContext(`UPDATE journey_reminders SET plan_id=? WHERE id=?`, planID, id)
+	return err
+}
+
+// MarkJourneyReminderLiveActivityStarted stops the cron push-starting a
+// second Live Activity for the same occurrence.
+func (v *Database) MarkJourneyReminderLiveActivityStarted(id int) error {
+	_, err := v.execContext(`UPDATE journey_reminders SET la_started=1 WHERE id=?`, id)
+	return err
+}
+
 // UpdateJourneyReminderState persists notify-pass progress.
 func (v *Database) UpdateJourneyReminderState(id int, status string, sentOffsets []int, baselineLeaveUnix int64) error {
 	now := time.Now().In(v.timeZone).Unix()
@@ -343,6 +364,7 @@ func (v *Database) ClearJourneyReminderResolution(id int) error {
 		`UPDATE journey_reminders SET
 			status='pending_resolve', board_trip_id=NULL, board_stop_id=NULL, board_stop_sequence=NULL,
 			scheduled_departure_unix=NULL, access_seconds=NULL, sent_offsets='[]',
+			plan_id='', la_started=0,
 			resolve_attempts=0, last_error='', updated=?
 		 WHERE id=?`,
 		now, id,
@@ -378,6 +400,7 @@ func (v *Database) RollJourneyReminderToNextOccurrence(id int, serviceDate strin
 			board_trip_id=NULL, board_stop_id=NULL, board_stop_sequence=NULL,
 			scheduled_departure_unix=NULL, access_seconds=NULL, baseline_leave_unix=NULL,
 			route_short_name='', board_stop_name='', sent_offsets='[]',
+			plan_id='', la_started=0,
 			resolve_attempts=0, last_error='', updated=?
 		 WHERE id=?`,
 		serviceDate, targetUnix, now, id,

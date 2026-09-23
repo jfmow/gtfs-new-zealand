@@ -97,6 +97,24 @@ func (s *planStore) put(p gtfs.JourneyPlan) {
 	)
 }
 
+// StorePlan saves a plan to the durable store under its ID - injected into
+// the notifications package (same reason as GetCachedPlan below) so a
+// leave-by reminder's resolved plan can later be opened, and push-start a
+// Live Activity, by id.
+func StorePlan(p gtfs.JourneyPlan) {
+	getPlanStore().put(p)
+}
+
+// GetCachedPlan looks up a previously-computed plan by its UUID - the same
+// store `GET /services/plan/:id` reads from. Exported so the notifications
+// package (Live Activity server-side progress) can load a plan by id -
+// `providers` already imports `providers/notifications`
+// (providers/setup.go), so that package can't import this one back;
+// `SetupNotificationsRoutes` takes this function as a parameter instead.
+func GetCachedPlan(id string) (gtfs.JourneyPlan, bool) {
+	return getPlanStore().get(id)
+}
+
 func (s *planStore) get(id string) (gtfs.JourneyPlan, bool) {
 	if s == nil || id == "" {
 		return gtfs.JourneyPlan{}, false

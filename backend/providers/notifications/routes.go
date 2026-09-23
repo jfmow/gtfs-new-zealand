@@ -133,11 +133,17 @@ func parseSubscriptionFilters(c echo.Context) (SubscriptionFilters, error) {
 	}, nil
 }
 
-func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache, gtfsName string) {
+// planLookup loads a previously-computed journey plan by its UUID (the same
+// store `GET /services/plan/:id` reads from) - injected rather than
+// imported directly, since `providers` (where that store lives) already
+// imports this package (providers/setup.go), so the reverse import isn't
+// possible. Used only by the Live Activity progress cron.
+func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime realtime.Realtime, localTimeZone *time.Location, parentStopsCache caches.ParentStopsByChildCache, stopsForTripCache caches.StopsForTripCache, gtfsName string, planLookup func(id string) (gtfs.JourneyPlan, bool), planPut func(gtfs.JourneyPlan)) {
 	var tripUpdatesCronMutex sync.Mutex
 	var remindersCronMutex sync.Mutex
 	var alertsCronMutex sync.Mutex
 	var journeyRemindersCronMutex sync.Mutex
+	var liveActivitiesCronMutex sync.Mutex
 	notificationRoute := primaryRoute.Group("/notifications")
 	deviceRoute := primaryRoute.Group("/devices")
 
@@ -412,7 +418,20 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return
 		}
 		defer journeyRemindersCronMutex.Unlock()
-		runJourneyRemindersCron(notificationDB, gtfsData, realtime, localTimeZone, region, osrmURL, now)
+		runJourneyRemindersCron(notificationDB, gtfsData, realtime, localTimeZone, region, osrmURL, planLookup, planPut, now)
+	})
+
+	// Live Activity progress - background safety net for when the app isn't
+	// foregrounded to update ActivityKit itself directly. 20s: a bit slower
+	// than the app's own 10s tick (server push is the fallback path, not the
+	// primary one), fast enough that a background activity doesn't look
+	// obviously stuck.
+	c.AddFunc("@every 00h00m20s", func() {
+		if !liveActivitiesCronMutex.TryLock() {
+			return
+		}
+		defer liveActivitiesCronMutex.Unlock()
+		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, localTimeZone, time.Now())
 	})
 
 	c.Start()
@@ -1223,5 +1242,112 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to clear"})
 		}
 		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "cleared"})
+	})
+
+	// Sends a push to the calling device straight away and reports what the
+	// server knows about it - lets the app's Settings screen show whether
+	// delivery actually works end to end, instead of guessing.
+	notificationRoute.POST("/test", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		status := map[string]any{
+			"platform": client.Platform,
+			"hasToken": client.Platform != "ios" || client.ApnsToken != "",
+			"env":      client.ApnsEnv,
+			"sent":     false,
+			"error":    "",
+		}
+		if sendErr := client.SendNotification("Notifications are working on this device.", "Test notification", map[string]string{"url": "/settings"}, "high"); sendErr != nil {
+			status["error"] = sendErr.Error()
+		} else {
+			status["sent"] = true
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "ok", Data: status})
+	})
+
+	// ─────────────── Live Activities (journey progress) ───────────────
+	// Client-side: LiveActivityCoordinator.swift. Each activity is pushed to
+	// with its own token and environment (see live_activity.go), so it works
+	// even when the device has alerts turned off.
+
+	primaryRoute.POST("/live-activities", func(c echo.Context) error {
+		client, err := notificationDB.ResolveOrCreateClient(identityFromRequest(c), gtfsData)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid device"})
+		}
+		planId := c.FormValue("planId")
+		activityId := c.FormValue("activityId")
+		pushToken := c.FormValue("pushToken")
+		activityRegion := c.FormValue("region")
+		if planId == "" || activityId == "" || pushToken == "" {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "planId, activityId and pushToken are required"})
+		}
+		if activityRegion == "" {
+			activityRegion = region
+		}
+		// The activity's own APNs environment - sent by the app, falling
+		// back to the device's. Live Activity tokens belong to the same
+		// environment as the build, not to whether alerts are enabled.
+		apnsEnv := c.FormValue("env")
+		if apnsEnv != "sandbox" && apnsEnv != "production" {
+			apnsEnv = client.ApnsEnv
+		}
+		if err := notificationDB.CreateLiveActivity(client.Id, activityRegion, planId, activityId, pushToken, apnsEnv); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to register live activity"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "registered", Data: map[string]int{"id": client.Id}})
+	})
+
+	primaryRoute.POST("/live-activities/update-token", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		activityId := c.FormValue("activityId")
+		pushToken := c.FormValue("pushToken")
+		if activityId == "" || pushToken == "" {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "activityId and pushToken are required"})
+		}
+		if err := notificationDB.UpdateLiveActivityToken(client.Id, activityId, pushToken); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to update token"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})
+	})
+
+	// Foreground hint: keeps the server's own time-based leg/phase guess
+	// aligned with what the on-device state machine last knew, so the next
+	// background push (once the app suspends) doesn't visibly regress.
+	primaryRoute.POST("/live-activities/leg", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		activityId := c.FormValue("activityId")
+		if activityId == "" {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "activityId is required"})
+		}
+		legIndex, _ := strconv.Atoi(c.FormValue("legIndex"))
+		phase := c.FormValue("phase")
+		if err := notificationDB.UpdateLiveActivityLeg(client.Id, activityId, legIndex, phase); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to update leg"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})
+	})
+
+	primaryRoute.POST("/live-activities/end", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		activityId := c.FormValue("activityId")
+		if activityId == "" {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "activityId is required"})
+		}
+		if err := notificationDB.DeleteLiveActivity(client.Id, activityId); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to end"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "ended"})
 	})
 }

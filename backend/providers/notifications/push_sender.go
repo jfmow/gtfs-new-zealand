@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/sideshow/apns2"
@@ -53,6 +54,7 @@ func (m platformNotifier) Send(client NotificationClient, p Payload) error {
 var (
 	sharedNotifierOnce sync.Once
 	sharedNotifierVal  Notifier
+	sharedAPNsVal      *apnsSender // nil if APNs isn't configured - same condition sharedNotifier logs
 )
 
 // sharedNotifier builds the process-wide Notifier once, from environment
@@ -65,10 +67,21 @@ func sharedNotifier() Notifier {
 			log.Printf("notifications: APNs not configured, iOS push disabled: %v", err)
 		} else {
 			byPlatform["ios"] = apnsNotifier
+			sharedAPNsVal = apnsNotifier
 		}
 		sharedNotifierVal = platformNotifier{byPlatform: byPlatform}
 	})
 	return sharedNotifierVal
+}
+
+// sharedAPNsSender exposes the concrete *apnsSender (rather than the plain
+// Notifier interface) for Live Activity pushes, which use their own
+// SendLiveActivityUpdate method with a different payload shape from
+// Notifier.Send's alert-style one. nil if APNs isn't configured - callers
+// skip Live Activity delivery in that case, same as regular iOS push does.
+func sharedAPNsSender() *apnsSender {
+	sharedNotifier() // ensures the Once has run
+	return sharedAPNsVal
 }
 
 // ─────────────────────────────── web push ───────────────────────────────
@@ -150,6 +163,81 @@ func newAPNsSender() (*apnsSender, error) {
 	}, nil
 }
 
+// SendLiveActivityUpdate pushes a content-state update (or, with
+// dismissalDate set, an end event) to one Live Activity's own push token.
+// With alert set it also plays a sound and shows a banner - reserved for the
+// one-off journey moments (time to leave, get off next...) - and goes at
+// priority 10; routine updates go at 5 so they don't eat into the per-app
+// high-priority budget iOS enforces for Live Activities.
+func (s *apnsSender) SendLiveActivityUpdate(pushToken, env string, contentState any, alert *activityAlert, staleDate, dismissalDate *time.Time) error {
+	if pushToken == "" {
+		return errors.New("live activity has no push token")
+	}
+
+	aps := map[string]any{
+		"timestamp":     time.Now().Unix(),
+		"content-state": contentState,
+		"event":         "update",
+	}
+	if staleDate != nil {
+		aps["stale-date"] = staleDate.Unix()
+	}
+	if dismissalDate != nil {
+		aps["event"] = "end"
+		aps["dismissal-date"] = dismissalDate.Unix()
+	}
+	priority := apns2.PriorityLow
+	if alert != nil {
+		aps["alert"] = map[string]string{"title": alert.Title, "body": alert.Body}
+		aps["sound"] = "default"
+		priority = apns2.PriorityHigh
+	}
+	if dismissalDate != nil {
+		priority = apns2.PriorityHigh
+	}
+
+	return s.pushLiveActivity(pushToken, env, aps, priority)
+}
+
+// SendLiveActivityStart starts a journey Live Activity remotely
+// (push-to-start, iOS 17.2+) using the device's push-to-start token. The
+// app is then woken briefly in the background to register the new
+// activity's own update token (LiveActivityCoordinator.observeNewActivities).
+func (s *apnsSender) SendLiveActivityStart(pushToStartToken, env string, attributes map[string]any, contentState any, alert activityAlert, staleDate time.Time) error {
+	if pushToStartToken == "" {
+		return errors.New("device has no push-to-start token")
+	}
+	aps := map[string]any{
+		"timestamp":       time.Now().Unix(),
+		"event":           "start",
+		"content-state":   contentState,
+		"attributes-type": "JourneyActivityAttributes",
+		"attributes":      attributes,
+		"alert":           map[string]string{"title": alert.Title, "body": alert.Body},
+		"sound":           "default",
+		"stale-date":      staleDate.Unix(),
+	}
+	return s.pushLiveActivity(pushToStartToken, env, aps, apns2.PriorityHigh)
+}
+
+func (s *apnsSender) pushLiveActivity(token, env string, aps map[string]any, priority int) error {
+	n := &apns2.Notification{
+		DeviceToken: token,
+		Topic:       s.bundleID + ".push-type.liveactivity",
+		Payload:     map[string]any{"aps": aps},
+		PushType:    apns2.PushTypeLiveActivity,
+		Priority:    priority,
+	}
+	res, err := s.clientFor(env).Push(n)
+	if err != nil {
+		return fmt.Errorf("apns live activity push: %w", err)
+	}
+	if !res.Sent() {
+		return fmt.Errorf("apns live activity push rejected: %d %s", res.StatusCode, res.Reason)
+	}
+	return nil
+}
+
 func (s *apnsSender) Send(client NotificationClient, p Payload) error {
 	if client.ApnsToken == "" {
 		return errors.New("client has no apns token")
@@ -179,20 +267,52 @@ func (s *apnsSender) Send(client NotificationClient, p Payload) error {
 		n.Priority = apns2.PriorityLow
 	}
 
-	apnsClient := s.production
-	if client.ApnsEnv == "sandbox" {
-		apnsClient = s.sandbox
-	}
-
-	res, err := apnsClient.Push(n)
+	env := client.ApnsEnv
+	res, err := s.clientFor(env).Push(n)
 	if err != nil {
 		return fmt.Errorf("apns push: %w", err)
 	}
+
+	// A BadDeviceToken almost always means the token belongs to the *other*
+	// APNs environment (a Release build run from Xcode is still sandbox; a
+	// TestFlight build is production), not that the device is gone. Retry
+	// once on the other host and, if that works, remember it.
+	if !res.Sent() && res.Reason == apns2.ReasonBadDeviceToken {
+		otherEnv := otherApnsEnv(env)
+		if retry, retryErr := s.clientFor(otherEnv).Push(n); retryErr == nil && retry.Sent() {
+			log.Printf("notifications: apns env for client %d corrected %s -> %s", client.Id, env, otherEnv)
+			if client.db != nil {
+				client.db.setIOSDeviceApns(client.Id, client.ApnsToken, otherEnv)
+			}
+			return nil
+		}
+	}
+
 	if !res.Sent() {
+		log.Printf("notifications: apns push to client %d rejected: %d %s", client.Id, res.StatusCode, res.Reason)
+		// Clear just the token - never delete the device row, which also
+		// owns every stop/route subscription and reminder. The app sends a
+		// fresh token on its next launch.
 		if res.Reason == apns2.ReasonUnregistered || res.Reason == apns2.ReasonBadDeviceToken {
-			client.DeleteNotificationClient("")
+			if client.db != nil {
+				client.db.setIOSDeviceApns(client.Id, "", env)
+			}
 		}
 		return fmt.Errorf("apns push rejected: %d %s", res.StatusCode, res.Reason)
 	}
 	return nil
+}
+
+func (s *apnsSender) clientFor(env string) *apns2.Client {
+	if env == "sandbox" {
+		return s.sandbox
+	}
+	return s.production
+}
+
+func otherApnsEnv(env string) string {
+	if env == "sandbox" {
+		return "production"
+	}
+	return "sandbox"
 }

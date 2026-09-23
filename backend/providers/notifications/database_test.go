@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -221,6 +222,45 @@ func TestRegisterIOSDevice_ReRegisterUpdatesTokenAndRefusesWrongSecret(t *testin
 
 	if _, err := db.RegisterIOSDevice(deviceID, "someone-elses-secret-value", tokenA, "sandbox", ""); !errors.Is(err, ErrDeviceSecretMismatch) {
 		t.Errorf("register with wrong secret: err = %v, want ErrDeviceSecretMismatch", err)
+	}
+}
+
+func TestRegisterIOSDevice_ReRegisterWithEmptyTokenKeepsStoredTokens(t *testing.T) {
+	db := newTestDatabase(t)
+	deviceID := "55555555-5555-5555-5555-555555555555"
+	secret := "relaunch-secret-long-enough-value"
+	token := "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+
+	if _, err := db.RegisterIOSDevice(deviceID, secret, token, "sandbox", "pts-1"); err != nil {
+		t.Fatalf("first register: %v", err)
+	}
+
+	// Every app launch re-registers before iOS hands back the APNs token -
+	// that must not wipe the token stored from the previous launch.
+	relaunched, err := db.RegisterIOSDevice(deviceID, secret, "", "sandbox", "")
+	if err != nil {
+		t.Fatalf("relaunch register: %v", err)
+	}
+	if relaunched.ApnsToken != token {
+		t.Errorf("apns token = %q, want it kept as %q", relaunched.ApnsToken, token)
+	}
+	if relaunched.PushToStartToken != "pts-1" {
+		t.Errorf("push-to-start token = %q, want it kept as pts-1", relaunched.PushToStartToken)
+	}
+}
+
+func TestValidateApnsFields_AcceptsVariableLengthTokens(t *testing.T) {
+	device := strings.Repeat("ab", 32)    // physical iPhone: 32 bytes
+	simulator := strings.Repeat("cd", 80) // iOS simulator: 80 bytes
+	for _, tok := range []string{device, simulator} {
+		if err := validateApnsFields(tok, "sandbox"); err != nil {
+			t.Errorf("token of %d hex chars rejected: %v", len(tok), err)
+		}
+	}
+	for _, bad := range []string{"abc", strings.Repeat("zz", 32), strings.Repeat("ab", 16), strings.Repeat("a", 65)} {
+		if err := validateApnsFields(bad, "sandbox"); err == nil {
+			t.Errorf("token %q accepted, want rejected", bad)
+		}
 	}
 }
 

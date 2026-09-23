@@ -22,8 +22,12 @@ var (
 	ErrDeviceNotRegistered = errors.New("device not registered")
 )
 
-// apnsTokenPattern matches a raw APNs device token - 64 hex characters.
-var apnsTokenPattern = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+// apnsTokenPattern matches a raw APNs device token, hex-encoded. Apple
+// documents the token as variable-length: physical devices currently send
+// 32 bytes, but the iOS simulator sends 80 - the old exact-64-character check
+// rejected those outright ("invalid apns token"), so this accepts any
+// even-length hex string from 32 to 200 bytes.
+var apnsTokenPattern = regexp.MustCompile(`^(?:[0-9a-fA-F]{2}){32,200}$`)
 
 func validDeviceID(id string) bool {
 	return len(id) >= 8 && len(id) <= 128
@@ -78,9 +82,21 @@ func (v *Database) RegisterIOSDevice(deviceID, secret, apnsToken, apnsEnv, pushT
 		if subtle.ConstantTimeCompare([]byte(existing.deviceSecretHash), []byte(secretHash)) != 1 {
 			return nil, ErrDeviceSecretMismatch
 		}
+		// The app re-registers on every launch, usually before iOS has
+		// handed it this launch's APNs token - so an empty token here means
+		// "not known yet", not "clear it". Overwriting with "" silently
+		// disabled every push to the device until the next token callback.
+		newApnsToken := existing.ApnsToken
+		if apnsToken != "" {
+			newApnsToken = apnsToken
+		}
+		newPushToStart := existing.PushToStartToken
+		if pushToStartToken != "" {
+			newPushToStart = pushToStartToken
+		}
 		if _, err := v.execContext(
 			`UPDATE notifications SET apns_token = ?, apns_env = ?, push_to_start_token = ? WHERE id = ?`,
-			nullableString(apnsToken), apnsEnv, nullableString(pushToStartToken), existing.Id,
+			nullableString(newApnsToken), apnsEnv, nullableString(newPushToStart), existing.Id,
 		); err != nil {
 			return nil, fmt.Errorf("update device: %w", err)
 		}
@@ -129,6 +145,21 @@ func (v *Database) UpdateIOSDeviceTokens(deviceID, secret, apnsToken, apnsEnv, p
 		return nil, fmt.Errorf("update device tokens: %w", err)
 	}
 	return v.findIOSDeviceClient(deviceID)
+}
+
+// setIOSDeviceApns overwrites a device's stored APNs token/env directly -
+// used by the APNs sender to correct a wrong environment, or to clear a
+// token APNs reports as unregistered, without deleting the device row (and
+// with it every stop/route subscription and reminder the device owns).
+func (v *Database) setIOSDeviceApns(clientID int, apnsToken, apnsEnv string) error {
+	if v == nil {
+		return nil
+	}
+	_, err := v.execContext(
+		`UPDATE notifications SET apns_token = ?, apns_env = ? WHERE id = ? AND platform = 'ios'`,
+		nullableString(apnsToken), apnsEnv, clientID,
+	)
+	return err
 }
 
 // FindIOSDeviceClient resolves a client from its device id + secret, as sent

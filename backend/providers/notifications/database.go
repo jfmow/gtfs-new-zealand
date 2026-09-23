@@ -227,6 +227,31 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_jr_region_status ON journey_reminders(region, status);`,
+		// One row per running Live Activity (`ios/Shared/JourneyActivityAttributes.swift`).
+		// `push_token` is the activity's own token from `Activity.pushTokenUpdates` -
+		// distinct from the device's `apns_token` (used for plain alert pushes),
+		// which is still where `runLiveActivitiesCron` gets the sandbox/production
+		// choice from (that's a per-device setting, not per-activity).
+		// `leg_hint`/`phase_hint` are foreground-reported via POST .../leg
+		// (`reportLiveActivityLeg` on the client), used to keep the server's own
+		// simplified, time-based leg/phase guess aligned with what the app itself
+		// last knew - not authoritative on their own.
+		`CREATE TABLE IF NOT EXISTS live_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER NOT NULL,
+            region TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            activity_id TEXT NOT NULL,
+            push_token TEXT NOT NULL DEFAULT '',
+            leg_hint INTEGER NOT NULL DEFAULT -1,
+            phase_hint TEXT NOT NULL DEFAULT '',
+            last_state_hash TEXT NOT NULL DEFAULT '',
+            created INTEGER NOT NULL,
+            updated INTEGER NOT NULL,
+            UNIQUE(clientId, activity_id),
+            FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
+        );`,
+		`CREATE INDEX IF NOT EXISTS idx_live_activities_region ON live_activities(region);`,
 	}
 
 	for _, stmt := range stmts {
@@ -272,6 +297,11 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		ddl    string
 	}{
 		{"only_route_ids", `ALTER TABLE journey_reminders ADD COLUMN only_route_ids TEXT NOT NULL DEFAULT '[]';`},
+		// The plan a resolved reminder is for (stored in the shared plan
+		// store) and whether its Live Activity has been push-started - see
+		// jrMaybeStartLiveActivity.
+		{"plan_id", `ALTER TABLE journey_reminders ADD COLUMN plan_id TEXT NOT NULL DEFAULT '';`},
+		{"la_started", `ALTER TABLE journey_reminders ADD COLUMN la_started INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {
@@ -279,6 +309,31 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		}
 		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
 			return fmt.Errorf("ensure schema: migrate journey_reminders.%s: %w", m.column, err)
+		}
+	}
+
+	// live_activities: the activity's own APNs environment (so the cron
+	// doesn't depend on the device's alert token, which may be empty),
+	// which one-off alerts it has already had, and when it was last pushed
+	// (for the stale-date heartbeat).
+	laExistingColumns, err := d.columnNames(ctx, "live_activities")
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	laMigrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"apns_env", `ALTER TABLE live_activities ADD COLUMN apns_env TEXT NOT NULL DEFAULT '';`},
+		{"alerted_keys", `ALTER TABLE live_activities ADD COLUMN alerted_keys TEXT NOT NULL DEFAULT '';`},
+		{"last_pushed", `ALTER TABLE live_activities ADD COLUMN last_pushed INTEGER NOT NULL DEFAULT 0;`},
+	}
+	for _, m := range laMigrations {
+		if laExistingColumns[m.column] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
+			return fmt.Errorf("ensure schema: migrate live_activities.%s: %w", m.column, err)
 		}
 	}
 
