@@ -12,6 +12,13 @@ public struct TripStopRef: Codable, Hashable, Sendable {
     public let platform: String
     public let sequence: Int
     public let childStopID: String
+    /// `name` without the stop code `GET /stops/{tripId}` appends to it for
+    /// search - nil everywhere else (and in offline packs saved before the
+    /// backend sent it).
+    public var displayName: String? = nil
+
+    /// What to show the rider.
+    public var label: String { displayName.flatMap { $0.isEmpty ? nil : $0 } ?? name }
 
     public var coordinate: Coordinate { Coordinate(latitude: lat, longitude: lon) }
 
@@ -19,5 +26,6 @@ public struct TripStopRef: Codable, Hashable, Sendable {
         case lat, lon, name, platform, sequence
         case parentStopID = "parent_stop_id"
         case childStopID = "child_stop_id"
+        case displayName = "display_name"
     }
 }

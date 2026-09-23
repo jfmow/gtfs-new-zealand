@@ -124,6 +124,15 @@ final class OfflineRideEstimatorTests: XCTestCase {
         XCTAssertEqual(vehicle?.trip?.nextStop?.sequence, 5)    // stop 4, where the rider gets off
     }
 
+    func testStopsAreNamedWithoutTheStopCode() throws {
+        let json = #"{"lat":0,"lon":0,"parent_stop_id":"p","name":"Karangahape Road 7112","display_name":"Karangahape Road","platform":"","sequence":3,"child_stop_id":"c"}"#
+        let stop = try JSONDecoder().decode(TripStopRef.self, from: Data(json.utf8))
+        XCTAssertEqual(OfflineRideEstimator.shown(stop).name, "Karangahape Road")
+        // Offline packs saved before the backend sent display_name.
+        let old = TripStopRef(lat: 0, lon: 0, parentStopID: "p", name: "Stop 1", platform: "", sequence: 1, childStopID: "c")
+        XCTAssertEqual(OfflineRideEstimator.shown(old).name, "Stop 1")
+    }
+
     func testAtTheAlightStopThenWalkingAwayIsAlighted() {
         let estimator = boardedEstimator()
         let atStop = feed(estimator, fix(at: 4, speed: 0.5, seconds: 1000))
@@ -159,10 +168,11 @@ final class OfflineRideEstimatorTests: XCTestCase {
 
     // MARK: - Re-timing from GPS
 
-    private func stopTime(_ i: Int, at seconds: TimeInterval) -> StopTimeUpdate {
+    private func stopTime(_ i: Int, at seconds: TimeInterval, predicted: TimeInterval? = nil) -> StopTimeUpdate {
         let ms = Int64(base.addingTimeInterval(seconds).timeIntervalSince1970 * 1000)
-        return StopTimeUpdate(parentStopID: "p\(i)", childStopID: "c\(i)", arrivalTime: GoEpochMillis(milliseconds: ms),
-                              departureTime: GoEpochMillis(milliseconds: ms), scheduledTime: GoEpochMillis(milliseconds: ms),
+        let predictedMs = predicted.map { Int64(base.addingTimeInterval($0).timeIntervalSince1970 * 1000) } ?? ms
+        return StopTimeUpdate(parentStopID: "p\(i)", childStopID: "c\(i)", arrivalTime: GoEpochMillis(milliseconds: predictedMs),
+                              departureTime: GoEpochMillis(milliseconds: predictedMs), scheduledTime: GoEpochMillis(milliseconds: ms),
                               skipped: false, passed: false, dist: 0)
     }
 
@@ -175,6 +185,18 @@ final class OfflineRideEstimatorTests: XCTestCase {
         XCTAssertEqual(adjusted?[1].arrivalTime.date, base.addingTimeInterval(900))
         XCTAssertEqual(adjusted?[3].arrivalTime.date, base.addingTimeInterval(1260))
         XCTAssertEqual(adjusted?[0].arrivalTime.date, base.addingTimeInterval(600), "stops already passed stay put")
+    }
+
+    func testDelayTheFeedAlreadyHasIsNotCountedTwice() {
+        let estimator = boardedEstimator()
+        // The feed: stop 2 passed (timetable time, as the backend reports
+        // passed stops), stops ahead already 2 min late.
+        let times = [stopTime(1, at: 600), stopTime(2, at: 780),
+                     stopTime(3, at: 960, predicted: 1080), stopTime(4, at: 1140, predicted: 1260)]
+        // Passes stop 2 at 900s: two minutes late - what the feed says too.
+        feed(estimator, fix(at: 2, speed: 3, seconds: 900))
+        let adjusted = estimator.adjustedStopTimes(tripID: "T1", stops: tripStops, stopTimes: times)
+        XCTAssertEqual(adjusted?[3].arrivalTime.date, base.addingTimeInterval(1260), "2 min late, not 4")
     }
 
     // MARK: - With the progress model

@@ -94,7 +94,10 @@ final class JourneyTrackingSession {
     /// vehicle is.
     private static let liveDataMaxAge: TimeInterval = 120
     /// Past this, the rider's own GPS is trusted over the feed's last word.
-    private static let liveFreshAge: TimeInterval = 30
+    /// Longer than the background poll (30s + the request), or the
+    /// estimate took over at the tail of every cycle and the Live Activity
+    /// flicked between the two.
+    private static let liveFreshAge: TimeInterval = 75
     private static let resumeGrace: TimeInterval = 45 * 60
 
     init(api: APIClient, location: LocationProvider, network: NetworkMonitor, liveActivity: LiveActivityCoordinator, push: PushRegistrationService) {

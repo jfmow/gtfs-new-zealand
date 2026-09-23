@@ -160,18 +160,50 @@ public final class OfflineRideEstimator {
     }
 
     /// `stopTimes` re-timed by how the ride is actually going: the rider
-    /// passed its most recent stop at a known time, so that stop's cached
-    /// prediction is off by the difference, and every stop still ahead is
-    /// moved by the same amount - the countdown to getting off then follows
-    /// the ride instead of the last prediction downloaded before the
-    /// connection dropped. Nil until a stop has been passed on board.
+    /// passed its most recent stop at a known time, so the ride is running
+    /// that far off the timetable, and every stop still ahead is put at its
+    /// timetabled time plus the same delay - the countdown to getting off
+    /// then follows the ride instead of the last prediction downloaded
+    /// before the connection dropped. Nil until a stop has been passed on
+    /// board.
+    ///
+    /// Measured against the timetable, not the cached prediction: the feed
+    /// gives passed stops their timetabled time but stops ahead the trip's
+    /// delay, so shifting the prediction by (passed - predicted) counted the
+    /// delay twice.
     public func adjustedStopTimes(tripID: String, stops: [TripStopRef], stopTimes: [StopTimeUpdate]) -> [StopTimeUpdate]? {
         guard let state = rides[tripID], state.boarded, !state.alighted,
               let last = state.passedAt.max(by: { $0.key < $1.key }),
               let stop = stops.first(where: { $0.sequence == last.key }),
-              let predicted = Self.predictedTime(stopTimes, stop: stop)
+              let time = Self.stopTime(stopTimes, stop: stop)
         else { return nil }
+        let scheduledMs = time.scheduledTime.milliseconds
+        if scheduledMs != 0 {
+            let delayMs = Int64(last.value.timeIntervalSince1970 * 1000) - scheduledMs
+            return Self.retimed(stopTimes, delayMs: delayMs, fromScheduledMs: scheduledMs)
+        }
+        // No timetable to measure against - move the cached predictions.
+        guard let predicted = Self.predictedTime(stopTimes, stop: stop) else { return nil }
         return Self.shifted(stopTimes, by: last.value.timeIntervalSince(predicted), from: predicted)
+    }
+
+    /// Puts every stop timetabled at or after `fromScheduledMs` at its
+    /// timetabled time plus `delayMs`, keeping the feed's dwell (departure
+    /// after arrival). Stops without a timetabled time are left alone.
+    static func retimed(_ stopTimes: [StopTimeUpdate], delayMs: Int64, fromScheduledMs: Int64) -> [StopTimeUpdate] {
+        stopTimes.map { time in
+            let scheduled = time.scheduledTime.milliseconds
+            guard scheduled != 0, scheduled >= fromScheduledMs, !time.skipped else { return time }
+            let arrival = scheduled + delayMs
+            let dwell = time.arrivalTime.milliseconds != 0 && time.departureTime.milliseconds != 0
+                ? max(0, time.departureTime.milliseconds - time.arrivalTime.milliseconds) : 0
+            return StopTimeUpdate(
+                parentStopID: time.parentStopID, childStopID: time.childStopID,
+                arrivalTime: GoEpochMillis(milliseconds: arrival),
+                departureTime: GoEpochMillis(milliseconds: arrival + dwell),
+                scheduledTime: time.scheduledTime, skipped: time.skipped, passed: time.passed, dist: time.dist
+            )
+        }
     }
 
     /// Moves every not-yet-passed time at or after `reference` by `delay`.
@@ -193,13 +225,17 @@ public final class OfflineRideEstimator {
     /// The last prediction cached for a stop - arrival, else departure,
     /// else the timetable.
     static func predictedTime(_ stopTimes: [StopTimeUpdate], stop: TripStopRef) -> Date? {
-        guard let time = stopTimes.first(where: { $0.childStopID == stop.childStopID })
-            ?? stopTimes.first(where: { !stop.parentStopID.isEmpty && $0.parentStopID == stop.parentStopID })
-        else { return nil }
+        guard let time = stopTime(stopTimes, stop: stop) else { return nil }
         for ms in [time.arrivalTime.milliseconds, time.departureTime.milliseconds, time.scheduledTime.milliseconds] where ms != 0 {
             return Date(timeIntervalSince1970: TimeInterval(ms) / 1000)
         }
         return nil
+    }
+
+    /// The stop's entry in `stopTimes` - by platform, else station.
+    static func stopTime(_ stopTimes: [StopTimeUpdate], stop: TripStopRef) -> StopTimeUpdate? {
+        stopTimes.first(where: { $0.childStopID == stop.childStopID })
+            ?? stopTimes.first(where: { !stop.parentStopID.isEmpty && $0.parentStopID == stop.parentStopID })
     }
 
     // MARK: - Synthetic vehicle
@@ -245,7 +281,8 @@ public final class OfflineRideEstimator {
         return Vehicle(
             tripID: leg.tripID,
             route: RouteSummary(id: leg.routeID, name: route?.routeShortName ?? leg.routeID, color: route?.routeColor ?? "", type: route?.vehicleType),
-            trip: VehicleTrip(firstStop: stops.first, nextStop: next, finalStop: stops.last, currentStop: current, headsign: ""),
+            trip: VehicleTrip(firstStop: stops.first.map(Self.shown), nextStop: next.map(Self.shown), finalStop: stops.last.map(Self.shown),
+                              currentStop: Self.shown(current), headsign: ""),
             occupancy: -1,
             licensePlate: "",
             position: VehiclePosition(lat: position.latitude, lon: position.longitude, bearing: 0),
@@ -253,6 +290,14 @@ public final class OfflineRideEstimator {
             state: vehicleState,
             offCourse: false
         )
+    }
+
+    /// The stop as the feed's own vehicles name it - `/stops/{tripId}`
+    /// appends the stop code, which otherwise showed up as "Next stop:
+    /// Karangahape Road 7112" whenever this stood in for the live vehicle.
+    static func shown(_ stop: TripStopRef) -> TripStopRef {
+        TripStopRef(lat: stop.lat, lon: stop.lon, parentStopID: stop.parentStopID, name: stop.label,
+                    platform: stop.platform, sequence: stop.sequence, childStopID: stop.childStopID)
     }
 
     // MARK: - Geometry
