@@ -56,7 +56,7 @@ func IsNearStop(stopsForTrip []gtfs.Stop, stopIndex int, vehicleLat, vehicleLon 
 // predicted stop times. Returns ok=false when there's no usable live status
 // (no vehicle, unset fields, or an out-of-range stop sequence), so the caller
 // can fall back to the timestamp heuristic.
-func stateFromCurrentStatus(vehicle *proto.VehiclePosition, lowestSequence int, stopsForTrip []gtfs.Stop, vehicleLat, vehicleLon float64) (int, string, bool) {
+func stateFromCurrentStatus(vehicle *proto.VehiclePosition, lowestSequence int, stopsForTrip []gtfs.Stop, vehicleLat, vehicleLon float64, stopUpdates []*proto.TripUpdate_StopTimeUpdate, now time.Time) (int, string, bool) {
 	if vehicle == nil || vehicle.CurrentStatus == nil || vehicle.CurrentStopSequence == nil {
 		return 0, "", false
 	}
@@ -82,10 +82,16 @@ func stateFromCurrentStatus(vehicle *proto.VehiclePosition, lowestSequence int, 
 		// AT's feed sometimes flips CurrentStatus to IN_TRANSIT_TO a beat
 		// before it bumps CurrentStopSequence past the stop just departed,
 		// so idx can still be that (stale) stop rather than the real target.
-		// A live position still sitting at idx's own location is the tell;
-		// bump to the stop after it so "stops away" doesn't jump backward.
+		// Being near idx's own location only means that if the vehicle has
+		// actually been there - a vehicle about to *arrive* at idx is just
+		// as close. Treating the approach as "left" made stops-away drop one
+		// early, then jump back when the feed said INCOMING_AT/STOPPED_AT
+		// (fixed 2026-09-24): the trip update has to show idx already reached.
 		if hasPosition && IsNearStop(stopsForTrip, idx, vehicleLat, vehicleLon) {
-			return idx + 1, "Leaving", true
+			if reachedStop(stopUpdates, idx+lowestSequence, now) {
+				return idx + 1, "Leaving", true
+			}
+			return idx, "Arriving", true
 		}
 		// Still close to the stop it just left ("pulling away") vs genuinely
 		// mid-route - only distinguishable when we have a live position.
@@ -96,6 +102,23 @@ func stateFromCurrentStatus(vehicle *proto.VehiclePosition, lowestSequence int, 
 	default:
 		return 0, "", false
 	}
+}
+
+// reachedStop reports whether the trip update shows the vehicle has already
+// got to the stop at GTFS sequence seq: an arrival or departure time that has
+// passed, at that stop or any after it.
+func reachedStop(stopUpdates []*proto.TripUpdate_StopTimeUpdate, seq int, now time.Time) bool {
+	for _, update := range stopUpdates {
+		if update == nil || int(update.GetStopSequence()) < seq {
+			continue
+		}
+		for _, event := range []*proto.TripUpdate_StopTimeEvent{update.GetArrival(), update.GetDeparture()} {
+			if event != nil && event.GetTime() > 0 && event.GetTime() <= now.Unix() {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // GetNextStopSequence inspects a trip's StopTimeUpdates (which may include
@@ -134,7 +157,7 @@ func GetNextStopSequence(
 		return stopUpdates[i].GetStopSequence() < stopUpdates[j].GetStopSequence()
 	})
 
-	if idx, state, ok := stateFromCurrentStatus(vehicle, lowestSequence, stopsForTrip, vehicleLat, vehicleLon); ok {
+	if idx, state, ok := stateFromCurrentStatus(vehicle, lowestSequence, stopsForTrip, vehicleLat, vehicleLon, stopUpdates, now); ok {
 		return idx, nil, state
 	}
 

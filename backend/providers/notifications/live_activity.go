@@ -32,6 +32,9 @@ type LiveActivity struct {
 	LastStateHash string
 	AlertedKeys   []string
 	LastPushed    int64
+	// ClientReported is when the app last reported its leg - it's running
+	// and updating the activity itself then (see clientActiveWindow).
+	ClientReported int64
 }
 
 // CreateLiveActivity registers a newly-started activity, or updates one
@@ -64,8 +67,8 @@ func (d *Database) UpdateLiveActivityToken(clientId int, activityId, pushToken s
 
 func (d *Database) UpdateLiveActivityLeg(clientId int, activityId string, legIndex int, phase string) error {
 	_, err := d.execContext(
-		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, updated = ? WHERE clientId = ? AND activity_id = ?`,
-		legIndex, phase, time.Now().Unix(), clientId, activityId,
+		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, updated = ?, client_reported = ? WHERE clientId = ? AND activity_id = ?`,
+		legIndex, phase, time.Now().Unix(), time.Now().Unix(), clientId, activityId,
 	)
 	return err
 }
@@ -103,7 +106,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 	rows, err := d.db.Query(`
         SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, la.push_token,
                COALESCE(NULLIF(la.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
-               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed
+               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported
         FROM live_activities la
         JOIN notifications n ON n.id = la.clientId
         WHERE la.region = ?`, region)
@@ -117,7 +120,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 		var a LiveActivity
 		var alerted string
 		if err := rows.Scan(&a.Id, &a.ClientId, &a.Region, &a.PlanId, &a.ActivityId, &a.PushToken,
-			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed); err != nil {
+			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported); err != nil {
 			continue
 		}
 		if alerted != "" {
@@ -140,6 +143,14 @@ const (
 	activityHeartbeat  = 4 * time.Minute
 	activityStaleAfter = 6 * time.Minute
 )
+
+// clientActiveWindow: while the app has reported in this recently, it's
+// running and updating the activity itself (every ~10s, from its own poll),
+// so this cron leaves the content alone - two writers working from
+// different snapshots of the feed made the stop count flick back and forth
+// (2026-09-24). The app reports at least every 30s while it's doing that.
+// Key-moment banners still go out, since the app only shows those in-app.
+const clientActiveWindow = 75 * time.Second
 
 // runLiveActivitiesCron is one tick of the Live Activity progress pusher -
 // the background path for when the app isn't running to update ActivityKit
@@ -188,6 +199,15 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		if state.alert != nil && !containsString(activity.AlertedKeys, state.alert.Key) {
 			a := *state.alert
 			alert = &a
+		}
+
+		if now.Sub(time.Unix(activity.ClientReported, 0)) < clientActiveWindow {
+			if alert != nil && sendJourneyMomentNotification(db, activity, *alert) {
+				// Leave the state hash alone, so the content is pushed as
+				// soon as the app stops updating it.
+				db.recordLiveActivityPush(activity.Id, activity.LastStateHash, append(activity.AlertedKeys, alert.Key), time.Unix(activity.LastPushed, 0))
+			}
+			continue
 		}
 
 		hash := state.stateHash()

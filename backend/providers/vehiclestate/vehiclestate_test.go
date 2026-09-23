@@ -2,6 +2,7 @@ package vehiclestate
 
 import (
 	"testing"
+	"time"
 
 	"github.com/jfmow/gtfs"
 	"github.com/jfmow/gtfs/realtime/proto"
@@ -10,6 +11,15 @@ import (
 func ptrU32(v uint32) *uint32 { return &v }
 func ptrStatus(v proto.VehiclePosition_VehicleStopStatus) *proto.VehiclePosition_VehicleStopStatus {
 	return &v
+}
+
+var testNow = time.Unix(1_700_000_000, 0)
+
+// arrivedAt is a trip update's stop-time-update with an arrival at seq,
+// `ago` before testNow (negative for a prediction still ahead).
+func arrivedAt(seq uint32, ago time.Duration) *proto.TripUpdate_StopTimeUpdate {
+	t := testNow.Add(-ago).Unix()
+	return &proto.TripUpdate_StopTimeUpdate{StopSequence: ptrU32(seq), Arrival: &proto.TripUpdate_StopTimeEvent{Time: &t}}
 }
 
 // Four stops in a row, 200m apart along the equator so IsNearStop's 100m
@@ -32,7 +42,9 @@ func TestStateFromCurrentStatus_DepartureDoesNotRegressNextStop(t *testing.T) {
 		CurrentStopSequence: ptrU32(6),
 		CurrentStatus:       ptrStatus(proto.VehiclePosition_STOPPED_AT),
 	}
-	idx, state, ok := stateFromCurrentStatus(stoppedAtB, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon)
+	// The trip update shows it got to B 20s ago.
+	updates := []*proto.TripUpdate_StopTimeUpdate{arrivedAt(6, 20*time.Second), arrivedAt(7, -60*time.Second)}
+	idx, state, ok := stateFromCurrentStatus(stoppedAtB, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon, updates, testNow)
 	if !ok || state != "AtStop" || idx != 2 {
 		t.Fatalf("STOPPED_AT at B: got idx=%d state=%q ok=%v, want idx=2 state=AtStop", idx, state, ok)
 	}
@@ -45,7 +57,7 @@ func TestStateFromCurrentStatus_DepartureDoesNotRegressNextStop(t *testing.T) {
 		CurrentStopSequence: ptrU32(6),
 		CurrentStatus:       ptrStatus(proto.VehiclePosition_IN_TRANSIT_TO),
 	}
-	idx, state, ok = stateFromCurrentStatus(leavingBStaleSeq, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon)
+	idx, state, ok = stateFromCurrentStatus(leavingBStaleSeq, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon, updates, testNow)
 	if !ok || state != "Leaving" || idx != 2 {
 		t.Fatalf("IN_TRANSIT_TO with stale sequence near B: got idx=%d state=%q ok=%v, want idx=2 state=Leaving (must not regress from AtStop's idx=2)", idx, state, ok)
 	}
@@ -56,7 +68,7 @@ func TestStateFromCurrentStatus_DepartureDoesNotRegressNextStop(t *testing.T) {
 		CurrentStopSequence: ptrU32(7),
 		CurrentStatus:       ptrStatus(proto.VehiclePosition_IN_TRANSIT_TO),
 	}
-	idx, state, ok = stateFromCurrentStatus(leavingBFreshSeq, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon)
+	idx, state, ok = stateFromCurrentStatus(leavingBFreshSeq, lowestSequence, stops, stops[1].StopLat, stops[1].StopLon, updates, testNow)
 	if !ok || state != "Leaving" || idx != 2 {
 		t.Fatalf("IN_TRANSIT_TO with fresh sequence near B: got idx=%d state=%q ok=%v, want idx=2 state=Leaving", idx, state, ok)
 	}
@@ -68,8 +80,38 @@ func TestStateFromCurrentStatus_DepartureDoesNotRegressNextStop(t *testing.T) {
 		CurrentStatus:       ptrStatus(proto.VehiclePosition_IN_TRANSIT_TO),
 	}
 	midLat, midLon := 0.0, 0.0027
-	idx, state, ok = stateFromCurrentStatus(midpoint, lowestSequence, stops, midLat, midLon)
+	idx, state, ok = stateFromCurrentStatus(midpoint, lowestSequence, stops, midLat, midLon, updates, testNow)
 	if !ok || state != "Travelling" || idx != 2 {
 		t.Fatalf("IN_TRANSIT_TO mid-route: got idx=%d state=%q ok=%v, want idx=2 state=Travelling", idx, state, ok)
+	}
+}
+
+// Pulling in to C: IN_TRANSIT_TO C and already within 100m of it, but the
+// trip update has it last at B - it hasn't been to C yet. Reporting "left
+// C" here dropped stops-away a stop early, then it jumped back when the
+// feed moved on to INCOMING_AT/STOPPED_AT C.
+func TestStateFromCurrentStatus_ApproachIsNotLeaving(t *testing.T) {
+	stops := testStops()
+	lowestSequence := 5
+	updates := []*proto.TripUpdate_StopTimeUpdate{arrivedAt(6, 60*time.Second), arrivedAt(7, -15*time.Second)}
+
+	approachingC := &proto.VehiclePosition{
+		CurrentStopSequence: ptrU32(7),
+		CurrentStatus:       ptrStatus(proto.VehiclePosition_IN_TRANSIT_TO),
+	}
+	nearCLat, nearCLon := 0.0, 0.0031 // ~55m before C
+	idx, state, ok := stateFromCurrentStatus(approachingC, lowestSequence, stops, nearCLat, nearCLon, updates, testNow)
+	if !ok || state != "Arriving" || idx != 2 {
+		t.Fatalf("approaching C: got idx=%d state=%q ok=%v, want idx=2 (C still next) state=Arriving", idx, state, ok)
+	}
+
+	// Then INCOMING_AT C - the same next stop, no jump back.
+	incoming := &proto.VehiclePosition{
+		CurrentStopSequence: ptrU32(7),
+		CurrentStatus:       ptrStatus(proto.VehiclePosition_INCOMING_AT),
+	}
+	idx, _, _ = stateFromCurrentStatus(incoming, lowestSequence, stops, nearCLat, nearCLon, updates, testNow)
+	if idx != 2 {
+		t.Fatalf("INCOMING_AT C: got idx=%d, want 2", idx)
 	}
 }

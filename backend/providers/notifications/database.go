@@ -327,6 +327,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		{"apns_env", `ALTER TABLE live_activities ADD COLUMN apns_env TEXT NOT NULL DEFAULT '';`},
 		{"alerted_keys", `ALTER TABLE live_activities ADD COLUMN alerted_keys TEXT NOT NULL DEFAULT '';`},
 		{"last_pushed", `ALTER TABLE live_activities ADD COLUMN last_pushed INTEGER NOT NULL DEFAULT 0;`},
+		// When the app last reported in while updating the activity itself -
+		// see clientActiveWindow.
+		{"client_reported", `ALTER TABLE live_activities ADD COLUMN client_reported INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range laMigrations {
 		if laExistingColumns[m.column] {
