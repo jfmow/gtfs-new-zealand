@@ -221,6 +221,10 @@ public struct JourneyPlanRequest: Sendable {
     public var maxTransfers: Int
     public var minResults: Int
     public var onlyRoutes: [String]
+    /// Only these ways to travel; empty = any.
+    public var modes: Set<TravelMode>
+    /// Extra seconds at every change of vehicle (0 = the planner's usual minute).
+    public var minTransferSec: Int
 
     public init(
         start: Coordinate,
@@ -231,7 +235,9 @@ public struct JourneyPlanRequest: Sendable {
         walkSpeed: Double = 4.8,
         maxTransfers: Int = 5,
         minResults: Int = 3,
-        onlyRoutes: [String] = []
+        onlyRoutes: [String] = [],
+        modes: Set<TravelMode> = [],
+        minTransferSec: Int = 0
     ) {
         self.start = start
         self.end = end
@@ -242,6 +248,8 @@ public struct JourneyPlanRequest: Sendable {
         self.maxTransfers = maxTransfers
         self.minResults = minResults
         self.onlyRoutes = onlyRoutes
+        self.modes = modes
+        self.minTransferSec = minTransferSec
     }
 
     var queryItems: [URLQueryItem] {
@@ -259,6 +267,12 @@ public struct JourneyPlanRequest: Sendable {
         ]
         if !onlyRoutes.isEmpty {
             items.append(.init(name: "onlyRoutes", value: onlyRoutes.joined(separator: ",")))
+        }
+        if !modes.isEmpty {
+            items.append(.init(name: "modes", value: TravelMode.queryValue(modes)))
+        }
+        if minTransferSec > 0 {
+            items.append(.init(name: "minTransferSec", value: String(minTransferSec)))
         }
         return items
     }

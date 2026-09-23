@@ -53,6 +53,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
+    @AppStorage("easyPlannerByDefault") private var easyPlannerByDefault = false
 
     var body: some View {
         @Bindable var environment = environment
@@ -95,6 +96,11 @@ struct SettingsView: View {
                             selection: $mapStyleRaw,
                             options: MapStyle.allCases.map { ($0.rawValue, $0.label) }
                         )
+                    }
+
+                    RowDivider()
+                    SettingsRow(title: "Plan step by step", detail: "Open the planner as 4 simple questions, with large text and buttons") {
+                        Toggle("Plan step by step", isOn: $easyPlannerByDefault).labelsHidden()
                     }
                 }
 

@@ -54,6 +54,11 @@ struct TransitApp: App {
                     appDelegate.isJourneyTrackerVisible = { [router] in
                         router.isTrackingVisible
                     }
+                    QuickAction.relay.handler = { [router] action in
+                        switch action {
+                        case .easyPlanner: router.openEasyPlanner()
+                        }
+                    }
                 }
         }
         .modelContainer(modelContainer)

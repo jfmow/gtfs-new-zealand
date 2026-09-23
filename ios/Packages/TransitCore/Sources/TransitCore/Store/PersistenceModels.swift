@@ -55,6 +55,10 @@ public final class SavedTrip {
     public var onlyRouteNames: [String] = []
     /// "Show N journeys" (3/5/8). Added 2026-09-23.
     public var minResults: Int = 3
+    /// `TravelMode` raw values this trip plans with (empty = any), and the
+    /// extra change time - set by the step-by-step planner. Added 2026-09-24.
+    public var modes: [String] = []
+    public var minTransferSec: Int = 0
     public var sortOrder: Int
 
     public init(
@@ -87,6 +91,10 @@ public final class SavedTrip {
 
     public var startCoordinate: Coordinate { Coordinate(latitude: startLat, longitude: startLon) }
     public var endCoordinate: Coordinate { Coordinate(latitude: endLat, longitude: endLon) }
+    public var travelModes: Set<TravelMode> {
+        get { Set(modes.compactMap(TravelMode.init(rawValue:))) }
+        set { modes = TravelMode.allCases.filter(newValue.contains).map(\.rawValue) }
+    }
 }
 
 /// The journey the rider is currently on (or was, within the resume grace

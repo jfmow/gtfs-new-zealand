@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01C27AE18059E4B8A791B42C /* EasyPlannerComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78EE4BC16CC87758EB88CFD1 /* EasyPlannerComponents.swift */; };
 		05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC603ED48D2D68656FFD4A94 /* PlannerView.swift */; };
 		06B32DC2183F46A52E10CD4F /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC7FAECA81EA5EBB21D85948 /* NetworkMonitor.swift */; };
 		08FA57D675CCD6F52AC93975 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
@@ -24,6 +25,7 @@
 		267E26CB3BFB31C783FFD039 /* TransitCore in Frameworks */ = {isa = PBXBuildFile; productRef = D4ADF43D1975320A2612A72F /* TransitCore */; };
 		2CB10F4764053C265F44F9FE /* StopSearchField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A0C64D9A0AF6AA67A9DED78 /* StopSearchField.swift */; };
 		30A241E030DA3FA2826AD18E /* Geist-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E6679205AD13C763D7EAE51E /* Geist-Bold.ttf */; };
+		3596C6F552B2C4043C67ACC8 /* QuickAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09A444B62D5D10C218CA585E /* QuickAction.swift */; };
 		36FCE3C823BE4FD31FD5D529 /* PushRegistrationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE62F2F13BB499E8A5DED257 /* PushRegistrationService.swift */; };
 		3D0E420829F8C392BADCED92 /* PlannerLocation.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF4789AEFC03755B08E33690 /* PlannerLocation.swift */; };
 		44481E59E5FFAF85EF21A5E4 /* AlertsTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */; };
@@ -46,6 +48,7 @@
 		6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BD8A6BDA69E3FF448D272B /* AppEnvironment.swift */; };
 		808AE404E59DB50626AA6677 /* LiveActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9688C841EB837031FC494A7 /* LiveActivityCoordinator.swift */; };
 		83E880DF8B286B11AB3606DC /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */; };
+		86AAED6C91303B009700C735 /* EasyResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FCFDD5B1FBA315536F8BB9 /* EasyResultsView.swift */; };
 		874EE8B5732E67809BE7F1B8 /* TransitWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5511DDFD6BC79AFB5E1871D4 /* TransitWidgetsBundle.swift */; };
 		8E92E9603EAFBD523F6C953F /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
 		99F0ADFB689EBCA653650D82 /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */; };
@@ -60,6 +63,7 @@
 		ADEA2951F4B0241365877AF6 /* HomeCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */; };
 		B327BDCF76C3F69410561F2B /* JourneyAlertCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDE6E8A2AB86BD098EB9CBDF /* JourneyAlertCenter.swift */; };
 		BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7DED3D41B8B950C705520D7 /* LocationProvider.swift */; };
+		C0BA2FD60A0931063831BACC /* EasyPlannerFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467744BD0407453793CAD450 /* EasyPlannerFlow.swift */; };
 		C444B7D3E128C9D9DD09B40D /* JourneyLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F02CE6F5F1D0DAC8990B34D /* JourneyLiveActivity.swift */; };
 		C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D8AC61ACC94225604566A3 /* SettingsView.swift */; };
 		C824CB35FAD796C528E40D82 /* SavedTripsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */; };
@@ -76,6 +80,7 @@
 		E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7818A7A98B32F728BFDDA7F0 /* RootView.swift */; };
 		E150E623D21A1C9EE54950AD /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */; };
 		E58BBD9CC950C60214E005E3 /* TransitCore in Frameworks */ = {isa = PBXBuildFile; productRef = 2DEFC64D2EA1F2FC9902C417 /* TransitCore */; };
+		E6B483692CACEF7F669EFB49 /* EasyPlannerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 96FD1A1253E838170449E63B /* EasyPlannerModel.swift */; };
 		EA987E588AB7E725036D9225 /* MapControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59E8800859E3E6FF0485748F /* MapControls.swift */; };
 		EF58183A535A969F5ECD0873 /* JourneyActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B5FEA401D5F0CFFE22BEFD /* JourneyActivityAttributes.swift */; };
 		F8E9654754BB6B03D33EF7F6 /* AppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14185BF31545DB22D5AB205 /* AppShell.swift */; };
@@ -114,6 +119,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		09A444B62D5D10C218CA585E /* QuickAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAction.swift; sourceTree = "<group>"; };
 		0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMultiSelect.swift; sourceTree = "<group>"; };
 		0D8DD2B378093B7EA96B6677 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComingSoonView.swift; sourceTree = "<group>"; };
@@ -121,12 +127,14 @@
 		288949DB4B8429132B54B591 /* OFL-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-LICENSE.txt"; sourceTree = "<group>"; };
 		2A0C64D9A0AF6AA67A9DED78 /* StopSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopSearchField.swift; sourceTree = "<group>"; };
 		315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingSession.swift; sourceTree = "<group>"; };
+		37FCFDD5B1FBA315536F8BB9 /* EasyResultsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyResultsView.swift; sourceTree = "<group>"; };
 		3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedTripsViews.swift; sourceTree = "<group>"; };
 		3A9E1A8F0724FC6149CED75A /* LocationField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocationField.swift; sourceTree = "<group>"; };
 		3B967C20C0A167A8F989E5C5 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		3DDE427B22E3045979EED862 /* MapLocationPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapLocationPickerView.swift; sourceTree = "<group>"; };
 		3EED87D07EBAC42A622A9029 /* FlowLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowLayout.swift; sourceTree = "<group>"; };
 		447CE7E4167D087A53D88ACF /* RouteColors.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteColors.swift; sourceTree = "<group>"; };
+		467744BD0407453793CAD450 /* EasyPlannerFlow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyPlannerFlow.swift; sourceTree = "<group>"; };
 		4B999CF18305B715D1B381F6 /* Geist-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-SemiBold.ttf"; sourceTree = "<group>"; };
 		4DC5498A153B15318302C601 /* WidgetColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetColor.swift; sourceTree = "<group>"; };
 		4DE963D4D7D2CAD76EC6FDD2 /* TripReminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripReminders.swift; sourceTree = "<group>"; };
@@ -141,6 +149,7 @@
 		6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyOfflineNotifications.swift; sourceTree = "<group>"; };
 		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
 		7818A7A98B32F728BFDDA7F0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
+		78EE4BC16CC87758EB88CFD1 /* EasyPlannerComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyPlannerComponents.swift; sourceTree = "<group>"; };
 		7A884A001E19B7831038060C /* AlertsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsView.swift; sourceTree = "<group>"; };
 		7ED9263CC89B1BCDDEDBEA9F /* TrackedLegRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackedLegRow.swift; sourceTree = "<group>"; };
 		7F02CE6F5F1D0DAC8990B34D /* JourneyLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyLiveActivity.swift; sourceTree = "<group>"; };
@@ -148,6 +157,7 @@
 		82BCE6C873F52831BE29810C /* TransitDebugUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitDebugUITests.swift; sourceTree = "<group>"; };
 		83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkPresentationView.swift; sourceTree = "<group>"; };
 		9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingView.swift; sourceTree = "<group>"; };
+		96FD1A1253E838170449E63B /* EasyPlannerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyPlannerModel.swift; sourceTree = "<group>"; };
 		9734DB8F92D662AE92B8F808 /* PushStatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushStatusCard.swift; sourceTree = "<group>"; };
 		97361DD773747781B3551E93 /* TransitMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitMapView.swift; sourceTree = "<group>"; };
 		A1DB9370F1097CD45FA9C713 /* TransitUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TransitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -219,6 +229,17 @@
 				7ED9263CC89B1BCDDEDBEA9F /* TrackedLegRow.swift */,
 			);
 			path = Tracker;
+			sourceTree = "<group>";
+		};
+		3853B299D7AC11449C950277 /* EasyPlanner */ = {
+			isa = PBXGroup;
+			children = (
+				78EE4BC16CC87758EB88CFD1 /* EasyPlannerComponents.swift */,
+				467744BD0407453793CAD450 /* EasyPlannerFlow.swift */,
+				96FD1A1253E838170449E63B /* EasyPlannerModel.swift */,
+				37FCFDD5B1FBA315536F8BB9 /* EasyResultsView.swift */,
+			);
+			path = EasyPlanner;
 			sourceTree = "<group>";
 		};
 		39A0CF2DF72809D8C020D9EB = {
@@ -330,6 +351,7 @@
 			children = (
 				0D8DD2B378093B7EA96B6677 /* AppDelegate.swift */,
 				F8BD8A6BDA69E3FF448D272B /* AppEnvironment.swift */,
+				09A444B62D5D10C218CA585E /* QuickAction.swift */,
 				E0A2FEDC5AE691129B9962CD /* TransitApp.swift */,
 			);
 			path = App;
@@ -379,6 +401,7 @@
 				DC603ED48D2D68656FFD4A94 /* PlannerView.swift */,
 				0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */,
 				3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */,
+				3853B299D7AC11449C950277 /* EasyPlanner */,
 			);
 			path = Planner;
 			sourceTree = "<group>";
@@ -607,6 +630,10 @@
 				6CA8D0ECC802A4221433D6C6 /* Components.swift in Sources */,
 				D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */,
 				50B19908C51FE73E7762A9C6 /* DeepLinkRouter.swift in Sources */,
+				01C27AE18059E4B8A791B42C /* EasyPlannerComponents.swift in Sources */,
+				C0BA2FD60A0931063831BACC /* EasyPlannerFlow.swift in Sources */,
+				E6B483692CACEF7F669EFB49 /* EasyPlannerModel.swift in Sources */,
+				86AAED6C91303B009700C735 /* EasyResultsView.swift in Sources */,
 				52F3023D11E34A6E7C284E7F /* FindMyVehicleSheet.swift in Sources */,
 				D06BEB7CCEE30EA079F1BBAF /* FlowLayout.swift in Sources */,
 				ADEA2951F4B0241365877AF6 /* HomeCards.swift in Sources */,
@@ -630,6 +657,7 @@
 				05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */,
 				36FCE3C823BE4FD31FD5D529 /* PushRegistrationService.swift in Sources */,
 				D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */,
+				3596C6F552B2C4043C67ACC8 /* QuickAction.swift in Sources */,
 				E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */,
 				09E1349894230E6DF7716258 /* RouteColors.swift in Sources */,
 				CBC8B058C3B764BA3D72932B /* RouteMultiSelect.swift in Sources */,

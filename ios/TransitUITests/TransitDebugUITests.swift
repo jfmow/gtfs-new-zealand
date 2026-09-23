@@ -1243,4 +1243,61 @@ final class TransitDebugUITests: XCTestCase {
         sleep(2)
         let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); after.name = "end-02-after"; after.lifetime = .keepAlways; add(after)
     }
+
+    /// Walks the step-by-step planner against the local backend: a
+    /// destination, train only, as soon as possible, from where I am now -
+    /// with a screenshot of each question and the answer.
+    func testEasyPlannerFlow() throws {
+        app.launchEnvironment["TRANSIT_API_BASE"] = "http://localhost:8090"
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 3)
+        app.tabBars.buttons["Planner"].tap()
+
+        let card = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Plan step by step")).firstMatch
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        card.tap()
+
+        // 1. Where
+        let field = app.textFields["Type a place or address"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        attach("easy-01-where")
+        field.tap()
+        field.typeText("Newmarket Train Station")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 10))
+        result.tap()
+        attach("easy-02-where-chosen")
+        app.buttons["Next"].tap()
+
+        // 2. How
+        let train = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Train")).firstMatch
+        XCTAssertTrue(train.waitForExistence(timeout: 5))
+        train.tap()
+        attach("easy-03-how")
+        app.buttons["Next"].tap()
+
+        // 3. When
+        let soon = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "By a certain time")).firstMatch
+        XCTAssertTrue(soon.waitForExistence(timeout: 5))
+        soon.tap()
+        attach("easy-04-when")
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "As soon as I can")).firstMatch.tap()
+        app.buttons["Next"].tap()
+
+        // 4. From
+        let here = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Where I am now")).firstMatch
+        XCTAssertTrue(here.waitForExistence(timeout: 5))
+        here.tap()
+        attach("easy-05-from")
+        app.buttons["Find my journey"].tap()
+        dismissSystemAlertIfPresent(timeout: 2)
+
+        let start = app.buttons["Start this journey"]
+        let failed = app.staticTexts["Sorry"]
+        _ = start.waitForExistence(timeout: 40) || failed.exists
+        attach("easy-06-result")
+        app.swipeUp()
+        attach("easy-07-result-scrolled")
+        XCTAssertTrue(start.exists, "no journey was found")
+    }
 }

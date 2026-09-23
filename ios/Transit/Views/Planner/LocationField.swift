@@ -218,13 +218,15 @@ struct LocationField: View {
 
     private static let maxRecents = 5
 
-    private static func loadRecents(_ key: String) -> [LocationSearchResult] {
+    /// Also used by the step-by-step planner's place search, so both share
+    /// one recents list per field.
+    static func loadRecents(_ key: String) -> [LocationSearchResult] {
         guard let data = UserDefaults.standard.data(forKey: key),
               let decoded = try? JSONDecoder().decode([LocationSearchResult].self, from: data) else { return [] }
         return decoded
     }
 
-    private static func saveRecent(_ result: LocationSearchResult, key: String) -> [LocationSearchResult] {
+    static func saveRecent(_ result: LocationSearchResult, key: String) -> [LocationSearchResult] {
         let updated = Array(([result] + loadRecents(key).filter { $0.id != result.id }).prefix(maxRecents))
         if let data = try? JSONEncoder().encode(updated) {
             UserDefaults.standard.set(data, forKey: key)

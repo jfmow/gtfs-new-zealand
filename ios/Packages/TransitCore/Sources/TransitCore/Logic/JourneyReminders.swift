@@ -33,6 +33,10 @@ public struct JourneyReminderRequest: Equatable, Sendable {
     public var walkSpeed: Double
     public var maxTransfers: Int
     public var onlyRoutes: [String]
+    /// The step-by-step planner's mode choice and extra change time, so the
+    /// server re-plans the same way. Empty/0 = the planner's defaults.
+    public var modes: Set<TravelMode> = []
+    public var minTransferSec: Int = 0
     /// Minutes before the leave time; 0 = "when to leave".
     public var offsets: [Int]
     public var deeplink: String
@@ -70,6 +74,8 @@ public struct JourneyReminderRequest: Equatable, Sendable {
            let data = try? JSONEncoder().encode(onlyRoutes), let json = String(data: data, encoding: .utf8) {
             form["onlyRoutes"] = json
         }
+        if !modes.isEmpty { form["modes"] = TravelMode.queryValue(modes) }
+        if minTransferSec > 0 { form["minTransferSec"] = String(minTransferSec) }
         if let recurrence, !recurrence.isEmpty { form["recurrence"] = recurrence }
         if let recurrenceUntil, !recurrenceUntil.isEmpty { form["recurrenceUntil"] = recurrenceUntil }
         if let serviceDate { form["serviceDate"] = serviceDate }
@@ -102,6 +108,8 @@ public struct JourneyReminderRequest: Equatable, Sendable {
         walkSpeed: Double,
         maxTransfers: Int,
         onlyRoutes: [String],
+        modes: Set<TravelMode> = [],
+        minTransferSec: Int = 0,
         offsets: [Int],
         recurrence: String,
         recurrenceUntil: String?,
@@ -118,7 +126,7 @@ public struct JourneyReminderRequest: Equatable, Sendable {
             timeType: arriveBy ? "arriveat" : "departat",
             targetHHMM: TimeFormatting.nzHHMM(targetSource),
             maxWalkKm: maxWalkKm, walkSpeed: walkSpeed, maxTransfers: maxTransfers,
-            onlyRoutes: onlyRoutes, offsets: offsets, deeplink: ""
+            onlyRoutes: onlyRoutes, modes: modes, minTransferSec: minTransferSec, offsets: offsets, deeplink: ""
         )
 
         if recurrence.isEmpty {

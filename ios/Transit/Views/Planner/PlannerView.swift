@@ -20,7 +20,13 @@ struct PlannerView: View {
     @State private var maxTransfers: Int = 5
     @State private var minResults: Int = 3
     @State private var onlyRoutes: [RouteSearchResult] = []
+    /// Carried over from a trip saved by the step-by-step planner.
+    @State private var modes: Set<TravelMode> = []
+    @State private var minTransferSec = 0
     @State private var showsOptions = false
+    /// Settings' "Open the planner step by step": show it on the first visit.
+    @AppStorage("easyPlannerByDefault") private var easyPlannerByDefault = false
+    @State private var didAutoOpenEasyPlanner = false
 
     // Results
     @State private var results: [JourneyPlan] = []
@@ -64,6 +70,9 @@ struct PlannerView: View {
                     // Above everything below it, so the From/To dropdowns
                     // draw over the saved trips and results rather than
                     // behind them.
+                    if results.isEmpty, !isPlanning {
+                        easyPlannerCard
+                    }
                     form.zIndex(1)
                     // Saved trips fill the page until there are results.
                     if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
@@ -109,7 +118,7 @@ struct PlannerView: View {
             .sheet(isPresented: $showsOptions) {
                 PlannerOptionsSheet(
                     timeType: $timeType, date: $date, maxWalkKm: $maxWalkKm, walkSpeed: $walkSpeed,
-                    maxTransfers: $maxTransfers, minResults: $minResults, onlyRoutes: $onlyRoutes
+                    maxTransfers: $maxTransfers, minResults: $minResults, onlyRoutes: $onlyRoutes, modes: $modes
                 )
                 .shadSheet(detents: [.medium, .large])
             }
@@ -133,6 +142,14 @@ struct PlannerView: View {
                     .shadSheet(detents: [.large])
             }
         }
+        .fullScreenCover(isPresented: Binding(get: { router.showsEasyPlanner }, set: { router.showsEasyPlanner = $0 })) {
+            EasyPlannerFlow()
+        }
+        .onAppear {
+            guard easyPlannerByDefault, !didAutoOpenEasyPlanner else { return }
+            didAutoOpenEasyPlanner = true
+            router.showsEasyPlanner = true
+        }
         .onChange(of: router.pendingReplan, initial: true) { _, request in
             guard let request else { return }
             router.pendingReplan = nil
@@ -143,6 +160,36 @@ struct PlannerView: View {
             router.pendingPlan = nil
             apply(prefill)
         }
+    }
+
+    // MARK: - Step by step
+
+    private var easyPlannerCard: some View {
+        Button {
+            router.showsEasyPlanner = true
+        } label: {
+            HStack(spacing: 14) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 22, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .background(Theme.muted, in: RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Plan step by step").font(.cardTitle)
+                    Text("Answer 4 simple questions").font(.meta).foregroundStyle(Theme.mutedForeground)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground)
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(Theme.foreground)
+            .padding(14)
+            .shadCardBackground()
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Form (search-form.tsx)
@@ -248,6 +295,7 @@ struct PlannerView: View {
         parts.append(walkSpeedLabel(walkSpeed))
         parts.append(maxTransfers == 0 ? "Direct only" : "up to \(maxTransfers) transfer\(maxTransfers == 1 ? "" : "s")")
         if !onlyRoutes.isEmpty { parts.append("\(onlyRoutes.count) route\(onlyRoutes.count == 1 ? "" : "s") only") }
+        if !modes.isEmpty { parts.append(TravelMode.allCases.filter(modes.contains).map(\.label).joined(separator: "/") + " only") }
         return parts.joined(separator: " · ")
     }
 
@@ -356,7 +404,8 @@ struct PlannerView: View {
 
     private var currentContext: PlannerSearchContext {
         PlannerSearchContext(start: start, end: end, arriveBy: timeType == .arriveat, maxWalkKm: maxWalkKm,
-                             walkSpeed: walkSpeed, maxTransfers: maxTransfers, onlyRoutes: onlyRoutes)
+                             walkSpeed: walkSpeed, maxTransfers: maxTransfers, onlyRoutes: onlyRoutes,
+                             modes: modes, minTransferSec: minTransferSec)
     }
 
     private func plan(keepingReplanSnapshot: Bool = false) async {
@@ -372,7 +421,8 @@ struct PlannerView: View {
             let request = JourneyPlanRequest(
                 start: start.coordinate, end: end.coordinate, date: date, timeType: timeType,
                 maxWalkKm: maxWalkKm, walkSpeed: walkSpeed, maxTransfers: maxTransfers,
-                minResults: minResults, onlyRoutes: onlyRoutes.map(\.routeID)
+                minResults: minResults, onlyRoutes: onlyRoutes.map(\.routeID),
+                modes: modes, minTransferSec: minTransferSec
             )
             let plans = JourneyPlanRanking.pruneDominatedPlans(try await environment.api.planJourney(request))
             results = plans
@@ -396,6 +446,8 @@ struct PlannerView: View {
         )
         trip.onlyRouteNames = onlyRoutes.map(\.name)
         trip.minResults = minResults
+        trip.travelModes = modes
+        trip.minTransferSec = minTransferSec
         modelContext.insert(trip)
         environment.toasts.show("Trip saved")
         justSaved = true
@@ -415,6 +467,8 @@ struct PlannerView: View {
         maxTransfers = trip.maxTransfers
         minResults = trip.minResults
         onlyRoutes = trip.onlyRoutes
+        modes = trip.travelModes
+        minTransferSec = trip.minTransferSec
         Task { await plan() }
     }
 
@@ -513,6 +567,7 @@ struct PlannerOptionsSheet: View {
     @Binding var maxTransfers: Int
     @Binding var minResults: Int
     @Binding var onlyRoutes: [RouteSearchResult]
+    @Binding var modes: Set<TravelMode>
 
     var body: some View {
         NavigationStack {
@@ -552,6 +607,21 @@ struct PlannerOptionsSheet: View {
                     .listRowBackground(Theme.card)
                 }
                 Section {
+                    ForEach(TravelMode.allCases, id: \.self) { mode in
+                        Toggle(isOn: Binding(
+                            get: { modes.contains(mode) },
+                            set: { on in if on { modes.insert(mode) } else { modes.remove(mode) } }
+                        )) {
+                            Label(mode.label, systemImage: mode.systemImage)
+                        }
+                        .listRowBackground(Theme.card)
+                    }
+                } header: {
+                    Text("Transport")
+                } footer: {
+                    Text("Leave all off to use any transport.")
+                }
+                Section {
                     RouteMultiSelect(selected: $onlyRoutes)
                         .listRowBackground(Theme.card)
                 } footer: {
@@ -573,6 +643,7 @@ struct PlannerOptionsSheet: View {
                         maxTransfers = 5
                         minResults = 3
                         onlyRoutes = []
+                        modes = []
                     }
                 }
                 DoneButton()

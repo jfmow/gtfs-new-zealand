@@ -10,6 +10,9 @@ struct PlannerSearchContext {
     var walkSpeed: Double
     var maxTransfers: Int
     var onlyRoutes: [RouteSearchResult]
+    /// The step-by-step planner's mode choice and extra change time.
+    var modes: Set<TravelMode> = []
+    var minTransferSec: Int = 0
 }
 
 /// "Remind me when to leave" - `components/journey/leave-reminder-dialog.tsx`.
@@ -217,7 +220,8 @@ struct LeaveReminderSheet: View {
         guard let request = JourneyReminderRequest.make(
             plan: plan, start: startPlace, end: endPlace, arriveBy: context.arriveBy,
             maxWalkKm: context.maxWalkKm, walkSpeed: context.walkSpeed, maxTransfers: context.maxTransfers,
-            onlyRoutes: context.onlyRoutes.map(\.routeID), offsets: usableOffsets,
+            onlyRoutes: context.onlyRoutes.map(\.routeID),
+            modes: context.modes, minTransferSec: context.minTransferSec, offsets: usableOffsets,
             recurrence: recurrenceMask, recurrenceUntil: untilString, regionSlug: environment.region.slug
         ) else {
             environment.toasts.show("This journey has no ride to remind you about.", .error)
