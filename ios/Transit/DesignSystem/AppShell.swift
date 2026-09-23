@@ -256,7 +256,7 @@ struct ResumeJourneyPill: View {
             if let journey = journeys.first,
                context.date < journey.arrivalTime.addingTimeInterval(Self.grace),
                dismissedPlanID != journey.planID,
-               !router.isTrackingVisible, router.activeLink == nil, !isKeyboardVisible {
+               !router.isTrackingVisible, !router.isFullScreenMapVisible, router.activeLink == nil, !isKeyboardVisible {
                 pill(journey)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -339,4 +339,6 @@ struct VehiclesTabView: View {
 /// with other `String` destinations in the same stack).
 struct TripDestination: Hashable {
     let tripID: String
+    /// The stop the rider came from (a board) - marked as "your stop".
+    var fromStopName: String?
 }

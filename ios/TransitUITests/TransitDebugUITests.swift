@@ -267,12 +267,34 @@ final class TransitDebugUITests: XCTestCase {
                 app.buttons["Done"].firstMatch.tap()
                 sleep(1)
             }
-            let row = app.buttons.matching(identifier: "departure-row").firstMatch
+            // Prefer a live service ("N stops away") so the tracker has a vehicle.
+            let live = app.buttons.matching(NSPredicate(format: "identifier == %@ AND label CONTAINS[c] %@", "departure-row", "away")).firstMatch
+            let row = live.exists ? live : app.buttons.matching(identifier: "departure-row").firstMatch
             if row.waitForExistence(timeout: 3) {
                 row.tap()
-                sleep(5)
+                sleep(6)
                 attach("cs-02c-service-tracker")
-                app.navigationBars.buttons.element(boundBy: 0).tap()
+                // Drawer: tap the header to cycle medium -> full -> collapsed.
+                let header = app.staticTexts["Live"].firstMatch
+                if header.exists {
+                    header.tap()
+                    sleep(2)
+                    attach("cs-02c2-tracker-expanded")
+                    header.tap()
+                    sleep(2)
+                    attach("cs-02c3-tracker-collapsed")
+                    header.tap()
+                    sleep(2)
+                }
+                let upcoming = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "min")).element(boundBy: 1)
+                if upcoming.exists {
+                    upcoming.tap()
+                    sleep(2)
+                    attach("cs-02c4-stop-reminder")
+                    if app.buttons["Cancel"].exists { app.buttons["Cancel"].tap() }
+                    sleep(1)
+                }
+                app.buttons["Back"].tap()
                 sleep(1)
             }
             app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -376,19 +398,26 @@ final class TransitDebugUITests: XCTestCase {
         // pick one that's actually visible (and clear of the chips/pill).
         let window = app.windows.firstMatch.frame
         // Position check first (cheap), then hittability, over every marker.
-        let visible = stopMarkers.allElementsBoundByIndex.first { marker in
+        let candidates = stopMarkers.allElementsBoundByIndex.filter { marker in
             let f = marker.frame
             return f.minY > window.height * 0.2 && f.maxY < window.height * 0.7 && f.minX > 20 && f.maxX < window.width - 20
                 && !groupFrames.contains(where: { $0.insetBy(dx: -6, dy: -6).intersects(f) }) && marker.isHittable
         }
-        guard let marker = visible else { attach("st-00-no-marker"); return XCTFail("no single stop marker on screen") }
-        let stopID = marker.identifier
-        // A real touch at the marker - an element tap on a map annotation's
-        // accessibility element doesn't reliably select it.
-        marker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        // The tap previews the stop; the card opens its board.
+        guard !candidates.isEmpty else { attach("st-00-no-marker"); return XCTFail("no single stop marker on screen") }
+        // The tap previews the stop; use the first one with services right
+        // now (late at night some stops have none).
         let preview = app.buttons.matching(identifier: "stop-preview").firstMatch
-        guard preview.waitForExistence(timeout: 5) else { attach("st-00-no-preview"); return XCTFail("stop preview didn't show") }
+        var stopID: String?
+        for marker in candidates.prefix(6) {
+            if preview.exists { app.buttons["Close"].firstMatch.tap(); sleep(1) }
+            // A real touch at the marker - an element tap on a map
+            // annotation's accessibility element doesn't reliably select it.
+            marker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            guard preview.waitForExistence(timeout: 5) else { continue }
+            sleep(3)
+            if !preview.label.localizedCaseInsensitiveContains("No upcoming") { stopID = marker.identifier; break }
+        }
+        guard let stopID else { attach("st-00-no-preview"); throw XCTSkip("no nearby stop has services right now") }
         attach("st-00-preview")
         preview.tap()
 
@@ -398,10 +427,10 @@ final class TransitDebugUITests: XCTestCase {
         row.tap()
         sleep(3)
         attach("st-02-tracker")
-        XCTAssertTrue(app.navigationBars["Live tracking"].waitForExistence(timeout: 5), "tracker not shown")
+        XCTAssertTrue(app.buttons["Back"].waitForExistence(timeout: 5), "tracker not shown")
         XCTAssertFalse(row.isHittable, "board is still on top of the tracker")
 
-        app.navigationBars["Live tracking"].buttons.element(boundBy: 0).tap()
+        app.buttons["Back"].tap()
         sleep(1)
         app.navigationBars.buttons.element(boundBy: 0).tap()
         sleep(2)

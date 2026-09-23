@@ -169,3 +169,78 @@ extension UIColor {
         self.init(red: r, green: g, blue: b, alpha: 1)
     }
 }
+
+/// One stop of a live-tracked trip, marked by where the vehicle is - the
+/// web tracker's `trackedStopIcon` (`services/tracker/map-markers.ts`), with
+/// the same marker images.
+final class TripStopAnnotation: NSObject, MKAnnotation {
+    enum Kind: Equatable {
+        case passed, upcoming, start, current, next, end
+        /// The stop the rider opened this trip from (their stop).
+        case marked
+
+        var imageName: String {
+            switch self {
+            case .passed: "TripStopPassed"
+            case .upcoming: "TripStopUpcoming"
+            case .start: "TripStopStart"
+            case .current: "TripStopCurrent"
+            case .next: "TripStopNext"
+            case .end: "TripStopEnd"
+            case .marked: "TripStopMarked"
+            }
+        }
+
+        /// Points - dots stay small so a long route isn't a wall of pins.
+        var size: CGSize {
+            switch self {
+            case .passed, .upcoming, .start, .current: CGSize(width: 14, height: 14)
+            case .next, .marked: CGSize(width: 24, height: 25)
+            case .end: CGSize(width: 24, height: 24)
+            }
+        }
+
+        /// Drawn above ordinary stops.
+        var isProminent: Bool { self == .next || self == .marked || self == .end || self == .current }
+    }
+
+    let id: String
+    @objc dynamic var coordinate: CLLocationCoordinate2D
+    @objc dynamic var title: String?
+    @objc dynamic var subtitle: String?
+    var kind: Kind
+
+    init(id: String, coordinate: CLLocationCoordinate2D, name: String, detail: String?, kind: Kind) {
+        self.id = id
+        self.coordinate = coordinate
+        self.title = name
+        self.subtitle = detail
+        self.kind = kind
+    }
+}
+
+/// Draws a `TripStopAnnotation` with its marker image, resized once per
+/// kind and cached.
+final class TripStopMarkerView: MKAnnotationView {
+    private static var cache: [String: UIImage] = [:]
+
+    func apply(kind: TripStopAnnotation.Kind) {
+        image = Self.image(for: kind)
+        // Triangles and the end octagon point at the stop from above.
+        centerOffset = kind == .next || kind == .marked ? CGPoint(x: 0, y: -kind.size.height / 2 + 3) : .zero
+        displayPriority = .required
+        zPriority = kind.isProminent ? .init(rawValue: 700) : .init(rawValue: 300)
+        canShowCallout = true
+        collisionMode = .circle
+    }
+
+    private static func image(for kind: TripStopAnnotation.Kind) -> UIImage? {
+        if let cached = cache[kind.imageName] { return cached }
+        guard let source = UIImage(named: kind.imageName) else { return nil }
+        let rendered = UIGraphicsImageRenderer(size: kind.size).image { _ in
+            source.draw(in: CGRect(origin: .zero, size: kind.size))
+        }
+        cache[kind.imageName] = rendered
+        return rendered
+    }
+}

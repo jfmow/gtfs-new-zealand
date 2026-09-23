@@ -142,7 +142,8 @@ struct TrackedLegRow: View {
             }
 
             // Alight
-            TimelineRow(time: leg.arrivalTime.date, rail: .none, marker: .stop(routeColor), highlighted: isCurrent, accent: accent) {
+            TimelineRow(time: leg.arrivalTime.date, rail: .none, marker: .stop(routeColor), highlighted: isCurrent, accent: accent,
+                        incoming: .solid(routeColor, progress: nil, dimmed: status == .done)) {
                 HStack(spacing: 6) {
                     Text("Get off at \(leg.toStop?.stopName ?? "your stop")").font(.bodyText)
                         .fixedSize(horizontal: false, vertical: true)
@@ -171,31 +172,40 @@ struct StatusChipStyle: ViewModifier {
     }
 }
 
+/// A `TimelineRow`'s line segment and marker (top level so callers can
+/// name them without the row's generic content type).
+enum TimelineRail {
+    case none
+    case dotted(Color)
+    /// `progress` fills the segment with full colour from the top.
+    case solid(Color, progress: Double? = nil, dimmed: Bool = false)
+}
+
+enum TimelineMarker {
+    case none
+    case start
+    case icon(String, Color)
+    case route(String, String)  // name, colour hex
+    case stop(Color)
+    case destination
+}
+
+
 /// One timeline line: time column | rail + marker | content. The rail
 /// segment runs from this row's marker down to the next row, so stacked
 /// rows draw one continuous line.
 struct TimelineRow<Content: View>: View {
-    enum Rail {
-        case none
-        case dotted(Color)
-        /// `progress` fills the segment with full colour from the top.
-        case solid(Color, progress: Double? = nil, dimmed: Bool = false)
-    }
-
-    enum Marker {
-        case none
-        case start
-        case icon(String, Color)
-        case route(String, String)  // name, colour hex
-        case stop(Color)
-        case destination
-    }
+    typealias Rail = TimelineRail
+    typealias Marker = TimelineMarker
 
     let time: Date?
     let rail: Rail
     let marker: Marker
     let highlighted: Bool
     var accent: Color = Theme.live
+    /// The line coming into this row's marker from the row above - without
+    /// it a stack of stops shows a gap above every marker.
+    var incoming: TimelineRail = .none
     @ViewBuilder var content: Content
 
     /// Grows with Dynamic Type so "12:45 PM" never truncates at large sizes.
@@ -233,6 +243,23 @@ struct TimelineRow<Content: View>: View {
 
     private var railColumn: some View {
         ZStack(alignment: .top) {
+            // Segment from the row's top down to the marker.
+            GeometryReader { geo in
+                switch incoming {
+                case .solid(let color, _, let dimmed):
+                    Capsule().fill(color.opacity(dimmed ? 0.3 : 1))
+                        .frame(width: 4, height: 20)
+                        .frame(width: geo.size.width)
+                case .dotted(let color):
+                    Path { p in
+                        p.move(to: CGPoint(x: geo.size.width / 2, y: 0))
+                        p.addLine(to: CGPoint(x: geo.size.width / 2, y: 18))
+                    }
+                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 5]))
+                case .none:
+                    EmptyView()
+                }
+            }
             // Segment from the marker's centre down to the next row.
             GeometryReader { geo in
                 let top: CGFloat = 20

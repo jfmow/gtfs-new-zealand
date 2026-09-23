@@ -39,6 +39,9 @@ struct TransitMapView: UIViewRepresentable {
     var stops: [StopAnnotation] = []
     var vehicles: [VehicleAnnotation] = []
     var waypoints: [WaypointAnnotation] = []
+    /// A live-tracked trip's stops, marked by progress (next, current,
+    /// passed, your stop, end...).
+    var tripStops: [TripStopAnnotation] = []
     var polylines: [RoutePolylineData] = []
     var camera: MapCamera = .none
     var showsUserLocation: Bool = false
@@ -106,6 +109,11 @@ struct TransitMapView: UIViewRepresentable {
             forAnnotationViewWithReuseIdentifier: "waypoint"
         )
 
+        mapView.register(
+            TripStopMarkerView.self,
+            forAnnotationViewWithReuseIdentifier: "tripStop"
+        )
+
         return mapView
     }
 
@@ -122,6 +130,7 @@ struct TransitMapView: UIViewRepresentable {
             polylines: polylines,
             in: mapView
         )
+        context.coordinator.reconcileTripStops(tripStops, in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken)
         context.coordinator.applyCamera(camera, to: mapView)
@@ -185,6 +194,32 @@ struct TransitMapView: UIViewRepresentable {
         /// Waypoints (a journey's start/end) are static for the view's
         /// lifetime, so this is simpler than the diffing `reconcileStops`
         /// does - just replace the set wholesale when it changes.
+        private var tripStopsByID: [String: TripStopAnnotation] = [:]
+
+        /// Stops keep their annotation; only a changed kind (the vehicle
+        /// moved on) re-styles the existing view in place.
+        func reconcileTripStops(_ newStops: [TripStopAnnotation], in mapView: MKMapView) {
+            let newIDs = Set(newStops.map(\.id))
+            let gone = tripStopsByID.filter { !newIDs.contains($0.key) }.map(\.value)
+            if !gone.isEmpty { mapView.removeAnnotations(gone) }
+            for id in tripStopsByID.keys where !newIDs.contains(id) { tripStopsByID.removeValue(forKey: id) }
+
+            var toAdd: [TripStopAnnotation] = []
+            for stop in newStops {
+                if let existing = tripStopsByID[stop.id] {
+                    existing.subtitle = stop.subtitle
+                    if existing.kind != stop.kind {
+                        existing.kind = stop.kind
+                        (mapView.view(for: existing) as? TripStopMarkerView)?.apply(kind: stop.kind)
+                    }
+                } else {
+                    tripStopsByID[stop.id] = stop
+                    toAdd.append(stop)
+                }
+            }
+            if !toAdd.isEmpty { mapView.addAnnotations(toAdd) }
+        }
+
         private func reconcileWaypoints(
             _ newWaypoints: [WaypointAnnotation],
             in mapView: MKMapView
@@ -525,6 +560,7 @@ struct TransitMapView: UIViewRepresentable {
                 // already are - each stayed its own marker regardless of
                 // zoom level.
                 view.clusteringIdentifier = "vehicle"
+                view.zPriority = .max
 
                 view.apply(
                     bearing: vehicle.bearing,
@@ -532,6 +568,13 @@ struct TransitMapView: UIViewRepresentable {
                     vehicleType: vehicle.vehicleType
                 )
 
+                return view
+            }
+
+            if let tripStop = annotation as? TripStopAnnotation {
+                let view = mapView.dequeueReusableAnnotationView(withIdentifier: "tripStop", for: tripStop) as! TripStopMarkerView
+                view.annotation = tripStop
+                view.apply(kind: tripStop.kind)
                 return view
             }
 

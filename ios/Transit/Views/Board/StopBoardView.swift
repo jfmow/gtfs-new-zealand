@@ -51,8 +51,8 @@ struct StopBoardView: View {
             // render behind this list instead of on top of it - same root
             // cause class as the HomeView fix earlier (a destination
             // registration needs a stable, always-present home in the tree).
-            .navigationDestination(for: String.self) { tripID in
-                VehicleQuickLookView(tripID: tripID)
+            .navigationDestination(for: TripDestination.self) { destination in
+                VehicleQuickLookView(tripID: destination.tripID, fromStopName: destination.fromStopName)
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -154,7 +154,7 @@ struct StopBoardView: View {
             .padding(.vertical, 12)
             .background(departure.departed && !preview ? Theme.warning.opacity(0.06) : .clear)
         if departure.isTrackable && !preview {
-            NavigationLink(value: departure.tripID) { rowView.contentShape(Rectangle()) }
+            NavigationLink(value: TripDestination(tripID: departure.tripID, fromStopName: title)) { rowView.contentShape(Rectangle()) }
                 .accessibilityIdentifier("departure-row")
                 .buttonStyle(DropdownRowStyle())
         } else {

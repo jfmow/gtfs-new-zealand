@@ -11,6 +11,7 @@
 		08FA57D675CCD6F52AC93975 /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
 		09E1349894230E6DF7716258 /* RouteColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447CE7E4167D087A53D88ACF /* RouteColors.swift */; };
 		0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97361DD773747781B3551E93 /* TransitMapView.swift */; };
+		0FB45BFA9AC39B625476B2B5 /* BottomDrawer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F5C411FF76F4666324ADD38 /* BottomDrawer.swift */; };
 		0FB5BC647B4AB562AFBA7BB7 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F80D10048B073FB6A99284CE /* GeistMono-Medium.ttf */; };
 		136B4A8556AB059619756417 /* JourneyDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C078B9BE4C49BE5FF57277B9 /* JourneyDetailView.swift */; };
 		1980126F4C248F21D5B4181E /* TransitDebugUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82BCE6C873F52831BE29810C /* TransitDebugUITests.swift */; };
@@ -126,6 +127,7 @@
 		4DC5498A153B15318302C601 /* WidgetColor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetColor.swift; sourceTree = "<group>"; };
 		4DE963D4D7D2CAD76EC6FDD2 /* TripReminders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripReminders.swift; sourceTree = "<group>"; };
 		4E0EFF7D2490BBAD138354DD /* TransitWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = TransitWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4F5C411FF76F4666324ADD38 /* BottomDrawer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BottomDrawer.swift; sourceTree = "<group>"; };
 		5367FCB50583B358BDC2C8FB /* NotificationCenterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationCenterViews.swift; sourceTree = "<group>"; };
 		5511DDFD6BC79AFB5E1871D4 /* TransitWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitWidgetsBundle.swift; sourceTree = "<group>"; };
 		561D49DE86ADCD03A767B01F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
@@ -259,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				C14185BF31545DB22D5AB205 /* AppShell.swift */,
+				4F5C411FF76F4666324ADD38 /* BottomDrawer.swift */,
 				81A7BB232C09EA20A6B41A02 /* Components.swift */,
 				3EED87D07EBAC42A622A9029 /* FlowLayout.swift */,
 				561D49DE86ADCD03A767B01F /* Theme.swift */,
@@ -590,6 +593,7 @@
 				A320DFCE4EDA973F6BAE9730 /* AppDelegate.swift in Sources */,
 				6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */,
 				F8E9654754BB6B03D33EF7F6 /* AppShell.swift in Sources */,
+				0FB45BFA9AC39B625476B2B5 /* BottomDrawer.swift in Sources */,
 				2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */,
 				6CA8D0ECC802A4221433D6C6 /* Components.swift in Sources */,
 				D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */,

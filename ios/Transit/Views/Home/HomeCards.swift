@@ -46,7 +46,42 @@ struct DepartureLine: View {
     let departure: Departure
     var showsPlatform = true
 
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    private var platformText: String? {
+        guard showsPlatform, !departure.platform.isEmpty, departure.platform != "no platform" else { return nil }
+        return "Pl \(departure.platform)"
+    }
+
+    private var countdown: some View {
+        Text(departure.canceled ? "Cancelled" : TimeFormatting.timeTillArrivalString(minutes: departure.timeTillArrival))
+            .font(.geistMono(12, relativeTo: .caption))
+            .foregroundStyle(departure.canceled ? Theme.danger : Theme.mutedForeground)
+            .lineLimit(1)
+            .fixedSize()
+    }
+
     var body: some View {
+        if typeSize.isAccessibilitySize {
+            // Too big for one line: badge + countdown, then the full
+            // destination underneath instead of "Newmar...".
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 8) {
+                    RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 11)
+                    Spacer(minLength: 6)
+                    countdown
+                }
+                Text(TimeFormatting.niceLookingWords(departure.headsign) + (platformText.map { " · \($0)" } ?? ""))
+                    .font(.meta)
+                    .foregroundStyle(Theme.foreground)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        } else {
+            oneLine
+        }
+    }
+
+    private var oneLine: some View {
         HStack(spacing: 8) {
             RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 11)
             Text(TimeFormatting.niceLookingWords(departure.headsign))
@@ -54,14 +89,10 @@ struct DepartureLine: View {
                 .foregroundStyle(Theme.foreground)
                 .lineLimit(1)
             Spacer(minLength: 6)
-            if showsPlatform, !departure.platform.isEmpty, departure.platform != "no platform" {
-                Text("Pl \(departure.platform)").font(.meta).foregroundStyle(Theme.mutedForeground)
+            if let platformText {
+                Text(platformText).font(.meta).foregroundStyle(Theme.mutedForeground)
             }
-            Text(departure.canceled ? "Cancelled" : TimeFormatting.timeTillArrivalString(minutes: departure.timeTillArrival))
-                .font(.geistMono(12, relativeTo: .caption))
-                .foregroundStyle(departure.canceled ? Theme.danger : Theme.mutedForeground)
-                .lineLimit(1)
-                .fixedSize()
+            countdown
         }
     }
 }

@@ -2,215 +2,176 @@ import SwiftUI
 import TransitCore
 
 /// Live view of one trip - the web's service tracker (`services/tracker`):
-/// the vehicle on its route, a summary, the current/next stop, and every
-/// stop with its live time. Stop reminders and route alerts hang off it.
+/// a full-screen map that follows the vehicle, with every stop marked by
+/// progress (next, current, passed, your stop, end - the web's marker
+/// icons), and a drawer over it holding the summary and the stop list.
+/// Tap any upcoming stop to be reminded about it.
 struct VehicleQuickLookView: View {
     let tripID: String
+    /// The stop this was opened from (a board) - marked "your stop".
+    var fromStopName: String?
 
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var router
+    @Environment(\.dismiss) private var dismiss
+
     @State private var vehicle: Vehicle?
     @State private var stopTimes: [StopTimeUpdate] = []
-    // The realtime `stopTimes` response only carries stop *ids* (see
-    // `StopTimeUpdate` - no name field exists there at all), so the list
-    // used to print raw ids like "7034-7b36cf5b". This is the static list
-    // of this trip's actual stops (name, platform, sequence) fetched once
-    // and joined against `stopTimes` by parent stop id, same as the web
-    // app's `fetchStopsForTrip` + `getStopTime` pairing in
-    // `tracker/stops-list.tsx`.
+    // The realtime `stopTimes` response only carries stop *ids*, so the
+    // static list of this trip's stops (name, platform, sequence, position)
+    // is fetched once and joined against it - the web's
+    // `fetchStopsForTrip` + `getStopTime` pairing.
     @State private var tripStops: [TripStopRef] = []
     @State private var shape: RouteShape?
-    @State private var errorMessage: String?
+    @State private var hasLoaded = false
     @State private var pollTask: Task<Void, Never>?
 
-    // MARK: - One-shot reminders (get off / arriving / N stops away)
-    // Mirrors `tracker/stops-list.tsx`'s reminder flow: pick a type from the
-    // bell menu, then tap the stop it applies to. "leave" (the fourth web
-    // type) isn't offered here - that one needs a full journey plan (origin,
-    // walk time) to compute against, which this trip-only view doesn't have;
-    // it's covered by the Planner's "Remind me when to leave" instead.
-    // `ReminderKind`/`ReminderStatus` live in `TripReminders.swift` - shared
-    // with `JourneyTrackingView`, which offers the same menu for whichever
-    // leg it's currently tracking.
-    @State private var isSelectingReminder = false
-    @State private var reminderType: ReminderKind?
-    @State private var nStopsAway = 1
-    @State private var reminderStatus: ReminderStatus?
-    @State private var isSavingReminder = false
-    @State private var isShowingReminderPicker = false
-    @State private var isShowingRouteAlerts = false
-
-    // Web's collapse rule in `tracker/stops-list.tsx`: 1 stop behind the
-    // current/next one stays visible, 6 ahead stay visible, the rest
-    // collapse behind "Show N more stops" - only when the list is long
-    // enough that collapsing is worth it (> KEEP_BEHIND + KEEP_AHEAD + 5).
-    private static let keepBehind = 1
-    private static let keepAhead = 6
-    @State private var showCollapsedStops = false
-    /// The map follows the vehicle until the rider pans it; the recentre
-    /// button hands it back (same as the journey tracker).
+    @State private var drawer: DrawerDetent = .medium
+    @State private var headerHeight: CGFloat = 150
+    /// The map follows the vehicle until the rider pans it; the follow
+    /// button hands it back.
     @State private var autoFollow = true
     @State private var cameraResetToken = 0
 
-    /// This trip's current/next stop, from the vehicle feed
-    /// (`vehicle.trip.current_stop`/`next_stop`) - same fields the web
-    /// tracker uses for its "Current Stop"/"Next" banner and row
-    /// highlighting.
-    private var currentStopID: String? { vehicle?.trip?.currentStop?.parentStopID }
-    private var nextStopID: String? { vehicle?.trip?.nextStop?.parentStopID }
+    @State private var showEarlierStops = false
+    @State private var reminderStop: StopRowData?
+    /// Stops given a reminder while this screen was open (the API has no
+    /// way to list existing one-shot reminders).
+    @State private var remindedStops: Set<Int> = []
+    @State private var isShowingRouteAlerts = false
+
     private var currentSequence: Int? { vehicle?.trip?.currentStop?.sequence }
     private var nextSequence: Int? { vehicle?.trip?.nextStop?.sequence }
+    private var isAtStop: Bool { vehicle?.state == "AtStop" }
+    private var routeHex: String {
+        if let color = vehicle?.route.color, !color.isEmpty { return color }
+        if let color = shape?.color, !color.isEmpty { return color }
+        return environment.region.brandColorHex
+    }
 
-    typealias StopRowData = (parentStopID: String, sequence: Int, name: String, platform: String, stopTime: StopTimeUpdate?)
+    struct StopRowData: Identifiable, Equatable {
+        let parentStopID: String
+        let sequence: Int
+        let name: String
+        let platform: String
+        let coordinate: Coordinate?
+        let stopTime: StopTimeUpdate?
+        var id: Int { sequence }
 
-    /// `tripStops` (which has names, and the correct stop order via
-    /// `sequence`) as the row source, with each `stopTimes` entry attached
-    /// by parent stop id for its live time/passed/skipped state. Falls back
-    /// to `stopTimes` order/id if the static stop list hasn't loaded yet
-    /// (or failed) rather than showing nothing.
-    ///
-    /// Joined by platform (child stop) first: a trip can call at the same
-    /// station twice (Southern line trains at Newmarket, via the CRL), and
-    /// a parent-station join gave both visits the first one's time.
+        static func == (a: StopRowData, b: StopRowData) -> Bool { a.sequence == b.sequence && a.parentStopID == b.parentStopID }
+    }
+
+    /// `tripStops` (names, order) with each live stop time attached - joined
+    /// by platform (child stop) first, since a trip can call at the same
+    /// station twice (Southern line trains at Newmarket, via the CRL).
     private var rows: [StopRowData] {
         guard !tripStops.isEmpty else {
-            return stopTimes.enumerated().map { (parentStopID: $1.parentStopID, sequence: $0 + 1, name: $1.parentStopID, platform: "", stopTime: $1) }
+            return stopTimes.enumerated().map {
+                StopRowData(parentStopID: $1.parentStopID, sequence: $0 + 1, name: $1.parentStopID, platform: "", coordinate: nil, stopTime: $1)
+            }
         }
         let timesByChild = Dictionary(stopTimes.map { ($0.childStopID, $0) }, uniquingKeysWith: { first, _ in first })
         let timesByParent = Dictionary(stopTimes.map { ($0.parentStopID, $0) }, uniquingKeysWith: { first, _ in first })
         return tripStops
             .sorted { $0.sequence < $1.sequence }
             .map { stop in
-                (parentStopID: stop.parentStopID, sequence: stop.sequence, name: stop.name, platform: stop.platform,
-                 stopTime: timesByChild[stop.childStopID] ?? timesByParent[stop.parentStopID])
+                StopRowData(parentStopID: stop.parentStopID, sequence: stop.sequence, name: stop.name, platform: stop.platform,
+                            coordinate: Coordinate(latitude: stop.lat, longitude: stop.lon),
+                            stopTime: timesByChild[stop.childStopID] ?? timesByParent[stop.parentStopID])
             }
     }
 
-    /// Only stops not yet passed can sensibly be picked for a reminder -
-    /// matches the web's `visibleStops` filter while `isSelectingReminder`.
-    private var reminderCandidateRows: [StopRowData] {
-        rows.filter { $0.stopTime?.passed != true }
+    // MARK: - Stop state (shared by the map markers and the list)
+
+    private enum StopState { case passed, current, next, upcoming }
+
+    private func state(of row: StopRowData) -> StopState {
+        if let currentSequence, row.sequence == currentSequence, isAtStop { return .current }
+        if let nextSequence, row.sequence == nextSequence { return .next }
+        if let currentSequence, row.sequence <= currentSequence { return .passed }
+        if row.stopTime?.passed == true { return .passed }
+        return .upcoming
     }
+
+    private func isYourStop(_ row: StopRowData) -> Bool {
+        guard let fromStopName, !fromStopName.isEmpty else { return false }
+        return row.name.caseInsensitiveCompare(fromStopName) == .orderedSame
+            || fromStopName.localizedCaseInsensitiveContains(row.name) || row.name.localizedCaseInsensitiveContains(fromStopName)
+    }
+
+    /// The web's `trackedStopIcon`: next, your stop, end, current, start,
+    /// then passed/upcoming dots.
+    private func markerKind(_ row: StopRowData, isFirst: Bool, isLast: Bool) -> TripStopAnnotation.Kind {
+        let state = state(of: row)
+        if state == .next { return .next }
+        if isYourStop(row) { return .marked }
+        if isLast { return .end }
+        if state == .current { return .current }
+        if isFirst { return .start }
+        return state == .passed ? .passed : .upcoming
+    }
+
+    private var tripStopAnnotations: [TripStopAnnotation] {
+        let all = rows
+        return all.enumerated().compactMap { index, row in
+            guard let coordinate = row.coordinate else { return nil }
+            let time = row.stopTime.map { $0.arrivalTime.date.formatted(date: .omitted, time: .shortened) }
+            let detail = [row.platform.isEmpty ? nil : "Platform \(row.platform)", time].compactMap { $0 }.joined(separator: " · ")
+            return TripStopAnnotation(
+                id: "\(row.sequence)-\(row.parentStopID)",
+                coordinate: .init(latitude: coordinate.latitude, longitude: coordinate.longitude),
+                name: row.name, detail: detail.isEmpty ? nil : detail,
+                kind: markerKind(row, isFirst: index == 0, isLast: index == all.count - 1)
+            )
+        }
+    }
+
+    // MARK: - Body
 
     var body: some View {
-        VStack(spacing: 0) {
-            TransitMapView(
-                vehicles: vehicle.map { [VehicleAnnotation(vehicle: $0)] } ?? [],
-                polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: !$0.color.isEmpty ? $0.color : (vehicle?.route.color.isEmpty == false ? vehicle!.route.color : environment.region.brandColorHex))] } ?? [],
-                camera: autoFollow && vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400) : .none,
-                onUserInteraction: { if autoFollow { autoFollow = false } },
-                cameraResetToken: cameraResetToken
-            )
-            .frame(height: 280)
-            .overlay(alignment: .bottomTrailing) {
-                if !autoFollow {
-                    Button {
-                        autoFollow = true
-                        cameraResetToken += 1
-                    } label: {
-                        Image(systemName: "scope")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(Theme.foreground)
-                            .frame(width: 40, height: 40)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
-                    }
-                    .padding(12)
-                    .accessibilityLabel("Follow the vehicle")
-                }
-            }
+        GeometryReader { proxy in
+            let fullHeight = proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
+            ZStack(alignment: .top) {
+                TransitMapView(
+                    vehicles: vehicle.map { [VehicleAnnotation(vehicle: $0)] } ?? [],
+                    tripStops: tripStopAnnotations,
+                    polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: routeHex)] } ?? [],
+                    camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400)
+                        : tripStops.isEmpty ? .none : .frame(points: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }, minSpanMeters: 800),
+                    cameraInsets: UIEdgeInsets(
+                        top: proxy.safeAreaInsets.top + 60, left: 0,
+                        bottom: min(drawerHeight(available: proxy.size.height), fullHeight * 0.6) + proxy.safeAreaInsets.bottom, right: 0
+                    ),
+                    onUserInteraction: { if autoFollow { autoFollow = false } },
+                    cameraResetToken: cameraResetToken
+                )
+                .ignoresSafeArea()
 
-            VStack(spacing: 10) {
-                if let vehicle { summaryHeader(vehicle) }
-                if isSelectingReminder, let reminderType {
-                    ReminderBanner(kind: reminderType, nStopsAway: $nStopsAway)
-                }
-                if let reminderStatus {
-                    ReminderStatusBanner(status: reminderStatus) {
-                        if self.reminderStatus == reminderStatus { self.reminderStatus = nil }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
+                topBar
 
-            if !rows.isEmpty {
-                ScrollViewReader { scrollProxy in
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            let indices = visibleRowIndices
-                            ForEach(Array(indices.enumerated()), id: \.offset) { position, rowIndex in
-                                let row = rows[rowIndex]
-                                stopRow(row, isCurrent: row.sequence == currentSequence && vehicle?.state == "AtStop",
-                                        isNext: row.sequence == nextSequence && vehicle?.state != "AtStop",
-                                        isLast: position == indices.count - 1)
-                                    .id(rowIndex)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture {
-                                        guard isSelectingReminder else { return }
-                                        Task { await confirmReminder(for: row) }
-                                    }
-                            }
-                            if !isSelectingReminder, collapsedCount > 0 {
-                                RowDivider()
-                                Button("Show \(collapsedCount) more stops") {
-                                    withAnimation { showCollapsedStops = true }
-                                }
-                                .buttonStyle(.shad(.ghost, size: .sm))
-                                .padding(.vertical, 6)
-                            }
-                        }
-                        .padding(.vertical, 6)
-                        .shadCardBackground()
-                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
-                        .padding(16)
-                    }
-                    // Keep the current/next stop in view as the vehicle
-                    // moves, like the web's scroll-into-view.
-                    .onChange(of: currentSequence ?? nextSequence) { _, _ in
-                        scrollToTrackedStop(scrollProxy)
-                    }
-                    .task { scrollToTrackedStop(scrollProxy) }
+                BottomDrawer(
+                    detent: $drawer,
+                    collapsedHeight: headerHeight,
+                    availableHeight: proxy.size.height
+                ) {
+                    drawerHeader
+                        .background(GeometryReader { g in
+                            Color.clear.onAppear { headerHeight = g.size.height + 19 }
+                                .onChange(of: g.size.height) { _, h in headerHeight = h + 19 }
+                        })
+                } content: {
+                    drawerContent
                 }
-            } else if let errorMessage {
-                Text(errorMessage).font(.bodyText).foregroundStyle(Theme.mutedForeground).padding(16)
-                Spacer()
-            } else {
-                ProgressView().padding(24)
-                Spacer()
+                .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
-        .safeAreaInset(edge: .bottom) {
-            if !isSelectingReminder {
-                Button {
-                    isShowingReminderPicker = true
-                } label: {
-                    Label("Set a reminder", systemImage: "bell")
-                }
-                .buttonStyle(.shad(.outline, size: .pill, fullWidth: true))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Theme.background)
+        .toolbar(.hidden, for: .navigationBar)
+        .toolbar(.hidden, for: .tabBar)
+        .sheet(item: $reminderStop) { row in
+            StopReminderSheet(stopName: row.name, time: row.stopTime?.arrivalTime.date) { kind, offset in
+                await setReminder(kind, offset: offset, for: row)
             }
-        }
-        .pageBackground()
-        .navigationTitle("Live tracking")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                if isSelectingReminder {
-                    Button("Cancel", action: cancelReminderSelection)
-                } else if let vehicle {
-                    // Reminders are the bottom button; this is the route's
-                    // service alerts (one bell, not two).
-                    Button { isShowingRouteAlerts = true } label: { Image(systemName: "exclamationmark.bubble") }
-                        .accessibilityLabel("Alerts for route \(vehicle.route.name)")
-                }
-            }
-        }
-        .confirmationDialog("Set a reminder", isPresented: $isShowingReminderPicker, titleVisibility: .visible) {
-            ForEach(ReminderKind.allCases) { kind in
-                Button(kind.menuLabel) { beginSelectingReminder(kind) }
-            }
+            .shadSheet(detents: [.medium])
         }
         .sheet(isPresented: $isShowingRouteAlerts) {
             if let vehicle {
@@ -219,7 +180,80 @@ struct VehicleQuickLookView: View {
             }
         }
         .task { await start() }
-        .onDisappear { pollTask?.cancel() }
+        .onAppear { router.isFullScreenMapVisible = true }
+        .onDisappear {
+            router.isFullScreenMapVisible = false
+            pollTask?.cancel()
+        }
+    }
+
+    private func drawerHeight(available: CGFloat) -> CGFloat {
+        BottomDrawer<EmptyView, EmptyView>.height(for: drawer, collapsed: headerHeight, available: available, topClearance: 110)
+    }
+
+    /// Back, route alerts and follow - floating over the map in place of a
+    /// navigation bar.
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            FloatingBarButton {
+                Button { dismiss() } label: { Image(systemName: "chevron.left") }
+                    .accessibilityLabel("Back")
+            }
+            Spacer()
+            if let vehicle {
+                FloatingBarButton {
+                    Button { isShowingRouteAlerts = true } label: { Image(systemName: "exclamationmark.bubble") }
+                        .accessibilityLabel("Alerts for route \(vehicle.route.name)")
+                }
+            }
+            FloatingBarButton {
+                Button {
+                    autoFollow = true
+                    cameraResetToken += 1
+                } label: {
+                    Image(systemName: autoFollow ? "location.north.circle.fill" : "location.north.circle")
+                        .foregroundStyle(autoFollow ? Theme.live : Theme.foreground)
+                }
+                .accessibilityLabel(autoFollow ? "Following the vehicle" : "Follow the vehicle")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Drawer
+
+    @ViewBuilder
+    private var drawerHeader: some View {
+        if let vehicle {
+            summaryHeader(vehicle)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 14)
+        } else if hasLoaded {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground)
+                    .frame(width: 44, height: 44)
+                    .background(Theme.muted, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("No live position yet").font(.geist(17, .semibold, relativeTo: .headline))
+                    Text("This trip isn't sending its location - the times below are from the timetable.")
+                        .font(.meta).foregroundStyle(Theme.mutedForeground)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        } else {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Finding the vehicle...").font(.meta).foregroundStyle(Theme.mutedForeground)
+            }
+            .padding(.bottom, 16)
+        }
     }
 
     /// Route tile, where it's heading, the next stop, and a countdown to it;
@@ -252,7 +286,7 @@ struct VehicleQuickLookView: View {
                     TimelineView(.periodic(from: .now, by: 15)) { context in
                         VStack(alignment: .trailing, spacing: 0) {
                             Text(JourneyTrackingView.minutesText(until: eta, now: context.date)).font(.number(24))
-                            Text(vehicle.state == "AtStop" ? "at stop" : "to next stop")
+                            Text(isAtStop ? "at stop" : "to next stop")
                                 .font(.geist(12, relativeTo: .caption)).foregroundStyle(Theme.mutedForeground)
                         }
                     }
@@ -264,6 +298,10 @@ struct VehicleQuickLookView: View {
                     Text("Live")
                 }
                 .modifier(StatusChipStyle())
+                if let away = stopsUntilYourStop {
+                    Text(away == 0 ? "At your stop" : "\(away) stop\(away == 1 ? "" : "s") to your stop")
+                        .modifier(StatusChipStyle(tint: Theme.live))
+                }
                 if vehicle.occupancy >= 0 {
                     HStack(spacing: 4) {
                         OccupancyIconsView(occupancy: vehicle.occupancy)
@@ -282,9 +320,9 @@ struct VehicleQuickLookView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// "At Newmarket" / "Next: Newmarket, platform 2".
+    /// "At Newmarket" / "Next: Newmarket".
     private var nextStopLine: String? {
-        if vehicle?.state == "AtStop", let currentSequence, let row = rows.first(where: { $0.sequence == currentSequence }) {
+        if isAtStop, let currentSequence, let row = rows.first(where: { $0.sequence == currentSequence }) {
             return "At \(row.name)"
         }
         if let nextSequence, let row = rows.first(where: { $0.sequence == nextSequence }) {
@@ -300,82 +338,155 @@ struct VehicleQuickLookView: View {
         return stopTime.arrivalTime.date
     }
 
-    /// Web's collapse rule: keep `keepBehind` stops before, and
-    /// `keepAhead` stops after, the current/next stop expanded; collapse
-    /// the rest behind "Show N more stops" - only when there's actually
-    /// enough list to make collapsing worthwhile.
-    private var trackedRowIndex: Int? {
-        rows.firstIndex { $0.sequence == currentSequence || $0.sequence == nextSequence }
+    /// Stops until the vehicle reaches the rider's stop, while it's ahead.
+    private var stopsUntilYourStop: Int? {
+        guard let yours = rows.first(where: isYourStop), let next = nextSequence ?? currentSequence, yours.sequence >= next else { return nil }
+        return rows.filter { $0.sequence >= next && $0.sequence < yours.sequence }.count
     }
 
-    private var collapsingActive: Bool {
-        !isSelectingReminder && trackedRowIndex != nil && rows.count > Self.keepBehind + Self.keepAhead + 5
-    }
+    // MARK: - Stop list
 
-    private var visibleRowIndices: [Int] {
-        let source = isSelectingReminder ? reminderCandidateRows : rows
-        guard collapsingActive, !showCollapsedStops, let anchor = trackedRowIndex else {
-            return Array(source.indices)
+    private var passedRows: [StopRowData] { rows.filter { state(of: $0) == .passed } }
+    private var aheadRows: [StopRowData] { rows.filter { state(of: $0) != .passed } }
+
+    @ViewBuilder
+    private var drawerContent: some View {
+        if rows.isEmpty {
+            if !hasLoaded { ProgressView().padding(24) }
+        } else {
+            ScrollViewReader { scrollProxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("Tap a stop to get a reminder", systemImage: "bell")
+                            .font(.meta)
+                            .foregroundStyle(Theme.mutedForeground)
+                            .padding(.horizontal, 4)
+                        VStack(spacing: 0) {
+                            if !passedRows.isEmpty {
+                                Button {
+                                    withAnimation(.easeOut(duration: 0.2)) { showEarlierStops.toggle() }
+                                } label: {
+                                    HStack(spacing: 8) {
+                                        Image(systemName: showEarlierStops ? "chevron.up" : "chevron.down")
+                                            .font(.system(size: 11, weight: .semibold))
+                                        Text(showEarlierStops ? "Hide earlier stops" : "\(passedRows.count) earlier stop\(passedRows.count == 1 ? "" : "s")")
+                                        Spacer()
+                                    }
+                                    .font(.metaMedium)
+                                    .foregroundStyle(Theme.mutedForeground)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                if showEarlierStops {
+                                    ForEach(passedRows) { stopRow($0, isLast: false) }
+                                }
+                            }
+                            let ahead = aheadRows
+                            ForEach(Array(ahead.enumerated()), id: \.element.id) { index, row in
+                                stopRow(row, isLast: index == ahead.count - 1)
+                                    .id(row.sequence)
+                            }
+                        }
+                        .padding(.vertical, 4)
+                        .shadCardBackground()
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                }
+                .onChange(of: nextSequence) { _, next in
+                    if let next { withAnimation { scrollProxy.scrollTo(next, anchor: .top) } }
+                }
+            }
         }
-        return source.indices.filter { index in
-            let inCollapsedPastRange = index < anchor - Self.keepBehind
-            let inCollapsedFutureRange = index > anchor + Self.keepAhead && index != source.count - 1
-            return !inCollapsedPastRange && !inCollapsedFutureRange
-        }
-    }
-
-    private var collapsedCount: Int {
-        guard collapsingActive, !showCollapsedStops else { return 0 }
-        return rows.count - visibleRowIndices.count
-    }
-
-    private func scrollToTrackedStop(_ proxy: ScrollViewProxy) {
-        guard let index = trackedRowIndex, visibleRowIndices.contains(index) else { return }
-        withAnimation { proxy.scrollTo(index, anchor: .center) }
     }
 
     /// A stop on the timeline: arrival time, the route-coloured line (dim
-    /// once passed), and the current/next stop highlighted edge to edge.
+    /// once passed), a marker matching the map's, and "in N min" for the
+    /// stops coming up. The next/current stop is highlighted edge to edge.
     @ViewBuilder
-    private func stopRow(_ row: StopRowData, isCurrent: Bool, isNext: Bool, isLast: Bool) -> some View {
-        let passed = row.stopTime?.passed ?? false
-        let hex = vehicle?.route.color.isEmpty == false ? vehicle!.route.color : "525252"
-        TimelineRow(
-            time: row.stopTime?.arrivalTime.date,
-            rail: isLast ? .none : .solid(Color(hex: hex), dimmed: passed),
-            marker: .stop(passed && !isCurrent ? Theme.border : Color(hex: hex)),
-            highlighted: isCurrent || isNext,
-            accent: isCurrent ? Theme.danger : Theme.live
-        ) {
-            HStack(spacing: 6) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(row.name)
-                        .font(isCurrent || isNext ? .bodyMedium : .bodyText)
-                        .foregroundStyle(passed ? Theme.mutedForeground : Theme.foreground)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if isCurrent || isNext {
-                        Text(isCurrent ? "At this stop" : "Next stop")
-                            .font(.geist(11, .medium, relativeTo: .caption2))
-                            .foregroundStyle(isCurrent ? Theme.danger : Theme.live)
+    private func stopRow(_ row: StopRowData, isLast: Bool) -> some View {
+        let state = state(of: row)
+        let yours = isYourStop(row)
+        let color = Color(hex: routeHex)
+        let tappable = state != .passed
+        Button {
+            if tappable { reminderStop = row }
+        } label: {
+            TimelineRow(
+                time: row.stopTime?.arrivalTime.date,
+                rail: isLast ? .none : .solid(color, dimmed: state == .passed),
+                marker: marker(for: state, yours: yours, isLast: isLast, color: color),
+                highlighted: state == .next || state == .current,
+                accent: state == .current ? Theme.warning : Theme.live,
+                incoming: row.sequence == rows.first?.sequence ? .none : .solid(color, dimmed: state == .passed || state == .current)
+            ) {
+                HStack(spacing: 8) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(row.name)
+                            .font(state == .next || state == .current || yours ? .bodyMedium : .bodyText)
+                            .foregroundStyle(state == .passed ? Theme.mutedForeground : Theme.foreground)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 6) {
+                            if state == .current { tag("At this stop", Theme.warning) }
+                            if state == .next { tag("Next stop", Theme.live) }
+                            if yours { tag("Your stop", Theme.danger) }
+                            if row.stopTime?.skipped == true { tag("Skipped", Theme.danger) }
+                            if !row.platform.isEmpty {
+                                Text("Plat. \(row.platform)").font(.geist(11, relativeTo: .caption2)).foregroundStyle(Theme.mutedForeground)
+                            }
+                        }
+                    }
+                    Spacer(minLength: 6)
+                    if remindedStops.contains(row.sequence) {
+                        Image(systemName: "bell.fill").font(.system(size: 12)).foregroundStyle(Theme.live)
+                            .accessibilityLabel("Reminder set")
+                    }
+                    if state != .passed, let date = row.stopTime?.arrivalTime.date {
+                        TimelineView(.periodic(from: .now, by: 30)) { context in
+                            let minutes = Int((date.timeIntervalSince(context.date) / 60).rounded(.up))
+                            if minutes >= 0 && minutes < 90 {
+                                Text(minutes <= 0 ? "Now" : "\(minutes) min")
+                                    .font(.geistMono(12, medium: true, relativeTo: .caption))
+                                    .foregroundStyle(state == .next ? Theme.live : Theme.mutedForeground)
+                            }
+                        }
                     }
                 }
-                Spacer(minLength: 6)
-                if row.stopTime?.skipped == true {
-                    Text("Skipped").font(.metaMedium).foregroundStyle(Theme.danger)
-                }
-                if !row.platform.isEmpty {
-                    ShadBadge(text: "Plat. \(row.platform)", variant: .outline)
-                }
-                if isSelectingReminder {
-                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.mutedForeground)
-                }
+                .padding(.vertical, 10)
             }
-            .padding(.vertical, 10)
+            .contentShape(Rectangle())
         }
-        .opacity(passed && !isCurrent ? 0.55 : 1)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(isCurrent ? "Current stop" : isNext ? "Next stop" : passed ? "Passed" : "")
+        .buttonStyle(.plain)
+        .disabled(!tappable)
+        .opacity(state == .passed ? 0.6 : 1)
+        .accessibilityValue(state == .current ? "Vehicle at this stop" : state == .next ? "Next stop" : state == .passed ? "Passed" : "")
+        .accessibilityHint(tappable ? "Set a reminder for this stop" : "")
     }
+
+    private func marker(for state: StopState, yours: Bool, isLast: Bool, color: Color) -> TimelineMarker {
+        if yours { return .icon("mappin", Theme.danger) }
+        if isLast { return .destination }
+        switch state {
+        case .next: return .icon("arrowtriangle.down.fill", Theme.live)
+        case .current: return .stop(Theme.warning)
+        case .passed: return .stop(Theme.border)
+        case .upcoming: return .stop(color)
+        }
+    }
+
+    private func tag(_ text: String, _ color: Color) -> some View {
+        Text(text)
+            .font(.geist(11, .medium, relativeTo: .caption2))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(color.opacity(0.12), in: Capsule())
+    }
+
+    // MARK: - Data
 
     private func start() async {
         async let shapeFetch: () = loadShape()
@@ -393,15 +504,14 @@ struct VehicleQuickLookView: View {
     }
 
     private func refresh() async {
-        do {
-            async let vehicles = environment.api.liveVehicles(tripIDs: [tripID])
-            async let times = environment.api.stopTimes(tripID: tripID)
-            vehicle = try await vehicles.first
-            stopTimes = try await times
-            errorMessage = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+        // Independent: a trip with no live vehicle yet (the API errors with
+        // "no vehicles found") still has its stop times to show.
+        async let vehicles = try? environment.api.liveVehicles(tripIDs: [tripID])
+        async let times = try? environment.api.stopTimes(tripID: tripID)
+        // Keep the last position if a poll comes back empty.
+        if let fresh = await vehicles?.first { vehicle = fresh }
+        if let fresh = await times { stopTimes = fresh }
+        hasLoaded = true
     }
 
     private func loadShape() async {
@@ -414,33 +524,104 @@ struct VehicleQuickLookView: View {
 
     // MARK: - Reminders
 
-    private func beginSelectingReminder(_ kind: ReminderKind) {
-        reminderType = kind
-        nStopsAway = 1
-        isSelectingReminder = true
-    }
-
-    private func cancelReminderSelection() {
-        isSelectingReminder = false
-        reminderType = nil
-    }
-
-    private func confirmReminder(for row: StopRowData) async {
-        guard let reminderType, !isSavingReminder else { return }
-        isSavingReminder = true
-        defer { isSavingReminder = false }
+    private func setReminder(_ kind: ReminderKind, offset: Int, for row: StopRowData) async -> Bool {
+        if !environment.push.isAuthorized { await environment.push.requestPermission() }
         do {
             try await environment.api.addReminder(
                 tripID: tripID,
                 stopID: row.parentStopID,
-                type: reminderType.rawValue,
-                offset: reminderType == .nStopsAway ? nStopsAway : nil
+                type: kind.rawValue,
+                offset: kind == .nStopsAway ? offset : nil
             )
-            reminderStatus = .success(reminderType.confirmationText(stopName: row.name, nStopsAway: nStopsAway))
+            remindedStops.insert(row.sequence)
+            environment.toasts.show(kind.confirmationText(stopName: row.name, nStopsAway: offset))
+            return true
         } catch {
-            reminderStatus = .failure(error.localizedDescription)
+            environment.toasts.show(error.localizedDescription.isEmpty ? "Couldn't set the reminder" : error.localizedDescription, .error)
+            return false
         }
-        isSelectingReminder = false
-        self.reminderType = nil
+    }
+}
+
+/// What to be reminded about for one stop of a live trip - replaces the
+/// old "pick a type, then tap a stop" mode: the stop is already chosen.
+struct StopReminderSheet: View {
+    let stopName: String
+    let time: Date?
+    let onSet: (ReminderKind, Int) async -> Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var stopsBefore = 2
+    @State private var isSaving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    option(.getOff, title: "Get off here", detail: "When this is the next stop", icon: "figure.walk.arrival")
+                    option(.arrival, title: "When it's arriving", detail: "As the vehicle reaches this stop", icon: "location.fill")
+                    Button {
+                        Task { await set(.nStopsAway) }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "number.circle").frame(width: 24).foregroundStyle(Theme.live)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("\(stopsBefore) stop\(stopsBefore == 1 ? "" : "s") before").foregroundStyle(Theme.foreground)
+                                Text("A heads-up while it's on the way").font(.meta).foregroundStyle(Theme.mutedForeground)
+                            }
+                            Spacer(minLength: 8)
+                            Stepper("Stops before", value: $stopsBefore, in: 1...20)
+                                .labelsHidden()
+                        }
+                    }
+                    .disabled(isSaving)
+                    .listRowBackground(Theme.card)
+                } header: {
+                    Text("Notify me")
+                } footer: {
+                    Text("A one-off notification for this trip.")
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .groupedPageBackground()
+            .tint(Theme.primary)
+            .navigationTitle(stopName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                if let time {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 0) {
+                            Text(stopName).font(.bodyMedium).lineLimit(1)
+                            Text(time, style: .time).font(.meta).foregroundStyle(Theme.mutedForeground)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func option(_ kind: ReminderKind, title: String, detail: String, icon: String) -> some View {
+        Button {
+            Task { await set(kind) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon).frame(width: 24).foregroundStyle(Theme.live)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title).foregroundStyle(Theme.foreground)
+                    Text(detail).font(.meta).foregroundStyle(Theme.mutedForeground)
+                }
+                Spacer()
+            }
+            .contentShape(Rectangle())
+        }
+        .disabled(isSaving)
+        .listRowBackground(Theme.card)
+    }
+
+    private func set(_ kind: ReminderKind) async {
+        isSaving = true
+        defer { isSaving = false }
+        if await onSet(kind, stopsBefore) { dismiss() }
     }
 }
