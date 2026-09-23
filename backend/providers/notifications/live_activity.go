@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"log"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -185,7 +186,8 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 
 		var alert *activityAlert
 		if state.alert != nil && !containsString(activity.AlertedKeys, state.alert.Key) {
-			alert = state.alert
+			a := *state.alert
+			alert = &a
 		}
 
 		hash := state.stateHash()
@@ -194,17 +196,54 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 			continue
 		}
 
-		stale := now.Add(activityStaleAfter)
-		if err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, alert, &stale, nil); err != nil {
-			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
-			continue
+		// Key moments (time to leave, get on, get off...) also go out as a
+		// regular time-sensitive notification: a banner plus sound/vibration
+		// even when the Live Activity isn't on screen. The Live Activity
+		// alert then only expands the activity, silently.
+		bannerSent := false
+		if alert != nil {
+			bannerSent = sendJourneyMomentNotification(db, activity, *alert)
+			alert.Sound = !bannerSent
 		}
+
+		stale := now.Add(activityStaleAfter)
 		alerted := activity.AlertedKeys
 		if alert != nil {
 			alerted = append(alerted, alert.Key)
 		}
+		if err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, alert, &stale, nil); err != nil {
+			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
+			if bannerSent {
+				// Don't send the same banner again next tick; the state
+				// itself (old hash) is retried.
+				db.recordLiveActivityPush(activity.Id, activity.LastStateHash, alerted, time.Unix(activity.LastPushed, 0))
+			}
+			continue
+		}
 		db.recordLiveActivityPush(activity.Id, hash, alerted, now)
 	}
+}
+
+// sendJourneyMomentNotification sends a journey's key-moment alert as a
+// regular push to the device that owns the activity. False if the device
+// has no alert token (notifications denied) or the send failed.
+func sendJourneyMomentNotification(db *Database, activity LiveActivity, alert activityAlert) bool {
+	client, err := db.getClientByID(activity.ClientId)
+	if err != nil || client.ApnsToken == "" {
+		return false
+	}
+	err = sharedNotifier().Send(*client, Payload{
+		Title:   alert.Title,
+		Body:    alert.Body,
+		URL:     "/journey?id=" + url.QueryEscape(activity.PlanId) + "&region=" + url.QueryEscape(activity.Region) + "&track=1",
+		Urgency: "high",
+		Kind:    "journey",
+	})
+	if err != nil {
+		log.Printf("notifications: journey moment push for activity %d: %v", activity.Id, err)
+		return false
+	}
+	return true
 }
 
 func endLiveActivity(apns *apnsSender, db *Database, activity LiveActivity, finalState journeyActivityState, now time.Time) {

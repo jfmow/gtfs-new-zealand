@@ -21,6 +21,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     var onAPNsRegistrationFailure: ((Error) -> Void)?
 
+    /// Whether the journey tracker is on screen - its in-app alert already
+    /// shows the same get-on/get-off moment, so the push's banner is
+    /// skipped then.
+    var isJourneyTrackerVisible: () -> Bool = { false }
+
     /// Called with a tapped notification's `url` payload (usually a web path
     /// like `/?s=Britomart 11814` - see `DeepLink.init(string:)`).
     var onOpenNotificationURL: ((String) -> Void)? {
@@ -52,8 +57,12 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
         onAPNsRegistrationFailure?(error)
     }
 
+    @MainActor
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        if notification.request.content.userInfo["kind"] as? String == "journey", isJourneyTrackerVisible() {
+            return [.list]
+        }
+        return [.banner, .list, .sound]
     }
 
     @MainActor

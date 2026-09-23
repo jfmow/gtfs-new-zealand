@@ -48,6 +48,9 @@ struct TransitApp: App {
                     appDelegate.onOpenNotificationURL = { [router] url in
                         router.handle(notificationURL: url)
                     }
+                    appDelegate.isJourneyTrackerVisible = { [router] in
+                        router.isTrackingVisible
+                    }
                 }
         }
         .modelContainer(modelContainer)

@@ -41,6 +41,8 @@ final class JourneyAlertCenter {
         let alert = JourneyAlert(id: key, variant: variant, title: title, body: body, duration: urgent ? Self.urgentDuration : Self.alertDuration)
         stack.append(alert)
         if stack.count > Self.maxStack { stack.removeFirst(stack.count - Self.maxStack) }
+        // Buzz with it - the rider is often not looking at the screen.
+        UINotificationFeedbackGenerator().notificationOccurred(urgent ? .warning : .success)
     }
 
     func dismiss(_ id: String) {

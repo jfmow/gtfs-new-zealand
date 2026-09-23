@@ -127,7 +127,7 @@ struct StopBoardView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     if let selectedDate { scheduleBanner(for: selectedDate) }
-                    if !platformOptions.isEmpty { platformChips }
+                    if filterOptions.values.count > 1 { platformChips }
 
                     VStack(spacing: 0) {
                         ForEach(Array(visibleDepartures.enumerated()), id: \.element.id) { index, departure in
@@ -161,24 +161,27 @@ struct StopBoardView: View {
         }
     }
 
-    /// The web shows the first three platforms, then a "Show more" toggle.
+    /// The web shows the first three options, then a "Show more" toggle.
+    /// Stops without platforms (most bus stops) filter by route instead.
     private var platformChips: some View {
-        let shown = showAllPlatforms || platformOptions.count <= 3 ? platformOptions : Array(platformOptions.prefix(3))
+        let options = filterOptions
+        let values = options.values
+        let shown = showAllPlatforms || values.count <= 3 ? values : Array(values.prefix(3))
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                FilterChip(title: "All platforms", isSelected: platformFilter == nil) { platformFilter = nil }
-                ForEach(shown, id: \.self) { platform in
-                    FilterChip(title: "Platform \(platform)", isSelected: platformFilter == platform) {
-                        platformFilter = platform
+                FilterChip(title: options.byRoute ? "All routes" : "All platforms", isSelected: platformFilter == nil) { platformFilter = nil }
+                ForEach(shown, id: \.self) { value in
+                    FilterChip(title: options.byRoute ? value : "Platform \(value)", isSelected: platformFilter == value) {
+                        platformFilter = value
                     }
                 }
-                if platformOptions.count > 3 {
+                if values.count > 3 {
                     Button(showAllPlatforms ? "Show fewer" : "Show more") { showAllPlatforms.toggle() }
                         .buttonStyle(.shad(.ghost, size: .sm))
                 }
             }
         }
-        .accessibilityLabel("Platform filters")
+        .accessibilityLabel(filterOptions.byRoute ? "Route filters" : "Platform filters")
     }
 
     private func scheduleBanner(for date: Date) -> some View {
@@ -233,14 +236,25 @@ struct StopBoardView: View {
         }
     }
 
-    private var platformOptions: [String] {
-        Array(Set(departures.compactMap { $0.platform.isEmpty ? nil : $0.platform })).sorted()
+    /// Platforms if the stop has any (numeric ones in number order), else
+    /// the routes serving it - `getUniquePlatforms` in the web's services.
+    private var filterOptions: (byRoute: Bool, values: [String]) {
+        let platforms = Set(departures.map(\.platform)).filter { !$0.isEmpty && $0 != "no platform" }
+        if !platforms.isEmpty {
+            return (false, platforms.sorted { a, b in
+                if let x = Int(a), let y = Int(b) { return x < y }
+                return a.localizedStandardCompare(b) == .orderedAscending
+            })
+        }
+        let routes = Set(departures.map(\.route.name)).filter { !$0.isEmpty }
+        return (true, routes.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
     }
 
     private var visibleDepartures: [Departure] {
         let sorted = DepartureBoard.filterAndSort(departures)
         guard let platformFilter else { return sorted }
-        return sorted.filter { $0.platform == platformFilter }
+        let byRoute = filterOptions.byRoute
+        return sorted.filter { byRoute ? $0.route.name == platformFilter : $0.platform == platformFilter }
     }
 
     // MARK: - Data

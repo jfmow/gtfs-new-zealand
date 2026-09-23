@@ -181,6 +181,21 @@ func (v *Database) FindIOSDeviceClient(deviceID, secret string) (*NotificationCl
 // findIOSDeviceClient looks a device up by id alone (no secret check) -
 // used internally by RegisterIOSDevice/UpdateIOSDeviceTokens, which verify
 // the secret themselves against the hash this returns.
+// getClientByID loads a client by its row id (e.g. a Live Activity's owner).
+func (v *Database) getClientByID(id int) (*NotificationClient, error) {
+	row, cancel := v.queryRowContext(`SELECT `+clientCoreColumns("n")+` FROM notifications n WHERE n.id = ?`, id)
+	defer cancel()
+	client, err := scanClientRow(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrClientNotFound
+		}
+		return nil, fmt.Errorf("get client %d: %w", id, err)
+	}
+	client.db = v
+	return &client, nil
+}
+
 func (v *Database) findIOSDeviceClient(deviceID string) (*NotificationClient, error) {
 	query := `SELECT ` + clientCoreColumns("n") + `, n.device_secret_hash
               FROM notifications n WHERE n.device_id = ? AND n.platform = 'ios'`

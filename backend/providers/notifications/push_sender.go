@@ -21,6 +21,10 @@ type Payload struct {
 	Body    string
 	URL     string // deeplink path, e.g. "/vehicles?tripId=..."
 	Urgency webpush.Urgency
+	// Kind tags the push for the app ("journey" = a get-on/get-off moment
+	// of a tracked journey, which the app hides while its tracker is on
+	// screen because it shows the same alert in-app). Empty for others.
+	Kind string
 }
 
 // Notifier delivers a Payload to a client over one specific channel. Send is
@@ -173,9 +177,15 @@ func (s *apnsSender) SendLiveActivityUpdate(pushToken, env string, contentState 
 	if pushToken == "" {
 		return errors.New("live activity has no push token")
 	}
+	aps, priority := liveActivityUpdateAPS(contentState, alert, staleDate, dismissalDate, time.Now())
+	return s.pushLiveActivity(pushToken, env, aps, priority)
+}
 
+// liveActivityUpdateAPS builds the aps dictionary (and APNs priority) for a
+// Live Activity update or end push.
+func liveActivityUpdateAPS(contentState any, alert *activityAlert, staleDate, dismissalDate *time.Time, now time.Time) (map[string]any, int) {
 	aps := map[string]any{
-		"timestamp":     time.Now().Unix(),
+		"timestamp":     now.Unix(),
 		"content-state": contentState,
 		"event":         "update",
 	}
@@ -188,15 +198,19 @@ func (s *apnsSender) SendLiveActivityUpdate(pushToken, env string, contentState 
 	}
 	priority := apns2.PriorityLow
 	if alert != nil {
-		aps["alert"] = map[string]string{"title": alert.Title, "body": alert.Body}
-		aps["sound"] = "default"
+		// For Live Activity pushes the sound lives *inside* alert - a
+		// top-level aps.sound is ignored, which made these alerts silent.
+		a := map[string]string{"title": alert.Title, "body": alert.Body}
+		if alert.Sound {
+			a["sound"] = "default"
+		}
+		aps["alert"] = a
 		priority = apns2.PriorityHigh
 	}
 	if dismissalDate != nil {
 		priority = apns2.PriorityHigh
 	}
-
-	return s.pushLiveActivity(pushToken, env, aps, priority)
+	return aps, priority
 }
 
 // SendLiveActivityStart starts a journey Live Activity remotely
@@ -213,8 +227,7 @@ func (s *apnsSender) SendLiveActivityStart(pushToStartToken, env string, attribu
 		"content-state":   contentState,
 		"attributes-type": "JourneyActivityAttributes",
 		"attributes":      attributes,
-		"alert":           map[string]string{"title": alert.Title, "body": alert.Body},
-		"sound":           "default",
+		"alert":           map[string]string{"title": alert.Title, "body": alert.Body, "sound": "default"},
 		"stale-date":      staleDate.Unix(),
 	}
 	return s.pushLiveActivity(pushToStartToken, env, aps, apns2.PriorityHigh)
@@ -250,9 +263,15 @@ func (s *apnsSender) Send(client NotificationClient, p Payload) error {
 	if p.Urgency == "high" {
 		aps["interruption-level"] = "time-sensitive"
 	}
+	if p.Kind != "" {
+		aps["thread-id"] = p.Kind
+	}
 	payload := map[string]any{"aps": aps}
 	if p.URL != "" {
 		payload["url"] = p.URL
+	}
+	if p.Kind != "" {
+		payload["kind"] = p.Kind
 	}
 
 	n := &apns2.Notification{

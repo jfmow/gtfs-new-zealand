@@ -80,6 +80,10 @@ type activityAlert struct {
 	Key   string // dedupe key, stored in live_activities.alerted_keys
 	Title string
 	Body  string
+	// Sound plays with the Live Activity alert - only when a regular
+	// notification (which carries its own sound) couldn't be sent, so the
+	// phone buzzes once, not twice.
+	Sound bool
 }
 
 // legLive is the realtime picture for one transit leg's trip.
