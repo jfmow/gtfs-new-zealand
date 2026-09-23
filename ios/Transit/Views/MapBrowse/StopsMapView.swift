@@ -17,6 +17,9 @@ struct StopsMapView: View {
     @State private var stops: [Stop] = []
     @State private var typeFilter: StopType = .all
     @State private var errorMessage: String?
+    /// Tapped stop, previewed in a card over the map (next departures) -
+    /// tap the card to open its board.
+    @State private var previewStop: Stop?
     // Captured once (on first real GPS fix, or the region's default centre
     // if location never becomes available) rather than read live from
     // environment.location.coordinate on every render - GPS updates every
@@ -43,20 +46,27 @@ struct StopsMapView: View {
                 camera: .region(center: mapCenter ?? environment.region.defaultMapCenter, radiusMeters: 6000),
                 showsUserLocation: environment.location.isAuthorized,
                 onSelectStop: { id in
-                    guard let stop = stops.first(where: { $0.stopID == id }) else { return }
-                    onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+                    withAnimation(.spring(duration: 0.3)) { previewStop = stops.first { $0.stopID == id } }
                 },
                 onVisibleRegionChange: { visibleRegion = $0 },
                 centerOnUserLocationTrigger: recenterTrigger
             )
             .ignoresSafeArea(edges: .bottom)
-            .overlay(alignment: .bottomTrailing) {
+
+            // Not an overlay on the map: the map runs under the bottom safe
+            // area (tab bar, resume pill), and these must sit above it.
+            VStack(alignment: .trailing, spacing: 12) {
                 RecenterButton(isAuthorized: environment.location.isAuthorized) {
                     recenterTrigger += 1
                 }
-                .padding(.trailing, 16)
-                .padding(.bottom, 24)
+                if let previewStop {
+                    previewCard(previewStop)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
             // Mode filters float on the map as pills, as on the web.
             ScrollView(.horizontal, showsIndicators: false) {
@@ -90,6 +100,36 @@ struct StopsMapView: View {
             guard mapCenter == nil, let newValue else { return }
             mapCenter = newValue
         }
+    }
+
+    private func previewCard(_ stop: Stop) -> some View {
+        Button {
+            onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+        } label: {
+            HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: stop.stopCode.isEmpty ? nil : "Stop \(stop.stopCode)") {
+                StopModeTile(stopType: stop.stopType)
+            }
+        }
+        .buttonStyle(.plain)
+        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+        .overlay(alignment: .topLeading) {
+            Button {
+                withAnimation(.spring(duration: 0.3)) { previewStop = nil }
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.foreground)
+                    .frame(width: 24, height: 24)
+                    .background(Theme.muted, in: Circle())
+                    .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+            }
+            .offset(x: -8, y: -8)
+            .accessibilityLabel("Close")
+        }
+        .accessibilityIdentifier("stop-preview")
+        .accessibilityHint("Opens departures")
     }
 
     /// A hard ceiling on live annotations, independent of the viewport

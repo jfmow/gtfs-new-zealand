@@ -61,6 +61,7 @@ struct StopBoardView: View {
                     } label: {
                         Image(systemName: "bell")
                     }
+                    .accessibilityLabel("Get alerts for this stop")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -69,7 +70,6 @@ struct StopBoardView: View {
                         Image(systemName: favourites.isEmpty ? "star" : "star.fill")
                             .foregroundStyle(favourites.isEmpty ? Theme.foreground : Color(hex: "eab308"))
                     }
-                    .accessibilityLabel(favourites.isEmpty ? "Add to favourites" : "Remove from favourites")
                     .accessibilityLabel(favourites.isEmpty ? "Add to favourites" : "Remove from favourites")
                 }
                 ToolbarItem(placement: .topBarTrailing) {

@@ -28,13 +28,14 @@ struct VehiclesMapView: View {
                 centerOnUserLocationTrigger: recenterTrigger
             )
             .ignoresSafeArea(edges: .bottom)
-            .overlay(alignment: .bottomTrailing) {
-                RecenterButton(isAuthorized: environment.location.isAuthorized) {
-                    recenterTrigger += 1
-                }
-                .padding(.trailing, 16)
-                .padding(.bottom, 24)
+
+            // Above the bottom safe area (tab bar, resume pill), not in it.
+            RecenterButton(isAuthorized: environment.location.isAuthorized) {
+                recenterTrigger += 1
             }
+            .padding(.trailing, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
             // The web's filter bar: mode buttons, then "Show stops".
             HStack(spacing: 8) {

@@ -46,6 +46,10 @@ struct VehicleQuickLookView: View {
     private static let keepBehind = 1
     private static let keepAhead = 6
     @State private var showCollapsedStops = false
+    /// The map follows the vehicle until the rider pans it; the recentre
+    /// button hands it back (same as the journey tracker).
+    @State private var autoFollow = true
+    @State private var cameraResetToken = 0
 
     /// This trip's current/next stop, from the vehicle feed
     /// (`vehicle.trip.current_stop`/`next_stop`) - same fields the web
@@ -91,14 +95,32 @@ struct VehicleQuickLookView: View {
         VStack(spacing: 0) {
             TransitMapView(
                 vehicles: vehicle.map { [VehicleAnnotation(vehicle: $0)] } ?? [],
-                polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: $0.color.isEmpty ? (vehicle?.route.color ?? "6b7280") : $0.color)] } ?? [],
-                camera: vehicle.map { .region(center: $0.position.coordinate, radiusMeters: 1200) } ?? .none
+                polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: !$0.color.isEmpty ? $0.color : (vehicle?.route.color.isEmpty == false ? vehicle!.route.color : environment.region.brandColorHex))] } ?? [],
+                camera: autoFollow && vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400) : .none,
+                onUserInteraction: { if autoFollow { autoFollow = false } },
+                cameraResetToken: cameraResetToken
             )
-            .frame(height: 260)
+            .frame(height: 280)
+            .overlay(alignment: .bottomTrailing) {
+                if !autoFollow {
+                    Button {
+                        autoFollow = true
+                        cameraResetToken += 1
+                    } label: {
+                        Image(systemName: "scope")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(Theme.foreground)
+                            .frame(width: 40, height: 40)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+                    }
+                    .padding(12)
+                    .accessibilityLabel("Follow the vehicle")
+                }
+            }
 
             VStack(spacing: 10) {
                 if let vehicle { summaryHeader(vehicle) }
-                currentOrNextBanner
                 if isSelectingReminder, let reminderType {
                     ReminderBanner(kind: reminderType, nStopsAway: $nStopsAway)
                 }
@@ -115,10 +137,12 @@ struct VehicleQuickLookView: View {
                 ScrollViewReader { scrollProxy in
                     ScrollView {
                         VStack(spacing: 0) {
-                            ForEach(Array(visibleRowIndices.enumerated()), id: \.offset) { position, rowIndex in
+                            let indices = visibleRowIndices
+                            ForEach(Array(indices.enumerated()), id: \.offset) { position, rowIndex in
                                 let row = rows[rowIndex]
-                                if position > 0 { RowDivider() }
-                                stopRow(row, isCurrent: row.sequence == currentSequence, isNext: row.sequence == nextSequence)
+                                stopRow(row, isCurrent: row.sequence == currentSequence && vehicle?.state == "AtStop",
+                                        isNext: row.sequence == nextSequence && vehicle?.state != "AtStop",
+                                        isLast: position == indices.count - 1)
                                     .id(rowIndex)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -135,7 +159,9 @@ struct VehicleQuickLookView: View {
                                 .padding(.vertical, 6)
                             }
                         }
+                        .padding(.vertical, 6)
                         .shadCardBackground()
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
                         .padding(16)
                     }
                     // Keep the current/next stop in view as the vehicle
@@ -170,14 +196,15 @@ struct VehicleQuickLookView: View {
         .navigationTitle("Live tracking")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if let vehicle {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button { isShowingRouteAlerts = true } label: { Image(systemName: "bell.badge") }
+            ToolbarItem(placement: .topBarTrailing) {
+                if isSelectingReminder {
+                    Button("Cancel", action: cancelReminderSelection)
+                } else if let vehicle {
+                    // Reminders are the bottom button; this is the route's
+                    // service alerts (one bell, not two).
+                    Button { isShowingRouteAlerts = true } label: { Image(systemName: "exclamationmark.bubble") }
                         .accessibilityLabel("Alerts for route \(vehicle.route.name)")
                 }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                ReminderMenuButton(isSelecting: isSelectingReminder, onBegin: beginSelectingReminder, onCancel: cancelReminderSelection)
             }
         }
         .confirmationDialog("Set a reminder", isPresented: $isShowingReminderPicker, titleVisibility: .visible) {
@@ -195,82 +222,82 @@ struct VehicleQuickLookView: View {
         .onDisappear { pollTask?.cancel() }
     }
 
-    /// "Seats free · Platform 2" ... "2 stops away · Arrives in 5 min" -
-    /// mirrors the web tracker's summary row atop the stop list.
+    /// Route tile, where it's heading, the next stop, and a countdown to it;
+    /// then live chips - the same header as the journey tracker's drawer.
     @ViewBuilder
     private func summaryHeader(_ vehicle: Vehicle) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 8) {
-                RouteBadge(name: vehicle.route.name, colorHex: vehicle.route.color, size: 13)
-                Text(vehicle.trip.map { TimeFormatting.niceLookingWords($0.headsign) } ?? "")
-                    .font(.cardTitle)
+        let hex = vehicle.route.color.isEmpty ? "525252" : vehicle.route.color
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 14) {
+                Text(vehicle.route.name)
+                    .font(.geist(18, .bold, relativeTo: .title3))
+                    .foregroundStyle(RouteColors.text(onHex: hex))
                     .lineLimit(1)
-                Spacer()
+                    .minimumScaleFactor(0.5)
+                    .padding(.horizontal, 4)
+                    .frame(width: 52, height: 52)
+                    .background(Color(hex: hex), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(vehicle.trip.map { TimeFormatting.niceLookingWords($0.headsign) } ?? vehicle.route.name)
+                        .font(.geist(18, .semibold, relativeTo: .title3))
+                        .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let line = nextStopLine {
+                        Text(line).font(.meta).foregroundStyle(Theme.mutedForeground).lineLimit(2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                if let eta = nextStopETA {
+                    TimelineView(.periodic(from: .now, by: 15)) { context in
+                        VStack(alignment: .trailing, spacing: 0) {
+                            Text(JourneyTrackingView.minutesText(until: eta, now: context.date)).font(.number(24))
+                            Text(vehicle.state == "AtStop" ? "at stop" : "to next stop")
+                                .font(.geist(12, relativeTo: .caption)).foregroundStyle(Theme.mutedForeground)
+                        }
+                    }
+                }
             }
-            HStack(spacing: 6) {
+            FlowLayout(spacing: 6, lineSpacing: 6) {
+                HStack(spacing: 5) {
+                    LiveDot(color: Theme.success)
+                    Text("Live")
+                }
+                .modifier(StatusChipStyle())
                 if vehicle.occupancy >= 0 {
-                    Text(OccupancyText.short(vehicle.occupancy))
+                    HStack(spacing: 4) {
+                        OccupancyIconsView(occupancy: vehicle.occupancy)
+                        Text(OccupancyText.label(vehicle.occupancy))
+                    }
+                    .modifier(StatusChipStyle())
                 }
                 if let platform = vehicle.trip?.nextStop?.platform, !platform.isEmpty {
-                    Text("· Platform \(platform)")
+                    Text("Platform \(platform)").modifier(StatusChipStyle())
                 }
-                Spacer()
-                if let stopsAway, stopsAway > 0 {
-                    Text("\(stopsAway) \(stopsAway == 1 ? "stop" : "stops") away")
+                if vehicle.offCourse {
+                    Label("Off course", systemImage: "exclamationmark.triangle.fill").modifier(StatusChipStyle(tint: Theme.warning))
                 }
-                if let eta = nextStopETAText {
-                    Text("· \(eta)")
-                }
-            }
-            .font(.meta)
-            .foregroundStyle(Theme.mutedForeground)
-            if vehicle.offCourse {
-                Label("Vehicle off course", systemImage: "exclamationmark.triangle").font(.metaMedium).foregroundStyle(Theme.warning)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var stopsAway: Int? {
-        guard let currentSequence, let nextSequence else { return nil }
-        return max(0, nextSequence - currentSequence)
+    /// "At Newmarket" / "Next: Newmarket, platform 2".
+    private var nextStopLine: String? {
+        if vehicle?.state == "AtStop", let currentSequence, let row = rows.first(where: { $0.sequence == currentSequence }) {
+            return "At \(row.name)"
+        }
+        if let nextSequence, let row = rows.first(where: { $0.sequence == nextSequence }) {
+            return "Next: \(row.name)"
+        }
+        return nil
     }
 
-    private var nextStopETAText: String? {
+    private var nextStopETA: Date? {
         guard let next = vehicle?.trip?.nextStop,
               let stopTime = stopTimes.first(where: { $0.childStopID == next.childStopID }) ?? stopTimes.first(where: { $0.parentStopID == next.parentStopID })
         else { return nil }
-        let minutes = stopTime.arrivalTime.date.timeIntervalSinceNow / 60
-        return "Arrives in \(TimeFormatting.timeTillArrivalString(minutes: minutes))"
-    }
-
-    /// Red "Current Stop" while at a stop, blue "Next" while en route -
-    /// matches the web tracker's dynamic banner exactly.
-    @ViewBuilder
-    private var currentOrNextBanner: some View {
-        if let currentSequence, let row = rows.first(where: { $0.sequence == currentSequence }), vehicle?.state == "AtStop" {
-            bannerRow(label: "Current stop", stopName: row.name, color: Theme.danger)
-        } else if let nextSequence, let row = rows.first(where: { $0.sequence == nextSequence }) {
-            bannerRow(label: "Next", stopName: row.name, trailing: nextStopETAText, color: Theme.live)
-        }
-    }
-
-    private func bannerRow(label: String, stopName: String, trailing: String? = nil, color: Color) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(label.uppercased()).font(.geist(10, .semibold, relativeTo: .caption2)).tracking(0.6).foregroundStyle(color)
-                Text(stopName).font(.bodyMedium)
-            }
-            Spacer()
-            if let trailing {
-                Text(trailing).font(.metaMedium).foregroundStyle(color)
-            }
-        }
-        .padding(12)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous))
-        .overlay(alignment: .leading) {
-            UnevenRoundedRectangle(topLeadingRadius: Theme.radiusMD, bottomLeadingRadius: Theme.radiusMD, style: .continuous).fill(color).frame(width: 3)
-        }
+        return stopTime.arrivalTime.date
     }
 
     /// Web's collapse rule: keep `keepBehind` stops before, and
@@ -307,35 +334,45 @@ struct VehicleQuickLookView: View {
         withAnimation { proxy.scrollTo(index, anchor: .center) }
     }
 
+    /// A stop on the timeline: arrival time, the route-coloured line (dim
+    /// once passed), and the current/next stop highlighted edge to edge.
     @ViewBuilder
-    private func stopRow(_ row: StopRowData, isCurrent: Bool, isNext: Bool) -> some View {
+    private func stopRow(_ row: StopRowData, isCurrent: Bool, isNext: Bool, isLast: Bool) -> some View {
         let passed = row.stopTime?.passed ?? false
-        HStack(spacing: 10) {
-            Circle()
-                .fill(isCurrent ? Theme.danger : isNext ? Theme.live : (passed ? Theme.border : Theme.mutedForeground.opacity(0.5)))
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(row.name)
-                    .font(isCurrent || isNext ? .bodyMedium : .bodyText)
-                    .foregroundStyle(passed ? Theme.mutedForeground : Theme.foreground)
+        let hex = vehicle?.route.color.isEmpty == false ? vehicle!.route.color : "525252"
+        TimelineRow(
+            time: row.stopTime?.arrivalTime.date,
+            rail: isLast ? .none : .solid(Color(hex: hex), dimmed: passed),
+            marker: .stop(passed && !isCurrent ? Theme.border : Color(hex: hex)),
+            highlighted: isCurrent || isNext,
+            accent: isCurrent ? Theme.danger : Theme.live
+        ) {
+            HStack(spacing: 6) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.name)
+                        .font(isCurrent || isNext ? .bodyMedium : .bodyText)
+                        .foregroundStyle(passed ? Theme.mutedForeground : Theme.foreground)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if isCurrent || isNext {
+                        Text(isCurrent ? "At this stop" : "Next stop")
+                            .font(.geist(11, .medium, relativeTo: .caption2))
+                            .foregroundStyle(isCurrent ? Theme.danger : Theme.live)
+                    }
+                }
+                Spacer(minLength: 6)
+                if row.stopTime?.skipped == true {
+                    Text("Skipped").font(.metaMedium).foregroundStyle(Theme.danger)
+                }
                 if !row.platform.isEmpty {
-                    Text("Platform \(row.platform)").font(.geist(11, relativeTo: .caption2)).foregroundStyle(Theme.mutedForeground)
+                    ShadBadge(text: "Plat. \(row.platform)", variant: .outline)
+                }
+                if isSelectingReminder {
+                    Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.mutedForeground)
                 }
             }
-            Spacer()
-            if row.stopTime?.skipped == true {
-                Text("Skipped").font(.metaMedium).foregroundStyle(Theme.danger)
-            } else if let stopTime = row.stopTime {
-                Text(stopTime.arrivalTime.date, style: .time).font(.meta).foregroundStyle(Theme.mutedForeground).monospacedDigit()
-            }
-            if isSelectingReminder {
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(Theme.mutedForeground)
-            }
+            .padding(.vertical, 10)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(isCurrent ? Theme.danger.opacity(0.06) : isNext ? Theme.live.opacity(0.06) : Color.clear)
+        .opacity(passed && !isCurrent ? 0.55 : 1)
         .accessibilityElement(children: .combine)
         .accessibilityValue(isCurrent ? "Current stop" : isNext ? "Next stop" : passed ? "Passed" : "")
     }

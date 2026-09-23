@@ -248,17 +248,63 @@ final class TransitDebugUITests: XCTestCase {
         sleep(3)
         attach("cs-01-home")
 
-        // A bus stop (no platforms) - route filter chips.
+        // A bus stop with no platforms - route filter chips, its alerts
+        // sheet and a service's tracker.
         search.tap()
-        search.typeText("Customs Street")
+        search.typeText("Ponsonby Road 8100")
         sleep(2)
-        let bus = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Customs")).firstMatch
+        let bus = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "8100")).firstMatch
         if bus.waitForExistence(timeout: 3) {
             bus.tap()
             sleep(4)
             attach("cs-02-bus-board")
+            XCTAssertTrue(app.buttons["All routes"].exists, "no route filter at a stop without platforms")
+            let bell = app.navigationBars.buttons["Get alerts for this stop"]
+            if bell.exists {
+                bell.tap()
+                sleep(3)
+                attach("cs-02b-stop-alerts")
+                app.buttons["Done"].firstMatch.tap()
+                sleep(1)
+            }
+            let row = app.buttons.matching(identifier: "departure-row").firstMatch
+            if row.waitForExistence(timeout: 3) {
+                row.tap()
+                sleep(5)
+                attach("cs-02c-service-tracker")
+                app.navigationBars.buttons.element(boundBy: 0).tap()
+                sleep(1)
+            }
             app.navigationBars.buttons.element(boundBy: 0).tap()
             sleep(1)
+        }
+
+        // Bell -> Alerts & reminders, and Settings.
+        let bellButton = app.navigationBars.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Notifications")).firstMatch
+        if bellButton.waitForExistence(timeout: 2) {
+            bellButton.tap()
+            sleep(2)
+            attach("cs-02d-bell")
+            if app.buttons["Alerts & reminders"].waitForExistence(timeout: 2) {
+                app.buttons["Alerts & reminders"].tap()
+                sleep(3)
+                attach("cs-02e-manage")
+                app.navigationBars.buttons.element(boundBy: 0).tap()
+                sleep(1)
+            }
+            app.buttons["Done"].firstMatch.tap()
+            sleep(1)
+        }
+        let menu = app.navigationBars.buttons["Menu"]
+        if menu.waitForExistence(timeout: 2) {
+            menu.tap()
+            if app.buttons["Settings"].waitForExistence(timeout: 2) {
+                app.buttons["Settings"].tap()
+                sleep(2)
+                attach("cs-02f-settings")
+                app.buttons["Done"].firstMatch.tap()
+                sleep(1)
+            }
         }
 
         // Planner.
@@ -287,6 +333,14 @@ final class TransitDebugUITests: XCTestCase {
         sleep(8)
         attach("cs-05-results")
         let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
+        let alarm = app.buttons["Remind me when to leave for this journey"].firstMatch
+        if alarm.waitForExistence(timeout: 3) {
+            alarm.tap()
+            sleep(2)
+            attach("cs-05b-reminder")
+            app.buttons["Cancel"].firstMatch.tap()
+            sleep(1)
+        }
         if card.waitForExistence(timeout: 5) {
             card.tap()
             sleep(3)
@@ -321,16 +375,22 @@ final class TransitDebugUITests: XCTestCase {
         // The map's accessibility tree includes markers just off screen -
         // pick one that's actually visible (and clear of the chips/pill).
         let window = app.windows.firstMatch.frame
-        let visible = (0..<min(stopMarkers.count, 60)).lazy.map { stopMarkers.element(boundBy: $0) }.first { marker in
+        // Position check first (cheap), then hittability, over every marker.
+        let visible = stopMarkers.allElementsBoundByIndex.first { marker in
             let f = marker.frame
-            return marker.isHittable && !groupFrames.contains(where: { $0.insetBy(dx: -6, dy: -6).intersects(f) })
-                && f.minY > window.height * 0.2 && f.maxY < window.height * 0.75 && f.minX > 20 && f.maxX < window.width - 20
+            return f.minY > window.height * 0.2 && f.maxY < window.height * 0.7 && f.minX > 20 && f.maxX < window.width - 20
+                && !groupFrames.contains(where: { $0.insetBy(dx: -6, dy: -6).intersects(f) }) && marker.isHittable
         }
         guard let marker = visible else { attach("st-00-no-marker"); return XCTFail("no single stop marker on screen") }
         let stopID = marker.identifier
         // A real touch at the marker - an element tap on a map annotation's
         // accessibility element doesn't reliably select it.
         marker.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // The tap previews the stop; the card opens its board.
+        let preview = app.buttons.matching(identifier: "stop-preview").firstMatch
+        guard preview.waitForExistence(timeout: 5) else { attach("st-00-no-preview"); return XCTFail("stop preview didn't show") }
+        attach("st-00-preview")
+        preview.tap()
 
         let row = app.buttons.matching(identifier: "departure-row").firstMatch
         guard row.waitForExistence(timeout: 10) else { attach("st-00-no-board"); return XCTFail("board didn't open") }
@@ -347,7 +407,11 @@ final class TransitDebugUITests: XCTestCase {
         sleep(2)
         let sameStop = app.descendants(matching: .any).matching(identifier: stopID).firstMatch
         guard sameStop.waitForExistence(timeout: 3) else { return XCTFail("stop marker gone after going back") }
+        // The preview is still up from before - close it, then re-tap.
+        if preview.exists { app.buttons["Close"].firstMatch.tap(); sleep(1) }
         sameStop.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(preview.waitForExistence(timeout: 5), "re-tapping the same stop didn't preview it")
+        preview.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 10), "re-tapping the same stop didn't open it")
         attach("st-03-reopened")
     }

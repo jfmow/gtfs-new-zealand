@@ -53,32 +53,6 @@ enum ReminderStatus: Equatable {
     case failure(String)
 }
 
-/// The toolbar bell - a menu of reminder types when nothing's being picked,
-/// a "Cancel" button while a stop is being tapped for one.
-struct ReminderMenuButton: View {
-    let isSelecting: Bool
-    let onBegin: (ReminderKind) -> Void
-    let onCancel: () -> Void
-
-    var body: some View {
-        if isSelecting {
-            Button("Cancel", action: onCancel)
-        } else {
-            Menu {
-                ForEach(ReminderKind.allCases) { kind in
-                    Button {
-                        onBegin(kind)
-                    } label: {
-                        Label(kind.menuLabel, systemImage: kind.menuIcon)
-                    }
-                }
-            } label: {
-                Image(systemName: "bell")
-            }
-        }
-    }
-}
-
 /// The sticky blue instruction banner atop the stop list while a reminder
 /// type is being placed - matches the web's equivalent in
 /// `tracker/stops-list.tsx`.
