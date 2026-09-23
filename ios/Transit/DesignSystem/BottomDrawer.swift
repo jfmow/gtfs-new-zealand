@@ -70,13 +70,15 @@ struct BottomDrawer<Header: View, Content: View>: View {
         }
         .frame(height: currentHeight, alignment: .top)
         .frame(maxWidth: .infinity)
+        // The background runs on under the home indicator to the screen's
+        // edge; no clipShape here - it would trim that back to the safe
+        // area and leave the drawer floating above the bottom.
         .background(
             UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24, style: .continuous)
                 .fill(Theme.background)
                 .shadow(color: .black.opacity(0.25), radius: 16, y: -2)
                 .ignoresSafeArea(edges: .bottom)
         )
-        .clipShape(UnevenRoundedRectangle(topLeadingRadius: 24, topTrailingRadius: 24, style: .continuous))
         .animation(.spring(duration: 0.35, bounce: 0.15), value: detent)
     }
 
