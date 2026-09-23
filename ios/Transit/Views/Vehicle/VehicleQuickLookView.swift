@@ -299,7 +299,7 @@ struct VehicleQuickLookView: View {
                 }
                 .modifier(StatusChipStyle())
                 if let away = stopsUntilYourStop {
-                    Text(away == 0 ? "At your stop" : "\(away) stop\(away == 1 ? "" : "s") to your stop")
+                    Text(away == 0 ? "At your stop" : away == 1 ? "Your stop is next" : "\(away) stops to your stop")
                         .modifier(StatusChipStyle(tint: Theme.live))
                 }
                 if vehicle.occupancy >= 0 {
@@ -338,10 +338,19 @@ struct VehicleQuickLookView: View {
         return stopTime.arrivalTime.date
     }
 
-    /// Stops until the vehicle reaches the rider's stop, while it's ahead.
+    /// Stops the vehicle still has to reach, up to and including the
+    /// rider's: 0 only while it's actually stopped there, 1 when it's next.
+    /// Counted from the stop it's at (if stopped) or heading to - counting
+    /// from `next` without including the rider's stop came out one short,
+    /// and said "at your stop" while it was still on the way.
     private var stopsUntilYourStop: Int? {
-        guard let yours = rows.first(where: isYourStop), let next = nextSequence ?? currentSequence, yours.sequence >= next else { return nil }
-        return rows.filter { $0.sequence >= next && $0.sequence < yours.sequence }.count
+        guard let yours = rows.first(where: isYourStop) else { return nil }
+        if isAtStop, let current = currentSequence {
+            guard yours.sequence >= current else { return nil }
+            return rows.filter { $0.sequence > current && $0.sequence <= yours.sequence }.count
+        }
+        guard let next = nextSequence ?? currentSequence.map({ $0 + 1 }), yours.sequence >= next else { return nil }
+        return rows.filter { $0.sequence >= next && $0.sequence <= yours.sequence }.count
     }
 
     // MARK: - Stop list

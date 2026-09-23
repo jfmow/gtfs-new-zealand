@@ -523,7 +523,7 @@ struct JourneyTrackingView: View {
                         .modifier(StatusChipStyle())
                 }
 
-                if let away = snapshot.trackedStopsAway {
+                if let away = snapshot.trackedStopsToGo {
                     Text(stopsAwayText(away, onboard: snapshot.phase == .onboard))
                         .modifier(StatusChipStyle())
                 }
@@ -556,11 +556,12 @@ struct JourneyTrackingView: View {
     }
 
     private func stopsAwayText(_ away: Int, onboard: Bool) -> String {
+        // `away` counts the stops still to reach, including the target.
         if onboard {
-            return away <= 1 ? "Get off next stop" : "\(away) stops to go"
+            return away == 0 ? "At your stop - get off" : away == 1 ? "Get off at the next stop" : "\(away) stops to go"
         }
         let name = currentOrNextTransitLeg.map(routeName) ?? "Service"
-        return away == 0 ? "\(name) at your stop" : "\(name) \(away) stop\(away == 1 ? "" : "s") away"
+        return away == 0 ? "\(name) at your stop" : away == 1 ? "\(name) arriving next" : "\(name) \(away) stops away"
     }
 
     private var upcomingConnectionRisk: JourneyTracking.ConnectionRisk? {

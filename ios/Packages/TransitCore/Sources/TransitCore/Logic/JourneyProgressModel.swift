@@ -80,6 +80,13 @@ public final class JourneyProgressModel {
         /// board stop until reached, the alight stop after) - nil unless the
         /// vehicle's state is confirmed and both ends are known.
         public let trackedStopsAway: Int?
+        /// Stops the tracked vehicle still has to reach, up to and including
+        /// the target (board stop, then alight stop): 0 only while it's
+        /// stopped at the target, 1 when the target is its next stop. What
+        /// the UI shows - `trackedStopsAway` (the web's count, which the
+        /// alerts and Live Activity use) is one short while moving and hits
+        /// 0 before the vehicle is actually there.
+        public let trackedStopsToGo: Int?
         public let phase: Phase?
         public let trackingLevel: TrackingLevel
         /// True once the whole journey (not just this leg) reads as done -
@@ -184,6 +191,15 @@ public final class JourneyProgressModel {
             return max(0, target - next)
         }()
 
+        let trackedStopsToGo: Int? = {
+            guard let trackedVehicle, trackedVehicle.state != "Unknown", let target = trackedTargetSeq else { return nil }
+            if trackedVehicle.state == "AtStop", let current = trackedVehicle.trip?.currentStop?.sequence {
+                return max(0, target - current)
+            }
+            guard let next = trackedNextSeq else { return nil }
+            return max(0, target - next + 1)
+        }()
+
         let journeyArrived: Bool = {
             guard journeyStarted, let lastLeg = displayLegs.last, currentLegIndex == displayLegs.count - 1,
                   transitFloor >= displayLegs.count, let arrival = lastLeg.arrivalTime.date
@@ -212,7 +228,7 @@ public final class JourneyProgressModel {
         return Snapshot(
             currentLegIndex: currentLegIndex, transitFloor: transitFloor, guardedLegIndex: guardedLegIndex,
             activeTransitLegIndex: activeTransitLegIndex, trackedTripID: trackedTripID, boarded: boarded,
-            waitingAtStop: waitingAtStop, trackedStopsAway: trackedStopsAway, phase: phase,
+            waitingAtStop: waitingAtStop, trackedStopsAway: trackedStopsAway, trackedStopsToGo: trackedStopsToGo, phase: phase,
             trackingLevel: trackingLevel, journeyArrived: journeyArrived, progressLegIndex: progressLegIndex,
             followMarkerID: followMarkerID, followFitWithStop: followFitWithStop, riderWalking: riderWalking
         )

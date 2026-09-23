@@ -176,6 +176,39 @@ final class JourneyProgressModelTests: XCTestCase {
         XCTAssertEqual(snapshot.progressLegIndex, 2)
     }
 
+    /// "Stops to go" counts every stop the vehicle still has to reach,
+    /// including the rider's: 0 only when it's stopped there.
+    func testStopsToGoIncludesTheTargetAndOnlyZeroWhenStoppedThere() {
+        let board = makeStop(id: "board")
+        let alight = makeStop(id: "alight")
+        let departure = base.addingTimeInterval(600)
+        let plan = makeThreeLegJourney(boardStop: board, alightStop: alight, transitDeparture: departure, transitArrival: departure.addingTimeInterval(900))
+        let trackedStops = [
+            TripStopRef(lat: 0, lon: 0, parentStopID: board.parentStation, name: "board", platform: "1", sequence: 5, childStopID: "board-child"),
+            TripStopRef(lat: 0, lon: 0, parentStopID: alight.parentStation, name: "alight", platform: "1", sequence: 9, childStopID: "alight-child"),
+        ]
+        func snapshot(_ vehicle: Vehicle) -> JourneyProgressModel.Snapshot {
+            JourneyProgressModel().update(
+                plan: plan, displayPlan: plan, now: departure.addingTimeInterval(-120), vehiclesByTripID: ["T1": vehicle],
+                stopTimesByTripID: [:], journeyStarted: true, trackedStops: trackedStops, userLocation: nil
+            )
+        }
+
+        // Heading to stop 3: stops 3, 4 and 5 still to reach.
+        let far = snapshot(makeVehicle(tripID: "T1", current: 2, next: 3, state: "Travelling"))
+        XCTAssertEqual(far.trackedStopsToGo, 3)
+        XCTAssertEqual(far.trackedStopsAway, 2, "the web's count, kept for alerts")
+
+        // Heading to the board stop itself: it's next, not "here".
+        XCTAssertEqual(snapshot(makeVehicle(tripID: "T1", current: 4, next: 5, state: "Travelling")).trackedStopsToGo, 1)
+
+        // Stopped at the stop before: still one to go.
+        XCTAssertEqual(snapshot(makeVehicle(tripID: "T1", current: 4, next: 5, state: "AtStop")).trackedStopsToGo, 1)
+
+        // Stopped at the board stop.
+        XCTAssertEqual(snapshot(makeVehicle(tripID: "T1", current: 5, next: 6, state: "AtStop")).trackedStopsToGo, 0)
+    }
+
     // MARK: - Phase machine
 
     func testWalkingPhaseBeforeReachingBoardStop() {
