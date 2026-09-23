@@ -323,3 +323,36 @@ func TestActivity_WalkingShowsWalkAndApproachingVehicle(t *testing.T) {
 		t.Errorf("approach = %v %q", state.StopsAway, state.BoardStopName)
 	}
 }
+
+func TestFindLegStop_FallsBackToParentStation(t *testing.T) {
+	stops := []gtfs.Stop{
+		{StopId: "a-1", ParentStation: "A", Sequence: 1},
+		{StopId: "b-2", ParentStation: "B", Sequence: 2},
+		{StopId: "a-3", ParentStation: "A", Sequence: 3},
+	}
+	// Exact platform wins.
+	if got := findLegStop(stops, &gtfs.Stop{StopId: "b-2", ParentStation: "B"}, -1); got != 1 {
+		t.Fatalf("exact match: got %d, want 1", got)
+	}
+	// The plan's platform isn't the one the trip uses: same station.
+	if got := findLegStop(stops, &gtfs.Stop{StopId: "b-9", ParentStation: "B"}, -1); got != 1 {
+		t.Fatalf("parent fallback: got %d, want 1", got)
+	}
+	// A second visit to a station is found only after the boarding stop.
+	if got := findLegStop(stops, &gtfs.Stop{StopId: "a-9", ParentStation: "A"}, 1); got != 2 {
+		t.Fatalf("after board: got %d, want 2", got)
+	}
+	if got := findLegStop(stops, &gtfs.Stop{StopId: "zz"}, -1); got != -1 {
+		t.Fatalf("no match: got %d, want -1", got)
+	}
+}
+
+func TestStopDisplayName_UsesParentName(t *testing.T) {
+	parents := map[string]gtfs.Stop{"p2": {StopName: "Newmarket Train Station"}}
+	if got := stopDisplayName(gtfs.Stop{StopId: "p2", ParentStation: "NM", StopName: "Newmarket Train Station 2"}, parents); got != "Newmarket Train Station" {
+		t.Fatalf("got %q", got)
+	}
+	if got := stopDisplayName(gtfs.Stop{StopId: "b1", StopName: "Karangahape Road"}, parents); got != "Karangahape Road" {
+		t.Fatalf("got %q", got)
+	}
+}

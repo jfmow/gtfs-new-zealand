@@ -552,7 +552,10 @@ type ServicesStop struct {
 	Lon          float64 `json:"lon"`
 	ParentStopId string  `json:"parent_stop_id"`
 	Name         string  `json:"name"`
-	Platform     string  `json:"platform"`
-	Sequence     int     `json:"sequence"`
-	ChildStopId  string  `json:"child_stop_id"`
+	// DisplayName is Name without anything appended for search (the stop
+	// code on /stops/{tripId}) - set only where the two differ.
+	DisplayName string `json:"display_name,omitempty"`
+	Platform    string `json:"platform"`
+	Sequence    int    `json:"sequence"`
+	ChildStopId string `json:"child_stop_id"`
 }

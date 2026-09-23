@@ -48,6 +48,7 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 			responseData.Lat = stop.StopLat
 			responseData.Lon = stop.StopLon
 			responseData.Name = stop.StopName + " " + stop.StopCode
+			responseData.DisplayName = stop.StopName
 			responseData.Platform = i.PlatformNumber
 			responseData.Sequence = i.Sequence
 

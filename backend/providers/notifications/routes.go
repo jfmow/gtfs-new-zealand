@@ -431,7 +431,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return
 		}
 		defer liveActivitiesCronMutex.Unlock()
-		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, localTimeZone, time.Now())
+		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, parentStopsCache, localTimeZone, time.Now())
 	})
 
 	c.Start()

@@ -158,7 +158,7 @@ const clientActiveWindow = 75 * time.Second
 // realtime for its transit legs, and pushes when what the rider would see
 // has changed (or the heartbeat is due) - with a sound/banner alert only for
 // the one-off moments in journeyActivityState.alert.
-func runLiveActivitiesCron(db *Database, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, tz *time.Location, now time.Time) {
+func runLiveActivitiesCron(db *Database, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, parentStopsCache caches.ParentStopsByChildCache, tz *time.Location, now time.Time) {
 	if db == nil {
 		return
 	}
@@ -172,7 +172,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		return
 	}
 
-	live := newLiveLegLookup(rt, stopsForTripCache, tz)
+	live := newLiveLegLookup(rt, stopsForTripCache, parentStopsCache, tz)
 
 	for _, activity := range activities {
 		if activity.PushToken == "" {
@@ -277,12 +277,16 @@ func endLiveActivity(apns *apnsSender, db *Database, activity LiveActivity, fina
 
 // newLiveLegLookup fetches trip updates and vehicle positions once for this
 // tick and answers per-leg realtime questions from them.
-func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, tz *time.Location) liveLegLookup {
+func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, parentStopsCache caches.ParentStopsByChildCache, tz *time.Location) liveLegLookup {
 	updates, _ := rt.GetTripUpdates()
 	vehicles, _ := rt.GetVehicles()
 	var tripStops map[string]caches.StopsForTripId
 	if stopsForTripCache != nil {
 		tripStops = stopsForTripCache()
+	}
+	var parentStops map[string]gtfs.Stop
+	if parentStopsCache != nil {
+		parentStops = parentStopsCache()
 	}
 
 	return func(_ int, leg gtfs.JourneyLeg) (legLive, bool) {
@@ -304,15 +308,10 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 		stopsData, haveStops := tripStops[leg.TripID]
 		stops := append([]gtfs.Stop(nil), stopsData.Stops...)
 		sort.Slice(stops, func(i, j int) bool { return stops[i].Sequence < stops[j].Sequence })
-		boardIdx, alightIdx := -1, -1
-		for i, s := range stops {
-			if leg.FromStop != nil && s.StopId == leg.FromStop.StopId && boardIdx < 0 {
-				boardIdx = i
-			}
-			if leg.ToStop != nil && s.StopId == leg.ToStop.StopId && boardIdx >= 0 && i > boardIdx {
-				alightIdx = i
-				break
-			}
+		boardIdx := findLegStop(stops, leg.FromStop, -1)
+		alightIdx := -1
+		if boardIdx >= 0 {
+			alightIdx = findLegStop(stops, leg.ToStop, boardIdx)
 		}
 
 		boardSeq, alightSeq := -1, -1
@@ -349,13 +348,53 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 					l.StopsToBoard = boardIdx - nextIdx
 					l.StopsToAlight = alightIdx - nextIdx
 					if nextIdx < len(stops) {
-						l.NextStopName = stops[nextIdx].StopName
+						l.NextStopName = stopDisplayName(stops[nextIdx], parentStops)
 					}
 				}
 			}
 		}
 		return l, true
 	}
+}
+
+// findLegStop is the index in `stops` (sorted by sequence) of a plan leg's
+// stop, after index `after` - the exact child stop first, then any platform
+// of the same parent station. Matching the child ID alone missed whenever the
+// plan's platform wasn't the one the trip uses, and the leg then lost its
+// vehicle and fell back to the trip-level delay (often absent) - the Live
+// Activity showed a bare timetable "Due" time. Same rule as the app's
+// `JourneyTracking.findStopSequence`.
+func findLegStop(stops []gtfs.Stop, legStop *gtfs.Stop, after int) int {
+	if legStop == nil {
+		return -1
+	}
+	for i := after + 1; i < len(stops); i++ {
+		if stops[i].StopId == legStop.StopId {
+			return i
+		}
+	}
+	if legStop.ParentStation == "" {
+		return -1
+	}
+	for i := after + 1; i < len(stops); i++ {
+		if stops[i].ParentStation == legStop.ParentStation {
+			return i
+		}
+	}
+	return -1
+}
+
+// stopDisplayName is the stop's parent station name when it has one (a
+// platform's own name can carry the platform), as the app's live vehicle
+// data shows it - so the next stop reads the same whichever side is
+// updating the Live Activity.
+func stopDisplayName(stop gtfs.Stop, parentStops map[string]gtfs.Stop) string {
+	if stop.ParentStation != "" {
+		if parent, ok := parentStops[stop.StopId]; ok && parent.StopName != "" {
+			return parent.StopName
+		}
+	}
+	return stop.StopName
 }
 
 // alightStopDelay is boardStopDelay's counterpart for the stop the rider
