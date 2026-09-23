@@ -1,237 +1,282 @@
 import SwiftUI
 import TransitCore
 
-/// One leg in `JourneyTrackingView`'s itinerary drawer - a straight port of
-/// `route-detail-sheet.tsx`'s `LegRow`: a walk leg collapses to one line
-/// (icon + time + from → to + duration/distance), a transit leg gets the
-/// full two-row board/alight "rail" (icon, a connecting line that fills
-/// with the route colour as the ride progresses, platform badges, a live
-/// info chip), and a wait row appears between legs when there's a
-/// meaningful gap.
+/// The tracker drawer's itinerary: a vertical timeline with a time column,
+/// a continuous rail (the route's colour for a ride, dotted for a walk, that
+/// fills as the current leg progresses) and full-width rows - the current
+/// leg's highlight runs edge to edge of the card. Same information as the
+/// web's `route-detail-sheet.tsx` itinerary, laid out for a phone.
+struct JourneyTimeline: View {
+    let legs: [JourneyLeg]
+    let status: (Int) -> TrackedLegRow.Status
+    let progress: (Int) -> Double?
+    let waitMinutes: (Int) -> Int?
+    let destinationName: String
+    let accent: Color
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
+                TrackedLegRow(
+                    leg: leg,
+                    status: status(index),
+                    progress: progress(index),
+                    destinationName: index == legs.count - 1 ? destinationName : nil,
+                    accent: accent
+                )
+                if index < legs.count - 1, let wait = waitMinutes(index), wait >= 1 {
+                    TimelineRow(time: nil, rail: .dotted(Theme.mutedForeground.opacity(0.4)), marker: .none, highlighted: false) {
+                        Label("\(wait) min wait", systemImage: "clock")
+                            .font(.geist(12, relativeTo: .caption))
+                            .foregroundStyle(Theme.mutedForeground)
+                            .padding(.vertical, 6)
+                    }
+                    .opacity(status(index + 1) == .done ? 0.45 : 1)
+                }
+            }
+            if let last = legs.last {
+                TimelineRow(time: last.arrivalTime.date, rail: .none, marker: .destination, highlighted: false) {
+                    Text("Arrive at \(destinationName)").font(.bodyMedium).padding(.vertical, 12)
+                }
+            }
+        }
+        .padding(.vertical, 6)
+        .shadCardBackground()
+        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+    }
+}
+
+/// One leg of the timeline.
 struct TrackedLegRow: View {
     let leg: JourneyLeg
-    let isLast: Bool
     let status: Status
-    /// The current phase's label ("Boarding now" etc.) - shown as a pill
-    /// only on the currently-tracked leg.
-    let currentLabel: String?
-    /// The region's own accent colour, for the `currentLabel` pill - passed
-    /// in rather than read from `@Environment` since this is otherwise a
-    /// plain, environment-free row view.
-    var accent: Color = .accentColor
-    /// 0...1 through this leg's own scheduled span - only set for the leg
-    /// actually being ridden/waited for right now.
+    /// 0...1 through the leg - only for the leg being ridden right now.
     let progress: Double?
-    let liveInfo: LiveInfo?
-    /// Minutes until the next leg starts, from this leg's own end - nil/0
-    /// suppresses the wait row (mirrors the web's `waitNs >= 60s` gate).
-    let waitMinutes: Int?
+    /// For the final leg: what to call where it ends when it isn't a stop.
+    var destinationName: String?
+    let accent: Color
 
     enum Status { case done, current, upcoming }
 
-    struct LiveInfo {
-        let stopsAway: Int?
-        let occupancy: Int?
-        let platform: String?
-    }
-
     private var isWalk: Bool { leg.mode == "walk" }
-    private var routeColor: Color { Color(hex: leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "424242") }
+    private var isCurrent: Bool { status == .current }
+    private var routeColor: Color {
+        Color(hex: leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252")
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            if let currentLabel {
-                Label {
-                    Text(currentLabel).font(.caption.weight(.semibold))
-                } icon: {
-                    Circle().fill(Color.white).frame(width: 5, height: 5)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(accent, in: Capsule())
-                .foregroundStyle(.white)
-                .padding(.bottom, 4)
-            }
-
-            if !isWalk, leg.tripUsable == false {
-                Label("This service is not running. Check alternative routes.", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(Theme.danger)
-                    .padding(8)
-                    .background(Theme.danger.opacity(0.1), in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.bottom, 6)
-            }
-
-            if isWalk {
-                walkRow
-            } else {
-                transitRows
-            }
-
-            if !isLast, let waitMinutes, waitMinutes >= 1 {
-                HStack(spacing: 12) {
-                    Image(systemName: "clock").font(.caption2).frame(width: 28)
-                    Text("\(waitMinutes) min wait")
-                }
-                .font(.caption)
-                .foregroundStyle(Theme.mutedForeground)
-                .padding(.vertical, 4)
-            }
+        Group {
+            if isWalk { walk } else { ride }
         }
-        .opacity(status == .done ? 0.4 : 1)
+        .opacity(status == .done ? 0.45 : 1)
     }
 
-    // MARK: - Walk leg
+    // MARK: Walk
 
-    private var walkRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "figure.walk")
-                .font(.caption)
-                .foregroundStyle(Theme.mutedForeground)
-                .frame(width: 28, height: 28)
-                .overlay(Circle().strokeBorder(Theme.mutedForeground.opacity(0.4), style: StrokeStyle(lineWidth: 1, dash: [3])))
-
-            HStack(spacing: 4) {
-                Text(leg.departureTime.date ?? Date(), style: .time).font(.subheadline.weight(.medium)).monospacedDigit()
-                Text(leg.fromStop?.stopName ?? "Start").font(.subheadline).foregroundStyle(Theme.mutedForeground).lineLimit(1)
-                Image(systemName: "arrow.right").font(.caption2).foregroundStyle(Theme.mutedForeground.opacity(0.6))
-                Text(leg.toStop?.stopName ?? "Destination").font(.subheadline).foregroundStyle(Theme.mutedForeground).lineLimit(1)
-                Text(walkSummary).font(.caption).foregroundStyle(Theme.mutedForeground.opacity(0.7))
+    private var walk: some View {
+        TimelineRow(time: leg.departureTime.date, rail: .dotted(Theme.mutedForeground.opacity(0.5)),
+                    marker: .icon("figure.walk", isCurrent ? accent : Theme.mutedForeground), highlighted: isCurrent, accent: accent) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Walk to \(leg.toStop?.stopName ?? destinationName ?? "your destination")")
+                    .font(isCurrent ? .bodyMedium : .bodyText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(walkSummary).font(.meta).foregroundStyle(Theme.mutedForeground)
             }
-            .lineLimit(1)
-            .layoutPriority(1)
+            .padding(.vertical, 10)
         }
-        .padding(.vertical, 6)
     }
 
     private var walkSummary: String {
-        let minutes = max(0, Int((leg.duration.timeInterval / 60).rounded()))
-        var text = "· \(minutes) min"
-        if leg.distanceKm > 0 { text += String(format: " · %.2f km", leg.distanceKm) }
-        return text
+        let minutes = max(1, Int((leg.duration.timeInterval / 60).rounded()))
+        guard leg.distanceKm > 0 else { return "\(minutes) min" }
+        return "\(minutes) min · \(TimeFormatting.formatDistance(meters: leg.distanceKm * 1000))"
     }
 
-    // MARK: - Transit leg
+    // MARK: Ride
 
-    private var transitRows: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .top, spacing: 12) {
-                railIcon
+    private var rideSummary: String {
+        let minutes = max(1, Int((leg.duration.timeInterval / 60).rounded()))
+        return "Ride \(minutes) min"
+    }
+
+    private var ride: some View {
+        VStack(spacing: 0) {
+            // Board
+            TimelineRow(time: leg.departureTime.date, rail: .solid(routeColor, progress: progress, dimmed: status == .done),
+                        marker: .route(leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID, routeColor),
+                        highlighted: isCurrent, accent: accent) {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Text(leg.departureTime.date ?? Date(), style: .time).font(.subheadline.weight(.semibold)).monospacedDigit()
-                        Text(leg.fromStop?.stopName ?? "Start").font(.subheadline).foregroundStyle(Theme.mutedForeground)
+                        Text(leg.fromStop?.stopName ?? "Board").font(isCurrent ? .bodyMedium : .bodyText)
+                            .fixedSize(horizontal: false, vertical: true)
                         if let platform = leg.fromStop?.platformNumber, !platform.isEmpty {
-                            platformBadge(platform)
-                        }
-                        if let headsign = leg.fromStop?.stopHeadsign, !headsign.isEmpty {
-                            Text("towards \(headsign)").font(.caption2).foregroundStyle(Theme.mutedForeground)
-                        }
-                        if leg.fromStop?.wheelchairBoarding == 1 {
-                            Image(systemName: "figure.roll").font(.caption2).foregroundStyle(Theme.mutedForeground)
+                            ShadBadge(text: "Plat. \(platform)", variant: .outline)
                         }
                     }
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if let liveInfo, liveInfo.stopsAway != nil || liveInfo.platform != nil || liveInfo.occupancy != nil {
-                        liveInfoChip(liveInfo)
+                    Text(rideSummary).font(.meta).foregroundStyle(Theme.mutedForeground)
+                    if !leg.tripUsable {
+                        Label("Not running - check alternative routes", systemImage: "exclamationmark.triangle")
+                            .font(.metaMedium).foregroundStyle(Theme.danger)
+                    } else if let delay = leg.delaySeconds, abs(delay) >= 60 {
+                        Text(delay > 0 ? "\(delay / 60) min late" : "\(-delay / 60) min early")
+                            .font(.metaMedium).foregroundStyle(delay > 0 ? Theme.warning : Theme.success)
                     }
                 }
-                .padding(.bottom, 10)
+                .padding(.vertical, 10)
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                ZStack {
-                    if isLast {
-                        Circle().fill(Theme.danger).frame(width: 16, height: 16)
-                            .overlay(Circle().strokeBorder(Theme.background, lineWidth: 2))
-                    } else {
-                        Circle().fill(Theme.background).frame(width: 13, height: 13)
-                            .overlay(Circle().strokeBorder(Theme.mutedForeground.opacity(0.5), lineWidth: 2))
-                    }
-                }
-                .frame(width: 28)
-
+            // Alight
+            TimelineRow(time: leg.arrivalTime.date, rail: .none, marker: .stop(routeColor), highlighted: isCurrent, accent: accent) {
                 HStack(spacing: 6) {
-                    Text(leg.arrivalTime.date ?? Date(), style: .time).font(.subheadline.weight(.semibold)).monospacedDigit()
-                    Text(leg.toStop?.stopName ?? "Destination").font(.subheadline).foregroundStyle(Theme.mutedForeground)
+                    Text("Get off at \(leg.toStop?.stopName ?? "your stop")").font(.bodyText)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let platform = leg.toStop?.platformNumber, !platform.isEmpty {
-                        platformBadge(platform)
-                    }
-                    if leg.toStop?.wheelchairBoarding == 1 {
-                        Image(systemName: "figure.roll").font(.caption2).foregroundStyle(Theme.mutedForeground)
+                        ShadBadge(text: "Plat. \(platform)", variant: .outline)
                     }
                 }
-                .fixedSize(horizontal: false, vertical: true)
+                .padding(.vertical, 10)
             }
         }
     }
+}
 
-    /// The board icon + the connecting line down to the alight dot, filling
-    /// with the route colour as `progress` advances - `GeometryReader`
-    /// gives the line its parent's actual height (set by the board row's
-    /// content next to it), matching the web's flex-sized rail column.
-    private var railIcon: some View {
-        VStack(spacing: 2) {
-            ZStack {
-                Circle().fill(routeColor.opacity(leg.tripUsable == false ? 0.5 : 1))
-                Image(systemName: vehicleIconName).font(.system(size: 10, weight: .semibold)).foregroundStyle(.white)
+/// A small muted pill for live facts - "Live", "2 stops away", "Plat. 4".
+/// With a `tint`, the chip takes that status colour (late, cancelled).
+struct StatusChipStyle: ViewModifier {
+    var tint: Color?
+
+    func body(content: Content) -> some View {
+        content
+            .font(.geist(12, .medium, relativeTo: .caption))
+            .foregroundStyle(tint ?? Theme.foreground)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(tint.map { $0.opacity(0.14) } ?? Theme.muted, in: Capsule())
+    }
+}
+
+/// One timeline line: time column | rail + marker | content. The rail
+/// segment runs from this row's marker down to the next row, so stacked
+/// rows draw one continuous line.
+struct TimelineRow<Content: View>: View {
+    enum Rail {
+        case none
+        case dotted(Color)
+        /// `progress` fills the segment with full colour from the top.
+        case solid(Color, progress: Double? = nil, dimmed: Bool = false)
+    }
+
+    enum Marker {
+        case none
+        case icon(String, Color)
+        case route(String, Color)
+        case stop(Color)
+        case destination
+    }
+
+    let time: Date?
+    let rail: Rail
+    let marker: Marker
+    let highlighted: Bool
+    var accent: Color = Theme.live
+    @ViewBuilder var content: Content
+
+    private let timeWidth: CGFloat = 58
+    private let railWidth: CGFloat = 34
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            Group {
+                if let time {
+                    Text(time, style: .time)
+                        .font(.geist(13, highlighted ? .semibold : .medium, relativeTo: .footnote))
+                        .monospacedDigit()
+                        .foregroundStyle(highlighted ? Theme.foreground : Theme.mutedForeground)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .padding(.top, 11)
+                } else {
+                    Color.clear
+                }
             }
-            .frame(width: 24, height: 24)
+            .frame(width: timeWidth, alignment: .trailing)
 
+            railColumn.frame(width: railWidth)
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.trailing, 14)
+        .background(highlighted ? accent.opacity(0.08) : .clear)
+        .overlay(alignment: .leading) {
+            if highlighted { Rectangle().fill(accent).frame(width: 3) }
+        }
+    }
+
+    private var railColumn: some View {
+        ZStack(alignment: .top) {
+            // Segment from the marker's centre down to the next row.
             GeometryReader { geo in
-                ZStack(alignment: .top) {
-                    Capsule().fill(routeColor.opacity(status == .done ? 0.2 : 0.35))
-                    if let progress {
-                        Capsule().fill(routeColor).frame(height: geo.size.height * max(0, min(1, progress)))
-                            .animation(.linear(duration: 1), value: progress)
+                let top: CGFloat = 20
+                let height = max(0, geo.size.height - top)
+                switch rail {
+                case .none:
+                    EmptyView()
+                case .dotted(let color):
+                    Path { p in
+                        p.move(to: CGPoint(x: geo.size.width / 2, y: top))
+                        p.addLine(to: CGPoint(x: geo.size.width / 2, y: geo.size.height))
                     }
+                    .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 5]))
+                case .solid(let color, let progress, let dimmed):
+                    ZStack(alignment: .top) {
+                        Capsule().fill(color.opacity(dimmed ? 0.3 : (progress == nil ? 1 : 0.3)))
+                            .frame(width: 4, height: height)
+                        if let progress {
+                            Capsule().fill(color)
+                                .frame(width: 4, height: height * max(0, min(1, progress)))
+                                .animation(.linear(duration: 1), value: progress)
+                        }
+                    }
+                    .frame(width: geo.size.width)
+                    .offset(y: top)
                 }
             }
-            .frame(width: 2)
-            .frame(maxHeight: .infinity)
-        }
-        .frame(width: 28)
-    }
-
-    private var vehicleIconName: String {
-        switch leg.route?.routeType {
-        case 2: return "tram.fill" // rail
-        case 4: return "ferry.fill"
-        default: return "bus.fill"
+            markerView.padding(.top, 8)
         }
     }
 
-    private func platformBadge(_ platform: String) -> some View {
-        Text("Plat. \(platform)")
-            .font(.caption2.weight(.medium))
-            .padding(.horizontal, 5)
-            .padding(.vertical, 1)
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(Theme.border, lineWidth: 1))
-    }
-
-    private func liveInfoChip(_ info: LiveInfo) -> some View {
-        HStack(spacing: 6) {
-            Label {
-                Text("Live").font(.caption2.weight(.semibold))
-            } icon: {
-                Circle().fill(Theme.success).frame(width: 5, height: 5)
-            }
-            if let stopsAway = info.stopsAway {
-                Text("\(stopsAway) \(stopsAway == 1 ? "stop" : "stops") away")
-            }
-            if let platform = info.platform {
-                Text("Platform \(platform)")
-            }
-            if let occupancy = info.occupancy {
-                OccupancyIconsView(occupancy: occupancy)
-                Text(OccupancyText.label(occupancy))
-            }
+    @ViewBuilder
+    private var markerView: some View {
+        switch marker {
+        case .none:
+            Color.clear.frame(width: 1, height: 24)
+        case .icon(let name, let color):
+            Image(systemName: name)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(color)
+                .frame(width: 24, height: 24)
+                .background(Theme.card, in: Circle())
+                .overlay(Circle().strokeBorder(color.opacity(0.5), lineWidth: 1.5))
+        case .route(let name, let color):
+            Text(name)
+                .font(.geist(10, .bold, relativeTo: .caption2))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 3)
+                .frame(minWidth: 26, minHeight: 24)
+                .background(color, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        case .stop(let color):
+            Circle().fill(Theme.card).frame(width: 14, height: 14)
+                .overlay(Circle().strokeBorder(color, lineWidth: 3))
+                .padding(.top, 5)
+        case .destination:
+            Image(systemName: "flag.checkered")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 24, height: 24)
+                .background(Theme.danger, in: Circle())
         }
-        .font(.caption2)
-        .foregroundStyle(Theme.mutedForeground)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(Theme.mutedForeground.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
     }
 }

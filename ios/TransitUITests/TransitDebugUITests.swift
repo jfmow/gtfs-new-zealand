@@ -192,6 +192,26 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "app died after pinch-zoom on VehiclesMapView")
     }
 
+    /// Tapping a cluster zooms in one layer: the group splits into smaller
+    /// groups / single stops rather than jumping to street level.
+    func testClusterTapExpands() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.tabBars.buttons["Stops"].tap()
+        sleep(4)
+        attach("cl-01-before")
+        let groups = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Group of "))
+        let before = groups.count
+        let group = groups.element(boundBy: min(2, max(0, before - 1)))
+        guard group.waitForExistence(timeout: 5) else { return XCTFail("no clusters on the map") }
+        let label = group.label
+        group.tap()
+        sleep(3)
+        attach("cl-02-after")
+        XCTAssertFalse(app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch.exists && groups.count == before,
+                       "cluster didn't expand")
+    }
+
     /// Regression check for the address-search decode bug (boundingBox
     /// `[Double]?` vs the wire's `[String]?`, fixed 2026-09-22): types a
     /// real street address into the Planner's From field and confirms at
@@ -773,11 +793,20 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 3)
         sleep(5)
 
-        let better = app.buttons["Find a better route from here"]
+        let better = app.buttons["Find a better route"]
         guard better.waitForExistence(timeout: 8) else {
             attach("rp-00-no-button")
             return XCTFail("no re-plan button")
         }
+        sleep(3)
+        attach("rp-00-drawer-compact")
+        // Drag the drawer up to show the timeline, then back down.
+        let top = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.643))
+        top.press(forDuration: 0.1, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)))
+        sleep(2)
+        attach("rp-00-drawer-large")
+        app.windows.firstMatch.swipeDown()
+        sleep(2)
         better.tap()
         sleep(1)
         attach("rp-01-choices")

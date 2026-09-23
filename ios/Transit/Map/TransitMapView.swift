@@ -3,14 +3,23 @@ import SwiftUI
 import TransitCore
 
 /// How the map should point its camera - mirrors the web map's
-/// `defaultZoom`/`followMarkerId`/`followFitWith` behaviour,
-/// simplified to the cases this app needs.
+/// `defaultZoom`/`followMarkerId`/`followFitWith`/`followUser` behaviour.
+/// Every mode frames within `cameraInsets` (the part of the map not
+/// covered by overlays like the tracker's drawer).
 enum MapCamera: Equatable {
     case region(center: Coordinate, radiusMeters: Double)
     case fitAll
 
-    /// Re-centre on this annotation id every time its position updates.
-    case follow(annotationID: String)
+    /// Keep this annotation centred as it moves. With `spanMeters`, the
+    /// zoom is set to that span when following starts (so following a bus
+    /// from a zoomed-out overview zooms in); after that only the centre
+    /// moves, leaving the rider's pinch-zoom alone.
+    case follow(annotationID: String, spanMeters: Double? = nil)
+
+    /// Frame all of these points (e.g. the bus and the stop you're waiting
+    /// at), never tighter than `minSpanMeters` - the web's
+    /// `followFitWith` with its `maxZoom`.
+    case frame(points: [Coordinate], minSpanMeters: Double)
 
     /// Leave the camera alone - the user is free-panning.
     case none
@@ -55,6 +64,18 @@ struct TransitMapView: UIViewRepresentable {
     /// would otherwise make a second tap silently do nothing whenever nothing
     /// else about the camera value had changed since the first tap.
     var centerOnUserLocationTrigger: Int = 0
+
+    /// The unobscured part of the map - camera modes frame inside this.
+    var cameraInsets: UIEdgeInsets = .zero
+
+    /// Fires when the person pans/zooms/rotates the map themselves - a
+    /// screen with an automatic camera pauses it (Apple Maps style) until
+    /// they ask to re-centre.
+    var onUserInteraction: (() -> Void)?
+
+    /// Bump to re-apply `camera` even if its value hasn't changed (after
+    /// the person re-centres).
+    var cameraResetToken: Int = 0
 
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
@@ -102,6 +123,7 @@ struct TransitMapView: UIViewRepresentable {
             in: mapView
         )
 
+        context.coordinator.applyCameraReset(cameraResetToken)
         context.coordinator.applyCamera(camera, to: mapView)
         context.coordinator.applyCenterOnUserLocationTrigger(centerOnUserLocationTrigger, to: mapView)
     }
@@ -131,6 +153,17 @@ struct TransitMapView: UIViewRepresentable {
         /// Last `centerOnUserLocationTrigger` value handled - see that
         /// property's doc comment.
         private var lastCenterOnUserLocationTrigger = 0
+        private var lastCameraResetToken = 0
+        /// The annotation `.follow` last set a span for - so the span is set
+        /// once when following starts, not on every position update.
+        private var followSpanAppliedFor: String?
+
+        func applyCameraReset(_ token: Int) {
+            guard token != lastCameraResetToken else { return }
+            lastCameraResetToken = token
+            lastAppliedCamera = nil
+            followSpanAppliedFor = nil
+        }
 
         init(_ parent: TransitMapView) {
             self.parent = parent
@@ -278,99 +311,100 @@ struct TransitMapView: UIViewRepresentable {
             }
         }
 
-        func applyCamera(
-            _ camera: MapCamera,
-            to mapView: MKMapView
-        ) {
+        func applyCamera(_ camera: MapCamera, to mapView: MKMapView) {
+            let insets = parent.cameraInsets
             switch camera {
-
             case .none:
                 return
 
             case .region(let center, let radiusMeters):
-                guard camera != lastAppliedCamera else {
-                    return
-                }
-
+                guard camera != lastAppliedCamera else { return }
                 lastAppliedCamera = camera
+                let rect = Self.mapRect(around: [center], minSpanMeters: radiusMeters)
+                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
 
-                let region = MKCoordinateRegion(
-                    center: CLLocationCoordinate2D(
-                        latitude: center.latitude,
-                        longitude: center.longitude
-                    ),
-                    latitudinalMeters: radiusMeters,
-                    longitudinalMeters: radiusMeters
-                )
-
-                mapView.setRegion(region, animated: true)
+            case .frame(let points, let minSpan):
+                guard camera != lastAppliedCamera, !points.isEmpty else { return }
+                lastAppliedCamera = camera
+                let rect = Self.mapRect(around: points, minSpanMeters: minSpan)
+                let padding = UIEdgeInsets(top: insets.top + 40, left: insets.left + 40, bottom: insets.bottom + 40, right: insets.right + 40)
+                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: padding, animated: true) }
 
             case .fitAll:
-                // `showAnnotations` only frames point annotations - a map
-                // showing just a route polyline (no stop/vehicle markers,
-                // e.g. JourneyDetailView's preview map) has none, so that
-                // call was a no-op and the map never actually zoomed to the
-                // route at all. Union annotation points with every overlay's
-                // bounding rect instead, so a polyline-only map still frames
-                // correctly.
-                guard camera != lastAppliedCamera else {
-                    return
-                }
-
+                // Union annotation points with every overlay's rect - a
+                // polyline-only map (a journey preview) has no annotations,
+                // so `showAnnotations` alone never framed the route.
+                guard camera != lastAppliedCamera else { return }
                 var rect = MKMapRect.null
-
-                for annotation in mapView.annotations {
+                for annotation in mapView.annotations where !(annotation is MKUserLocation) {
                     let point = MKMapPoint(annotation.coordinate)
-
-                    rect = rect.union(
-                        MKMapRect(
-                            x: point.x,
-                            y: point.y,
-                            width: 0,
-                            height: 0
-                        )
-                    )
+                    rect = rect.union(MKMapRect(x: point.x, y: point.y, width: 0, height: 0))
                 }
-
                 for overlay in mapView.overlays {
                     rect = rect.union(overlay.boundingMapRect)
                 }
-
-                guard !rect.isNull else {
-                    return
-                }
-
+                guard !rect.isNull else { return }
                 lastAppliedCamera = camera
+                let padding = UIEdgeInsets(top: insets.top + 40, left: insets.left + 30, bottom: insets.bottom + 40, right: insets.right + 30)
+                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: padding, animated: true) }
 
-                mapView.setVisibleMapRect(
-                    rect,
-                    edgePadding: UIEdgeInsets(
-                        top: 60,
-                        left: 40,
-                        bottom: 60,
-                        right: 40
-                    ),
-                    animated: true
-                )
-
-            case .follow(let id):
-                // `vehiclesByID[id] ?? stopsByID[id]` infers the nearest
-                // common ancestor (NSObject, not MKAnnotation) since these
-                // are two different concrete classes - handle them
-                // separately instead of relying on that inference.
-
+            case .follow(let id, let spanMeters):
+                lastAppliedCamera = camera
+                let coordinate: CLLocationCoordinate2D?
                 if let vehicle = vehiclesByID[id] {
-                    mapView.setCenter(
-                        vehicle.coordinate,
-                        animated: true
-                    )
+                    coordinate = vehicle.coordinate
                 } else if let stop = stopsByID[id] {
-                    mapView.setCenter(
-                        stop.coordinate,
-                        animated: true
-                    )
+                    coordinate = stop.coordinate
+                } else {
+                    coordinate = nil
+                }
+                guard let coordinate else { return }
+
+                if let spanMeters, followSpanAppliedFor != id {
+                    followSpanAppliedFor = id
+                    let rect = Self.mapRect(around: [Coordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)], minSpanMeters: spanMeters)
+                    move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
+                } else {
+                    // Keep the zoom; put the point in the middle of the
+                    // unobscured area rather than the middle of the view.
+                    let center = Self.center(placing: coordinate, inInsets: insets, of: mapView)
+                    move(mapView) { mapView.setCenter(center, animated: true) }
                 }
             }
+        }
+
+        private func move(_ mapView: MKMapView, _ change: () -> Void) {
+            change()
+        }
+
+        /// A map rect containing `points`, at least `minSpanMeters` across.
+        static func mapRect(around points: [Coordinate], minSpanMeters: Double) -> MKMapRect {
+            var rect = MKMapRect.null
+            for point in points {
+                let p = MKMapPoint(CLLocationCoordinate2D(latitude: point.latitude, longitude: point.longitude))
+                rect = rect.union(MKMapRect(x: p.x, y: p.y, width: 0, height: 0))
+            }
+            let pointsPerMeter = MKMapPointsPerMeterAtLatitude(points.first?.latitude ?? 0)
+            let minSide = minSpanMeters * pointsPerMeter
+            if rect.width < minSide { rect = rect.insetBy(dx: -(minSide - rect.width) / 2, dy: 0) }
+            if rect.height < minSide { rect = rect.insetBy(dx: 0, dy: -(minSide - rect.height) / 2) }
+            return rect
+        }
+
+        /// The map centre that puts `coordinate` in the middle of the part
+        /// of the view not covered by `insets`, at the current zoom.
+        static func center(placing coordinate: CLLocationCoordinate2D, inInsets insets: UIEdgeInsets, of mapView: MKMapView) -> CLLocationCoordinate2D {
+            let bounds = mapView.bounds
+            guard bounds.width > 0, bounds.height > 0 else { return coordinate }
+            let visibleMidX = insets.left + (bounds.width - insets.left - insets.right) / 2
+            let visibleMidY = insets.top + (bounds.height - insets.top - insets.bottom) / 2
+            let dx = bounds.midX - visibleMidX
+            let dy = bounds.midY - visibleMidY
+            let pointsPerScreenPoint = mapView.visibleMapRect.width / Double(bounds.width)
+            var target = MKMapPoint(coordinate)
+            target.x += Double(dx) * pointsPerScreenPoint
+            target.y += Double(dy) * pointsPerScreenPoint
+            return target.coordinate
         }
 
         /// One-shot recentre on the device's own location, from
@@ -397,6 +431,17 @@ struct TransitMapView: UIViewRepresentable {
 
         // MARK: - MKMapViewDelegate
 
+        func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
+            // A change the person made with their fingers (pan, pinch,
+            // rotate) - programmatic moves never have an active gesture.
+            let gestureDriven = mapView.subviews.first?.gestureRecognizers?.contains {
+                $0.state == .began || $0.state == .changed
+            } ?? false
+            if gestureDriven {
+                parent.onUserInteraction?()
+            }
+        }
+
         func mapView(
             _ mapView: MKMapView,
             regionDidChangeAnimated animated: Bool
@@ -422,6 +467,9 @@ struct TransitMapView: UIViewRepresentable {
                 view.markerTintColor = .systemGray
                 view.glyphText = "\(cluster.memberAnnotations.count)"
                 view.annotation = cluster
+                let kind = cluster.memberAnnotations.first is VehicleAnnotation ? "vehicles" : "stops"
+                view.accessibilityLabel = "Group of \(cluster.memberAnnotations.count) \(kind)"
+                view.accessibilityHint = "Zooms in to show them"
 
                 return view
             }
@@ -514,11 +562,38 @@ struct TransitMapView: UIViewRepresentable {
             _ mapView: MKMapView,
             didSelect annotation: MKAnnotation
         ) {
-            if let stop = annotation as? StopAnnotation {
+            if let cluster = annotation as? MKClusterAnnotation {
+                mapView.deselectAnnotation(cluster, animated: false)
+                // A deliberate camera move - stop any auto-follow.
+                parent.onUserInteraction?()
+                mapView.setVisibleMapRect(Self.expansionRect(for: cluster, in: mapView), animated: true)
+            } else if let stop = annotation as? StopAnnotation {
                 parent.onSelectStop?(stop.id)
             } else if let vehicle = annotation as? VehicleAnnotation {
                 parent.onSelectVehicle?(vehicle.id)
             }
+        }
+
+        /// Where tapping a cluster zooms to: one step in, enough for the group
+        /// to break into its next layer of smaller groups or single markers
+        /// (the web's supercluster `getClusterExpansionZoom`), not a jump
+        /// straight down to street level. Centred on the group's members and
+        /// never tighter than their spread, so none end up off screen.
+        static func expansionRect(for cluster: MKClusterAnnotation, in mapView: MKMapView) -> MKMapRect {
+            var members = MKMapRect.null
+            for member in cluster.memberAnnotations {
+                let point = MKMapPoint(member.coordinate)
+                members = members.union(MKMapRect(x: point.x, y: point.y, width: 0, height: 0))
+            }
+            let visible = mapView.visibleMapRect
+            let aspect = visible.height / max(visible.width, 1)
+            // Two zoom levels in, but loosened to fit the members with a margin.
+            var width = visible.width / 4
+            width = max(width, members.width * 1.4, members.height * 1.4 / max(aspect, 0.01))
+            width = min(width, visible.width / 2)
+            let height = width * aspect
+            let center = MKMapPoint(x: members.midX, y: members.midY)
+            return MKMapRect(x: center.x - width / 2, y: center.y - height / 2, width: width, height: height)
         }
 
         private func symbolName(forStopType type: String) -> String {
