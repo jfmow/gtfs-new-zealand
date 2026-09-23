@@ -26,8 +26,9 @@ struct JourneyTimeline: View {
         VStack(spacing: 0) {
             if let startName, let first = legs.first {
                 TimelineRow(time: first.departureTime.date, rail: .dotted(Theme.mutedForeground.opacity(0.5)), marker: .start, highlighted: false) {
+                    // A searched address can be very long - three lines is plenty.
                     Text("Leave from \(startName)").font(.bodyMedium).padding(.vertical, 10)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(3)
                 }
             }
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
@@ -197,7 +198,8 @@ struct TimelineRow<Content: View>: View {
     var accent: Color = Theme.live
     @ViewBuilder var content: Content
 
-    private let timeWidth: CGFloat = 58
+    /// Grows with Dynamic Type so "12:45 PM" never truncates at large sizes.
+    @ScaledMetric(relativeTo: .footnote) private var timeWidth: CGFloat = 58
     private let railWidth: CGFloat = 34
 
     var body: some View {

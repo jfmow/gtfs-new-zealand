@@ -45,7 +45,7 @@ struct NotificationsBellSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .pageBackground()
+            .groupedPageBackground()
             .overlay {
                 if feed.entries.isEmpty {
                     EmptyState(systemImage: "bell", title: "No notifications yet",
@@ -161,7 +161,7 @@ struct ManageNotificationsView: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .pageBackground()
+        .groupedPageBackground()
         .overlay {
             if isLoading {
                 ProgressView()

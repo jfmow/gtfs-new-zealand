@@ -48,7 +48,7 @@ struct AlertSubscriptionSheet: View {
                     form
                 }
             }
-            .pageBackground()
+            .groupedPageBackground()
             .navigationTitle(target.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -141,6 +141,7 @@ struct AlertSubscriptionSheet: View {
             if isStop {
                 Section {
                     Button("Turn off alerts for all stops", role: .destructive) { confirmingDisableAll = true }
+                        .foregroundStyle(Theme.danger)
                         .listRowBackground(Theme.card)
                 }
             }
@@ -290,7 +291,7 @@ private struct AlertTypesPicker: View {
             }
         }
         .scrollContentBackground(.hidden)
-        .pageBackground()
+        .groupedPageBackground()
         .navigationTitle("Alert types")
         .navigationBarTitleDisplayMode(.inline)
     }

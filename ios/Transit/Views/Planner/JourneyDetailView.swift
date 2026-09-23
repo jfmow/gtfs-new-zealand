@@ -92,18 +92,24 @@ struct JourneyDetailView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Departs").font(.meta).foregroundStyle(Theme.mutedForeground)
-                if let date = plan.departureTime.date { Text(date, style: .time).font(.number(24)) }
+                if let date = plan.departureTime.date {
+                    Text(date, style: .time).font(.number(24)).lineLimit(1).minimumScaleFactor(0.6)
+                }
             }
-            Spacer()
+            Spacer(minLength: 6)
             VStack(spacing: 2) {
-                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.metaMedium)
+                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.metaMedium).lineLimit(1)
                 ShadBadge(text: plan.transfers == 0 ? "Direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")",
                           variant: plan.transfers == 0 ? .default : .secondary)
+                    .fixedSize()
             }
-            Spacer()
+            .layoutPriority(1)
+            Spacer(minLength: 6)
             VStack(alignment: .trailing, spacing: 2) {
                 Text("Arrives").font(.meta).foregroundStyle(Theme.mutedForeground)
-                if let date = plan.arrivalTime.date { Text(date, style: .time).font(.number(24)) }
+                if let date = plan.arrivalTime.date {
+                    Text(date, style: .time).font(.number(24)).lineLimit(1).minimumScaleFactor(0.6)
+                }
             }
         }
         .padding(14)

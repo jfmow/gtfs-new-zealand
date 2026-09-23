@@ -559,7 +559,7 @@ struct PlannerOptionsSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .pageBackground()
+            .groupedPageBackground()
             .tint(Theme.primary)
             .navigationTitle("Options")
             .navigationBarTitleDisplayMode(.inline)

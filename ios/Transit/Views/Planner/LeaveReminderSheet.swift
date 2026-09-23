@@ -80,7 +80,7 @@ struct LeaveReminderSheet: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("\(startPlace.label) → \(endPlace.label)")
                             .font(.bodyMedium)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .lineLimit(3)
                         Text(targetText.prefix(1).uppercased() + targetText.dropFirst())
                             .font(.meta)
                             .foregroundStyle(Theme.mutedForeground)
@@ -133,7 +133,7 @@ struct LeaveReminderSheet: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .pageBackground()
+            .groupedPageBackground()
             .tint(Theme.primary)
             .navigationTitle("Remind me")
             .navigationBarTitleDisplayMode(.inline)

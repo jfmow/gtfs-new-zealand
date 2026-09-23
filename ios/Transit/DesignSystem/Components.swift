@@ -447,6 +447,14 @@ extension View {
             .font(.bodyText)
             .foregroundStyle(Theme.foreground)
     }
+
+    /// For a Form or List (with `.scrollContentBackground(.hidden)`): the
+    /// grouped background, so rows read as rows in light mode.
+    func groupedPageBackground() -> some View {
+        background(Theme.groupedBackground.ignoresSafeArea())
+            .font(.bodyText)
+            .foregroundStyle(Theme.foreground)
+    }
 }
 
 // MARK: - Conditional modifiers

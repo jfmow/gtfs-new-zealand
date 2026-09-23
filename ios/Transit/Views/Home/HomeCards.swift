@@ -200,7 +200,7 @@ struct ManageFavouritesSheet: View {
                 .onDelete(perform: delete)
             }
             .scrollContentBackground(.hidden)
-            .pageBackground()
+            .groupedPageBackground()
             .environment(\.editMode, .constant(.active))
             .navigationTitle("Favourites")
             .navigationBarTitleDisplayMode(.inline)

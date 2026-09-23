@@ -29,6 +29,9 @@ enum Theme {
     static let secondary = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
     static let secondaryForeground = foreground
     static let muted = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
+    /// Behind grouped forms and lists, so white rows stand out in light
+    /// mode (iOS's grouped background); the page colour in dark mode.
+    static let groupedBackground = Color(light: 0xF2F2F4, dark: 0x171717)
     static let mutedForeground = Color(light: 0x737373, dark: 0xA3A3A3)
     static let accent = Color(light: 0xF5F5F5, dark: 0x2E2E2E)
     static let accentForeground = foreground
