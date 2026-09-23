@@ -18,7 +18,9 @@ struct DeepLinkPresentationView: View {
             Group {
                 switch link {
                 case .journey(let id, _):
-                    journeyContent(id: id)
+                    journeyContent(id: id, track: false)
+                case .trackJourney(let id, _):
+                    journeyContent(id: id, track: true)
                 case .trip(let tripID, _):
                     VehicleQuickLookView(tripID: tripID)
                 case .stop(let query):
@@ -44,9 +46,13 @@ struct DeepLinkPresentationView: View {
     }
 
     @ViewBuilder
-    private func journeyContent(id: String) -> some View {
+    private func journeyContent(id: String, track: Bool) -> some View {
         if let plan {
-            JourneyDetailView(plan: plan)
+            if track {
+                JourneyTrackingView(plan: plan)
+            } else {
+                JourneyDetailView(plan: plan)
+            }
         } else if let errorMessage {
             ContentUnavailableView("This journey link has expired", systemImage: "clock.badge.xmark", description: Text(errorMessage))
         } else {

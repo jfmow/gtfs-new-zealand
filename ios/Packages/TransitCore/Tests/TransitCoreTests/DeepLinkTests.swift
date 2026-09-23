@@ -49,6 +49,11 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(DeepLink(string: "/journey?id=abc&region=wel"), .journey(id: "abc", region: "wel"))
     }
 
+    func testTrackFlagOpensTracking() {
+        XCTAssertEqual(DeepLink(string: "/journey?id=abc&region=at&track=1"), .trackJourney(id: "abc", region: "at"))
+        XCTAssertEqual(DeepLink(string: "transit://journey?id=abc&track=true"), .trackJourney(id: "abc", region: nil))
+    }
+
     func testNotificationsAndSettingsPaths() {
         XCTAssertEqual(DeepLink(string: "/notifications"), .notifications)
         XCTAssertEqual(DeepLink(string: "/settings"), .notifications)

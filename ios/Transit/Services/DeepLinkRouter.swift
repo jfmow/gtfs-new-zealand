@@ -15,6 +15,33 @@ final class DeepLinkRouter {
     var selectedTab: Tab = .schedule
     /// Consumed (set back to nil) by `PlannerView` once applied.
     var pendingPlan: PlanPrefill?
+    /// Set by `JourneyTrackingView` while it's on screen, so the resume
+    /// pill doesn't sit on top of the journey it would resume.
+    var isTrackingVisible = false
+
+    /// Set by the tracker's "Find a better route from here"; consumed by
+    /// `PlannerView`, which re-plans from `origin` and offers to go back.
+    var pendingReplan: ReplanRequest?
+
+    struct ReplanRequest: Equatable {
+        let origin: PlannerLocation
+        let destination: PlannerLocation
+        let departAt: Date
+        /// The journey being replaced, for "Keep the route I was on".
+        let planID: String
+        let regionSlug: String
+        let arrivalTime: Date?
+    }
+
+    func replan(_ request: ReplanRequest) {
+        pendingReplan = request
+        activeLink = nil
+        selectedTab = .planner
+    }
+
+    func resume(planID: String, regionSlug: String) {
+        activeLink = .trackJourney(id: planID, region: regionSlug)
+    }
 
     func handle(_ url: URL) {
         guard let link = DeepLink(url: url) else { return }

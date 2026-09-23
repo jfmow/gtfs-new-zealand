@@ -69,6 +69,11 @@ struct JourneyDetailView: View {
                 }
             }
         }
+        .onAppear {
+            // Came back after minimising the tracker: it's still running.
+            let id = plan.id
+            isActive = ((try? modelContext.fetchCount(FetchDescriptor<ActiveJourney>(predicate: #Predicate { $0.planID == id }))) ?? 0) > 0
+        }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan)
         }
@@ -102,12 +107,11 @@ struct JourneyDetailView: View {
     private var actions: some View {
         VStack(spacing: 8) {
             Button {
-                startJourney()
+                if isActive { isTracking = true } else { startJourney() }
             } label: {
-                Label(isActive ? "Journey started" : "Start this journey", systemImage: "location.north.fill")
+                Label(isActive ? "Resume tracking" : "Start this journey", systemImage: "location.north.fill")
             }
             .buttonStyle(.shad(.default, size: .pill, fullWidth: true))
-            .disabled(isActive)
 
             if hasTransit, (plan.departureTime.date ?? .distantPast) > Date().addingTimeInterval(60) {
                 Button {
@@ -164,9 +168,11 @@ struct JourneyDetailView: View {
 
     private func startJourney() {
         guard let arrival = plan.arrivalTime.date else { return }
+        // Only one journey is tracked at a time.
+        for old in (try? modelContext.fetch(FetchDescriptor<ActiveJourney>())) ?? [] { modelContext.delete(old) }
         let journey = ActiveJourney(
             planID: plan.id, regionSlug: environment.region.slug,
-            endLabel: plan.legs.last?.toStop?.stopName ?? "Destination", arrivalTime: arrival
+            endLabel: context?.end?.label ?? plan.legs.last?.toStop?.stopName ?? "your destination", arrivalTime: arrival
         )
         modelContext.insert(journey)
         isActive = true

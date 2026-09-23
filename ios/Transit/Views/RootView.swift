@@ -31,6 +31,10 @@ struct RootView: View {
                 .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
                 .tag(DeepLinkRouter.Tab.alerts)
         }
+        .overlay(alignment: .bottom) {
+            // Sits just above the tab bar, like the web's bottom pill.
+            ResumeJourneyPill().padding(.bottom, 92)
+        }
         .tint(Theme.primary)
         .font(.bodyText)
         .toastOverlay(environment.toasts)

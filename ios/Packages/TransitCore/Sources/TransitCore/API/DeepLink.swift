@@ -13,6 +13,9 @@ import Foundation
 ///   notification rows serve the web app too.
 public enum DeepLink: Equatable, Sendable, Identifiable {
     case journey(id: String, region: String?)
+    /// `/journey?id=...&track=1` - open straight into live tracking (the
+    /// web's share links, the resume prompt, a Live Activity tap).
+    case trackJourney(id: String, region: String?)
     case trip(tripID: String, region: String?)
     /// A stop's departure board - `/?s=<name + code>`.
     case stop(query: String)
@@ -29,6 +32,7 @@ public enum DeepLink: Equatable, Sendable, Identifiable {
     public var id: String {
         switch self {
         case .journey(let id, let region): return "journey:\(region ?? "")/\(id)"
+        case .trackJourney(let id, let region): return "track:\(region ?? "")/\(id)"
         case .trip(let tripID, let region): return "trip:\(region ?? "")/\(tripID)"
         case .stop(let query): return "stop:\(query)"
         case .stopAlerts(let query): return "stop-alerts:\(query)"
@@ -40,7 +44,7 @@ public enum DeepLink: Equatable, Sendable, Identifiable {
 
     public var region: String? {
         switch self {
-        case .journey(_, let region), .trip(_, let region): return region
+        case .journey(_, let region), .trackJourney(_, let region), .trip(_, let region): return region
         case .plan(let prefill): return prefill.region
         default: return nil
         }
@@ -83,7 +87,8 @@ public enum DeepLink: Equatable, Sendable, Identifiable {
         switch route {
         case "journey":
             guard let id = query["id"], !id.isEmpty else { return nil }
-            self = .journey(id: id, region: query["region"])
+            let track = query["track"] == "1" || query["track"] == "true"
+            self = track ? .trackJourney(id: id, region: query["region"]) : .journey(id: id, region: query["region"])
         case "trip", "vehicles":
             guard let tripID = query["tripId"], !tripID.isEmpty else { return nil }
             self = .trip(tripID: tripID, region: query["region"])

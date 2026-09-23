@@ -11,6 +11,7 @@ struct JourneyTrackingView: View {
     let plan: JourneyPlan
 
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
@@ -110,7 +111,7 @@ struct JourneyTrackingView: View {
                 .presentationDetents([.height(340), .medium, .large], selection: $sheetDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                .presentationBackground(.regularMaterial)
+                .presentationBackground(Theme.background)
                 .presentationCornerRadius(20)
                 .interactiveDismissDisabled()
         }
@@ -119,7 +120,9 @@ struct JourneyTrackingView: View {
             walkStep = walkTracker.update(steps: steps, location: newValue)
         }
         .task { await start() }
+        .onAppear { router.isTrackingVisible = true }
         .onDisappear {
+            router.isTrackingVisible = false
             pollTask?.cancel()
             // Safety net if this view ever leaves the stack by some path
             // other than `endJourney()` - see `isTrackerSheetPresented`.
@@ -149,12 +152,30 @@ struct JourneyTrackingView: View {
     /// yet and it's the only way to get notified.
     private var topBar: some View {
         HStack {
+            // Step out without ending: the journey stays active (Live
+            // Activity keeps updating, the resume pill brings you back) -
+            // the web's tracker can be closed and resumed the same way.
+            FloatingBarButton {
+                Button {
+                    leaveTracker()
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .accessibilityLabel("Minimise")
+            }
             Spacer()
             FloatingBarButton {
                 Button("End", role: .destructive) { endJourney() }
             }
         }
         .padding(.horizontal, 16)
+    }
+
+    /// Leaves the screen but keeps the journey running.
+    private func leaveTracker() {
+        pollTask?.cancel()
+        isTrackerSheetPresented = false
+        DispatchQueue.main.async { dismiss() }
     }
 
     // MARK: - Phase banner (the hero of the screen)
@@ -501,28 +522,79 @@ struct JourneyTrackingView: View {
         .padding(.vertical, 8)
     }
 
+    /// "Find a better route from here" - the web's re-plan popover: the
+    /// choices that make sense for where the rider is, handed to the
+    /// Planner, which re-plans and offers "Keep the route I was on". Red
+    /// when a later connection can no longer be made.
+    @ViewBuilder
     private var findBetterRouteButton: some View {
-        Button {
-            // Re-plan-from-here isn't wired up yet (needs the planner's
-            // request context threaded through here) - tracked as a
-            // follow-up; the button is shown disabled-looking rather than
-            // hidden so it's clear this exists, matching the web's always-
-            // visible placement.
-        } label: {
-            Label("Find a better route from here", systemImage: "arrow.triangle.2.circlepath")
-                .font(.caption.weight(.medium))
+        let choices = replanChoices
+        if !choices.isEmpty {
+            Menu {
+                Section("Re-plan from…") {
+                    ForEach(choices) { choice in
+                        Button { startReplan(choice) } label: {
+                            Text(choice.label)
+                            Text(choice.detail)
+                        }
+                    }
+                }
+            } label: {
+                Label("Find a better route from here", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .buttonStyle(.shad(replanUrgent ? .destructive : .outline, size: .default, fullWidth: true))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
-        .buttonStyle(.shad(.outline, size: .pill, fullWidth: true))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
-        .opacity(0.5)
-        .disabled(true)
     }
 
-    /// `transit://journey?id=...&region=...` - the same deep-link schema
-    /// `DeepLink.swift` parses, so a shared link reopens this same journey.
+    private var replanChoices: [ReplanChoice] {
+        guard let snapshot else { return [] }
+        let vehicle = snapshot.trackedTripID.flatMap { vehiclesByTripID[$0] }
+        let next = vehicle?.trip?.nextStop
+        let eta: Date? = {
+            guard let next, let tripID = snapshot.trackedTripID else { return nil }
+            let times = stopTimesByTripID[tripID] ?? []
+            return (times.first { $0.childStopID == next.childStopID } ?? times.first { $0.parentStopID == next.parentStopID })?.arrivalTime.date
+        }()
+        return JourneyReplan.choices(
+            legs: displayPlan.legs,
+            progressLegIndex: snapshot.progressLegIndex,
+            phase: snapshot.phase?.rawValue,
+            vehicleNextStop: next.map { ($0.name, $0.coordinate) },
+            vehicleNextStopETA: eta,
+            userLocation: environment.location.coordinate
+        )
+    }
+
+    private var replanUrgent: Bool {
+        guard let snapshot else { return false }
+        return displayPlan.legs.indices.contains { index in
+            index > snapshot.progressLegIndex && JourneyTracking.connectionRisk(displayPlan.legs, at: index)?.level == .missed
+        }
+    }
+
+    private func startReplan(_ choice: ReplanChoice) {
+        let last = plan.legs.last
+        let destination = PlannerLocation(
+            label: last?.toStop?.stopName ?? "Destination",
+            coordinate: last?.toStop?.coordinate ?? Coordinate(latitude: plan.endLat, longitude: plan.endLon)
+        )
+        router.replan(.init(
+            origin: PlannerLocation(label: choice.originLabel, coordinate: choice.origin),
+            destination: destination,
+            departAt: choice.departAt,
+            planID: plan.id,
+            regionSlug: environment.region.slug,
+            arrivalTime: displayPlan.arrivalTime.date
+        ))
+        leaveTracker()
+    }
+
+    /// The web's share link: opens (and starts tracking) this exact journey
+    /// for whoever it's sent to.
     private var shareURL: URL {
-        URL(string: "transit://journey?id=\(plan.id)&region=\(environment.region.slug)") ?? URL(string: "transit://")!
+        URL(string: "https://trains.suddsy.dev/journey?id=\(plan.id)&region=\(environment.region.slug)&track=1") ?? URL(string: "https://trains.suddsy.dev")!
     }
 
     // MARK: - Map

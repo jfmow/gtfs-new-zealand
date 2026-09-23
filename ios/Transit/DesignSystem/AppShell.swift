@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 import TransitCore
 
@@ -220,6 +221,67 @@ struct DoneButton: ToolbarContent {
 extension View {
     /// Adds the bell + menu to a tab root's navigation bar.
     func appToolbar() -> some View { modifier(AppToolbar()) }
+}
+
+// MARK: - Resume journey pill (resume-journey-prompt.tsx)
+
+/// "You're mid-journey" pill above the tab bar - shown until dismissed (for
+/// this launch), the journey ends, or it's 45 min past arrival. Tapping it
+/// reopens live tracking.
+struct ResumeJourneyPill: View {
+    @Environment(DeepLinkRouter.self) private var router
+    @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
+    @State private var dismissedPlanID: String?
+
+    private static let grace: TimeInterval = 45 * 60
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            if let journey = journeys.first,
+               context.date < journey.arrivalTime.addingTimeInterval(Self.grace),
+               dismissedPlanID != journey.planID,
+               !router.isTrackingVisible, router.activeLink == nil {
+                pill(journey)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: router.isTrackingVisible)
+    }
+
+    private func pill(_ journey: ActiveJourney) -> some View {
+        HStack(spacing: 8) {
+            LiveDot(color: Theme.primaryForeground)
+            Button {
+                router.resume(planID: journey.planID, regionSlug: journey.regionSlug)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "location.north.fill").font(.system(size: 12, weight: .semibold))
+                    Text("Resume journey to \(journey.endLabel)").font(.bodyMedium).lineLimit(1)
+                    Text("· \(journey.arrivalTime.formatted(date: .omitted, time: .shortened))")
+                        .font(.meta).opacity(0.8).fixedSize()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            Button {
+                dismissedPlanID = journey.planID
+            } label: {
+                Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .foregroundStyle(Theme.primaryForeground)
+        .padding(.leading, 16)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background {
+            Capsule().fill(Theme.primary).shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: 420)
+    }
 }
 
 // MARK: - Stops / Vehicles tab roots (separate routes, as on the web)

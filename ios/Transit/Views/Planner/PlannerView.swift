@@ -37,10 +37,28 @@ struct PlannerView: View {
     @State private var isUpdatingAll = false
     @State private var reminderPlan: JourneyPlan?
 
+    /// Taken when re-planning mid-journey, so the rider can go back to the
+    /// route they were on - the web's `replanSnapshot`.
+    @State private var replanSnapshot: ReplanSnapshot?
+
+    private struct ReplanSnapshot {
+        let results: [JourneyPlan]
+        let resultsContext: PlannerSearchContext?
+        let start: PlannerLocation?
+        let end: PlannerLocation?
+        let timeType: JourneyPlanRequest.TimeType
+        let date: Date
+        let planID: String
+        let regionSlug: String
+        let arrivalTime: Date?
+    }
+
+    @State private var path = NavigationPath()
+
     private var canPlan: Bool { start != nil && end != nil }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     header
@@ -48,6 +66,7 @@ struct PlannerView: View {
                     if !savedTrips.isEmpty {
                         QuickTripsRail(trips: savedTrips) { apply($0) }
                     }
+                    replanBanner
                     latestLeaveBanner
                     if let planError, !isPlanning {
                         Text(planError)
@@ -87,6 +106,11 @@ struct PlannerView: View {
                 LeaveReminderSheet(plan: plan, context: resultsContext ?? currentContext)
                     .shadSheet(detents: [.large])
             }
+        }
+        .onChange(of: router.pendingReplan, initial: true) { _, request in
+            guard let request else { return }
+            router.pendingReplan = nil
+            replan(request)
         }
         .onChange(of: router.pendingPlan, initial: true) { _, prefill in
             guard let prefill else { return }
@@ -245,6 +269,59 @@ struct PlannerView: View {
         return parts.isEmpty ? nil : "· " + parts.joined(separator: " · ")
     }
 
+    // MARK: - Re-plan mid-journey
+
+    @ViewBuilder
+    private var replanBanner: some View {
+        if let replanSnapshot {
+            Button {
+                restoreReplan(replanSnapshot)
+            } label: {
+                HStack(spacing: 8) {
+                    Label("Keep the route I was on", systemImage: "arrow.uturn.backward").font(.bodyMedium)
+                    Spacer(minLength: 8)
+                    if let arrival = replanSnapshot.arrivalTime {
+                        Text("arrives \(arrival.formatted(date: .omitted, time: .shortened))").font(.meta).foregroundStyle(Theme.mutedForeground)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .mutedPanel()
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    /// From the tracker's "Find a better route from here": plan from the
+    /// chosen stop and time to the same destination, remembering where we
+    /// were so the rider can back out.
+    private func replan(_ request: DeepLinkRouter.ReplanRequest) {
+        path = NavigationPath()
+        replanSnapshot = ReplanSnapshot(results: results, resultsContext: resultsContext, start: start, end: end,
+                                        timeType: timeType, date: date, planID: request.planID,
+                                        regionSlug: request.regionSlug, arrivalTime: request.arrivalTime)
+        start = request.origin
+        end = end ?? request.destination
+        timeType = request.departAt > Date().addingTimeInterval(60) ? .departat : .now
+        date = request.departAt
+        Task { await plan(keepingReplanSnapshot: true) }
+    }
+
+    /// Back to the route they were on: restore the form/results and reopen
+    /// its live tracking.
+    private func restoreReplan(_ snapshot: ReplanSnapshot) {
+        results = snapshot.results
+        resultsContext = snapshot.resultsContext
+        start = snapshot.start
+        end = snapshot.end
+        timeType = snapshot.timeType
+        date = snapshot.date
+        planError = nil
+        replanSnapshot = nil
+        router.resume(planID: snapshot.planID, regionSlug: snapshot.regionSlug)
+    }
+
     // MARK: - Arrive-by "latest you can leave"
 
     @ViewBuilder
@@ -300,9 +377,10 @@ struct PlannerView: View {
                              walkSpeed: walkSpeed, maxTransfers: maxTransfers, onlyRoutes: onlyRoutes)
     }
 
-    private func plan() async {
+    private func plan(keepingReplanSnapshot: Bool = false) async {
         guard let start, let end else { return }
         if timeType == .now { date = Date() }
+        if !keepingReplanSnapshot { replanSnapshot = nil }
         isPlanning = true
         planError = nil
         results = []

@@ -704,4 +704,93 @@ final class TransitDebugUITests: XCTestCase {
             if custom.exists { custom.tap(); sleep(1); attach("pl-08-reminder-custom") }
         }
     }
+
+    /// Start a journey, minimise the tracker, and resume it from the pill.
+    func testResumeJourneyPill() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.tabBars.buttons["Planner"].tap()
+        let from = app.textFields["From"]
+        XCTAssertTrue(from.waitForExistence(timeout: 5))
+        from.tap()
+        if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
+        sleep(3)
+        let to = app.textFields["To"]
+        to.tap()
+        to.typeText("Newmarket")
+        sleep(3)
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        if result.waitForExistence(timeout: 5) { result.tap() }
+        app.buttons["Plan journey"].tap()
+        sleep(8)
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
+        guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
+        card.tap()
+        let start = app.buttons["Start this journey"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        dismissSystemAlertIfPresent(timeout: 3)
+        sleep(4)
+        attach("rs-01-tracking")
+
+        let minimise = app.buttons["Minimise"]
+        XCTAssertTrue(minimise.waitForExistence(timeout: 5))
+        minimise.tap()
+        sleep(2)
+        attach("rs-02-pill")
+        let pill = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Resume journey to")).firstMatch
+        XCTAssertTrue(pill.waitForExistence(timeout: 5), "resume pill not shown")
+        pill.tap()
+        sleep(4)
+        attach("rs-03-resumed")
+        XCTAssertTrue(app.buttons["Minimise"].waitForExistence(timeout: 8), "tracking didn't reopen")
+    }
+
+    /// Start a journey, re-plan from the tracker, then keep the original.
+    func testReplanFromTracker() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.tabBars.buttons["Planner"].tap()
+        let from = app.textFields["From"]
+        XCTAssertTrue(from.waitForExistence(timeout: 5))
+        from.tap()
+        if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
+        sleep(3)
+        let to = app.textFields["To"]
+        to.tap()
+        to.typeText("Newmarket")
+        sleep(3)
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        if result.waitForExistence(timeout: 5) { result.tap() }
+        app.buttons["Plan journey"].tap()
+        sleep(8)
+        let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers")).firstMatch
+        guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
+        card.tap()
+        let start = app.buttons["Start this journey"].exists ? app.buttons["Start this journey"] : app.buttons["Resume tracking"]
+        XCTAssertTrue(start.waitForExistence(timeout: 5))
+        start.tap()
+        dismissSystemAlertIfPresent(timeout: 3)
+        sleep(5)
+
+        let better = app.buttons["Find a better route from here"]
+        guard better.waitForExistence(timeout: 8) else {
+            attach("rp-00-no-button")
+            return XCTFail("no re-plan button")
+        }
+        better.tap()
+        sleep(1)
+        attach("rp-01-choices")
+        let choice = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@ OR label CONTAINS[c] %@", "From ", "Leave from", "Stay on")).firstMatch
+        XCTAssertTrue(choice.waitForExistence(timeout: 3), "no re-plan choices")
+        choice.tap()
+        sleep(8)
+        attach("rp-02-replanned")
+        let keep = app.buttons.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Keep the route I was on")).firstMatch
+        XCTAssertTrue(keep.waitForExistence(timeout: 5), "no keep-route banner")
+        keep.tap()
+        sleep(4)
+        attach("rp-03-kept")
+        XCTAssertTrue(app.buttons["Minimise"].waitForExistence(timeout: 8), "tracking didn't reopen")
+    }
 }

@@ -97,8 +97,9 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         self.regionSlug = regionSlug
     }
 
-    /// Opens the journey in the app - set as the activity's `widgetURL`.
+    /// Opens the journey's live tracking in the app - the activity's
+    /// `widgetURL`.
     public var journeyURL: URL? {
-        URL(string: "transit://journey?id=\(planID)&region=\(regionSlug)")
+        URL(string: "transit://journey?id=\(planID)&region=\(regionSlug)&track=1")
     }
 }
