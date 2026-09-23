@@ -36,6 +36,7 @@ struct RootView: View {
                 .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
                 .tag(DeepLinkRouter.Tab.alerts)
         }
+        .resumeJourneyAccessory()
         .tint(Theme.primary)
         .font(.bodyText)
         .toastOverlay(environment.toasts)

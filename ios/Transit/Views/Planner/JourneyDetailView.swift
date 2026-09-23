@@ -15,6 +15,7 @@ struct JourneyDetailView: View {
     var presentedFromLink = false
 
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var router
     @Environment(\.modelContext) private var modelContext
     @State private var isActive = false
     @State private var isTracking = false
@@ -79,6 +80,10 @@ struct JourneyDetailView: View {
             // Came back after minimising the tracker: it's still running.
             let id = plan.id
             isActive = ((try? modelContext.fetchCount(FetchDescriptor<ActiveJourney>(predicate: #Predicate { $0.planID == id }))) ?? 0) > 0
+            router.visibleJourneyDetailPlanID = id
+        }
+        .onDisappear {
+            if router.visibleJourneyDetailPlanID == plan.id { router.visibleJourneyDetailPlanID = nil }
         }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)

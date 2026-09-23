@@ -21,6 +21,9 @@ final class DeepLinkRouter {
     /// A full-screen map view (the service tracker) is on screen - the
     /// resume pill hides so it doesn't sit over its drawer.
     var isFullScreenMapVisible = false
+    /// The journey whose detail screen is showing - it has its own
+    /// "Resume tracking" button, so the resume bar hides for that journey.
+    var visibleJourneyDetailPlanID: String?
     /// The tracker that's currently open (it stays open while the rider
     /// switches tabs, until End or minimise), and whether it's in a link's
     /// full-screen cover or pushed in the Planner tab. A Live Activity tap

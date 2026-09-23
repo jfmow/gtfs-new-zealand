@@ -223,42 +223,111 @@ extension View {
     func appToolbar() -> some View { modifier(AppToolbar()) }
 }
 
-// MARK: - Resume journey pill (resume-journey-prompt.tsx)
+// MARK: - Resume journey (resume-journey-prompt.tsx)
 
-/// "You're mid-journey" pill above the tab bar - shown until dismissed (for
-/// this launch), the journey ends, or it's 45 min past arrival. Tapping it
-/// reopens live tracking.
+/// "You're mid-journey" - shown until dismissed, the journey ends, or it's
+/// 45 min past arrival. Tapping it reopens live tracking.
+///
+/// iOS 26.1+: the tab bar's own bottom accessory (like Music's mini
+/// player) - glass, sits on the tab bar, shrinks into it inline. Earlier
+/// iOS: a card docked above each tab's bottom edge.
 extension View {
-    /// Docks the resume-journey pill in this tab's bottom safe area - just
-    /// above the tab bar, with lists and scroll views inset so it never
-    /// covers content (it used to float over the last rows).
+    /// On the `TabView`.
+    func resumeJourneyAccessory() -> some View {
+        modifier(ResumeJourneyAccessoryModifier())
+    }
+
+    /// On each tab's root - the pre-iOS 26.1 fallback; does nothing where
+    /// the tab bar accessory is available.
     func resumeJourneyInset() -> some View {
         safeAreaInset(edge: .bottom, spacing: 0) {
-            ResumeJourneyPill().padding(.bottom, 8)
+            if #unavailable(iOS 26.1) {
+                ResumeJourneyCard().padding(.bottom, 8)
+            }
         }
     }
 }
 
-struct ResumeJourneyPill: View {
+/// Which journey (if any) the resume control should offer right now.
+@MainActor
+private enum ResumeJourneyVisibility {
+    static let grace: TimeInterval = 45 * 60
+
+    static func journey(_ journeys: [ActiveJourney], dismissedPlanID: String, router: DeepLinkRouter, now: Date) -> ActiveJourney? {
+        guard let journey = journeys.first,
+              now < journey.arrivalTime.addingTimeInterval(grace),
+              dismissedPlanID != journey.planID,
+              router.visibleJourneyDetailPlanID != journey.planID,
+              !router.isTrackingVisible, !router.isFullScreenMapVisible, router.activeLink == nil else { return nil }
+        return journey
+    }
+}
+
+private struct ResumeJourneyAccessoryModifier: ViewModifier {
     @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
-    /// Shared by every tab's copy of the pill, so dismissing it once hides
-    /// it everywhere.
+    @AppStorage("dismissedResumePlanID") private var dismissedPlanID = ""
+    @State private var now = Date()
+
+    func body(content: Content) -> some View {
+        let journey = ResumeJourneyVisibility.journey(journeys, dismissedPlanID: dismissedPlanID, router: router, now: now)
+        Group {
+            if #available(iOS 26.1, *) {
+                content.tabViewBottomAccessory(isEnabled: journey != nil) {
+                    if let journey {
+                        ResumeJourneyAccessoryContent(journey: journey) { dismissedPlanID = journey.planID }
+                    }
+                }
+            } else {
+                content
+            }
+        }
+        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now = $0 }
+    }
+}
+
+@available(iOS 26.1, *)
+private struct ResumeJourneyAccessoryContent: View {
+    let journey: ActiveJourney
+    let onDismiss: () -> Void
+    @Environment(DeepLinkRouter.self) private var router
+    @Environment(\.tabViewBottomAccessoryPlacement) private var placement
+
+    var body: some View {
+        ResumeJourneyRow(journey: journey, compact: placement == .inline, onDismiss: onDismiss) {
+            router.resume(planID: journey.planID, regionSlug: journey.regionSlug)
+        }
+        .padding(.horizontal, placement == .inline ? 12 : 14)
+    }
+}
+
+/// Pre-iOS 26.1: the same row on a card, docked above the tab bar.
+struct ResumeJourneyCard: View {
+    @Environment(DeepLinkRouter.self) private var router
+    @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
     @AppStorage("dismissedResumePlanID") private var dismissedPlanID = ""
     /// Hidden while typing - otherwise it floats above the keyboard, over
     /// search dropdowns.
     @State private var isKeyboardVisible = false
 
-    private static let grace: TimeInterval = 45 * 60
-
     var body: some View {
         TimelineView(.periodic(from: .now, by: 30)) { context in
-            if let journey = journeys.first,
-               context.date < journey.arrivalTime.addingTimeInterval(Self.grace),
-               dismissedPlanID != journey.planID,
-               !router.isTrackingVisible, !router.isFullScreenMapVisible, router.activeLink == nil, !isKeyboardVisible {
-                pill(journey)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            if let journey = ResumeJourneyVisibility.journey(journeys, dismissedPlanID: dismissedPlanID, router: router, now: context.date),
+               !isKeyboardVisible {
+                ResumeJourneyRow(journey: journey, compact: false, onDismiss: { dismissedPlanID = journey.planID }) {
+                    router.resume(planID: journey.planID, regionSlug: journey.regionSlug)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: Theme.radiusXL + 4, style: .continuous)
+                        .fill(Theme.card)
+                        .shadow(color: .black.opacity(0.18), radius: 14, y: 4)
+                }
+                .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL + 4, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                .padding(.horizontal, 16)
+                .frame(maxWidth: 440)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.spring(duration: 0.3), value: router.isTrackingVisible)
@@ -266,40 +335,63 @@ struct ResumeJourneyPill: View {
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in isKeyboardVisible = true }
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in isKeyboardVisible = false }
     }
+}
 
-    private func pill(_ journey: ActiveJourney) -> some View {
-        HStack(spacing: 8) {
-            LiveDot(color: Theme.primaryForeground)
-            Button {
-                router.resume(planID: journey.planID, regionSlug: journey.regionSlug)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "location.north.fill").font(.system(size: 12, weight: .semibold))
-                    Text("Resume journey to \(journey.endLabel)").font(.bodyMedium).lineLimit(1)
-                    Text("· \(journey.arrivalTime.formatted(date: .omitted, time: .shortened))")
-                        .font(.meta).opacity(0.8).fixedSize()
+/// Live icon, "Journey to Newmarket", "Arrives 8:10am", and a dismiss
+/// button - tapping anywhere else resumes. `compact` is the one-line form
+/// for the tab bar's inline accessory.
+private struct ResumeJourneyRow: View {
+    let journey: ActiveJourney
+    let compact: Bool
+    let onDismiss: () -> Void
+    let onResume: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(action: onResume) {
+                HStack(spacing: 10) {
+                    Image(systemName: "location.north.fill")
+                        .font(.system(size: compact ? 11 : 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: compact ? 24 : 32, height: compact ? 24 : 32)
+                        .background(Theme.live, in: Circle())
+                        .accessibilityHidden(true)
+                    if compact {
+                        Text("To \(journey.endLabel)")
+                            .font(.geist(14, .semibold))
+                            .lineLimit(1)
+                    } else {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Journey to \(journey.endLabel)")
+                                .font(.geist(15, .semibold))
+                                .foregroundStyle(Theme.foreground)
+                                .lineLimit(1)
+                            HStack(spacing: 5) {
+                                LiveDot(color: Theme.success)
+                                Text("Arrives \(journey.arrivalTime.formatted(date: .omitted, time: .shortened)) · Tap to resume")
+                                    .font(.meta)
+                                    .foregroundStyle(Theme.mutedForeground)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            Button {
-                dismissedPlanID = journey.planID
-            } label: {
-                Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)).frame(width: 30, height: 30)
+            .accessibilityLabel("Resume journey to \(journey.endLabel), arrives \(journey.arrivalTime.formatted(date: .omitted, time: .shortened))")
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground)
+                    .frame(width: 30, height: 30)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss")
         }
-        .foregroundStyle(Theme.primaryForeground)
-        .padding(.leading, 16)
-        .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .background {
-            Capsule().fill(Theme.primary).shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-        }
-        .padding(.horizontal, 16)
-        .frame(maxWidth: 420)
     }
 }
 
