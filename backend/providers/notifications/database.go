@@ -201,6 +201,8 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             walk_speed REAL NOT NULL DEFAULT 4.8,
             max_transfers INTEGER NOT NULL DEFAULT 5,
             only_route_ids TEXT NOT NULL DEFAULT '[]',
+            route_types TEXT NOT NULL DEFAULT '[]',
+            min_transfer_sec INTEGER NOT NULL DEFAULT 0,
             -- prep_buffer_seconds: removed. The leave anchor is now the journey's
             -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
@@ -302,6 +304,10 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// jrMaybeStartLiveActivity.
 		{"plan_id", `ALTER TABLE journey_reminders ADD COLUMN plan_id TEXT NOT NULL DEFAULT '';`},
 		{"la_started", `ALTER TABLE journey_reminders ADD COLUMN la_started INTEGER NOT NULL DEFAULT 0;`},
+		// The step-by-step planner's mode choice and extra change time, so a
+		// reminder re-plans the way the rider asked.
+		{"route_types", `ALTER TABLE journey_reminders ADD COLUMN route_types TEXT NOT NULL DEFAULT '[]';`},
+		{"min_transfer_sec", `ALTER TABLE journey_reminders ADD COLUMN min_transfer_sec INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {

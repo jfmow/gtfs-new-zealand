@@ -1065,6 +1065,11 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if oErr != nil {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid onlyRoutes"})
 		}
+		routeTypes, mErr := ParseTravelModes(c.FormValue("modes"))
+		if mErr != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid modes"})
+		}
+		minTransferSec, _ := strconv.Atoi(c.FormValue("minTransferSec"))
 
 		reminder := JourneyReminder{
 			ClientId:        client.Id,
@@ -1083,6 +1088,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			WalkSpeed:       walkSpeed,
 			MaxTransfers:    maxTransfers,
 			OnlyRouteIDs:    onlyRouteIDs,
+			RouteTypes:      routeTypes,
+			MinTransferSec:  ClampMinTransferSec(minTransferSec),
 			Offsets:         offsets,
 			Recurrence:      recurrence,
 			RecurrenceUntil: recurrenceUntil,
