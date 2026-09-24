@@ -177,7 +177,7 @@ struct EasyJourneyCard: View {
     let isRecommended: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 14) {
             if isRecommended {
                 Text("The easiest way")
                     .font(.easyBodyMedium)
@@ -185,7 +185,7 @@ struct EasyJourneyCard: View {
             }
             timeLine(label: "Leave at", date: plan.departureTime.date)
 
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 12) {
                 ForEach(Array(EasyJourneyStep.steps(for: plan, destinationName: destinationName).enumerated()), id: \.offset) { index, step in
                     stepRow(number: index + 1, step: step)
                 }
@@ -204,7 +204,7 @@ struct EasyJourneyCard: View {
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(isRecommended ? Theme.primary : Theme.border, lineWidth: isRecommended ? 2.5 : 1.5)
+                .strokeBorder(isRecommended ? Theme.primary : Theme.border, lineWidth: isRecommended ? 2 : 1)
         )
     }
 
@@ -212,7 +212,7 @@ struct EasyJourneyCard: View {
     private func timeLine(label: String, date: Date?) -> some View {
         if let date {
             (Text(label + " ").font(.easyChoice).foregroundColor(Theme.mutedForeground)
-                + Text(EasyJourneyStep.clock(date)).font(.geist(28, .bold, relativeTo: .title)).foregroundColor(Theme.foreground))
+                + Text(EasyJourneyStep.clock(date)).font(.geist(22, .bold, relativeTo: .title2)).foregroundColor(Theme.foreground))
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
@@ -222,9 +222,9 @@ struct EasyJourneyCard: View {
             ZStack {
                 Circle().fill(Theme.muted)
                 Image(systemName: icon(for: step.kind))
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
             }
-            .frame(width: 40, height: 40)
+            .frame(width: 32, height: 32)
             .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text("\(number). \(step.headline)")

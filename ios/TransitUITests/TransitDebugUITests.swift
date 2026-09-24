@@ -1265,9 +1265,11 @@ final class TransitDebugUITests: XCTestCase {
         attach("easy-02-where-chosen")
         app.buttons["Next"].tap()
 
-        // 2. How
+        // 2. How - clear the remembered answer first, then train only.
+        let anyWay = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Any way is fine")).firstMatch
+        XCTAssertTrue(anyWay.waitForExistence(timeout: 5))
+        anyWay.tap()
         let train = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Train")).firstMatch
-        XCTAssertTrue(train.waitForExistence(timeout: 5))
         train.tap()
         attach("easy-03-how")
         app.buttons["Next"].tap()

@@ -2,14 +2,15 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-// Building blocks for the step-by-step planner: large type, large tap
-// targets, words beside every icon, one question per screen.
+// Building blocks for the step-by-step planner: clear type that grows with
+// the rider's text size, roomy tap targets, words beside every icon, one
+// question per screen.
 
 extension Font {
-    static let easyQuestion = geist(30, .bold, relativeTo: .largeTitle)
-    static let easyChoice = geist(20, .semibold, relativeTo: .title3)
-    static let easyBody = geist(18, relativeTo: .body)
-    static let easyBodyMedium = geist(18, .medium, relativeTo: .body)
+    static let easyQuestion = geist(24, .semibold, relativeTo: .title)
+    static let easyChoice = geist(17, .semibold, relativeTo: .headline)
+    static let easyBody = geist(16, relativeTo: .body)
+    static let easyBodyMedium = geist(16, .medium, relativeTo: .body)
 }
 
 /// One question: "Question 2 of 4", the question in large type, the
@@ -26,8 +27,8 @@ struct EasyQuestionScreen<Content: View>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Question \(number) of 4")
                         .font(.easyBodyMedium)
                         .foregroundStyle(Theme.mutedForeground)
@@ -69,7 +70,7 @@ struct EasyPrimaryButton: View {
             }
             .font(.easyChoice)
             .foregroundStyle(Theme.primaryForeground)
-            .frame(maxWidth: .infinity, minHeight: 60)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .background(Theme.primary.opacity(isEnabled ? 1 : 0.35), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -91,10 +92,10 @@ struct EasySecondaryButton: View {
             }
             .font(.easyChoice)
             .foregroundStyle(Theme.foreground)
-            .frame(maxWidth: .infinity, minHeight: 60)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .padding(.horizontal, 12)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1.5))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -113,8 +114,8 @@ struct EasyChoiceCard: View {
         Button(action: action) {
             HStack(spacing: 16) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 26, weight: .semibold))
-                    .frame(width: 36)
+                    .font(.system(size: 20, weight: .medium))
+                    .frame(width: 28)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.easyChoice)
@@ -125,18 +126,18 @@ struct EasyChoiceCard: View {
                 .multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 28))
+                    .font(.system(size: 22))
                     .foregroundStyle(isSelected ? Theme.primary : Theme.border)
                     .accessibilityHidden(true)
             }
             .foregroundStyle(Theme.foreground)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 16)
-            .frame(maxWidth: .infinity, minHeight: 76)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 60)
             .background(isSelected ? Theme.accent : Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isSelected ? Theme.primary : Theme.border, lineWidth: isSelected ? 2.5 : 1.5)
+                    .strokeBorder(isSelected ? Theme.primary : Theme.border, lineWidth: isSelected ? 2 : 1)
             )
             .contentShape(Rectangle())
         }
@@ -154,7 +155,7 @@ struct EasySelectedPlace: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 14) {
                 Image(systemName: "mappin.circle.fill")
-                    .font(.system(size: 30))
+                    .font(.system(size: 22))
                     .foregroundStyle(Theme.danger)
                     .accessibilityHidden(true)
                 Text(place.label)
@@ -164,9 +165,9 @@ struct EasySelectedPlace: View {
             }
             EasySecondaryButton(title: "Choose a different place", systemImage: "arrow.uturn.backward", action: onChange)
         }
-        .padding(18)
+        .padding(16)
         .background(Theme.accent, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.primary, lineWidth: 2.5))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.primary, lineWidth: 2))
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Chosen: \(place.label)")
     }
@@ -195,7 +196,7 @@ struct EasyPlaceSearch: View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(Theme.mutedForeground)
                     .accessibilityHidden(true)
                 TextField(prompt, text: $query)
@@ -218,11 +219,11 @@ struct EasyPlaceSearch: View {
                 }
             }
             .padding(.horizontal, 16)
-            .frame(minHeight: 64)
+            .frame(minHeight: 52)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(isFocused ? Theme.ring : Theme.input, lineWidth: 2)
+                    .strokeBorder(isFocused ? Theme.ring : Theme.input, lineWidth: 1)
             )
 
             if query.count >= 2 {
@@ -286,25 +287,25 @@ struct EasyPlaceSearch: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 20, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Theme.mutedForeground)
-                    .frame(width: 28)
+                    .frame(width: 22)
                     .accessibilityHidden(true)
                 Text(label)
                     .font(.easyBodyMedium)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.mutedForeground)
                     .accessibilityHidden(true)
             }
             .foregroundStyle(Theme.foreground)
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .frame(maxWidth: .infinity, minHeight: 64)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 52)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.border, lineWidth: 1.5))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

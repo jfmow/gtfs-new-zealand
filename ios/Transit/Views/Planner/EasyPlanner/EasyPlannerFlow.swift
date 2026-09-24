@@ -118,9 +118,9 @@ struct EasyPlannerFlow: View {
                 }
             }
             .toggleStyle(.switch)
-            .padding(18)
+            .padding(16)
             .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1.5))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
             .padding(.top, 8)
         }
     }
@@ -160,9 +160,9 @@ struct EasyPlannerFlow: View {
             DatePicker("Another day", selection: $model.arriveBy, in: Date()..., displayedComponents: [.date])
                 .font(.easyBody)
         }
-        .padding(18)
+        .padding(16)
         .background(Theme.card, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1.5))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
 
     private func dayChip(_ title: String, offset: Int) -> some View {
@@ -176,7 +176,7 @@ struct EasyPlannerFlow: View {
             Text(title)
                 .font(.easyChoice)
                 .foregroundStyle(isSelected ? Theme.primaryForeground : Theme.foreground)
-                .frame(maxWidth: .infinity, minHeight: 56)
+                .frame(maxWidth: .infinity, minHeight: 48)
                 .background(isSelected ? Theme.primary : Theme.muted, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
