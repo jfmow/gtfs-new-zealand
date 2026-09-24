@@ -56,6 +56,9 @@ targets:
         CFBundleURLTypes:
           - CFBundleURLName: dev.suddsy.transit
             CFBundleURLSchemes: [transit]
+        # Only HTTPS/system crypto - skips App Store Connect's export
+        # compliance question on every upload.
+        ITSAppUsesNonExemptEncryption: false
     # aps-environment: development is right for a Debug/simulator/ad-hoc
     # build talking to APNs' sandbox host; an App Store archive needs this
     # flipped to "production" (Xcode does this automatically for a
