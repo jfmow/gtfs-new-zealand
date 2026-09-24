@@ -16,6 +16,11 @@ enum MapCamera: Equatable {
     /// moves, leaving the rider's pinch-zoom alone.
     case follow(annotationID: String, spanMeters: Double? = nil)
 
+    /// `.follow`, but for the device's own location (the blue dot) - the
+    /// camera keeps the rider centred as they walk. Needs
+    /// `showsUserLocation`; does nothing until a fix arrives.
+    case followUser(spanMeters: Double? = nil)
+
     /// Frame all of these points (e.g. the bus and the stop you're waiting
     /// at), never tighter than `minSpanMeters` - the web's
     /// `followFitWith` with its `maxZoom`.
@@ -408,23 +413,37 @@ struct TransitMapView: UIViewRepresentable {
                     coordinate = nil
                 }
                 guard let coordinate else { return }
+                follow(coordinate, key: id, spanMeters: spanMeters, in: mapView)
 
-                // Still zoomed right out (e.g. the first attempt ran before
-                // the map had its final size, when the drawer's padding
-                // didn't fit and MapKit ignored it) - zoom again.
-                let visibleMeters = mapView.visibleMapRect.width / MKMapPointsPerMeterAtLatitude(coordinate.latitude)
-                let zoomedOut = spanMeters.map { visibleMeters > $0 * 8 } ?? false
-                let paddingFits = mapView.bounds.height > insets.top + insets.bottom + 80 && mapView.bounds.width > 80
-                if let spanMeters, followSpanAppliedFor != id || zoomedOut, paddingFits {
-                    followSpanAppliedFor = id
-                    let rect = Self.mapRect(around: [Coordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)], minSpanMeters: spanMeters)
-                    move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
-                } else {
-                    // Keep the zoom; put the point in the middle of the
-                    // unobscured area rather than the middle of the view.
-                    let center = Self.center(placing: coordinate, inInsets: insets, of: mapView)
-                    move(mapView) { mapView.setCenter(center, animated: true) }
-                }
+            case .followUser(let spanMeters):
+                lastAppliedCamera = camera
+                guard mapView.showsUserLocation, let location = mapView.userLocation.location else { return }
+                follow(location.coordinate, key: Self.userFollowKey, spanMeters: spanMeters, in: mapView)
+            }
+        }
+
+        private static let userFollowKey = "__user_location__"
+
+        /// Centre `coordinate` in the unobscured area - zooming to
+        /// `spanMeters` the first time `key` is followed, then leaving the
+        /// rider's own pinch-zoom alone.
+        private func follow(_ coordinate: CLLocationCoordinate2D, key id: String, spanMeters: Double?, in mapView: MKMapView) {
+            let insets = parent.cameraInsets
+            // Still zoomed right out (e.g. the first attempt ran before
+            // the map had its final size, when the drawer's padding
+            // didn't fit and MapKit ignored it) - zoom again.
+            let visibleMeters = mapView.visibleMapRect.width / MKMapPointsPerMeterAtLatitude(coordinate.latitude)
+            let zoomedOut = spanMeters.map { visibleMeters > $0 * 8 } ?? false
+            let paddingFits = mapView.bounds.height > insets.top + insets.bottom + 80 && mapView.bounds.width > 80
+            if let spanMeters, followSpanAppliedFor != id || zoomedOut, paddingFits {
+                followSpanAppliedFor = id
+                let rect = Self.mapRect(around: [Coordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)], minSpanMeters: spanMeters)
+                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
+            } else {
+                // Keep the zoom; put the point in the middle of the
+                // unobscured area rather than the middle of the view.
+                let center = Self.center(placing: coordinate, inInsets: insets, of: mapView)
+                move(mapView) { mapView.setCenter(center, animated: true) }
             }
         }
 
@@ -485,6 +504,14 @@ struct TransitMapView: UIViewRepresentable {
         }
 
         // MARK: - MKMapViewDelegate
+
+        /// MapKit's own location fixes can land between SwiftUI renders -
+        /// keep a `.followUser` camera on the dot as it moves.
+        func mapView(_ mapView: MKMapView, didUpdate userLocation: MKUserLocation) {
+            if case .followUser = parent.camera {
+                applyCamera(parent.camera, to: mapView)
+            }
+        }
 
         func mapView(_ mapView: MKMapView, regionWillChangeAnimated animated: Bool) {
             // A change the person made with their fingers (pan, pinch,

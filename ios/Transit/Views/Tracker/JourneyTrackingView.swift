@@ -731,8 +731,8 @@ struct JourneyTrackingView: View {
     }
 
     /// Where the map looks at each stage of the journey:
-    /// - walking (to a stop, a transfer, or the destination): you and where
-    ///   you're walking to - or, without your location, the walk's start
+    /// - walking (to a stop, a transfer, or the destination): follow you,
+    ///   like turn-by-turn - or, without your location, the walk's start
     ///   and end
     /// - waiting / boarding (including between rides): you and the vehicle
     ///   you're about to catch (the stop, until it's live)
@@ -755,6 +755,9 @@ struct JourneyTrackingView: View {
             return points.isEmpty ? .fitAll : .frame(points: points, minSpanMeters: 800)
 
         case .walking:
+            if rider != nil {
+                return .followUser(spanMeters: 350)
+            }
             let target: Coordinate? = {
                 if let leg, leg.mode == "walk" {
                     if let stop = leg.toStop?.coordinate { return stop }
@@ -762,7 +765,7 @@ struct JourneyTrackingView: View {
                 }
                 return activeRideLeg?.fromStop?.coordinate
             }()
-            let origin: Coordinate? = rider ?? {
+            let origin: Coordinate? = {
                 if let from = leg?.fromStop?.coordinate { return from }
                 if index > 0, let previous = legs[index - 1].toStop?.coordinate { return previous }
                 return Coordinate(latitude: plan.startLat, longitude: plan.startLon)
