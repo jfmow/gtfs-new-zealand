@@ -2,14 +2,14 @@ import UIKit
 
 /// The app icon's Home Screen quick actions (long-press the icon).
 enum QuickAction: String, CaseIterable {
-    case easyPlanner = "dev.suddsy.transit.easyPlanner"
+    case planJourney = "dev.suddsy.transit.planJourney"
 
     var shortcutItem: UIApplicationShortcutItem {
         switch self {
-        case .easyPlanner:
+        case .planJourney:
             UIApplicationShortcutItem(
-                type: rawValue, localizedTitle: "Plan step by step", localizedSubtitle: "Answer 4 simple questions",
-                icon: UIApplicationShortcutIcon(systemImageName: "list.number")
+                type: rawValue, localizedTitle: "Plan a journey", localizedSubtitle: nil,
+                icon: UIApplicationShortcutIcon(systemImageName: "point.topleft.down.to.point.bottomright.curvepath")
             )
         }
     }

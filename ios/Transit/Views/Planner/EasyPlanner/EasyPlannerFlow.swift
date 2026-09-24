@@ -4,11 +4,10 @@ import TransitCore
 
 /// The step-by-step planner, for riders who find the full planner a lot to
 /// take in: four questions, one per screen, then one recommended journey in
-/// plain words. Opened from the Planner tab's "Plan step by step" card or the
-/// app's Home Screen quick action.
+/// plain words. It's the whole Planner tab when Settings' "Planner" is "Step
+/// by step" (see `PlannerTab`).
 struct EasyPlannerFlow: View {
     @Environment(AppEnvironment.self) private var environment
-    @Environment(\.dismiss) private var dismiss
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
 
     @State private var model = EasyPlannerModel()
@@ -17,7 +16,7 @@ struct EasyPlannerFlow: View {
     var body: some View {
         NavigationStack(path: $path) {
             destinationStep
-                .toolbar { closeButton }
+                .appToolbar()
                 .navigationDestination(for: EasyPlannerModel.Step.self) { step in
                     Group {
                         switch step {
@@ -29,16 +28,15 @@ struct EasyPlannerFlow: View {
                                 model: model,
                                 onChangeAnswer: { goBack(to: $0) },
                                 onShowDetails: { path.append(.details($0)) },
-                                onStart: { path.append(.track($0)) }
+                                onStart: { path.append(.track($0)) },
+                                onStartOver: startOver
                             )
                         case .details(let plan):
-                            JourneyDetailView(plan: plan, context: model.searchContext, presentedFromLink: true)
+                            JourneyDetailView(plan: plan, context: model.searchContext)
                         case .track(let plan):
-                            // In this full-screen cover, like a link's tracker.
-                            JourneyTrackingView(plan: plan, presentedFromLink: true)
+                            JourneyTrackingView(plan: plan)
                         }
                     }
-                    .toolbar { closeButton }
                 }
                 .navigationBarTitleDisplayMode(.inline)
         }
@@ -46,12 +44,13 @@ struct EasyPlannerFlow: View {
         .task { await model.loadAvailableModes(api: environment.api) }
     }
 
-    @ToolbarContentBuilder
-    private var closeButton: some ToolbarContent {
-        ToolbarItem(placement: .topBarTrailing) {
-            Button("Close") { dismiss() }
-                .font(.easyBodyMedium)
-        }
+    /// "Plan another journey": back to question 1 with a clean slate (the
+    /// remembered mode and start answers stay).
+    private func startOver() {
+        model.reset()
+        isChangingDestination = false
+        isChangingStart = false
+        path = []
     }
 
     /// Back to one question from the results ("Change the time").

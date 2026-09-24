@@ -56,7 +56,7 @@ struct TransitApp: App {
                     }
                     QuickAction.relay.handler = { [router] action in
                         switch action {
-                        case .easyPlanner: router.openEasyPlanner()
+                        case .planJourney: router.openPlanner()
                         }
                     }
                 }

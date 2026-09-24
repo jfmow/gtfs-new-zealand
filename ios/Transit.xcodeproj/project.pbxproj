@@ -59,6 +59,7 @@
 		A4DCC987D238BA7E22AFFFFC /* JourneyTrackingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */; };
 		A6C7DA2B0F5A35C9D335D82A /* OFL-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 288949DB4B8429132B54B591 /* OFL-LICENSE.txt */; };
 		A89376973A9D0989FF9FBC6F /* RouteColors.swift in Sources */ = {isa = PBXBuildFile; fileRef = 447CE7E4167D087A53D88ACF /* RouteColors.swift */; };
+		AA5EDFBA811D9810ACAAECF9 /* PlannerTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DD5849F0417F2C664EED9D9 /* PlannerTab.swift */; };
 		AAC14D80B6F6E3B356420799 /* AlertSubscriptionSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = F37BEC943B0050ED9D7E4E37 /* AlertSubscriptionSheet.swift */; };
 		ADEA2951F4B0241365877AF6 /* HomeCards.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */; };
 		B327BDCF76C3F69410561F2B /* JourneyAlertCenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDE6E8A2AB86BD098EB9CBDF /* JourneyAlertCenter.swift */; };
@@ -146,6 +147,7 @@
 		59E8800859E3E6FF0485748F /* MapControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapControls.swift; sourceTree = "<group>"; };
 		5D014E99D90750C0745D985C /* TransitCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TransitCore; path = Packages/TransitCore; sourceTree = SOURCE_ROOT; };
 		630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Regular.ttf"; sourceTree = "<group>"; };
+		6DD5849F0417F2C664EED9D9 /* PlannerTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTab.swift; sourceTree = "<group>"; };
 		6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyOfflineNotifications.swift; sourceTree = "<group>"; };
 		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
 		7818A7A98B32F728BFDDA7F0 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
@@ -398,6 +400,7 @@
 				3A9E1A8F0724FC6149CED75A /* LocationField.swift */,
 				3DDE427B22E3045979EED862 /* MapLocationPickerView.swift */,
 				FF4789AEFC03755B08E33690 /* PlannerLocation.swift */,
+				6DD5849F0417F2C664EED9D9 /* PlannerTab.swift */,
 				DC603ED48D2D68656FFD4A94 /* PlannerView.swift */,
 				0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */,
 				3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */,
@@ -654,6 +657,7 @@
 				06B32DC2183F46A52E10CD4F /* NetworkMonitor.swift in Sources */,
 				66C0021A0F5697C77A78BB4E /* NotificationCenterViews.swift in Sources */,
 				3D0E420829F8C392BADCED92 /* PlannerLocation.swift in Sources */,
+				AA5EDFBA811D9810ACAAECF9 /* PlannerTab.swift in Sources */,
 				05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */,
 				36FCE3C823BE4FD31FD5D529 /* PushRegistrationService.swift in Sources */,
 				D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */,

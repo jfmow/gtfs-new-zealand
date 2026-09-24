@@ -12,6 +12,7 @@ struct EasyResultsView: View {
     let onChangeAnswer: (EasyPlannerModel.Step?) -> Void
     let onShowDetails: (JourneyPlan) -> Void
     let onStart: (JourneyPlan) -> Void
+    let onStartOver: () -> Void
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
@@ -124,6 +125,9 @@ struct EasyResultsView: View {
                     }
                 }
             }
+
+            EasySecondaryButton(title: "Plan another journey", systemImage: "arrow.counterclockwise", action: onStartOver)
+                .padding(.top, 8)
         }
     }
 

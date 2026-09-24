@@ -9,6 +9,9 @@ struct PlannerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
+    /// Set when opened over the step-by-step Planner tab (for a re-plan or a
+    /// reminder link) - shows a Close button in place of the saved-trips menu.
+    var onClose: (() -> Void)?
 
     // Form
     @State private var start: PlannerLocation?
@@ -24,9 +27,6 @@ struct PlannerView: View {
     @State private var modes: Set<TravelMode> = []
     @State private var minTransferSec = 0
     @State private var showsOptions = false
-    /// Settings' "Open the planner step by step": show it on the first visit.
-    @AppStorage("easyPlannerByDefault") private var easyPlannerByDefault = false
-    @State private var didAutoOpenEasyPlanner = false
 
     // Results
     @State private var results: [JourneyPlan] = []
@@ -70,9 +70,6 @@ struct PlannerView: View {
                     // Above everything below it, so the From/To dropdowns
                     // draw over the saved trips and results rather than
                     // behind them.
-                    if results.isEmpty, !isPlanning {
-                        easyPlannerCard
-                    }
                     form.zIndex(1)
                     // Saved trips fill the page until there are results.
                     if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
@@ -101,18 +98,22 @@ struct PlannerView: View {
             .appToolbar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu {
-                        Button { isManaging = true } label: {
-                            Label(savedTrips.isEmpty ? "Saved trips" : "Saved trips (\(savedTrips.count))", systemImage: "bookmark")
+                    if let onClose {
+                        Button("Close", action: onClose)
+                    } else {
+                        Menu {
+                            Button { isManaging = true } label: {
+                                Label(savedTrips.isEmpty ? "Saved trips" : "Saved trips (\(savedTrips.count))", systemImage: "bookmark")
+                            }
+                            Button { isUpdatingAll = true } label: {
+                                Label("Update all trips", systemImage: "slider.horizontal.3")
+                            }
+                            .disabled(savedTrips.isEmpty)
+                        } label: {
+                            Image(systemName: "bookmark")
                         }
-                        Button { isUpdatingAll = true } label: {
-                            Label("Update all trips", systemImage: "slider.horizontal.3")
-                        }
-                        .disabled(savedTrips.isEmpty)
-                    } label: {
-                        Image(systemName: "bookmark")
+                        .accessibilityLabel("Saved trips")
                     }
-                    .accessibilityLabel("Saved trips")
                 }
             }
             .sheet(isPresented: $showsOptions) {
@@ -142,14 +143,6 @@ struct PlannerView: View {
                     .shadSheet(detents: [.large])
             }
         }
-        .fullScreenCover(isPresented: Binding(get: { router.showsEasyPlanner }, set: { router.showsEasyPlanner = $0 })) {
-            EasyPlannerFlow()
-        }
-        .onAppear {
-            guard easyPlannerByDefault, !didAutoOpenEasyPlanner else { return }
-            didAutoOpenEasyPlanner = true
-            router.showsEasyPlanner = true
-        }
         .onChange(of: router.pendingReplan, initial: true) { _, request in
             guard let request else { return }
             router.pendingReplan = nil
@@ -160,36 +153,6 @@ struct PlannerView: View {
             router.pendingPlan = nil
             apply(prefill)
         }
-    }
-
-    // MARK: - Step by step
-
-    private var easyPlannerCard: some View {
-        Button {
-            router.showsEasyPlanner = true
-        } label: {
-            HStack(spacing: 14) {
-                Image(systemName: "list.number")
-                    .font(.system(size: 22, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .background(Theme.muted, in: RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous))
-                    .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Plan step by step").font(.cardTitle)
-                    Text("Answer 4 simple questions").font(.meta).foregroundStyle(Theme.mutedForeground)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.mutedForeground)
-                    .accessibilityHidden(true)
-            }
-            .foregroundStyle(Theme.foreground)
-            .padding(14)
-            .shadCardBackground()
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
     }
 
     // MARK: - Form (search-form.tsx)

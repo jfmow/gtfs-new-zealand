@@ -70,6 +70,19 @@ final class EasyPlannerModel {
         defaults.set(startChoice == .here, forKey: Self.startHereKey)
     }
 
+    /// Clears this journey's answers and results; the remembered mode and
+    /// start choices stay.
+    func reset() {
+        destination = nil
+        when = .soon
+        arriveBy = Self.defaultArriveBy()
+        otherStart = nil
+        status = .idle
+        plans = []
+        plannedStart = nil
+        fallbackNote = nil
+    }
+
     /// An hour from now, on the next quarter hour.
     static func defaultArriveBy(now: Date = Date()) -> Date {
         let quarter: TimeInterval = 15 * 60

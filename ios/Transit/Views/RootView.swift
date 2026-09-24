@@ -17,7 +17,7 @@ struct RootView: View {
                 .tabItem { Label("Schedule", systemImage: "calendar") }
                 .tag(DeepLinkRouter.Tab.schedule)
 
-            PlannerView()
+            PlannerTab()
                 .resumeJourneyInset()
                 .tabItem { Label("Planner", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
                 .tag(DeepLinkRouter.Tab.planner)

@@ -35,14 +35,10 @@ final class DeepLinkRouter {
     /// `PlannerView`, which re-plans from `origin` and offers to go back.
     var pendingReplan: ReplanRequest?
 
-    /// The step-by-step planner is open (the Planner tab presents it) - set
-    /// by its card there, or the "Plan step by step" Home Screen quick action.
-    var showsEasyPlanner = false
-
-    func openEasyPlanner() {
+    /// The "Plan a journey" Home Screen quick action.
+    func openPlanner() {
         activeLink = nil
         selectedTab = .planner
-        showsEasyPlanner = true
     }
 
     struct ReplanRequest: Equatable {

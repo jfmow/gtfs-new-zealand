@@ -1244,18 +1244,14 @@ final class TransitDebugUITests: XCTestCase {
         let after = XCTAttachment(screenshot: XCUIScreen.main.screenshot()); after.name = "end-02-after"; after.lifetime = .keepAlways; add(after)
     }
 
-    /// Walks the step-by-step planner against the local backend: a
+    /// Walks the step-by-step planner (Settings' Planner = Step by step): a
     /// destination, train only, as soon as possible, from where I am now -
     /// with a screenshot of each question and the answer.
     func testEasyPlannerFlow() throws {
-        app.launchEnvironment["TRANSIT_API_BASE"] = "http://localhost:8090"
+        app.launchArguments += ["-plannerStyle", "stepByStep"]
         app.launch()
         dismissSystemAlertIfPresent(timeout: 3)
         app.tabBars.buttons["Planner"].tap()
-
-        let card = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Plan step by step")).firstMatch
-        XCTAssertTrue(card.waitForExistence(timeout: 5))
-        card.tap()
 
         // 1. Where
         let field = app.textFields["Type a place or address"]
