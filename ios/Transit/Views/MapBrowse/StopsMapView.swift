@@ -26,6 +26,8 @@ struct StopsMapView: View {
     // few seconds, and re-centring the camera on each one would fight any
     // panning/zooming the person is doing (TransitMapView's own dedupe only
     // catches *identical* repeats, not GPS jitter between fixes).
+    // Once set, the map opens zoomed in on it (~800 m across - a few stops
+    // either side) rather than the region-wide default view.
     @State private var mapCenter: Coordinate?
     // The map's current visible region, from TransitMapView's
     // onVisibleRegionChange. `stops` (below) holds every stop for the
@@ -43,7 +45,8 @@ struct StopsMapView: View {
         ZStack(alignment: .top) {
             TransitMapView(
                 stops: visibleStops.map(StopAnnotation.init),
-                camera: .region(center: mapCenter ?? environment.region.defaultMapCenter, radiusMeters: 6000),
+                camera: mapCenter.map { .region(center: $0, radiusMeters: 800) }
+                    ?? .region(center: environment.region.defaultMapCenter, radiusMeters: 6000),
                 showsUserLocation: environment.location.isAuthorized,
                 onSelectStop: { id in
                     withAnimation(.spring(duration: 0.3)) { previewStop = stops.first { $0.stopID == id } }
@@ -96,7 +99,9 @@ struct StopsMapView: View {
         .task { await load() }
         .task { environment.location.requestPermission() }
         .onChange(of: typeFilter) { _, _ in Task { await load() } }
-        .onChange(of: environment.location.coordinate) { _, newValue in
+        // `initial: true` - the fix is often already in hand (Home asked
+        // for location first), and then it never "changes" after appear.
+        .onChange(of: environment.location.coordinate, initial: true) { _, newValue in
             guard mapCenter == nil, let newValue else { return }
             mapCenter = newValue
         }
