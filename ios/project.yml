@@ -29,7 +29,12 @@ targets:
       path: Generated-Info.plist
       properties:
         CFBundleDisplayName: Transit
-        UILaunchScreen: {}
+        # The app's own page background (white / #171717 in dark mode) with
+        # the train mark centred, so launch fades straight into the app.
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchMark
+          UIImageRespectsSafeAreaInsets: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, to time walking directions, and to follow a journey you're on - including with no mobile data."
         # Location keeps running in the background only while a journey is
