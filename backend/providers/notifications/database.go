@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/SherClockHolmes/webpush-go"
+	"github.com/jfmow/gtfs"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -46,10 +48,6 @@ type Database struct {
 }
 
 func newDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Database, error) {
-	if timeZone == nil {
-		return nil, errors.New("time zone is required")
-	}
-
 	dbPath := path.Join(getWorkDir(), "notifications", defaultDBFileName)
 
 	if !filepath.IsAbs(dbPath) {
@@ -58,6 +56,17 @@ func newDatabase(timeZone *time.Location, mailToEmail, mailToName string) (*Data
 			return nil, fmt.Errorf("get cwd: %w", err)
 		}
 		dbPath = filepath.Join(cwd, dbPath)
+	}
+
+	return newDatabaseAtPath(dbPath, timeZone, mailToEmail, mailToName)
+}
+
+// newDatabaseAtPath is newDatabase with an explicit file path - split out so
+// tests can point it at a throwaway file instead of the real
+// notifications/notifications.db.
+func newDatabaseAtPath(dbPath string, timeZone *time.Location, mailToEmail, mailToName string) (*Database, error) {
+	if timeZone == nil {
+		return nil, errors.New("time zone is required")
 	}
 
 	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL&_txlock=immediate&_cache_size=-4000")
@@ -192,6 +201,8 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             walk_speed REAL NOT NULL DEFAULT 4.8,
             max_transfers INTEGER NOT NULL DEFAULT 5,
             only_route_ids TEXT NOT NULL DEFAULT '[]',
+            route_types TEXT NOT NULL DEFAULT '[]',
+            min_transfer_sec INTEGER NOT NULL DEFAULT 0,
             -- prep_buffer_seconds: removed. The leave anchor is now the journey's
             -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
@@ -218,6 +229,31 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_jr_region_status ON journey_reminders(region, status);`,
+		// One row per running Live Activity (`ios/Shared/JourneyActivityAttributes.swift`).
+		// `push_token` is the activity's own token from `Activity.pushTokenUpdates` -
+		// distinct from the device's `apns_token` (used for plain alert pushes),
+		// which is still where `runLiveActivitiesCron` gets the sandbox/production
+		// choice from (that's a per-device setting, not per-activity).
+		// `leg_hint`/`phase_hint` are foreground-reported via POST .../leg
+		// (`reportLiveActivityLeg` on the client), used to keep the server's own
+		// simplified, time-based leg/phase guess aligned with what the app itself
+		// last knew - not authoritative on their own.
+		`CREATE TABLE IF NOT EXISTS live_activities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clientId INTEGER NOT NULL,
+            region TEXT NOT NULL,
+            plan_id TEXT NOT NULL,
+            activity_id TEXT NOT NULL,
+            push_token TEXT NOT NULL DEFAULT '',
+            leg_hint INTEGER NOT NULL DEFAULT -1,
+            phase_hint TEXT NOT NULL DEFAULT '',
+            last_state_hash TEXT NOT NULL DEFAULT '',
+            created INTEGER NOT NULL,
+            updated INTEGER NOT NULL,
+            UNIQUE(clientId, activity_id),
+            FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
+        );`,
+		`CREATE INDEX IF NOT EXISTS idx_live_activities_region ON live_activities(region);`,
 	}
 
 	for _, stmt := range stmts {
@@ -263,6 +299,15 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		ddl    string
 	}{
 		{"only_route_ids", `ALTER TABLE journey_reminders ADD COLUMN only_route_ids TEXT NOT NULL DEFAULT '[]';`},
+		// The plan a resolved reminder is for (stored in the shared plan
+		// store) and whether its Live Activity has been push-started - see
+		// jrMaybeStartLiveActivity.
+		{"plan_id", `ALTER TABLE journey_reminders ADD COLUMN plan_id TEXT NOT NULL DEFAULT '';`},
+		{"la_started", `ALTER TABLE journey_reminders ADD COLUMN la_started INTEGER NOT NULL DEFAULT 0;`},
+		// The step-by-step planner's mode choice and extra change time, so a
+		// reminder re-plans the way the rider asked.
+		{"route_types", `ALTER TABLE journey_reminders ADD COLUMN route_types TEXT NOT NULL DEFAULT '[]';`},
+		{"min_transfer_sec", `ALTER TABLE journey_reminders ADD COLUMN min_transfer_sec INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {
@@ -273,7 +318,198 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		}
 	}
 
+	// live_activities: the activity's own APNs environment (so the cron
+	// doesn't depend on the device's alert token, which may be empty),
+	// which one-off alerts it has already had, and when it was last pushed
+	// (for the stale-date heartbeat).
+	laExistingColumns, err := d.columnNames(ctx, "live_activities")
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	laMigrations := []struct {
+		column string
+		ddl    string
+	}{
+		{"apns_env", `ALTER TABLE live_activities ADD COLUMN apns_env TEXT NOT NULL DEFAULT '';`},
+		{"alerted_keys", `ALTER TABLE live_activities ADD COLUMN alerted_keys TEXT NOT NULL DEFAULT '';`},
+		{"last_pushed", `ALTER TABLE live_activities ADD COLUMN last_pushed INTEGER NOT NULL DEFAULT 0;`},
+		// When the app last reported in while updating the activity itself -
+		// see clientActiveWindow.
+		{"client_reported", `ALTER TABLE live_activities ADD COLUMN client_reported INTEGER NOT NULL DEFAULT 0;`},
+	}
+	for _, m := range laMigrations {
+		if laExistingColumns[m.column] {
+			continue
+		}
+		if _, err := d.db.ExecContext(ctx, m.ddl); err != nil {
+			return fmt.Errorf("ensure schema: migrate live_activities.%s: %w", m.column, err)
+		}
+	}
+
+	if err := d.migrateNotificationsDeviceIdentity(ctx); err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+
 	return nil
+}
+
+// migrateNotificationsDeviceIdentity generalises `notifications` from a
+// web-push-only client table (endpoint/p256dh/auth, all NOT NULL) to one that
+// can also hold a native device (platform/device_id/device_secret_hash/
+// apns_token/...). SQLite can't drop a NOT NULL constraint or a table-level
+// UNIQUE with ALTER TABLE, so this rebuilds the table - a no-op once
+// `platform` already exists.
+func (d *Database) migrateNotificationsDeviceIdentity(ctx context.Context) error {
+	existingColumns, err := d.columnNames(ctx, "notifications")
+	if err != nil {
+		return fmt.Errorf("migrate notifications device identity: %w", err)
+	}
+	if existingColumns["platform"] {
+		return nil
+	}
+
+	conn, err := d.db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("migrate notifications device identity: %w", err)
+	}
+	defer conn.Close()
+
+	// PRAGMA foreign_keys is a no-op inside a transaction, so it has to be set
+	// on this connection before BEGIN - and since it's per-connection, the
+	// rebuild below must run on this same *sql.Conn throughout.
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF;`); err != nil {
+		return fmt.Errorf("migrate notifications device identity: disable foreign keys: %w", err)
+	}
+	// Always try to restore it, even if the migration below fails.
+	defer conn.ExecContext(context.Background(), `PRAGMA foreign_keys=ON;`)
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("migrate notifications device identity: begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	stmts := []string{
+		`CREATE TABLE notifications_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            endpoint TEXT,
+            p256dh TEXT,
+            auth TEXT,
+            platform TEXT NOT NULL DEFAULT 'web',
+            device_id TEXT,
+            device_secret_hash TEXT,
+            apns_token TEXT,
+            apns_env TEXT NOT NULL DEFAULT '',
+            push_to_start_token TEXT,
+            recent_notifications TEXT NOT NULL DEFAULT '[]',
+            created INTEGER NOT NULL,
+            expiry_warning_sent INTEGER NOT NULL DEFAULT 0
+        );`,
+		`INSERT INTO notifications_new (id, endpoint, p256dh, auth, platform, recent_notifications, created, expiry_warning_sent)
+            SELECT id, endpoint, p256dh, auth, 'web', recent_notifications, created, expiry_warning_sent FROM notifications;`,
+		`DROP TABLE notifications;`,
+		`ALTER TABLE notifications_new RENAME TO notifications;`,
+		// Table-level UNIQUE(endpoint,p256dh,auth) becomes a partial index, since
+		// an iOS row leaves those three columns NULL (NULL never conflicts with
+		// NULL in SQLite anyway, but being explicit is cheap and future-proof).
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_web_identity ON notifications(endpoint, p256dh, auth) WHERE platform = 'web';`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_device_id ON notifications(device_id) WHERE device_id IS NOT NULL;`,
+	}
+	for _, stmt := range stmts {
+		if _, err := tx.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("migrate notifications device identity: %w", err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("migrate notifications device identity: commit: %w", err)
+	}
+
+	if _, err := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON;`); err != nil {
+		return fmt.Errorf("migrate notifications device identity: re-enable foreign keys: %w", err)
+	}
+	rows, err := conn.QueryContext(ctx, `PRAGMA foreign_key_check;`)
+	if err != nil {
+		return fmt.Errorf("migrate notifications device identity: foreign key check: %w", err)
+	}
+	defer rows.Close()
+	if rows.Next() {
+		return errors.New("migrate notifications device identity: foreign key check failed after rebuild")
+	}
+
+	return nil
+}
+
+// ClientIdentity is how a request says which client it is - either a native
+// device's X-Device-Id/X-Device-Secret header pair, or (the original, and
+// still how the web PWA identifies itself) the endpoint/p256dh/auth triple
+// from its push subscription. See routes.go's identityFromRequest.
+type ClientIdentity struct {
+	DeviceID     string
+	DeviceSecret string
+	Endpoint     string
+	P256dh       string
+	Auth         string
+}
+
+func (id ClientIdentity) isDevice() bool { return id.DeviceID != "" }
+
+// ResolveClient finds an already-registered client from its identity. An iOS
+// device must already exist (via RegisterIOSDevice/POST /devices/register);
+// a web client is matched on its push subscription triple, same as
+// FindNotificationClient always did. parentStopId, if given, additionally
+// requires the client to hold a stop subscription for that parent stop.
+func (v *Database) ResolveClient(identity ClientIdentity, parentStopId string) (*NotificationClient, error) {
+	if identity.isDevice() {
+		client, err := v.FindIOSDeviceClient(identity.DeviceID, identity.DeviceSecret)
+		if err != nil {
+			return nil, err
+		}
+		if parentStopId != "" {
+			subscribed, sErr := v.clientSubscribedToStop(client.Id, parentStopId)
+			if sErr != nil {
+				return nil, sErr
+			}
+			if !subscribed {
+				return nil, ErrClientNotFound
+			}
+		}
+		return client, nil
+	}
+	return v.FindNotificationClient(identity.Endpoint, identity.P256dh, identity.Auth, parentStopId)
+}
+
+// ResolveOrCreateClient is ResolveClient, but for the handful of endpoints
+// that silently create a web push client on first use (a device that was
+// never explicitly subscribed to anything yet still wants a reminder). An
+// iOS device can't be created this way - there's no APNs token to create it
+// with - so an unregistered device id is ErrDeviceNotRegistered.
+func (v *Database) ResolveOrCreateClient(identity ClientIdentity, gtfsDB gtfs.Database) (*NotificationClient, error) {
+	if identity.isDevice() {
+		client, err := v.FindIOSDeviceClient(identity.DeviceID, identity.DeviceSecret)
+		if err != nil {
+			if errors.Is(err, ErrClientNotFound) {
+				return nil, ErrDeviceNotRegistered
+			}
+			return nil, err
+		}
+		return client, nil
+	}
+	return v.CreateNotificationClient(identity.Endpoint, identity.P256dh, identity.Auth, gtfsDB)
+}
+
+func (v *Database) clientSubscribedToStop(clientId int, parentStopId string) (bool, error) {
+	row, cancel := v.queryRowContext(`SELECT 1 FROM stops WHERE clientId = ? AND parent_stop = ?`, clientId, parentStopId)
+	defer cancel()
+
+	var one int
+	if err := row.Scan(&one); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }
 
 func (d *Database) columnNames(ctx context.Context, table string) (map[string]bool, error) {
@@ -442,6 +678,89 @@ func decodeStringSlice(raw sql.NullString) []string {
 		return nil
 	}
 	return values
+}
+
+// nullableString is a small helper for INSERT/UPDATE args: an empty string
+// should be stored as SQL NULL (not "") in the nullable device-identity
+// columns, so an absent APNs token round-trips as NULL rather than "".
+func nullableString(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
+// rowScanner is the common subset of *sql.Row and *sql.Rows that
+// scanClientRow needs - so the same scan code backs both a single-row lookup
+// (queryRowContext) and a multi-row fan-out query (queryContext).
+type rowScanner interface {
+	Scan(dest ...any) error
+}
+
+// scanClientRow scans the notification-client identity/meta columns that
+// every client query below selects, in this fixed order:
+//
+//	id, endpoint, p256dh, auth, platform, device_id, apns_token, apns_env,
+//	push_to_start_token, recent_notifications, created, expiry_warning_sent
+//
+// followed by whatever extra columns the caller's query appends (e.g.
+// s.routes, r.min_severity) - passed through to Scan as extra destinations.
+// The returned client's RecentNotifications is decoded but not pruned or
+// platform-checked for expiry; callers do that.
+func scanClientRow(row rowScanner, extra ...any) (NotificationClient, error) {
+	var (
+		id                             int
+		endpoint, p256dh, auth         sql.NullString
+		platform                       string
+		deviceID, apnsToken, pushStart sql.NullString
+		apnsEnv                        string
+		recent                         sql.NullString
+		created                        int
+		expiryWarningSent              int
+	)
+
+	dest := append([]any{
+		&id, &endpoint, &p256dh, &auth, &platform, &deviceID, &apnsToken, &apnsEnv, &pushStart,
+		&recent, &created, &expiryWarningSent,
+	}, extra...)
+
+	if err := row.Scan(dest...); err != nil {
+		return NotificationClient{}, err
+	}
+
+	recentEntries, err := decodeRecentNotifications(recent)
+	if err != nil {
+		return NotificationClient{}, fmt.Errorf("parse recent notifications: %w", err)
+	}
+
+	return NotificationClient{
+		Id:               id,
+		Platform:         platform,
+		DeviceID:         deviceID.String,
+		ApnsToken:        apnsToken.String,
+		ApnsEnv:          apnsEnv,
+		PushToStartToken: pushStart.String,
+		Notification: webpush.Subscription{
+			Endpoint: endpoint.String,
+			Keys:     webpush.Keys{Auth: auth.String, P256dh: p256dh.String},
+		},
+		RecentNotifications: recentEntries,
+		Created:             created,
+		ExpiryWarningSent:   expiryWarningSent,
+	}, nil
+}
+
+// clientCoreColumns is the fixed SELECT list every scanClientRow call site
+// must use, in that exact order (see scanClientRow's doc comment), so the
+// alias prefix ("n." for a join, "" for a plain SELECT FROM notifications)
+// is the only thing that varies between queries.
+func clientCoreColumns(alias string) string {
+	if alias != "" {
+		alias += "."
+	}
+	return alias + "id, " + alias + "endpoint, " + alias + "p256dh, " + alias + "auth, " +
+		alias + "platform, " + alias + "device_id, " + alias + "apns_token, " + alias + "apns_env, " +
+		alias + "push_to_start_token, " + alias + "recent_notifications, " + alias + "created, " + alias + "expiry_warning_sent"
 }
 
 func (d *Database) queryContext(query string, args ...any) (*sql.Rows, context.CancelFunc, error) {

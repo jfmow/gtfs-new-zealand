@@ -1,0 +1,19 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+
+# XcodeGen: the project is regenerated from project.yml, but the generated
+# project itself is still committed so the repo "just opens" without
+# requiring xcodegen - only user-specific state is ignored (above).
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Packages/TransitCore/.swiftpm/
+
+# Simulator/test artifacts
+*.xcresult
+
+# macOS
+.DS_Store

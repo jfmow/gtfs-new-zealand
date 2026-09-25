@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/caches"
+	"github.com/jfmow/at-trains-api/providers/notifications"
 	"github.com/jfmow/at-trains-api/providers/planlimit"
 	"github.com/jfmow/gtfs"
 	rt "github.com/jfmow/gtfs/realtime"
@@ -354,21 +355,36 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		timeType := queryString(c, "timeType", "now")
 		onlyRoutes := queryStringSlice(c, "onlyRoutes")
+
+		// modes ("bus,train,ferry", empty = any) and minTransferSec (extra
+		// time at each change) come from the iOS step-by-step planner.
+		routeTypes, err := notifications.ParseTravelModes(c.QueryParam("modes"))
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid modes", nil,
+				ResponseDetails("modes", c.QueryParam("modes"), "error", err.Error()))
+		}
+		minTransferSec, err := queryInt(c, "minTransferSec", 0)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid minTransferSec", nil,
+				ResponseDetails("minTransferSec", c.QueryParam("minTransferSec"), "error", err.Error()))
+		}
 		jplan := gtfs.JourneyRequest{
-			StartLat:        startLat,
-			StartLon:        startLon,
-			EndLat:          endLat,
-			EndLon:          endLon,
-			MaxWalkKm:       maxWalkKm,
-			WalkSpeedKmph:   walkSpeed,
-			MaxTransfers:    maxTransfers,
-			MaxNearbyStops:  50,
-			MaxResults:      maxResults,
-			MinResults:      minResults,
-			OsrmURL:         osrmApiUrl,
-			IncludeChildren: true,
-			OnlyRouteIDs:    onlyRoutes,
-			Realtime:        &realtime,
+			StartLat:          startLat,
+			StartLon:          startLon,
+			EndLat:            endLat,
+			EndLon:            endLon,
+			MaxWalkKm:         maxWalkKm,
+			WalkSpeedKmph:     walkSpeed,
+			MaxTransfers:      maxTransfers,
+			MaxNearbyStops:    50,
+			MaxResults:        maxResults,
+			MinResults:        minResults,
+			OsrmURL:           osrmApiUrl,
+			IncludeChildren:   true,
+			OnlyRouteIDs:      onlyRoutes,
+			AllowedRouteTypes: routeTypes,
+			MinTransferSec:    notifications.ClampMinTransferSec(minTransferSec),
+			Realtime:          &realtime,
 		}
 
 		switch timeType {
@@ -552,7 +568,10 @@ type ServicesStop struct {
 	Lon          float64 `json:"lon"`
 	ParentStopId string  `json:"parent_stop_id"`
 	Name         string  `json:"name"`
-	Platform     string  `json:"platform"`
-	Sequence     int     `json:"sequence"`
-	ChildStopId  string  `json:"child_stop_id"`
+	// DisplayName is Name without anything appended for search (the stop
+	// code on /stops/{tripId}) - set only where the two differ.
+	DisplayName string `json:"display_name,omitempty"`
+	Platform    string `json:"platform"`
+	Sequence    int    `json:"sequence"`
+	ChildStopId string `json:"child_stop_id"`
 }

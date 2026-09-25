@@ -3,7 +3,10 @@ package notifications
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
+	"net/url"
+	"regexp"
 	"sort"
 	"time"
 
@@ -32,6 +35,8 @@ func runJourneyRemindersCron(
 	rt realtime.Realtime,
 	tz *time.Location,
 	region, osrmURL string,
+	planLookup func(id string) (gtfs.JourneyPlan, bool),
+	planPut func(gtfs.JourneyPlan),
 	now time.Time,
 ) {
 	if db == nil {
@@ -51,8 +56,8 @@ func runJourneyRemindersCron(
 
 	updates, _ := rt.GetTripUpdates() // nil / partial tolerated per row
 
-	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, now)
-	jrCronNotify(db, updates, tz, region, now)
+	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, planPut, now)
+	jrCronNotify(db, updates, tz, region, planLookup, now)
 }
 
 // ── PASS 0 — rollover & expiry ────────────────────────────────────────────────
@@ -82,6 +87,7 @@ func jrCronResolve(
 	rt *realtime.Realtime,
 	tz *time.Location,
 	region, osrmURL string,
+	planPut func(gtfs.JourneyPlan),
 	now time.Time,
 ) {
 	// Query with the widest lead any row could ask for (180-min offset + 1h);
@@ -162,6 +168,12 @@ func jrCronResolve(
 			schedUnix, int64(access), schedUnix-int64(access),
 			routeName, bt.FromStop.StopName,
 		)
+		// Keep the resolved plan so the day's Live Activity (and the
+		// notification's deeplink) can open exactly this journey.
+		if planPut != nil && plan.ID != "" {
+			planPut(plan)
+			_ = db.SetJourneyReminderPlanID(r.Id, plan.ID)
+		}
 	}
 }
 
@@ -191,7 +203,7 @@ func jrHandleResolveFailure(db *Database, tz *time.Location, r JourneyReminder, 
 
 // ── PASS 2 — arm / notify ────────────────────────────────────────────────────
 
-func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Location, region string, now time.Time) {
+func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time) {
 	rows, err := db.GetArmedJourneyReminders(region)
 	if err != nil {
 		return
@@ -295,6 +307,11 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 			notifyJourneyReminderClient(db, r, fmt.Sprintf("leave-%d", fireMins), title, body)
 		}
 
+		// Put the journey on the Lock Screen as the rider gets ready to go.
+		if !r.LAStarted && minsUntilLeave <= liveActivityStartLeadMinutes && departTime.After(now) {
+			jrMaybeStartLiveActivity(db, r, region, planLookup, now)
+		}
+
 		// (c) persist / finish
 		allSent := true
 		for _, o := range offsets {
@@ -335,6 +352,70 @@ func jrHandleBoardingLost(db *Database, tz *time.Location, r JourneyReminder, no
 	_ = db.UpdateJourneyReminderState(r.Id, status, r.SentOffsets, r.BaselineLeaveUnix.Int64)
 }
 
+// liveActivityStartLeadMinutes is how long before the leave time a
+// reminder's journey Live Activity is push-started - early enough to show
+// the "leave in" countdown, late enough not to sit on the Lock Screen for
+// ages.
+const liveActivityStartLeadMinutes = 15
+
+var deeplinkPlanIDPattern = regexp.MustCompile(`[?&]id=([^&]+)`)
+
+// reminderPlanID is the plan a reminder is for: the one the cron resolved
+// (recurring), else the one in its /journey?id=... deeplink (fixed trip).
+func reminderPlanID(r JourneyReminder) string {
+	if r.PlanID != "" {
+		return r.PlanID
+	}
+	if m := deeplinkPlanIDPattern.FindStringSubmatch(r.Deeplink); len(m) == 2 {
+		if id, err := url.QueryUnescape(m[1]); err == nil {
+			return id
+		}
+	}
+	return ""
+}
+
+// jrMaybeStartLiveActivity push-starts the journey Live Activity for an iOS
+// reminder whose device has a push-to-start token. Returns whether the
+// occurrence now has an activity; false leaves it to be retried next tick
+// (e.g. the device's push-to-start token hasn't arrived yet).
+func jrMaybeStartLiveActivity(db *Database, r JourneyReminder, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time) bool {
+	client, err := db.FindNotificationClientById(r.ClientId)
+	if err != nil || client.Platform != "ios" || client.PushToStartToken == "" {
+		return false
+	}
+	apns := sharedAPNsSender()
+	planID := reminderPlanID(r)
+	if apns == nil || planID == "" || planLookup == nil {
+		return false
+	}
+	plan, ok := planLookup(planID)
+	if !ok {
+		return false
+	}
+	if db.HasLiveActivityForPlan(client.Id, plan.ID) {
+		_ = db.MarkJourneyReminderLiveActivityStarted(r.Id)
+		return true
+	}
+
+	state := computeJourneyActivityState(plan, now, nil, noHint)
+	attributes := map[string]any{
+		"planID":           plan.ID,
+		"destinationLabel": orLabel(r.EndLabel, "your destination"),
+		"regionSlug":       region,
+	}
+	alert := activityAlert{Title: state.PrimaryText, Body: state.SecondaryText}
+	env := client.ApnsEnv
+	if env == "" {
+		env = "production"
+	}
+	if err := apns.SendLiveActivityStart(client.PushToStartToken, env, attributes, state, alert, now.Add(activityStaleAfter)); err != nil {
+		log.Printf("notifications: push-to-start for reminder %d: %v", r.Id, err)
+		return false
+	}
+	_ = db.MarkJourneyReminderLiveActivityStarted(r.Id)
+	return true
+}
+
 // ── shared helpers ───────────────────────────────────────────────────────────
 
 // notifyJourneyReminderClient sends a push and records it in the in-app history.
@@ -356,20 +437,22 @@ func notifyJourneyReminderClient(db *Database, r JourneyReminder, eventKey, titl
 
 func buildJourneyRequest(r JourneyReminder, osrmURL string, rt *realtime.Realtime, tz *time.Location) gtfs.JourneyRequest {
 	req := gtfs.JourneyRequest{
-		StartLat:        r.StartLat,
-		StartLon:        r.StartLon,
-		EndLat:          r.EndLat,
-		EndLon:          r.EndLon,
-		MaxWalkKm:       r.MaxWalkKm,
-		WalkSpeedKmph:   r.WalkSpeed,
-		MaxTransfers:    r.MaxTransfers,
-		MaxNearbyStops:  50,
-		MaxResults:      5,
-		MinResults:      3,
-		OsrmURL:         osrmURL,
-		IncludeChildren: true,
-		OnlyRouteIDs:    r.OnlyRouteIDs,
-		Realtime:        rt,
+		StartLat:          r.StartLat,
+		StartLon:          r.StartLon,
+		EndLat:            r.EndLat,
+		EndLon:            r.EndLon,
+		MaxWalkKm:         r.MaxWalkKm,
+		WalkSpeedKmph:     r.WalkSpeed,
+		MaxTransfers:      r.MaxTransfers,
+		MaxNearbyStops:    50,
+		MaxResults:        5,
+		MinResults:        3,
+		OsrmURL:           osrmURL,
+		IncludeChildren:   true,
+		OnlyRouteIDs:      r.OnlyRouteIDs,
+		AllowedRouteTypes: r.RouteTypes,
+		MinTransferSec:    r.MinTransferSec,
+		Realtime:          rt,
 	}
 	target := time.Unix(r.TargetUnix, 0).In(tz)
 	if r.TimeType == "departat" {

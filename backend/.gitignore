@@ -1,8 +1,8 @@
 build.md
-gtfs
-base
+/gtfs
+/base
 .env
-notifications
-logs
-history
-plans
+/notifications
+/logs
+/history
+/plans

@@ -196,7 +196,7 @@ export function LiveMap({
             // boundary is found by matching stop IDs against trackedStops
             // instead, whose own `sequence` field is trustworthy.
             const boardSeq = findStopSequence(trackedStops, trackedBoardStop)
-            const alightSeq = findStopSequence(trackedStops, trackedAlightStop);
+            const alightSeq = findStopSequence(trackedStops, trackedAlightStop, boardSeq);
             (trackedStops ?? []).forEach((stop) => {
                 const icon = trackedStopIcon(stop, trackedVehicle, boardSeq, alightSeq)
                 // Plain in-between stops only declutter into view once zoomed

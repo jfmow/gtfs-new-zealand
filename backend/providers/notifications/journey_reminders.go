@@ -76,6 +76,8 @@ type JourneyReminder struct {
 	WalkSpeed          float64
 	MaxTransfers       int
 	OnlyRouteIDs       []string
+	RouteTypes         []int // the rider's chosen modes as GTFS route types; empty = any
+	MinTransferSec     int
 	Offsets            []int
 	Recurrence         string
 	RecurrenceUntil    string
@@ -94,6 +96,12 @@ type JourneyReminder struct {
 	BaselineLeaveUnix      sql.NullInt64
 	ResolveAttempts        int
 	LastError              string
+	// PlanID is the resolved plan in the shared plan store (recurring
+	// reminders) - fixed_trip reminders carry theirs in Deeplink instead.
+	PlanID string
+	// LAStarted is set once a Live Activity has been push-started for the
+	// current occurrence.
+	LAStarted bool
 
 	Created int64
 	Updated int64
@@ -104,11 +112,12 @@ const jrColumns = `
 	id, clientId, region, dedup_key, kind, status,
 	start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 	time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-	only_route_ids,
+	only_route_ids, route_types, min_transfer_sec,
 	offsets, recurrence, recurrence_until, deeplink,
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
-	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
+	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated,
+	plan_id, la_started
 `
 
 func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
@@ -116,22 +125,25 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 		r                   JourneyReminder
 		offsetsRaw, sentRaw sql.NullString
 		onlyRouteIDsRaw     sql.NullString
+		routeTypesRaw       sql.NullString
 	)
 	if err := rows.Scan(
 		&r.Id, &r.ClientId, &r.Region, &r.DedupKey, &r.Kind, &r.Status,
 		&r.StartLat, &r.StartLon, &r.StartLabel, &r.EndLat, &r.EndLon, &r.EndLabel,
 		&r.TimeType, &r.TargetHHMM, &r.MaxWalkKm, &r.WalkSpeed, &r.MaxTransfers,
-		&onlyRouteIDsRaw,
+		&onlyRouteIDsRaw, &routeTypesRaw, &r.MinTransferSec,
 		&offsetsRaw, &r.Recurrence, &r.RecurrenceUntil, &r.Deeplink,
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
 		&sentRaw, &r.BaselineLeaveUnix, &r.ResolveAttempts, &r.LastError, &r.Created, &r.Updated,
+		&r.PlanID, &r.LAStarted,
 	); err != nil {
 		return JourneyReminder{}, err
 	}
 	r.Offsets = decodeIntSlice(offsetsRaw)
 	r.SentOffsets = decodeIntSlice(sentRaw)
 	r.OnlyRouteIDs = decodeStringSlice(onlyRouteIDsRaw)
+	r.RouteTypes = decodeIntSlice(routeTypesRaw)
 	return r, nil
 }
 
@@ -249,12 +261,12 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			clientId, region, dedup_key, kind, status,
 			start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 			time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-			only_route_ids,
+			only_route_ids, route_types, min_transfer_sec,
 			offsets, recurrence, recurrence_until, deeplink,
 			service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 			scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
-		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
+		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
 		ON CONFLICT(clientId, dedup_key) DO UPDATE SET
 			region=excluded.region, kind=excluded.kind, status=excluded.status,
 			start_lat=excluded.start_lat, start_lon=excluded.start_lon, start_label=excluded.start_label,
@@ -262,6 +274,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			time_type=excluded.time_type, target_hhmm=excluded.target_hhmm,
 			max_walk_km=excluded.max_walk_km, walk_speed=excluded.walk_speed, max_transfers=excluded.max_transfers,
 			only_route_ids=excluded.only_route_ids,
+			route_types=excluded.route_types, min_transfer_sec=excluded.min_transfer_sec,
 			offsets=excluded.offsets,
 			recurrence=excluded.recurrence, recurrence_until=excluded.recurrence_until, deeplink=excluded.deeplink,
 			service_date=excluded.service_date, target_unix=excluded.target_unix,
@@ -273,7 +286,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 		r.ClientId, r.Region, r.DedupKey, r.Kind, r.Status,
 		r.StartLat, r.StartLon, r.StartLabel, r.EndLat, r.EndLon, r.EndLabel,
 		r.TimeType, r.TargetHHMM, r.MaxWalkKm, r.WalkSpeed, r.MaxTransfers,
-		encodeStringSlice(r.OnlyRouteIDs),
+		encodeStringSlice(r.OnlyRouteIDs), encodeIntSlice(r.RouteTypes), r.MinTransferSec,
 		encodeIntSlice(r.Offsets), r.Recurrence, r.RecurrenceUntil, r.Deeplink,
 		r.ServiceDate, r.TargetUnix, r.BoardTripID, r.BoardStopID, r.BoardStopSequence,
 		r.ScheduledDepartureUnix, r.AccessSeconds, r.RouteShortName, r.BoardStopName,
@@ -317,6 +330,19 @@ func (v *Database) UpdateJourneyReminderResolved(id int, tripID, stopID string, 
 	return nil
 }
 
+// SetJourneyReminderPlanID records the plan a reminder resolved to.
+func (v *Database) SetJourneyReminderPlanID(id int, planID string) error {
+	_, err := v.execContext(`UPDATE journey_reminders SET plan_id=? WHERE id=?`, planID, id)
+	return err
+}
+
+// MarkJourneyReminderLiveActivityStarted stops the cron push-starting a
+// second Live Activity for the same occurrence.
+func (v *Database) MarkJourneyReminderLiveActivityStarted(id int) error {
+	_, err := v.execContext(`UPDATE journey_reminders SET la_started=1 WHERE id=?`, id)
+	return err
+}
+
 // UpdateJourneyReminderState persists notify-pass progress.
 func (v *Database) UpdateJourneyReminderState(id int, status string, sentOffsets []int, baselineLeaveUnix int64) error {
 	now := time.Now().In(v.timeZone).Unix()
@@ -343,6 +369,7 @@ func (v *Database) ClearJourneyReminderResolution(id int) error {
 		`UPDATE journey_reminders SET
 			status='pending_resolve', board_trip_id=NULL, board_stop_id=NULL, board_stop_sequence=NULL,
 			scheduled_departure_unix=NULL, access_seconds=NULL, sent_offsets='[]',
+			plan_id='', la_started=0,
 			resolve_attempts=0, last_error='', updated=?
 		 WHERE id=?`,
 		now, id,
@@ -378,6 +405,7 @@ func (v *Database) RollJourneyReminderToNextOccurrence(id int, serviceDate strin
 			board_trip_id=NULL, board_stop_id=NULL, board_stop_sequence=NULL,
 			scheduled_departure_unix=NULL, access_seconds=NULL, baseline_leave_unix=NULL,
 			route_short_name='', board_stop_name='', sent_offsets='[]',
+			plan_id='', la_started=0,
 			resolve_attempts=0, last_error='', updated=?
 		 WHERE id=?`,
 		serviceDate, targetUnix, now, id,

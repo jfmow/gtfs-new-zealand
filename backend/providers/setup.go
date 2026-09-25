@@ -76,7 +76,7 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData)
 
-	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache, gtfsName)
+	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache, gtfsName, GetCachedPlan, StorePlan)
 
 	/*hsdb := history.SetupHistoricalDataStorage(realtime, gtfsName, localTimeZone)
 

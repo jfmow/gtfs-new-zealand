@@ -357,7 +357,7 @@ export function RouteDetailSheet({
     // rider is on board (or has missed it) - either way the camera should just
     // follow the vehicle, not frame it against a stop that's now behind them.
     const trackedBoardSeq = findStopSequence(trackedStops, trackedBoardStop)
-    const trackedAlightSeq = findStopSequence(trackedStops, trackedAlightStop)
+    const trackedAlightSeq = findStopSequence(trackedStops, trackedAlightStop, trackedBoardSeq)
     const boarded = hasDepartedStop(trackedVehicle, trackedBoardSeq)
     // Physically standing at the boarding stop, vehicle not yet departed it.
     const waitingAtStop = atBoardStop && !boarded

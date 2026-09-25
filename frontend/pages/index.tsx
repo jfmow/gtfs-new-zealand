@@ -8,6 +8,7 @@ import { MessageCircleWarningIcon } from "lucide-react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Header } from "@/components/nav";
 import { NearbyStops } from "@/components/home/nearby-stops";
+import { SavedPlacesRow } from "@/components/places/places";
 
 const Services = lazy(() => import("@/components/services"))
 const StopsMap = lazy(() => import("./stops").then(module => ({ default: module.StopsMap })))
@@ -30,6 +31,9 @@ export default function Home() {
           <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 shrink-0">
             <div className="flex gap-2 items-center w-full">
               <SearchForStop />
+            </div>
+            <div className="mt-3">
+              <SavedPlacesRow />
             </div>
             <div className="mt-3">
               <Favorites />
