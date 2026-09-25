@@ -215,6 +215,7 @@ struct Chip: View {
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
+        .sensoryFeedback(.selection, trigger: isActive) { _, nowActive in nowActive }
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
 }
@@ -422,6 +423,45 @@ struct ErrorState: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 32)
         .padding(.horizontal, 24)
+    }
+}
+
+// MARK: - Stale data
+
+/// "Offline · times as of 8:02am" - over live data that has stopped
+/// refreshing, so frozen countdowns don't pass for live ones.
+struct StaleDataBanner: View {
+    let isOffline: Bool
+    let lastUpdated: Date?
+    var retry: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: isOffline ? "wifi.slash" : "exclamationmark.arrow.circlepath")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Theme.warning)
+                .accessibilityHidden(true)
+            Text(message)
+                .font(.meta)
+                .foregroundStyle(Theme.foreground)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if let retry {
+                Button("Retry", action: retry).buttonStyle(.shad(.ghost, size: .sm))
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, retry == nil ? 12 : 4)
+        .padding(.vertical, retry == nil ? 9 : 2)
+        .background(Theme.warning.opacity(0.08), in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.warning.opacity(0.3), lineWidth: 1))
+        .accessibilityElement(children: .combine)
+    }
+
+    private var message: String {
+        let prefix = isOffline ? "Offline" : "Couldn't refresh"
+        guard let lastUpdated else { return prefix }
+        return "\(prefix) · times as of \(lastUpdated.formatted(date: .omitted, time: .shortened))"
     }
 }
 

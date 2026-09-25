@@ -42,3 +42,35 @@ struct FloatingBarButton<Content: View>: View {
             .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
     }
 }
+
+/// The mode filter floating over the Stops and Vehicles maps - All / Bus /
+/// Train / Ferry pills, then any extra chips the map adds (`trailing`).
+/// One component so the two maps can't drift apart.
+struct MapModeFilterBar<Mode: Hashable, Trailing: View>: View {
+    let modes: [Mode]
+    let label: (Mode) -> String
+    @Binding var selection: Mode
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(modes, id: \.self) { mode in
+                    FilterChip(title: label(mode), isSelected: selection == mode) {
+                        selection = mode
+                    }
+                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                }
+                trailing
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+        }
+    }
+}
+
+extension MapModeFilterBar where Trailing == EmptyView {
+    init(modes: [Mode], label: @escaping (Mode) -> String, selection: Binding<Mode>) {
+        self.init(modes: modes, label: label, selection: selection) { EmptyView() }
+    }
+}

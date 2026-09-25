@@ -19,7 +19,7 @@ import WidgetKit
 
 // MARK: - Tokens (Transit/DesignSystem/Theme.swift - the widget can't import the app)
 
-private enum Tokens {
+enum Tokens {
     static let card = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
     static let foreground = Color(light: 0x0A0A0A, dark: 0xF5F5F5)
     static let mutedForeground = Color(light: 0x737373, dark: 0xA3A3A3)
@@ -32,7 +32,7 @@ private enum Tokens {
     static let neutralRoute = "525252"
 }
 
-private extension Font {
+extension Font {
     enum GeistWeight: String { case regular = "Geist-Regular", medium = "Geist-Medium", semibold = "Geist-SemiBold", bold = "Geist-Bold" }
     static func geist(_ size: CGFloat, _ weight: GeistWeight = .regular) -> Font { .custom(weight.rawValue, size: size) }
 }
@@ -772,7 +772,7 @@ private func statusColor(_ status: String) -> Color? {
     }
 }
 
-private extension Color {
+extension Color {
     init(light: UInt32, dark: UInt32) {
         self.init(uiColor: UIColor { traits in
             let v = traits.userInterfaceStyle == .dark ? dark : light

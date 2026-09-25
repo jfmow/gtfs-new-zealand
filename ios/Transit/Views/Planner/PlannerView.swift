@@ -8,10 +8,12 @@ struct PlannerView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(\.scenePhase) private var scenePhase
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
     /// Set when opened over the step-by-step Planner tab (for a re-plan or a
     /// reminder link) - shows a Close button in place of the saved-trips menu.
     var onClose: (() -> Void)?
+    @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
 
     // Form
     @State private var start: PlannerLocation?
@@ -35,6 +37,12 @@ struct PlannerView: View {
     /// The search that produced `results` - reminders use this, not the
     /// (possibly since edited) form.
     @State private var resultsContext: PlannerSearchContext?
+    /// The request behind `results` and when it ran - a "Leave now" search
+    /// goes stale as its first option leaves, so it's re-run on return to
+    /// the app, and "Later departures" pages on from it.
+    @State private var lastRequest: JourneyPlanRequest?
+    @State private var resultsPlannedAt: Date?
+    @State private var isLoadingMore = false
 
     // Sheets
     @State private var isSaving = false
@@ -74,6 +82,19 @@ struct PlannerView: View {
                     // Saved trips fill the page until there are results.
                     if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
                         SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
+                    }
+                    // The step-by-step planner otherwise only lives in
+                    // Settings, where the riders it's for won't look.
+                    if onClose == nil, results.isEmpty, !isPlanning, planError == nil {
+                        Button {
+                            plannerStyleRaw = PlannerStyle.stepByStep.rawValue
+                        } label: {
+                            (Text("Prefer a few simple questions? ").foregroundColor(Theme.mutedForeground)
+                                + Text("Try step by step").foregroundColor(Theme.foreground).underline())
+                                .font(.meta)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.plain)
                     }
                     replanBanner
                     latestLeaveBanner
@@ -142,6 +163,11 @@ struct PlannerView: View {
                 LeaveReminderSheet(plan: plan, context: resultsContext ?? currentContext)
                     .shadSheet(detents: [.large])
             }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active, lastRequest?.timeType == .now, !isPlanning,
+                  let plannedAt = resultsPlannedAt, Date().timeIntervalSince(plannedAt) > 120 else { return }
+            Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
         }
         .onChange(of: router.pendingReplan, initial: true) { _, request in
             guard let request else { return }
@@ -357,18 +383,96 @@ struct PlannerView: View {
     @ViewBuilder
     private var resultsList: some View {
         if !results.isEmpty {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("\(results.count) route\(results.count == 1 ? "" : "s") found")
-                    .font(.metaMedium)
-                    .foregroundStyle(Theme.mutedForeground)
-                ForEach(results) { plan in
-                    NavigationLink(value: plan) {
-                        JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil)
+            // Re-evaluated every 30s so a result whose first ride has left
+            // greys out instead of still looking catchable.
+            TimelineView(.periodic(from: .now, by: 30)) { context in
+                VStack(alignment: .leading, spacing: 8) {
+                    resultsHeader(now: context.date)
+                    ForEach(results) { plan in
+                        let missed = hasLeft(plan, now: context.date)
+                        NavigationLink(value: plan) {
+                            JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil, isMissed: missed)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
+                    if lastRequest != nil {
+                        Button {
+                            Task { await loadMore() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if isLoadingMore { ProgressView().controlSize(.small) }
+                                Text(resultsContext?.arriveBy == true ? "Earlier arrivals" : "Later departures")
+                            }
+                        }
+                        .buttonStyle(.shad(.outline, size: .default, fullWidth: true))
+                        .disabled(isLoadingMore)
+                        .padding(.top, 4)
+                    }
                 }
             }
         }
+    }
+
+    /// "3 routes found · planned 8:02am", and a refresh once they've aged.
+    private func resultsHeader(now: Date) -> some View {
+        HStack(spacing: 8) {
+            Text("\(results.count) route\(results.count == 1 ? "" : "s") found")
+            if let resultsPlannedAt, now.timeIntervalSince(resultsPlannedAt) > 120 {
+                Text("· planned \(resultsPlannedAt.formatted(date: .omitted, time: .shortened))")
+                Spacer(minLength: 8)
+                Button {
+                    Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
+                } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.shad(.ghost, size: .sm))
+            }
+        }
+        .font(.metaMedium)
+        .foregroundStyle(Theme.mutedForeground)
+    }
+
+    /// The first ride has already gone (walk-only journeys never "leave").
+    private func hasLeft(_ plan: JourneyPlan, now: Date) -> Bool {
+        guard let firstRide = plan.transitLegs.first?.departureTime.date else { return false }
+        return firstRide < now
+    }
+
+    /// The next page of journeys after the latest departure (or, arriving
+    /// by, before the earliest arrival) - appended, not replacing, so the
+    /// rider can compare.
+    private func loadMore() async {
+        guard var request = lastRequest else { return }
+        if request.timeType == .arriveat {
+            guard let earliest = results.compactMap(\.arrivalTime.date).min() else { return }
+            request.date = earliest.addingTimeInterval(-60)
+        } else {
+            guard let latest = results.compactMap(\.departureTime.date).max() else { return }
+            request.timeType = .departat
+            request.date = latest.addingTimeInterval(60)
+        }
+        isLoadingMore = true
+        defer { isLoadingMore = false }
+        do {
+            let more = JourneyPlanRanking.pruneDominatedPlans(try await environment.api.planJourney(request))
+            let seen = Set(results.map(journeyKey))
+            let fresh = more.filter { !seen.contains(journeyKey($0)) }
+            if fresh.isEmpty {
+                environment.toasts.show(request.timeType == .arriveat ? "No earlier journeys found" : "No later journeys found", .info)
+                return
+            }
+            let merged = results + fresh
+            results = request.timeType == .arriveat
+                ? merged.sorted { ($0.arrivalTime.date ?? .distantPast) > ($1.arrivalTime.date ?? .distantPast) }
+                : merged.sorted { ($0.departureTime.date ?? .distantPast) < ($1.departureTime.date ?? .distantPast) }
+        } catch {
+            environment.toasts.show("Couldn't load more journeys", .error)
+        }
+    }
+
+    /// The same journey from two searches can come back with different ids.
+    private func journeyKey(_ plan: JourneyPlan) -> String {
+        "\(plan.departureTime.date?.timeIntervalSince1970 ?? 0)|\(plan.arrivalTime.date?.timeIntervalSince1970 ?? 0)|\(plan.transitLegs.map(\.tripID).joined(separator: ","))"
     }
 
     private func canRemind(_ plan: JourneyPlan) -> Bool {
@@ -403,6 +507,8 @@ struct PlannerView: View {
             let plans = JourneyPlanRanking.pruneDominatedPlans(try await environment.api.planJourney(request))
             results = plans
             resultsContext = context
+            lastRequest = request
+            resultsPlannedAt = Date()
             if plans.isEmpty { planError = "No journeys found. Try walking further or allowing more transfers." }
         } catch {
             planError = error.localizedDescription.isEmpty ? "Couldn't plan that journey." : error.localizedDescription
@@ -493,6 +599,8 @@ struct PlannerView: View {
 struct JourneyResultCard: View {
     let plan: JourneyPlan
     var onRemind: (() -> Void)?
+    /// Its first ride has already left - still shown, but greyed.
+    var isMissed = false
 
     private var hasDisruption: Bool {
         plan.legs.contains { $0.mode == "transit" && !$0.tripUsable }
@@ -526,6 +634,9 @@ struct JourneyResultCard: View {
                         }
                     }
                     Spacer(minLength: 8)
+                    if isMissed {
+                        ShadBadge(text: "Left", variant: .outline)
+                    }
                     ShadBadge(text: plan.transfers == 0 ? "Direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")",
                               variant: plan.transfers == 0 ? .default : .secondary)
                     if let onRemind {
@@ -545,6 +656,7 @@ struct JourneyResultCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .clipShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
         .shadCardBackground()
+        .opacity(isMissed ? 0.55 : 1)
         .accessibilityElement(children: .combine)
     }
 }

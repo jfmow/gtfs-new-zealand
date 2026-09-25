@@ -42,15 +42,15 @@ final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCent
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         UNUserNotificationCenter.current().delegate = self
-        application.shortcutItems = QuickAction.allCases.map(\.shortcutItem)
+        application.shortcutItems = QuickAction.shortcutItems(places: SharedStore.placesInRegion)
         return true
     }
 
     /// A cold launch from a Home Screen quick action hands it over here; a
     /// running app gets it in `QuickActionSceneDelegate`.
     func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
-        if let item = options.shortcutItem, let action = QuickAction(rawValue: item.type) {
-            QuickAction.relay.perform(action)
+        if let item = options.shortcutItem, let action = QuickAction.action(for: item) {
+            AppAction.relay.perform(action)
         }
         let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
         configuration.delegateClass = QuickActionSceneDelegate.self

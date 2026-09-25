@@ -56,7 +56,6 @@ struct SettingsView: View {
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
 
     var body: some View {
-        @Bindable var environment = environment
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 SettingsGroup {
@@ -77,7 +76,7 @@ struct SettingsView: View {
                     RowDivider()
                     SettingsRow(title: "Region", detail: "Your transit provider") {
                         ShadSelect(
-                            selection: $environment.region,
+                            selection: Binding(get: { environment.region }, set: { environment.choose(region: $0) }),
                             options: Region.all.map { ($0, $0.displayName) }
                         )
                     }

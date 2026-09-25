@@ -68,6 +68,9 @@ targets:
       path: Transit.entitlements
       properties:
         aps-environment: development
+        # Shares saved stops/places and the region with the widget and
+        # Siri (Shared/SharedStore.swift).
+        com.apple.security.application-groups: [group.dev.suddsy.transit]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
@@ -89,6 +92,10 @@ targets:
       - path: Shared
     dependencies:
       - package: TransitCore
+    entitlements:
+      path: TransitWidgets.entitlements
+      properties:
+        com.apple.security.application-groups: [group.dev.suddsy.transit]
     info:
       path: TransitWidgets-Info.plist
       properties:

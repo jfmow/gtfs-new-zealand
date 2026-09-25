@@ -53,7 +53,10 @@ struct RouteMultiSelect: View {
     }
 }
 
-private struct RouteSearchSheet: View {
+/// Search routes and tick the ones you want - the planner's route filter
+/// and the vehicles map's "where's my bus".
+struct RouteSearchSheet: View {
+    var title = "Only use these routes"
     @Binding var selected: [RouteSearchResult]
 
     @Environment(AppEnvironment.self) private var environment
@@ -106,7 +109,7 @@ private struct RouteSearchSheet: View {
             }
             .padding(16)
             .pageBackground()
-            .navigationTitle("Only use these routes")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }

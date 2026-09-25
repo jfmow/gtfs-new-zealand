@@ -2,7 +2,7 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-/// The Schedule tab's landing screen - `pages/index.tsx` with no stop
+/// The Home tab's landing screen - `pages/index.tsx` with no stop
 /// selected: stop search, then saved places (one tap to plan a trip
 /// there), saved stops, saved trips and the stops near you, stops with live
 /// next departures. The map lives on the Stops tab (a
@@ -41,6 +41,10 @@ struct HomeView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
+                        if !environment.network.isConnected {
+                            StaleDataBanner(isOffline: true, lastUpdated: nil)
+                                .padding(.horizontal, 16)
+                        }
                         placesSection
                         savedStopsSection
                         savedTripsSection
@@ -188,7 +192,8 @@ struct HomeView: View {
     private var nearbySection: some View {
         HomeSection(title: "Nearby", liveDot: environment.location.isAuthorized) {
             Button {
-                router.selectedTab = .stops
+                router.mapMode = .stops
+                router.selectedTab = .map
             } label: {
                 Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
             }
@@ -209,8 +214,14 @@ struct HomeView: View {
         let stops = nearestDistinct
         if !environment.location.isAuthorized {
             HomeHint(systemImage: "location", text: "See live departures from the stops around you.") {
-                Button("Enable location") { environment.location.requestPermission() }
-                    .buttonStyle(.shad(.outline, size: .sm))
+                // Once refused, iOS won't ask again - only Settings can.
+                if environment.location.authorizationStatus == .notDetermined {
+                    Button("Enable location") { environment.location.requestPermission() }
+                        .buttonStyle(.shad(.outline, size: .sm))
+                } else if let url = URL(string: UIApplication.openSettingsURLString) {
+                    Button("Turn on in Settings") { UIApplication.shared.open(url) }
+                        .buttonStyle(.shad(.outline, size: .sm))
+                }
             }
         } else if !stops.isEmpty {
             VStack(spacing: 10) {
@@ -247,8 +258,9 @@ struct HomeView: View {
         return TimeFormatting.formatDistance(meters: Geo.haversineDistanceMeters(here, stop.coordinate))
     }
 
+    /// Doesn't ask for location itself - first launch explains and asks,
+    /// and the "Enable location" hint asks again.
     private func loadNearby() async {
-        environment.location.requestPermission()
         environment.location.startUpdating()
         guard let coordinate = environment.location.coordinate else { return }
         isLoadingNearby = true

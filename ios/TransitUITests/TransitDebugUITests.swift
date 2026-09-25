@@ -13,6 +13,8 @@ final class TransitDebugUITests: XCTestCase {
 
     override func setUpWithError() throws {
         continueAfterFailure = true
+        // Skip first-launch setup - it would sit over every walkthrough.
+        app.launchArguments += ["-hasOnboarded", "YES"]
     }
 
     /// Taps through the system permission/"Open in" alerts that block
@@ -33,6 +35,106 @@ final class TransitDebugUITests: XCTestCase {
         shot.name = name
         shot.lifetime = .keepAlways
         add(shot)
+        // Also saved where `TEST_RUNNER_UX_SHOT_DIR` points - easier to read
+        // back than an .xcresult.
+        if let dir = ProcessInfo.processInfo.environment["UX_SHOT_DIR"] {
+            try? app.screenshot().pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        }
+    }
+
+    /// "Later departures" appends the next journeys under the results.
+    func testLaterDepartures() throws {
+        app.launch()
+        app.tabBars.buttons["Planner"].tap()
+        let fromField = app.textFields.element(boundBy: 0)
+        XCTAssertTrue(fromField.waitForExistence(timeout: 5))
+        fromField.tap()
+        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch.tap()
+        sleep(2)
+        let toField = app.textFields.element(boundBy: 1)
+        toField.tap()
+        toField.typeText("Newmarket")
+        sleep(2)
+        app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch.tap()
+        sleep(1)
+        attach("later-00-form")
+        app.buttons["Plan journey"].tap()
+        let later = app.buttons["Later departures"]
+        XCTAssertTrue(later.waitForExistence(timeout: 15))
+        let before = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'found'")).firstMatch.label
+        later.tap()
+        sleep(5)
+        let after = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'found'")).firstMatch.label
+        print("LATER:", before, "->", after)
+        attach("later-01")
+    }
+
+    /// The UX pass: saves a stop, then the Map tab's Stops/Vehicles switch
+    /// and route filter, the Alerts overview, the Planner's step-by-step
+    /// link, a board's long-press reminder.
+    func testUXSurvey() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 3)
+
+        let search = app.textFields["Search for stop..."]
+        XCTAssertTrue(search.waitForExistence(timeout: 5))
+        search.tap()
+        search.typeText("Britomart")
+        sleep(3)
+        attach("ux01-search")
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS 'Britomart Train Station'")).firstMatch
+        if result.waitForExistence(timeout: 5) { result.tap() } else { app.buttons.matching(NSPredicate(format: "label CONTAINS 'Britomart'")).element(boundBy: 1).tap() }
+        sleep(4)
+        attach("ux02-board")
+        let save = app.buttons["Save stop"]
+        if save.waitForExistence(timeout: 3) { save.tap() }
+        sleep(1)
+        let row = app.buttons["departure-row"].firstMatch
+        if row.waitForExistence(timeout: 5) {
+            row.press(forDuration: 1.2)
+            sleep(1)
+            attach("ux03-row-menu")
+            let remind = app.buttons["Remind me before it arrives"]
+            if remind.waitForExistence(timeout: 2) {
+                remind.tap()
+                sleep(1)
+                attach("ux04-reminder-sheet")
+                app.buttons["Cancel"].firstMatch.tap()
+            }
+        }
+        app.navigationBars.buttons.firstMatch.tap()
+        sleep(3)
+        attach("ux05-home-saved")
+
+        app.tabBars.buttons["Map"].tap()
+        dismissSystemAlertIfPresent(timeout: 2)
+        sleep(3)
+        attach("ux06-map-stops")
+        app.buttons["Vehicles"].firstMatch.tap()
+        sleep(4)
+        attach("ux07-map-vehicles")
+        let route = app.buttons["Find a route"]
+        if route.waitForExistence(timeout: 3) {
+            route.tap()
+            sleep(1)
+            app.textFields.firstMatch.typeText("70")
+            sleep(3)
+            attach("ux08-route-search")
+            let seventy = app.buttons.matching(NSPredicate(format: "label == '70'")).firstMatch
+            if seventy.waitForExistence(timeout: 3) { seventy.tap() }
+            app.buttons["Done"].firstMatch.tap()
+            sleep(4)
+            attach("ux09-vehicles-70")
+        }
+
+        app.tabBars.buttons["Alerts"].tap()
+        sleep(5)
+        attach("ux10-alerts-overview")
+
+        app.tabBars.buttons["Planner"].tap()
+        sleep(2)
+        attach("ux11-planner")
+        XCTAssertEqual(app.state, .runningForeground)
     }
 
     /// Walks: Home -> Map tab (Stops, exercises the "stop"/"cluster"
@@ -83,7 +185,7 @@ final class TransitDebugUITests: XCTestCase {
         }
 
         // Back to Home, open the first list row if any exist.
-        let scheduleTab = app.tabBars.buttons["Schedule"]
+        let scheduleTab = app.tabBars.buttons["Home"]
         if scheduleTab.waitForExistence(timeout: 3) {
             scheduleTab.tap()
             sleep(1)
@@ -197,7 +299,7 @@ final class TransitDebugUITests: XCTestCase {
     func testClusterTapExpands() throws {
         app.launch()
         dismissSystemAlertIfPresent(timeout: 4)
-        app.tabBars.buttons["Stops"].tap()
+        app.tabBars.buttons["Map"].tap()
         sleep(4)
         attach("cl-01-before")
         let groups = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Group of "))
@@ -421,7 +523,7 @@ final class TransitDebugUITests: XCTestCase {
     func testMapStopToServiceStack() throws {
         app.launch()
         dismissSystemAlertIfPresent(timeout: 4)
-        app.tabBars.buttons["Stops"].tap()
+        app.tabBars.buttons["Map"].tap()
         sleep(4)
         let stopMarkers = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stop-"))
         let groups = app.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH %@", "Group of "))
@@ -509,7 +611,10 @@ final class TransitDebugUITests: XCTestCase {
         plannerTab.tap()
         sleep(1)
 
-        // From: current location (already set via simctl location).
+        // From: current location (already set via simctl location) - the
+        // option shows in the field's dropdown once it's focused.
+        let fromField = app.textFields.element(boundBy: 0)
+        if fromField.waitForExistence(timeout: 3) { fromField.tap() }
         let useCurrentLocationButtons = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location"))
         XCTAssertTrue(useCurrentLocationButtons.firstMatch.waitForExistence(timeout: 5))
         useCurrentLocationButtons.firstMatch.tap()
@@ -575,6 +680,10 @@ final class TransitDebugUITests: XCTestCase {
                 let endButton = app.buttons["End"]
                 if endButton.waitForExistence(timeout: 3) {
                     endButton.tap()
+                    let confirm = app.buttons["End journey"]
+                    XCTAssertTrue(confirm.waitForExistence(timeout: 3), "End didn't ask for confirmation")
+                    attach("journey-05b-end-confirm")
+                    confirm.tap()
                     sleep(2)
                     attach("journey-06-after-end")
                     XCTAssertEqual(app.state, .runningForeground, "app died ending the journey")
@@ -766,7 +875,7 @@ final class TransitDebugUITests: XCTestCase {
             sleep(1)
         }
 
-        let scheduleTab = app.tabBars.buttons["Schedule"]
+        let scheduleTab = app.tabBars.buttons["Home"]
         let searchField = app.textFields["Search for stop..."]
         if searchField.waitForExistence(timeout: 3) {
             searchField.tap()
@@ -1236,6 +1345,7 @@ final class TransitDebugUITests: XCTestCase {
         sleep(2)
         attach("end-01b-tracker")
         app.buttons["End"].tap()
+        if app.buttons["End journey"].waitForExistence(timeout: 3) { app.buttons["End journey"].tap() }
         sleep(1)
         attach("end-01c-after-tap")
         sleep(2)

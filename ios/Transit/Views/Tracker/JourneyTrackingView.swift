@@ -61,6 +61,9 @@ struct JourneyTrackingView: View {
     /// by giving it a real binding and explicitly clearing it before
     /// `dismiss()`.
     @State private var isTrackerSheetPresented = true
+    /// "End" sits beside the recentre button - one mis-tap used to stop the
+    /// tracking, alerts and Live Activity outright.
+    @State private var isConfirmingEnd = false
 
     /// The web tracker's "live" blue for the current leg/step.
     private var accent: Color { Theme.live }
@@ -108,6 +111,15 @@ struct JourneyTrackingView: View {
         }
         .sheet(isPresented: $isTrackerSheetPresented) {
             itinerarySheetContent
+                // Presented from the sheet: the view under it can't present
+                // anything while the sheet itself is up.
+                .confirmationDialog("End this journey?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
+                    Button("End journey", role: .destructive) { endJourney() }
+                    Button("Minimise instead") { leaveTracker() }
+                    Button("Keep tracking", role: .cancel) {}
+                } message: {
+                    Text("Get-off alerts and the Live Activity will stop. Minimise keeps them going.")
+                }
                 .presentationDetents([.height(Self.compactDrawerHeight), .medium, .large], selection: $sheetDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
@@ -166,7 +178,7 @@ struct JourneyTrackingView: View {
             // drawer covers.
             RecenterButton(isAuthorized: environment.location.isAuthorized) { recenter() }
             FloatingBarButton {
-                Button("End", role: .destructive) { endJourney() }
+                Button("End", role: .destructive) { isConfirmingEnd = true }
                     .padding(.horizontal, 12)
             }
         }
