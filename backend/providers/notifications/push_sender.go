@@ -200,11 +200,7 @@ func liveActivityUpdateAPS(contentState any, alert *activityAlert, staleDate, di
 	if alert != nil {
 		// For Live Activity pushes the sound lives *inside* alert - a
 		// top-level aps.sound is ignored, which made these alerts silent.
-		a := map[string]string{"title": alert.Title, "body": alert.Body}
-		if alert.Sound {
-			a["sound"] = "default"
-		}
-		aps["alert"] = a
+		aps["alert"] = map[string]string{"title": alert.Title, "body": alert.Body, "sound": "default"}
 		priority = apns2.PriorityHigh
 	}
 	if dismissalDate != nil {

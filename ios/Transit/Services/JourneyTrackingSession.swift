@@ -117,9 +117,16 @@ final class JourneyTrackingSession {
                 self.tick()
             }
         }
+        // Offline in the background the server can't announce moments, so
+        // the app does: as the Live Activity's alert (the Dynamic Island
+        // expands) when there is one, else a notification.
         alertCenter.onFire = { [weak self] alert in
             guard let self, !self.isAppActive, self.isOffline, let url = self.notificationURL else { return }
-            Task { await self.notifications.deliverNow(key: alert.id, title: alert.title, body: alert.body, url: url) }
+            Task {
+                guard await self.notifications.takeOver(key: alert.id) else { return }
+                if await self.liveActivity.alert(title: alert.title, body: alert.body ?? "") { return }
+                await self.notifications.deliverNow(key: alert.id, title: alert.title, body: alert.body, url: url)
+            }
         }
     }
 

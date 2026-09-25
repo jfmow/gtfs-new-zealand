@@ -105,6 +105,17 @@ final class LiveActivityCoordinator {
         await activity.update(.init(state: state, staleDate: staleDate ?? Date().addingTimeInterval(Self.staleAfter)))
     }
 
+    /// Announces a journey moment on the activity itself: the Dynamic Island
+    /// expands (a banner-style alert on the Lock Screen for phones without
+    /// one) with sound, in place of a separate notification. The content is
+    /// left as it is. False when there's no activity on screen to do it.
+    func alert(title: String, body: String) async -> Bool {
+        guard let activity, activity.activityState == .active || activity.activityState == .stale else { return false }
+        let alert = AlertConfiguration(title: LocalizedStringResource(stringLiteral: title), body: LocalizedStringResource(stringLiteral: body), sound: .default)
+        await activity.update(activity.content, alertConfiguration: alert)
+        return true
+    }
+
     /// The rider ended the journey: takes every journey activity off the
     /// Lock Screen and Dynamic Island straight away - not just the tracked
     /// one, in case a reminder push-started another that was never adopted

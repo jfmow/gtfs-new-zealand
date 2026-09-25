@@ -64,12 +64,22 @@ final class JourneyOfflineNotifications {
     /// Shows a GPS-detected moment now - unless its scheduled stand-in
     /// already went off.
     func deliverNow(key: String, title: String, body: String?, url: String) async {
+        guard await takeOver(key: key) else { return }
         let id = Self.identifier(key)
-        let delivered = await center.deliveredNotifications()
-        guard !delivered.contains(where: { $0.request.identifier == id }) else { return }
-        scheduled[key] = nil
         let request = UNNotificationRequest(identifier: id, content: Self.content(title: title, body: body ?? "", url: url), trigger: nil)
         try? await center.add(request)
+    }
+
+    /// A GPS-detected moment is being shown some other way (the Live
+    /// Activity's alert): drops its scheduled stand-in. False if the stand-in
+    /// already went off, so the moment shouldn't be shown again.
+    func takeOver(key: String) async -> Bool {
+        let id = Self.identifier(key)
+        let delivered = await center.deliveredNotifications()
+        guard !delivered.contains(where: { $0.request.identifier == id }) else { return false }
+        center.removePendingNotificationRequests(withIdentifiers: [id])
+        scheduled[key] = nil
+        return true
     }
 
     /// Drops everything still pending - back online (the server takes

@@ -59,14 +59,14 @@ type journeyActivityState struct {
 
 	// v3 - what the widget's phase row draws (stop track, vehicle approach,
 	// walk distance) instead of parsing it back out of the copy.
-	BoardStopName  string  `json:"boardStopName,omitempty"`
-	AlightStopName string  `json:"alightStopName,omitempty"`
-	NextStopName   string  `json:"nextStopName,omitempty"`
-	RideStops      *int    `json:"rideStops,omitempty"` // stops ridden, board -> alight
-	WalkMinutes    *int    `json:"walkMinutes,omitempty"`
-	WalkMeters     *int    `json:"walkMeters,omitempty"`
-	HasVehicle     bool    `json:"hasVehicle"`
-	Occupancy      *int    `json:"occupancy,omitempty"` // GTFS-RT occupancy status; device-only for now
+	BoardStopName  string `json:"boardStopName,omitempty"`
+	AlightStopName string `json:"alightStopName,omitempty"`
+	NextStopName   string `json:"nextStopName,omitempty"`
+	RideStops      *int   `json:"rideStops,omitempty"` // stops ridden, board -> alight
+	WalkMinutes    *int   `json:"walkMinutes,omitempty"`
+	WalkMeters     *int   `json:"walkMeters,omitempty"`
+	HasVehicle     bool   `json:"hasVehicle"`
+	Occupancy      *int   `json:"occupancy,omitempty"` // GTFS-RT occupancy status; device-only for now
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -91,10 +91,6 @@ type activityAlert struct {
 	Key   string // dedupe key, stored in live_activities.alerted_keys
 	Title string
 	Body  string
-	// Sound plays with the Live Activity alert - only when a regular
-	// notification (which carries its own sound) couldn't be sent, so the
-	// phone buzzes once, not twice.
-	Sound bool
 }
 
 // legLive is the realtime picture for one transit leg's trip.

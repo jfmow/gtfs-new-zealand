@@ -1,6 +1,7 @@
 package notifications
 
 import (
+	"encoding/json"
 	"log"
 	"net/url"
 	"sort"
@@ -35,6 +36,9 @@ type LiveActivity struct {
 	// ClientReported is when the app last reported its leg - it's running
 	// and updating the activity itself then (see clientActiveWindow).
 	ClientReported int64
+	// PendingAlert is a leave-by reminder queued for this activity's next
+	// push (QueueLiveActivityAlert), as stored - "" when there isn't one.
+	PendingAlert string
 }
 
 // CreateLiveActivity registers a newly-started activity, or updates one
@@ -87,6 +91,53 @@ func (d *Database) HasLiveActivityForPlan(clientId int, planId string) bool {
 	return row.Scan(&one) == nil
 }
 
+// QueueLiveActivityAlert hands a leave-by reminder to the client's Live
+// Activity for the plan, if one is running: the Live Activity cron sends it
+// as that activity's alert, which expands the Dynamic Island instead of
+// showing a separate banner. It goes with the cron's next push because an
+// alert has to carry the activity's content, and only the cron has the
+// realtime picture to build it. False when there's no activity to take it.
+func (d *Database) QueueLiveActivityAlert(clientId int, planId string, alert activityAlert) bool {
+	if planId == "" {
+		return false
+	}
+	encoded, err := json.Marshal(queuedAlert{Key: alert.Key, Title: alert.Title, Body: alert.Body})
+	if err != nil {
+		return false
+	}
+	res, err := d.execContext(`UPDATE live_activities SET pending_alert = ? WHERE clientId = ? AND plan_id = ?`, string(encoded), clientId, planId)
+	if err != nil {
+		return false
+	}
+	n, err := res.RowsAffected()
+	return err == nil && n > 0
+}
+
+type queuedAlert struct {
+	Key   string `json:"key"`
+	Title string `json:"title"`
+	Body  string `json:"body"`
+}
+
+// pendingAlert decodes the activity's queued reminder, if it has one.
+func (a LiveActivity) pendingAlert() *activityAlert {
+	if a.PendingAlert == "" {
+		return nil
+	}
+	var q queuedAlert
+	if json.Unmarshal([]byte(a.PendingAlert), &q) != nil || q.Title == "" {
+		return nil
+	}
+	return &activityAlert{Key: q.Key, Title: q.Title, Body: q.Body}
+}
+
+// clearPendingAlert drops the queued reminder once it's been sent - only if
+// it's still the one that was read, so one queued in the meantime survives.
+func (d *Database) clearPendingAlert(id int, sent string) error {
+	_, err := d.execContext(`UPDATE live_activities SET pending_alert = '' WHERE id = ? AND pending_alert = ?`, id, sent)
+	return err
+}
+
 func (d *Database) recordLiveActivityPush(id int, hash string, alertedKeys []string, now time.Time) error {
 	_, err := d.execContext(
 		`UPDATE live_activities SET last_state_hash = ?, alerted_keys = ?, last_pushed = ?, updated = ? WHERE id = ?`,
@@ -106,7 +157,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 	rows, err := d.db.Query(`
         SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, la.push_token,
                COALESCE(NULLIF(la.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
-               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported
+               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert
         FROM live_activities la
         JOIN notifications n ON n.id = la.clientId
         WHERE la.region = ?`, region)
@@ -120,7 +171,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 		var a LiveActivity
 		var alerted string
 		if err := rows.Scan(&a.Id, &a.ClientId, &a.Region, &a.PlanId, &a.ActivityId, &a.PushToken,
-			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported); err != nil {
+			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported, &a.PendingAlert); err != nil {
 			continue
 		}
 		if alerted != "" {
@@ -149,15 +200,16 @@ const (
 // so this cron leaves the content alone - two writers working from
 // different snapshots of the feed made the stop count flick back and forth
 // (2026-09-24). The app reports at least every 30s while it's doing that.
-// Key-moment banners still go out, since the app only shows those in-app.
+// Key moments still go out, as the activity's alert.
 const clientActiveWindow = 75 * time.Second
 
 // runLiveActivitiesCron is one tick of the Live Activity progress pusher -
 // the background path for when the app isn't running to update ActivityKit
 // itself. Loads each activity's plan from the shared plan store, overlays
 // realtime for its transit legs, and pushes when what the rider would see
-// has changed (or the heartbeat is due) - with a sound/banner alert only for
-// the one-off moments in journeyActivityState.alert.
+// has changed (or the heartbeat is due) - with an alert (Dynamic Island
+// expansion + sound) only for the one-off moments in
+// journeyActivityState.alert and queued leave-by reminders.
 func runLiveActivitiesCron(db *Database, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, parentStopsCache caches.ParentStopsByChildCache, tz *time.Location, now time.Time) {
 	if db == nil {
 		return
@@ -200,52 +252,64 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 			a := *state.alert
 			alert = &a
 		}
-
-		if now.Sub(time.Unix(activity.ClientReported, 0)) < clientActiveWindow {
-			if alert != nil && sendJourneyMomentNotification(db, activity, *alert) {
-				// Leave the state hash alone, so the content is pushed as
-				// soon as the app stops updating it.
-				db.recordLiveActivityPush(activity.Id, activity.LastStateHash, append(activity.AlertedKeys, alert.Key), time.Unix(activity.LastPushed, 0))
-			}
-			continue
+		// A queued leave-by reminder goes out when the journey has no moment
+		// of its own to announce - if it does (the "leave now" reminder
+		// coming due with "Time to leave"), that says it and the reminder is
+		// dropped, so the phone buzzes once.
+		queued := activity.pendingAlert()
+		fromQueue := false
+		if alert == nil && queued != nil {
+			alert, fromQueue = queued, true
 		}
 
+		// While the app is updating the activity itself, this cron leaves
+		// the content alone - apart from pushes carrying an alert, which
+		// have to include content.
+		clientActive := now.Sub(time.Unix(activity.ClientReported, 0)) < clientActiveWindow
 		hash := state.stateHash()
 		heartbeatDue := now.Sub(time.Unix(activity.LastPushed, 0)) >= activityHeartbeat
-		if hash == activity.LastStateHash && alert == nil && !heartbeatDue {
+		if alert == nil && (clientActive || (hash == activity.LastStateHash && !heartbeatDue)) {
 			continue
 		}
 
-		// Key moments (time to leave, get on, get off...) also go out as a
-		// regular time-sensitive notification: a banner plus sound/vibration
-		// even when the Live Activity isn't on screen. The Live Activity
-		// alert then only expands the activity, silently.
-		bannerSent := false
-		if alert != nil {
-			bannerSent = sendJourneyMomentNotification(db, activity, *alert)
-			alert.Sound = !bannerSent
-		}
-
+		// Key moments (time to leave, get on, get off...) are the activity's
+		// own alert, with sound: it expands the Dynamic Island (or shows on
+		// the Lock Screen) in place of a separate notification banner. A
+		// regular time-sensitive notification is only the fallback, when the
+		// activity can't be pushed to.
 		stale := now.Add(activityStaleAfter)
-		alerted := activity.AlertedKeys
-		if alert != nil {
-			alerted = append(alerted, alert.Key)
-		}
-		if err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, alert, &stale, nil); err != nil {
+		err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, alert, &stale, nil)
+		alertDelivered := alert != nil && err == nil
+		if err != nil {
 			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
-			if bannerSent {
-				// Don't send the same banner again next tick; the state
-				// itself (old hash) is retried.
-				db.recordLiveActivityPush(activity.Id, activity.LastStateHash, alerted, time.Unix(activity.LastPushed, 0))
+			if alert != nil {
+				alertDelivered = sendJourneyMomentNotification(db, activity, *alert)
 			}
-			continue
 		}
-		db.recordLiveActivityPush(activity.Id, hash, alerted, now)
+
+		alerted := activity.AlertedKeys
+		if alertDelivered {
+			if !fromQueue {
+				alerted = append(alerted, alert.Key)
+			}
+			if queued != nil {
+				db.clearPendingAlert(activity.Id, activity.PendingAlert)
+			}
+		}
+		if err == nil && !clientActive {
+			db.recordLiveActivityPush(activity.Id, hash, alerted, now)
+		} else if alertDelivered && !fromQueue {
+			// Don't announce it again next tick. The state hash is left
+			// alone, so the content is (re)pushed as soon as this cron is
+			// the one keeping the activity up to date.
+			db.recordLiveActivityPush(activity.Id, activity.LastStateHash, alerted, time.Unix(activity.LastPushed, 0))
+		}
 	}
 }
 
 // sendJourneyMomentNotification sends a journey's key-moment alert as a
-// regular push to the device that owns the activity. False if the device
+// regular push to the device that owns the activity - the fallback for when
+// the activity itself can't be pushed to. False if the device
 // has no alert token (notifications denied) or the send failed.
 func sendJourneyMomentNotification(db *Database, activity LiveActivity, alert activityAlert) bool {
 	client, err := db.getClientByID(activity.ClientId)

@@ -336,6 +336,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// When the app last reported in while updating the activity itself -
 		// see clientActiveWindow.
 		{"client_reported", `ALTER TABLE live_activities ADD COLUMN client_reported INTEGER NOT NULL DEFAULT 0;`},
+		// A leave-by reminder waiting to go out as this activity's alert -
+		// see QueueLiveActivityAlert.
+		{"pending_alert", `ALTER TABLE live_activities ADD COLUMN pending_alert TEXT NOT NULL DEFAULT '';`},
 	}
 	for _, m := range laMigrations {
 		if laExistingColumns[m.column] {

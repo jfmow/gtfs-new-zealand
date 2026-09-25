@@ -304,7 +304,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 				copyMins = minsUntilLeave
 			}
 			title, body := leaveCopy(copyMins, minsUntilDeparture, r.RouteShortName, r.BoardStopName, departTime, access)
-			notifyJourneyReminderClient(db, r, fmt.Sprintf("leave-%d", fireMins), title, body)
+			notifyJourneyReminderLeave(db, r, fmt.Sprintf("leave-%d", fireMins), title, body)
 		}
 
 		// Put the journey on the Lock Screen as the rider gets ready to go.
@@ -426,13 +426,30 @@ func notifyJourneyReminderClient(db *Database, r JourneyReminder, eventKey, titl
 	if err != nil {
 		return
 	}
-	url := r.Deeplink
-	if url == "" {
-		url = "/plan"
-	}
+	url := reminderURL(r)
 	if err := client.SendNotification(body, title, map[string]string{"url": url}, "high"); err == nil {
 		_ = client.AppendToRecentNotifications(fmt.Sprintf("jr-%d-%s", r.Id, eventKey), title, body, url)
 	}
+}
+
+// notifyJourneyReminderLeave sends a "leave in ..." reminder. With the
+// journey's Live Activity already running it becomes that activity's alert
+// instead - the Dynamic Island expands rather than a banner showing.
+func notifyJourneyReminderLeave(db *Database, r JourneyReminder, eventKey, title, body string) {
+	if !db.QueueLiveActivityAlert(r.ClientId, reminderPlanID(r), activityAlert{Key: "reminder-" + eventKey, Title: title, Body: body}) {
+		notifyJourneyReminderClient(db, r, eventKey, title, body)
+		return
+	}
+	if client, err := db.FindNotificationClientById(r.ClientId); err == nil {
+		_ = client.AppendToRecentNotifications(fmt.Sprintf("jr-%d-%s", r.Id, eventKey), title, body, reminderURL(r))
+	}
+}
+
+func reminderURL(r JourneyReminder) string {
+	if r.Deeplink == "" {
+		return "/plan"
+	}
+	return r.Deeplink
 }
 
 func buildJourneyRequest(r JourneyReminder, osrmURL string, rt *realtime.Realtime, tz *time.Location) gtfs.JourneyRequest {
