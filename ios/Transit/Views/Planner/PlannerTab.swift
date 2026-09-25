@@ -30,8 +30,9 @@ struct PlannerTab: View {
         case .standard:
             PlannerView()
         case .stepByStep:
+            // A saved trip from Home also opens the standard planner.
             EasyPlannerFlow()
-                .onChange(of: router.pendingPlan != nil || router.pendingReplan != nil, initial: true) { _, pending in
+                .onChange(of: router.pendingPlan != nil || router.pendingReplan != nil || router.pendingSavedTrip != nil, initial: true) { _, pending in
                     if pending { showsStandardPlanner = true }
                 }
                 .fullScreenCover(isPresented: $showsStandardPlanner) {

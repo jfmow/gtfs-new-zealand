@@ -53,12 +53,28 @@ struct DepartureLine: View {
         return "Pl \(departure.platform)"
     }
 
+    private var isLive: Bool {
+        !departure.canceled && (departure.tripUpdateTracking || departure.locationTracking)
+    }
+
+    /// Live (realtime-tracked) countdowns are blue with a signal glyph, like
+    /// the board; scheduled ones stay plain.
     private var countdown: some View {
-        Text(departure.canceled ? "Cancelled" : TimeFormatting.timeTillArrivalString(minutes: departure.timeTillArrival))
-            .font(.geistMono(12, relativeTo: .caption))
-            .foregroundStyle(departure.canceled ? Theme.danger : Theme.mutedForeground)
-            .lineLimit(1)
-            .fixedSize()
+        let text = departure.canceled ? "Cancelled" : TimeFormatting.timeTillArrivalString(minutes: departure.timeTillArrival)
+        return HStack(spacing: 3) {
+            if isLive {
+                Image(systemName: "dot.radiowaves.up.forward")
+                    .font(.system(size: 9, weight: .semibold))
+                    .accessibilityHidden(true)
+            }
+            Text(text)
+                .font(.geistMono(12, medium: true, relativeTo: .caption))
+        }
+        .foregroundStyle(departure.canceled ? Theme.danger : isLive ? Theme.live : Theme.foreground)
+        .lineLimit(1)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(isLive ? "Live, \(text)" : text)
     }
 
     var body: some View {
@@ -114,7 +130,7 @@ struct HomeStopRow<Tile: View>: View {
             tile
                 .frame(width: 36, height: 36)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
                         .font(.bodyMedium)
@@ -152,7 +168,7 @@ struct HomeStopRow<Tile: View>: View {
             if departures.isEmpty {
                 Text("No upcoming services").font(.meta).foregroundStyle(Theme.mutedForeground)
             } else {
-                VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: 8) {
                     ForEach(departures) { DepartureLine(departure: $0) }
                 }
             }
@@ -233,15 +249,15 @@ struct ManageFavouritesSheet: View {
             .scrollContentBackground(.hidden)
             .groupedPageBackground()
             .environment(\.editMode, .constant(.active))
-            .navigationTitle("Favourites")
+            .navigationTitle("Saved stops")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { DoneButton() }
             .overlay {
                 if favourites.isEmpty {
-                    EmptyState(systemImage: "star", title: "No favourites", message: "Tap the star on any stop to pin it to Home.")
+                    EmptyState(systemImage: "star", title: "No saved stops", message: "Tap the star on any stop to pin it to Home.")
                 }
             }
-            .alert("Rename favourite", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            .alert("Rename saved stop", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Display name", text: $draftName)
                 Button("Save") {
                     let trimmed = draftName.trimmingCharacters(in: .whitespaces)
@@ -261,5 +277,212 @@ struct ManageFavouritesSheet: View {
 
     private func delete(at offsets: IndexSet) {
         for index in offsets { modelContext.delete(favourites[index]) }
+    }
+}
+
+// MARK: - Home layout
+
+/// A Home section: small-caps label with an optional count and trailing
+/// actions, then its content. The header is inset; the content sets its
+/// own horizontal padding so carousels can run edge to edge.
+struct HomeSection<Actions: View, Content: View>: View {
+    let title: String
+    var count = 0
+    var liveDot = false
+    @ViewBuilder var actions: Actions
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                SectionLabel(text: title, liveDot: liveDot)
+                if count > 0 {
+                    Text("\(count)")
+                        .font(.geistMono(11, medium: true, relativeTo: .caption))
+                        .foregroundStyle(Theme.mutedForeground)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1)
+                        .background(Theme.muted, in: Capsule())
+                        .accessibilityLabel("\(count) saved")
+                }
+                Spacer()
+                actions
+                    .font(.metaMedium)
+                    .foregroundStyle(Theme.mutedForeground)
+            }
+            .padding(.horizontal, 16)
+            content
+        }
+    }
+}
+
+/// An empty/informational state inside a Home section - a dashed card with
+/// an icon, a line of text and an optional action.
+struct HomeHint<Action: View>: View {
+    let systemImage: String
+    let text: String
+    @ViewBuilder var action: Action
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Theme.mutedForeground)
+                .frame(width: 36, height: 36)
+                .background(Theme.muted, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(text)
+                    .font(.meta)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .fixedSize(horizontal: false, vertical: true)
+                action
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous)
+                .strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+        )
+    }
+}
+
+extension HomeHint where Action == EmptyView {
+    init(systemImage: String, text: String) {
+        self.init(systemImage: systemImage, text: text) { EmptyView() }
+    }
+}
+
+// MARK: - Saved trips
+
+/// Saved trips as a swipeable row of cards - tap one to plan it now in the
+/// Planner tab. At accessibility text sizes they stack full width instead.
+struct SavedTripsCarousel: View {
+    let trips: [SavedTrip]
+    let onPlan: (SavedTrip) -> Void
+    let onManage: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    var body: some View {
+        if typeSize.isAccessibilitySize {
+            VStack(spacing: 10) {
+                ForEach(trips, id: \.persistentModelID) { trip in
+                    HomeTripCard(trip: trip, onPlan: { onPlan(trip) }, onManage: onManage)
+                }
+            }
+            .padding(.horizontal, 16)
+        } else {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(trips, id: \.persistentModelID) { trip in
+                        HomeTripCard(trip: trip, onPlan: { onPlan(trip) }, onManage: onManage)
+                            .frame(width: trips.count == 1 ? nil : 236)
+                    }
+                }
+                .scrollTargetLayout()
+                // Room for the card shadow, which a horizontal ScrollView
+                // would otherwise clip.
+                .padding(.vertical, 2)
+            }
+            .contentMargins(.horizontal, 16, for: .scrollContent)
+            .scrollTargetBehavior(.viewAligned)
+            .scrollDisabled(trips.count == 1)
+        }
+    }
+}
+
+/// One saved trip: colour tile + name, the from/to pair, and a "Plan now"
+/// cue. Long-press to rename, recolour or delete.
+struct HomeTripCard: View {
+    @Bindable var trip: SavedTrip
+    let onPlan: () -> Void
+    let onManage: () -> Void
+
+    @Environment(\.modelContext) private var modelContext
+    @Environment(AppEnvironment.self) private var environment
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @State private var isRenaming = false
+    @State private var draftName = ""
+
+    var body: some View {
+        Button(action: onPlan) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 10) {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(Color(hex: trip.colorHex).opacity(0.18))
+                        .overlay(
+                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Color(hex: trip.colorHex))
+                        )
+                        .frame(width: 30, height: 30)
+                        .accessibilityHidden(true)
+                    Text(trip.name)
+                        .font(.bodyMedium)
+                        .foregroundStyle(Theme.foreground)
+                        .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    endpoint(trip.startLabel, filled: false)
+                    endpoint(trip.endLabel, filled: true)
+                }
+
+                HStack(spacing: 4) {
+                    Text("Plan now")
+                    Image(systemName: "arrow.right").font(.system(size: 11, weight: .semibold))
+                }
+                .font(.metaMedium)
+                .foregroundStyle(Theme.foreground)
+                .accessibilityHidden(true)
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .shadCardBackground()
+            .contentShape(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            Button {
+                draftName = trip.name
+                isRenaming = true
+            } label: { Label("Rename", systemImage: "pencil") }
+            SwatchMenu(selectedHex: trip.colorHex) { trip.colorHex = $0 }
+            Button(action: onManage) { Label("Manage trips", systemImage: "slider.horizontal.3") }
+            Divider()
+            Button(role: .destructive) {
+                modelContext.delete(trip)
+                environment.toasts.show("Trip deleted")
+            } label: { Label("Delete", systemImage: "trash") }
+        }
+        .alert("Rename trip", isPresented: $isRenaming) {
+            TextField("Trip name", text: $draftName)
+            Button("Save") {
+                let trimmed = draftName.trimmingCharacters(in: .whitespaces)
+                if !trimmed.isEmpty { trip.name = trimmed }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(trip.name), from \(trip.startLabel) to \(trip.endLabel)")
+        .accessibilityHint("Plans this trip now. Touch and hold for options.")
+    }
+
+    private func endpoint(_ label: String, filled: Bool) -> some View {
+        HStack(spacing: 8) {
+            Circle()
+                .strokeBorder(Theme.mutedForeground, lineWidth: filled ? 0 : 1.5)
+                .background(Circle().fill(filled ? Color(hex: trip.colorHex) : .clear))
+                .frame(width: 8, height: 8)
+            Text(label)
+                .font(.meta)
+                .foregroundStyle(filled ? Theme.foreground : Theme.mutedForeground)
+                .lineLimit(typeSize.isAccessibilitySize ? nil : 1)
+        }
     }
 }

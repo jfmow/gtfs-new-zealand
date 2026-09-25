@@ -153,6 +153,13 @@ struct PlannerView: View {
             router.pendingPlan = nil
             apply(prefill)
         }
+        .onChange(of: router.pendingSavedTrip, initial: true) { _, id in
+            guard let id else { return }
+            router.pendingSavedTrip = nil
+            guard let trip = modelContext.model(for: id) as? SavedTrip else { return }
+            path = NavigationPath()
+            apply(trip)
+        }
     }
 
     // MARK: - Form (search-form.tsx)

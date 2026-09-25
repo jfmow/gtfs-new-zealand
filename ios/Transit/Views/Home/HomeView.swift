@@ -3,20 +3,24 @@ import SwiftUI
 import TransitCore
 
 /// The Schedule tab's landing screen - `pages/index.tsx` with no stop
-/// selected: stop search, favourites and the stops near you, each with
-/// live next departures. The map lives on the Stops tab (a map inside this
-/// scroll view fought the scroll gesture and duplicated that tab).
+/// selected: stop search, then saved stops, saved trips and the stops near
+/// you, stops with live next departures. The map lives on the Stops tab (a
+/// map inside this scroll view fought the scroll gesture and duplicated
+/// that tab).
 struct HomeView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
+    @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
 
     @State private var path = NavigationPath()
     @State private var nearbyStops: [Stop] = []
     @State private var isLoadingNearby = false
     @State private var nearbyError: String?
+    @State private var showsMoreNearby = false
     @State private var isManagingFavourites = false
+    @State private var isManagingTrips = false
     @State private var renaming: FavouriteStop?
     @State private var draftName = ""
 
@@ -32,18 +36,18 @@ struct HomeView: View {
                 .zIndex(1)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        favouritesSection
-                        nearYouSection
-                        mapLink
+                    VStack(alignment: .leading, spacing: 28) {
+                        savedStopsSection
+                        savedTripsSection
+                        nearbySection
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
                     .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .refreshable { await loadNearby() }
             }
-            .pageBackground()
+            .groupedPageBackground()
             .navigationTitle(environment.region.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
@@ -58,7 +62,10 @@ struct HomeView: View {
             .sheet(isPresented: $isManagingFavourites) {
                 ManageFavouritesSheet().shadSheet(detents: [.medium, .large])
             }
-            .alert("Rename favourite", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            .sheet(isPresented: $isManagingTrips) {
+                ManageTripsSheet { planTrip($0) }.shadSheet(detents: [.large])
+            }
+            .alert("Rename saved stop", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
                 TextField("Display name", text: $draftName)
                 Button("Save") {
                     let trimmed = draftName.trimmingCharacters(in: .whitespaces)
@@ -70,41 +77,32 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Favourites
+    // MARK: - Saved stops
 
-    private var favouritesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                SectionLabel(text: "Favourites")
-                Spacer()
-                if !favourites.isEmpty {
-                    Button("Edit") { isManagingFavourites = true }
-                        .font(.metaMedium)
-                        .foregroundStyle(Theme.mutedForeground)
-                }
+    private var savedStopsSection: some View {
+        HomeSection(title: "Saved stops", count: favourites.count) {
+            if !favourites.isEmpty {
+                Button("Edit") { isManagingFavourites = true }
             }
+        } content: {
             if favourites.isEmpty {
-                Label("Tap the star on any stop to pin it here.", systemImage: "star")
-                    .font(.meta)
-                    .foregroundStyle(Theme.mutedForeground)
-                    .padding(14)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .shadCardBackground()
+                HomeHint(systemImage: "star", text: "Tap the star on any stop to keep its departures here.")
+                    .padding(.horizontal, 16)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(favourites.enumerated()), id: \.element.persistentModelID) { index, favourite in
-                        if index > 0 { RowDivider() }
+                VStack(spacing: 10) {
+                    ForEach(favourites, id: \.persistentModelID) { favourite in
                         NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
                             HomeStopRow(stopQuery: favourite.stopID, title: favourite.displayName) {
                                 FavouriteTile(colorHex: favourite.colorHex)
                             }
+                            .shadCardBackground()
                         }
                         .buttonStyle(.plain)
                         .contextMenu { favouriteMenu(favourite) }
                         .accessibilityHint("Opens departures. Touch and hold for options.")
                     }
                 }
-                .shadCardBackground()
+                .padding(.horizontal, 16)
             }
         }
     }
@@ -118,66 +116,95 @@ struct HomeView: View {
         SwatchMenu(selectedHex: favourite.colorHex) { favourite.colorHex = $0 }
         Button { isManagingFavourites = true } label: { Label("Reorder", systemImage: "arrow.up.arrow.down") }
         Divider()
-        Button(role: .destructive) { remove(favourite) } label: { Label("Remove from favourites", systemImage: "trash") }
+        Button(role: .destructive) { remove(favourite) } label: { Label("Remove from saved", systemImage: "trash") }
     }
 
     private func remove(_ favourite: FavouriteStop) {
         modelContext.delete(favourite)
-        environment.toasts.show("Removed from favourites")
+        environment.toasts.show("Removed from saved stops")
     }
 
-    // MARK: - Near you
+    // MARK: - Saved trips
 
-    private var nearYouSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SectionLabel(text: "Near you", liveDot: true)
-            nearYou
+    private var savedTripsSection: some View {
+        HomeSection(title: "Saved trips", count: savedTrips.count) {
+            if !savedTrips.isEmpty {
+                Button("Manage") { isManagingTrips = true }
+            }
+        } content: {
+            if savedTrips.isEmpty {
+                HomeHint(systemImage: "bookmark", text: "Plan a journey and tap the bookmark to plan it again in one tap.") {
+                    Button("Plan a journey") { router.selectedTab = .planner }
+                        .buttonStyle(.shad(.outline, size: .sm))
+                }
+                .padding(.horizontal, 16)
+            } else {
+                SavedTripsCarousel(trips: savedTrips, onPlan: planTrip, onManage: { isManagingTrips = true })
+            }
         }
     }
 
-    /// Up to three nearest stops, one per name - a station's platforms come
-    /// back as separate stops.
+    private func planTrip(_ trip: SavedTrip) {
+        router.plan(savedTrip: trip.persistentModelID)
+    }
+
+    // MARK: - Nearby
+
+    private var nearbySection: some View {
+        HomeSection(title: "Nearby", liveDot: environment.location.isAuthorized) {
+            Button {
+                router.selectedTab = .stops
+            } label: {
+                Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
+            }
+        } content: {
+            nearby.padding(.horizontal, 16)
+        }
+    }
+
+    /// The nearest stops, one per name - a station's platforms come back as
+    /// separate stops.
     private var nearestDistinct: [Stop] {
         var seen = Set<String>()
-        return nearbyStops.filter { seen.insert($0.stopName).inserted }.prefix(3).map { $0 }
+        return nearbyStops.filter { seen.insert($0.stopName).inserted }
     }
 
     @ViewBuilder
-    private var nearYou: some View {
+    private var nearby: some View {
+        let stops = nearestDistinct
         if !environment.location.isAuthorized {
-            Button("Enable location to see stops near you") {
-                environment.location.requestPermission()
+            HomeHint(systemImage: "location", text: "See live departures from the stops around you.") {
+                Button("Enable location") { environment.location.requestPermission() }
+                    .buttonStyle(.shad(.outline, size: .sm))
             }
-            .buttonStyle(.shad(.outline, size: .default, fullWidth: true))
-        } else if !nearestDistinct.isEmpty {
-            VStack(spacing: 0) {
-                ForEach(Array(nearestDistinct.enumerated()), id: \.element.stopID) { index, stop in
-                    if index > 0 { RowDivider() }
+        } else if !stops.isEmpty {
+            VStack(spacing: 10) {
+                ForEach(stops.prefix(showsMoreNearby ? 6 : 3), id: \.stopID) { stop in
                     NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
                         HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop)) {
                             StopModeTile(stopType: stop.stopType)
                         }
+                        .shadCardBackground()
                     }
                     .buttonStyle(.plain)
                 }
+                if stops.count > 3 {
+                    Button {
+                        withAnimation(.snappy) { showsMoreNearby.toggle() }
+                    } label: {
+                        Label(showsMoreNearby ? "Show fewer" : "Show more nearby stops",
+                              systemImage: showsMoreNearby ? "chevron.up" : "chevron.down")
+                    }
+                    .buttonStyle(.shad(.ghost, size: .sm, fullWidth: true))
+                }
             }
-            .shadCardBackground()
-        } else if isLoadingNearby {
-            Text("Finding stops near you...").font(.meta).foregroundStyle(Theme.mutedForeground)
+        } else if isLoadingNearby || environment.location.coordinate == nil {
+            HomeHint(systemImage: "location.magnifyingglass", text: "Finding stops near you...")
         } else if let nearbyError {
-            Text(nearbyError).font(.meta).foregroundStyle(Theme.mutedForeground)
+            HomeHint(systemImage: "exclamationmark.triangle", text: nearbyError)
         } else {
-            Text("No stops found nearby.").font(.meta).foregroundStyle(Theme.mutedForeground)
+            HomeHint(systemImage: "mappin.slash", text: "No stops found nearby.")
         }
-    }
-
-    private var mapLink: some View {
-        Button {
-            router.selectedTab = .stops
-        } label: {
-            Label("See stops on the map", systemImage: "map")
-        }
-        .buttonStyle(.shad(.outline, size: .default, fullWidth: true))
     }
 
     private func distanceLabel(to stop: Stop) -> String? {
@@ -212,5 +239,6 @@ struct BoardDestination: Hashable {
 #Preview {
     HomeView()
         .environment(AppEnvironment())
+        .environment(DeepLinkRouter())
         .modelContainer(for: [FavouriteStop.self, SavedTrip.self, ActiveJourney.self, RecentSearchEntry.self], inMemory: true)
 }

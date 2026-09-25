@@ -70,7 +70,7 @@ struct StopBoardView: View {
                         Image(systemName: favourites.isEmpty ? "star" : "star.fill")
                             .foregroundStyle(favourites.isEmpty ? Theme.foreground : Color(hex: "eab308"))
                     }
-                    .accessibilityLabel(favourites.isEmpty ? "Add to favourites" : "Remove from favourites")
+                    .accessibilityLabel(favourites.isEmpty ? "Save stop" : "Remove from saved stops")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     // The web header's other actions: timetable for a date,
@@ -295,13 +295,13 @@ struct StopBoardView: View {
     private func toggleFavourite() {
         if let existing = favourites.first {
             modelContext.delete(existing)
-            environment.toasts.show("Removed from favourites")
+            environment.toasts.show("Removed from saved stops")
             return
         }
         let nextOrder = (try? modelContext.fetchCount(FetchDescriptor<FavouriteStop>())) ?? 0
         let favourite = FavouriteStop(stopID: stopQuery, displayName: title, colorHex: favouriteColor(for: nextOrder), sortOrder: nextOrder)
         modelContext.insert(favourite)
-        environment.toasts.show("Added to favourites")
+        environment.toasts.show("Saved to Schedule")
     }
 
     private func favouriteColor(for index: Int) -> String {

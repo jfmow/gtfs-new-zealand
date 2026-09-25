@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 import TransitCore
 
 /// Routes an opened link - from `TransitApp.onOpenURL` or a tapped push
@@ -34,6 +35,16 @@ final class DeepLinkRouter {
     /// Set by the tracker's "Find a better route from here"; consumed by
     /// `PlannerView`, which re-plans from `origin` and offers to go back.
     var pendingReplan: ReplanRequest?
+
+    /// A saved trip tapped on Home; consumed by `PlannerView`, which loads
+    /// it into the form and plans it.
+    var pendingSavedTrip: PersistentIdentifier?
+
+    func plan(savedTrip: PersistentIdentifier) {
+        pendingSavedTrip = savedTrip
+        activeLink = nil
+        selectedTab = .planner
+    }
 
     /// The "Plan a journey" Home Screen quick action.
     func openPlanner() {
