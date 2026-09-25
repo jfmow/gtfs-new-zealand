@@ -1298,4 +1298,43 @@ final class TransitDebugUITests: XCTestCase {
         attach("easy-07-result-scrolled")
         XCTAssertTrue(start.exists, "no journey was found")
     }
+
+    /// Add "Home" from Home's Places row, then tap it: the Planner should
+    /// plan from here to Home. Also checks the From dropdown offers it.
+    func testSavedPlaces() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+
+        let addHome = app.buttons["Add home"]
+        XCTAssertTrue(addHome.waitForExistence(timeout: 5), "no Add home chip")
+        attach("sp-01-home-empty")
+        addHome.tap()
+
+        let field = app.textFields["Search for an address or place"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText("Newmarket")
+        sleep(3)
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Newmarket")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5), "no search result")
+        result.tap()
+        sleep(1)
+        attach("sp-02-editor")
+        app.buttons["Save"].tap()
+        sleep(1)
+
+        let chip = app.buttons["Home"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "saved place chip missing")
+        XCTAssertFalse(app.buttons["Add home"].exists, "Add home should hide once Home is saved")
+        attach("sp-03-home-with-place")
+        chip.tap()
+        sleep(8)
+        attach("sp-04-planner")
+        XCTAssertEqual(app.textFields["To"].value as? String, "Home")
+
+        app.textFields["From"].tap()
+        sleep(1)
+        attach("sp-05-from-dropdown")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Home")).firstMatch.exists, "saved place not in dropdown")
+    }
 }

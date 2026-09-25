@@ -97,6 +97,43 @@ public final class SavedTrip {
     }
 }
 
+/// A place the rider has named - "Home", "Work", a friend's house - offered
+/// first in every planner location field and as one-tap "get me there"
+/// shortcuts on Home. Added 2026-09-25.
+@Model
+public final class SavedPlace {
+    public var name: String
+    /// The address or search label it was picked from ("12 Ponsonby Road").
+    public var address: String
+    public var latitude: Double
+    public var longitude: Double
+    /// A `SavedPlaceIcon` raw value; unknown values fall back to a pin.
+    public var icon: String
+    /// The region it was saved in - places only show in that region.
+    public var regionSlug: String
+    public var sortOrder: Int
+    public var createdAt: Date
+
+    public init(name: String, address: String, coordinate: Coordinate, icon: String, regionSlug: String, sortOrder: Int, createdAt: Date = Date()) {
+        self.name = name
+        self.address = address
+        self.latitude = coordinate.latitude
+        self.longitude = coordinate.longitude
+        self.icon = icon
+        self.regionSlug = regionSlug
+        self.sortOrder = sortOrder
+        self.createdAt = createdAt
+    }
+
+    public var coordinate: Coordinate {
+        get { Coordinate(latitude: latitude, longitude: longitude) }
+        set {
+            latitude = newValue.latitude
+            longitude = newValue.longitude
+        }
+    }
+}
+
 /// The journey the rider is currently on (or was, within the resume grace
 /// period) - drives the "resume journey" pill and the Live Activity.
 ///

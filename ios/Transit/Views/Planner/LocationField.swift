@@ -1,10 +1,12 @@
+import SwiftData
 import SwiftUI
 import TransitCore
 
 /// A from/to input for the planner - `components/map/search/index.tsx`.
 /// The dropdown floats over the form (nothing below reflows while typing):
-/// "My location" and "Pick on map" first, then either Recent (empty field)
-/// or search results with their type.
+/// "My location" and "Pick on map" first, then the rider's saved places,
+/// then either Recent (empty field) or search results with their type.
+/// Typing filters saved places by name or address, above the results.
 ///
 /// Give the containing view a higher `zIndex` than whatever sits below the
 /// field (the To field sits below From), so the dropdown draws on top.
@@ -20,8 +22,12 @@ struct LocationField: View {
     /// the web's `storageKey` prop.
     let storageKey: String
     @Binding var location: PlannerLocation?
+    /// Off in the saved-place editor, where offering saved places to pick
+    /// a saved place's location would be circular.
+    var showsSavedPlaces = true
 
     @Environment(AppEnvironment.self) private var environment
+    @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
     @State private var query = ""
     @State private var results: [LocationSearchResult] = []
     @State private var recents: [LocationSearchResult] = []
@@ -40,7 +46,15 @@ struct LocationField: View {
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .onSubmit {
-                    if let first = results.first { select(first) } else { isFocused = false }
+                    if query.isEmpty || location != nil {
+                        isFocused = false
+                    } else if let place = matchingPlaces.first {
+                        apply(place.plannerLocation)
+                    } else if let first = results.first {
+                        select(first)
+                    } else {
+                        isFocused = false
+                    }
                 }
                 .onChange(of: query) { _, newValue in
                     if suppressNextQueryChange {
@@ -95,6 +109,28 @@ struct LocationField: View {
         }
     }
 
+    private var places: [SavedPlace] {
+        guard showsSavedPlaces else { return [] }
+        return allPlaces.filter { $0.regionSlug == environment.region.slug }
+    }
+
+    private var matchingPlaces: [SavedPlace] { places.filter { $0.matches(query) } }
+
+    private func groupHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.geist(11, .medium, relativeTo: .caption2))
+            .tracking(0.8)
+            .foregroundStyle(Theme.mutedForeground)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+    }
+
+    private func placeRow(_ place: SavedPlace) -> some View {
+        row(icon: place.placeIcon.systemImage, iconColor: Color(hex: place.placeIcon.colorHex), label: place.name, trailing: place.address) {
+            apply(place.plannerLocation)
+        }
+    }
+
     private var dropdown: some View {
         VStack(alignment: .leading, spacing: 0) {
             if query.isEmpty || location != nil {
@@ -103,17 +139,27 @@ struct LocationField: View {
                     isFocused = false
                     isPickingOnMap = true
                 }
+                if !places.isEmpty {
+                    RowDivider().padding(.vertical, 4)
+                    groupHeader("SAVED PLACES")
+                    ForEach(places) { placeRow($0) }
+                }
                 if !recents.isEmpty {
                     RowDivider().padding(.vertical, 4)
-                    Text("RECENT")
-                        .font(.geist(11, .medium, relativeTo: .caption2))
-                        .tracking(0.8)
-                        .foregroundStyle(Theme.mutedForeground)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
+                    groupHeader("RECENT")
                     ForEach(recents) { recent in
                         row(icon: "clock", label: recent.label) { apply(PlannerLocation(label: recent.label, coordinate: recent.coordinate)) }
                     }
+                }
+            } else if !matchingPlaces.isEmpty {
+                ForEach(matchingPlaces) { placeRow($0) }
+                if !results.isEmpty {
+                    RowDivider().padding(.vertical, 4)
+                    ForEach(results) { result in
+                        row(icon: "mappin", label: result.label, trailing: result.type.capitalized) { select(result) }
+                    }
+                } else if isLoading {
+                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 12)
                 }
             } else if isLoading && results.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 20)
@@ -138,10 +184,10 @@ struct LocationField: View {
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
     }
 
-    private func row(icon: String, label: String, trailing: String? = nil, action: @escaping () -> Void) -> some View {
+    private func row(icon: String, iconColor: Color = Theme.mutedForeground, label: String, trailing: String? = nil, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(Theme.mutedForeground).frame(width: 16)
+                Image(systemName: icon).font(.system(size: 13)).foregroundStyle(iconColor).frame(width: 16)
                     .accessibilityHidden(true)
                 Text(label).font(.bodyText).lineLimit(2).multilineTextAlignment(.leading)
                 Spacer(minLength: 8)

@@ -10,7 +10,7 @@ struct TransitApp: App {
     @State private var router = DeepLinkRouter()
     private let modelContainer: ModelContainer = {
         do {
-            return try ModelContainer(for: FavouriteStop.self, SavedTrip.self, ActiveJourney.self, RecentSearchEntry.self)
+            return try ModelContainer(for: FavouriteStop.self, SavedTrip.self, SavedPlace.self, ActiveJourney.self, RecentSearchEntry.self)
         } catch {
             fatalError("Failed to create SwiftData ModelContainer: \(error)")
         }

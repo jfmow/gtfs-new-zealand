@@ -46,6 +46,17 @@ final class DeepLinkRouter {
         selectedTab = .planner
     }
 
+    /// A saved place tapped on Home - "get me there from here". Consumed by
+    /// `PlannerView` (from the rider's location) or `EasyPlannerFlow` (as
+    /// question 1's answer).
+    var pendingDestination: PlannerLocation?
+
+    func plan(to destination: PlannerLocation) {
+        pendingDestination = destination
+        activeLink = nil
+        selectedTab = .planner
+    }
+
     /// The "Plan a journey" Home Screen quick action.
     func openPlanner() {
         activeLink = nil

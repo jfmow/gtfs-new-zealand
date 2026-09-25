@@ -153,6 +153,12 @@ struct PlannerView: View {
             router.pendingPlan = nil
             apply(prefill)
         }
+        .onChange(of: router.pendingDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            router.pendingDestination = nil
+            path = NavigationPath()
+            planFromHere(to: destination)
+        }
         .onChange(of: router.pendingSavedTrip, initial: true) { _, id in
             guard let id else { return }
             router.pendingSavedTrip = nil
@@ -440,6 +446,23 @@ struct PlannerView: View {
         modes = trip.travelModes
         minTransferSec = trip.minTransferSec
         Task { await plan() }
+    }
+
+    /// A saved place from Home: to there from the rider's location, planned
+    /// straight away. Without a location fix yet, fills in the destination
+    /// and leaves From for the rider.
+    private func planFromHere(to destination: PlannerLocation) {
+        end = destination
+        timeType = .now
+        date = Date()
+        results = []
+        planError = nil
+        if let here = environment.location.coordinate {
+            start = PlannerLocation(label: "My location", coordinate: here)
+            Task { await plan() }
+        } else {
+            start = nil
+        }
     }
 
     /// A `/plan?...` link - a recurring leave-by reminder's notification

@@ -3,8 +3,9 @@ import SwiftUI
 import TransitCore
 
 /// The Schedule tab's landing screen - `pages/index.tsx` with no stop
-/// selected: stop search, then saved stops, saved trips and the stops near
-/// you, stops with live next departures. The map lives on the Stops tab (a
+/// selected: stop search, then saved places (one tap to plan a trip
+/// there), saved stops, saved trips and the stops near you, stops with live
+/// next departures. The map lives on the Stops tab (a
 /// map inside this scroll view fought the scroll gesture and duplicated
 /// that tab).
 struct HomeView: View {
@@ -13,6 +14,7 @@ struct HomeView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
+    @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
 
     @State private var path = NavigationPath()
     @State private var nearbyStops: [Stop] = []
@@ -21,6 +23,8 @@ struct HomeView: View {
     @State private var showsMoreNearby = false
     @State private var isManagingFavourites = false
     @State private var isManagingTrips = false
+    @State private var isManagingPlaces = false
+    @State private var placeEditor: PlaceEditorTarget?
     @State private var renaming: FavouriteStop?
     @State private var draftName = ""
 
@@ -37,6 +41,7 @@ struct HomeView: View {
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 28) {
+                        placesSection
                         savedStopsSection
                         savedTripsSection
                         nearbySection
@@ -62,6 +67,17 @@ struct HomeView: View {
             .sheet(isPresented: $isManagingFavourites) {
                 ManageFavouritesSheet().shadSheet(detents: [.medium, .large])
             }
+            .sheet(isPresented: $isManagingPlaces) {
+                ManagePlacesSheet().shadSheet(detents: [.medium, .large])
+            }
+            .sheet(item: $placeEditor) { target in
+                switch target {
+                case .edit(let place):
+                    SavedPlaceEditorSheet(place: place).shadSheet(detents: [.large])
+                case .add(let name, let icon):
+                    SavedPlaceEditorSheet(presetName: name, presetIcon: icon).shadSheet(detents: [.large])
+                }
+            }
             .sheet(isPresented: $isManagingTrips) {
                 ManageTripsSheet { planTrip($0) }.shadSheet(detents: [.large])
             }
@@ -74,6 +90,25 @@ struct HomeView: View {
                 }
                 Button("Cancel", role: .cancel) { renaming = nil }
             }
+        }
+    }
+
+    // MARK: - Places
+
+    private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
+
+    private var placesSection: some View {
+        HomeSection(title: "Places", count: places.count) {
+            if !places.isEmpty {
+                Button("Edit") { isManagingPlaces = true }
+            }
+        } content: {
+            SavedPlacesRow(
+                places: places,
+                onGo: { router.plan(to: $0.plannerLocation) },
+                onEdit: { placeEditor = .edit($0) },
+                onAdd: { placeEditor = .add(name: $0, icon: $1) }
+            )
         }
     }
 
@@ -227,6 +262,19 @@ struct HomeView: View {
     }
 }
 
+/// What the place editor sheet is open for.
+private enum PlaceEditorTarget: Identifiable {
+    case edit(SavedPlace)
+    case add(name: String, icon: SavedPlaceIcon)
+
+    var id: String {
+        switch self {
+        case .edit(let place): "edit-\(place.persistentModelID.hashValue)"
+        case .add(let name, let icon): "add-\(name)-\(icon.rawValue)"
+        }
+    }
+}
+
 /// A stop-board navigation target - carries the exact query string
 /// `/services/{stop}` expects (see `Stop.boardQuery`) plus a display title,
 /// since a `StopSearchResult`'s `name` already is that query string while a
@@ -240,5 +288,5 @@ struct BoardDestination: Hashable {
     HomeView()
         .environment(AppEnvironment())
         .environment(DeepLinkRouter())
-        .modelContainer(for: [FavouriteStop.self, SavedTrip.self, ActiveJourney.self, RecentSearchEntry.self], inMemory: true)
+        .modelContainer(for: [FavouriteStop.self, SavedTrip.self, SavedPlace.self, ActiveJourney.self, RecentSearchEntry.self], inMemory: true)
 }

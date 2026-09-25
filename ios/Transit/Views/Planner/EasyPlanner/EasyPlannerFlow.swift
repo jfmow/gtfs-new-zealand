@@ -8,7 +8,9 @@ import TransitCore
 /// by step" (see `PlannerTab`).
 struct EasyPlannerFlow: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
+    @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
 
     @State private var model = EasyPlannerModel()
     @State private var path: [EasyPlannerModel.Step] = []
@@ -42,6 +44,14 @@ struct EasyPlannerFlow: View {
         }
         .tint(Theme.primary)
         .task { await model.loadAvailableModes(api: environment.api) }
+        // A saved place tapped on Home answers question 1.
+        .onChange(of: router.pendingDestination, initial: true) { _, destination in
+            guard let destination else { return }
+            router.pendingDestination = nil
+            model.destination = destination
+            isChangingDestination = false
+            path = [.mode]
+        }
     }
 
     /// "Plan another journey": back to question 1 with a clean slate (the
@@ -79,7 +89,7 @@ struct EasyPlannerFlow: View {
                 EasyPlaceSearch(
                     prompt: "Type a place or address",
                     storageKey: "recentEndLocations",
-                    savedPlaces: uniquePlaces(savedTrips.map { PlannerLocation(label: $0.endLabel, coordinate: $0.endCoordinate) })
+                    savedPlaces: savedPlaces(tripEnds: true)
                 ) { place in
                     model.destination = place
                     isChangingDestination = false
@@ -229,7 +239,7 @@ struct EasyPlannerFlow: View {
                     EasyPlaceSearch(
                         prompt: "Type a place or address",
                         storageKey: "recentStartLocations",
-                        savedPlaces: uniquePlaces(savedTrips.map { PlannerLocation(label: $0.startLabel, coordinate: $0.startCoordinate) })
+                        savedPlaces: savedPlaces(tripEnds: false)
                     ) { place in
                         model.otherStart = place
                         isChangingStart = false
@@ -247,8 +257,18 @@ struct EasyPlannerFlow: View {
         return status == .denied || status == .restricted
     }
 
-    private func uniquePlaces(_ places: [PlannerLocation]) -> [PlannerLocation] {
+    /// The rider's named places first, then the ends (or starts) of their
+    /// saved trips, one per label.
+    private func savedPlaces(tripEnds: Bool) -> [EasySavedPlace] {
+        let named = allPlaces
+            .filter { $0.regionSlug == environment.region.slug }
+            .map { EasySavedPlace(icon: $0.placeIcon.systemImage, location: $0.plannerLocation) }
+        let fromTrips = savedTrips.map {
+            EasySavedPlace(icon: "star.fill", location: tripEnds
+                ? PlannerLocation(label: $0.endLabel, coordinate: $0.endCoordinate)
+                : PlannerLocation(label: $0.startLabel, coordinate: $0.startCoordinate))
+        }
         var seen = Set<String>()
-        return places.filter { seen.insert($0.label).inserted }
+        return (named + fromTrips).filter { seen.insert($0.location.label).inserted }
     }
 }

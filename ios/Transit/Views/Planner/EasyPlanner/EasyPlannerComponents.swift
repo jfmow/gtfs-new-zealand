@@ -175,12 +175,18 @@ struct EasySelectedPlace: View {
 
 /// Search for a place, with saved and recent places underneath - the
 /// planner's `LocationField`, laid out as a page rather than a dropdown.
+/// A place offered in the step-by-step planner's "Your saved places".
+struct EasySavedPlace {
+    let icon: String
+    let location: PlannerLocation
+}
+
 struct EasyPlaceSearch: View {
     let prompt: String
     /// Which planner recents to use: `recentEndLocations` or `recentStartLocations`.
     let storageKey: String
-    /// Saved trips' places to offer first, e.g. every saved destination.
-    let savedPlaces: [PlannerLocation]
+    /// Saved places, then saved trips' places, to offer first.
+    let savedPlaces: [EasySavedPlace]
     let onPick: (PlannerLocation) -> Void
 
     @Environment(AppEnvironment.self) private var environment
@@ -257,8 +263,8 @@ struct EasyPlaceSearch: View {
         VStack(alignment: .leading, spacing: 20) {
             if !savedPlaces.isEmpty {
                 group("Your saved places") {
-                    ForEach(savedPlaces, id: \.self) { place in
-                        placeRow(icon: "star.fill", label: place.label) { onPick(place) }
+                    ForEach(savedPlaces, id: \.location) { place in
+                        placeRow(icon: place.icon, label: place.location.label) { onPick(place.location) }
                     }
                 }
             }
