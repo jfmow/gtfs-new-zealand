@@ -197,7 +197,7 @@ private struct CountdownBlock: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            Countdown(state: state, isStale: isStale, compact: compact)
+            Countdown(state: state, isStale: isStale)
                 .font(.geist(numberSize, .bold).monospacedDigit())
                 .foregroundStyle(countdownColor)
                 .multilineTextAlignment(.trailing)
@@ -237,13 +237,11 @@ private struct CountdownBlock: View {
     }
 }
 
-/// Whole minutes ("4 min"), counted down by the system itself on iOS 18+ -
-/// seconds only in the last minute, where they matter. iOS 17 falls back to
-/// a ticking timer.
+/// A "6:04" timer counted down by the system, "Now" once the target has
+/// passed at render time.
 private struct Countdown: View {
     let state: JourneyState
     let isStale: Bool
-    var compact = false
 
     var body: some View {
         if state.status == "arrived" {
@@ -253,25 +251,21 @@ private struct Countdown: View {
         } else if state.targetDate <= Date() {
             Text("Now")
         } else {
-            MinutesText(target: state.targetDate, compact: compact)
+            MinutesText(target: state.targetDate)
         }
     }
 }
 
-/// The countdown, kept up to date by the system between pushes. Where
-/// there's room (the Lock Screen) it reads "6 minutes", in whole minutes and
-/// then seconds in the last minute (iOS 18+). The system can't be made to
-/// abbreviate that, so the island (and iOS 17) uses a compact "6:04" timer.
+/// The countdown, kept up to date by the system between pushes. It has to
+/// be a timer that stops at 0:00: the widget isn't redrawn when the target
+/// passes, and the iOS 18 `.offset(to:)` "6 minutes" format has no floor -
+/// with `sign: .never` it went back up ("1 minute", "2 minutes", ...) once
+/// the bus was due and no update had arrived.
 private struct MinutesText: View {
     let target: Date
-    var compact = false
 
     var body: some View {
-        if !compact, #available(iOS 18.0, *) {
-            Text(.currentDate, format: .offset(to: target, allowedFields: [.hour, .minute, .second], maxFieldCount: 1, sign: .never))
-        } else {
-            Text(timerInterval: Date()...target, countsDown: true, showsHours: false)
-        }
+        Text(timerInterval: Date()...target, countsDown: true, showsHours: false)
     }
 }
 
@@ -691,7 +685,7 @@ private struct CompactHeadline: View {
                 Text(away == 0 ? "Next" : "\(away + 1) stops")
                     .font(.geist(13, .bold).monospacedDigit())
             } else if state.targetDate > Date() {
-                MinutesText(target: state.targetDate, compact: true)
+                MinutesText(target: state.targetDate)
                     .font(.geist(13, .bold).monospacedDigit())
                     .multilineTextAlignment(.trailing)
                     .frame(maxWidth: 52)
@@ -763,7 +757,7 @@ private func phaseSymbol(_ state: JourneyState) -> String {
     case "arrived": return "checkmark"
     case "walking": return "figure.walk"
     case "waiting": return "clock"
-    case "boarding": return "arrow.down.to.line"
+    case "boarding": return "bell.fill"
     default: return "tram.fill"
     }
 }
