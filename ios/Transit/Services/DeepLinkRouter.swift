@@ -10,10 +10,13 @@ import TransitCore
 @MainActor
 @Observable
 final class DeepLinkRouter {
-    enum Tab: Hashable { case schedule, planner, stops, vehicles, alerts }
+    enum Tab: Hashable { case schedule, planner, map, alerts }
+    enum MapMode: Hashable { case stops, vehicles }
 
     var activeLink: DeepLink?
     var selectedTab: Tab = .schedule
+    /// Which map the Map tab shows.
+    var mapMode: MapMode = .stops
     /// Consumed (set back to nil) by `PlannerView` once applied.
     var pendingPlan: PlanPrefill?
     /// Set by `JourneyTrackingView` while it's on screen, so the resume

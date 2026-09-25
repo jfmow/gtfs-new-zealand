@@ -54,9 +54,12 @@ struct TransitApp: App {
                     appDelegate.isJourneyTrackerVisible = { [router] in
                         router.isTrackingVisible
                     }
-                    QuickAction.relay.handler = { [router] action in
+                    AppAction.relay.handler = { [router] action in
                         switch action {
-                        case .planJourney: router.openPlanner()
+                        case .planJourney:
+                            router.openPlanner()
+                        case .goTo(let name, let coordinate):
+                            router.plan(to: PlannerLocation(label: name, coordinate: coordinate))
                         }
                     }
                 }

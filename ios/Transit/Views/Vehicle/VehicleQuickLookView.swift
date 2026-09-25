@@ -556,6 +556,8 @@ struct VehicleQuickLookView: View {
 struct StopReminderSheet: View {
     let stopName: String
     let time: Date?
+    /// Off when setting it from a board - you're getting on there, not off.
+    var offersGetOff = true
     let onSet: (ReminderKind, Int) async -> Bool
 
     @Environment(\.dismiss) private var dismiss
@@ -566,7 +568,9 @@ struct StopReminderSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    option(.getOff, title: "Get off here", detail: "When this is the next stop", icon: "figure.walk.arrival")
+                    if offersGetOff {
+                        option(.getOff, title: "Get off here", detail: "When this is the next stop", icon: "figure.walk.arrival")
+                    }
                     option(.arrival, title: "When it's arriving", detail: "As the vehicle reaches this stop", icon: "location.fill")
                     Button {
                         Task { await set(.nStopsAway) }

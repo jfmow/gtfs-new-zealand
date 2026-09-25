@@ -20,6 +20,10 @@ enum Swatches {
 final class NextDeparturesLoader {
     private(set) var departures: [Departure]?
     private(set) var failed = false
+    /// The last successful load - set with `isStale` once a refresh after
+    /// it fails, so the countdowns can say how old they are.
+    private(set) var lastUpdated: Date?
+    private(set) var isStale = false
 
     func load(stop: String, limit: Int, api: APIClient) async {
         do {
@@ -28,14 +32,19 @@ final class NextDeparturesLoader {
                 .sorted { $0.timeTillArrival < $1.timeTillArrival }
                 .prefix(limit))
             failed = false
+            isStale = false
+            lastUpdated = Date()
         } catch let error as APIError {
             if case .server(let code, _, _) = error, code == 404 {
                 departures = []
+                isStale = false
             } else if departures == nil {
                 failed = true
+            } else {
+                isStale = true
             }
         } catch {
-            if departures == nil { failed = true }
+            if departures == nil { failed = true } else { isStale = true }
         }
     }
 }
@@ -170,7 +179,13 @@ struct HomeStopRow<Tile: View>: View {
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(departures) { DepartureLine(departure: $0) }
+                    if loader.isStale, let asOf = loader.lastUpdated {
+                        Label("Times as of \(asOf.formatted(date: .omitted, time: .shortened))", systemImage: "clock.arrow.circlepath")
+                            .font(.meta)
+                            .foregroundStyle(Theme.warning)
+                    }
                 }
+                .opacity(loader.isStale ? 0.6 : 1)
             }
         } else if loader.failed {
             Text("Couldn't load departures").font(.meta).foregroundStyle(Theme.mutedForeground)

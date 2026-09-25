@@ -42,4 +42,14 @@ final class DepartureBoardTests: XCTestCase {
         let result = DepartureBoard.filterAndSort(departures).map(\.tripID)
         XCTAssertEqual(result, ["departed", "future-near", "future-far"])
     }
+
+    func testDepartedRowsOnlyLingerForAMinute() {
+        let departures = [
+            makeDeparture(tripID: "just-left", timeTillArrival: -1, departed: true),
+            makeDeparture(tripID: "long-gone", timeTillArrival: -1.5, departed: true),
+            makeDeparture(tripID: "running-late", timeTillArrival: -1.5),
+        ]
+        let result = DepartureBoard.filterAndSort(departures).map(\.tripID)
+        XCTAssertEqual(result, ["just-left", "running-late"])
+    }
 }

@@ -27,6 +27,10 @@ struct StopBoardView: View {
     @State private var draftDate = Date()
     @State private var showAllPlatforms = false
     @State private var loadError: Error?
+    /// When `departures` last came back from the server - shown once
+    /// refreshes start failing, so a frozen board doesn't pass for live.
+    @State private var lastUpdated: Date?
+    @State private var reminderDeparture: Departure?
 
     init(stopQuery: String, title: String) {
         self.stopQuery = stopQuery
@@ -93,6 +97,12 @@ struct StopBoardView: View {
                     .accessibilityLabel("More")
                 }
             }
+            .sheet(item: $reminderDeparture) { departure in
+                StopReminderSheet(stopName: title, time: nil, offersGetOff: false) { kind, offset in
+                    await setReminder(kind, offset: offset, for: departure)
+                }
+                .shadSheet(detents: [.medium])
+            }
             .sheet(isPresented: $isShowingSubscriptionSheet) {
                 AlertSubscriptionSheet(target: .stop(query: stopQuery, title: title))
                     .shadSheet(detents: [.large])
@@ -127,7 +137,13 @@ struct StopBoardView: View {
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if let selectedDate { scheduleBanner(for: selectedDate) }
+                    if let selectedDate {
+                        scheduleBanner(for: selectedDate)
+                    } else if errorMessage != nil || !environment.network.isConnected {
+                        StaleDataBanner(isOffline: !environment.network.isConnected, lastUpdated: lastUpdated) {
+                            Task { await refresh() }
+                        }
+                    }
                     if filterOptions.values.count > 1 { platformChips }
 
                     VStack(spacing: 0) {
@@ -157,6 +173,12 @@ struct StopBoardView: View {
             NavigationLink(value: TripDestination(tripID: departure.tripID, fromStopName: title)) { rowView.contentShape(Rectangle()) }
                 .accessibilityIdentifier("departure-row")
                 .buttonStyle(DropdownRowStyle())
+                .contextMenu {
+                    Button { reminderDeparture = departure } label: {
+                        Label("Remind me before it arrives", systemImage: "bell")
+                    }
+                }
+                .accessibilityAction(named: "Remind me before it arrives") { reminderDeparture = departure }
         } else {
             rowView
         }
@@ -283,12 +305,30 @@ struct StopBoardView: View {
             errorMessage = nil
             loadError = nil
             isNotFound = false
+            if selectedDate == nil { lastUpdated = Date() }
         } catch let APIError.server(code, _, _) where code == 404 {
             departures = []
             isNotFound = true
         } catch {
             errorMessage = error.localizedDescription
             loadError = error
+        }
+    }
+
+    private func setReminder(_ kind: ReminderKind, offset: Int, for departure: Departure) async -> Bool {
+        if !environment.push.isAuthorized { await environment.push.requestPermission() }
+        do {
+            try await environment.api.addReminder(
+                tripID: departure.tripID,
+                stopID: departure.stop.parentStopID,
+                type: kind.rawValue,
+                offset: kind == .nStopsAway ? offset : nil
+            )
+            environment.toasts.show(kind.confirmationText(stopName: title, nStopsAway: offset))
+            return true
+        } catch {
+            environment.toasts.show(error.localizedDescription.isEmpty ? "Couldn't set the reminder" : error.localizedDescription, .error)
+            return false
         }
     }
 
@@ -301,7 +341,7 @@ struct StopBoardView: View {
         let nextOrder = (try? modelContext.fetchCount(FetchDescriptor<FavouriteStop>())) ?? 0
         let favourite = FavouriteStop(stopID: stopQuery, displayName: title, colorHex: favouriteColor(for: nextOrder), sortOrder: nextOrder)
         modelContext.insert(favourite)
-        environment.toasts.show("Saved to Schedule")
+        environment.toasts.show("Saved to Home")
     }
 
     private func favouriteColor(for index: Int) -> String {
@@ -437,10 +477,16 @@ struct DepartureRow: View {
 
             Spacer()
 
-            Image(systemName: "bicycle").font(.system(size: 11)).foregroundStyle(allowedColor(departure.bikesAllowed))
-                .accessibilityLabel(departure.bikesAllowed == 1 ? "Bikes allowed" : departure.bikesAllowed == 2 ? "No bikes" : "Bikes unknown")
-            Image(systemName: "figure.roll").font(.system(size: 11)).foregroundStyle(allowedColor(departure.wheelchairsAllowed))
-                .accessibilityLabel(departure.wheelchairsAllowed == 1 ? "Wheelchair accessible" : departure.wheelchairsAllowed == 2 ? "Not wheelchair accessible" : "Wheelchair access unknown")
+            // Only when the feed actually knows - an amber "unknown" pair on
+            // every row was noise across a whole board.
+            if departure.bikesAllowed == 1 || departure.bikesAllowed == 2 {
+                Image(systemName: "bicycle").font(.system(size: 11)).foregroundStyle(allowedColor(departure.bikesAllowed))
+                    .accessibilityLabel(departure.bikesAllowed == 1 ? "Bikes allowed" : "No bikes")
+            }
+            if departure.wheelchairsAllowed == 1 || departure.wheelchairsAllowed == 2 {
+                Image(systemName: "figure.roll").font(.system(size: 11)).foregroundStyle(allowedColor(departure.wheelchairsAllowed))
+                    .accessibilityLabel(departure.wheelchairsAllowed == 1 ? "Wheelchair accessible" : "Not wheelchair accessible")
+            }
         }
         .font(.meta)
         .foregroundStyle(Theme.mutedForeground)
@@ -448,11 +494,9 @@ struct DepartureRow: View {
     }
 
     /// `allowedColor` from the web: 1 = allowed (green), 2 = not allowed
-    /// (red), anything else (0/unknown) = amber.
+    /// (red).
     private func allowedColor(_ value: Int) -> Color {
-        if value == 1 { return Theme.success }
-        if value == 2 { return Theme.danger }
-        return Theme.warning
+        value == 1 ? Theme.success : Theme.danger
     }
 }
 

@@ -12,6 +12,7 @@ struct EasyPlannerFlow: View {
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
     @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
 
+    @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.stepByStep.rawValue
     @State private var model = EasyPlannerModel()
     @State private var path: [EasyPlannerModel.Step] = []
 
@@ -19,6 +20,11 @@ struct EasyPlannerFlow: View {
         NavigationStack(path: $path) {
             destinationStep
                 .appToolbar()
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Full planner") { plannerStyleRaw = PlannerStyle.standard.rawValue }
+                    }
+                }
                 .navigationDestination(for: EasyPlannerModel.Step.self) { step in
                     Group {
                         switch step {

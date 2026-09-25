@@ -32,6 +32,13 @@ final class ToastCenter {
             self?.current = nil
         }
         UIAccessibility.post(notification: .announcement, argument: message)
+        // Every save / remove / reminder confirms with a toast, so this is
+        // the one place their haptic lives.
+        switch kind {
+        case .success: UINotificationFeedbackGenerator().notificationOccurred(.success)
+        case .error: UINotificationFeedbackGenerator().notificationOccurred(.error)
+        case .info: break
+        }
     }
 
     func dismiss() {
@@ -395,14 +402,67 @@ private struct ResumeJourneyRow: View {
     }
 }
 
-// MARK: - Stops / Vehicles tab roots (separate routes, as on the web)
+// MARK: - Map tab (stops / vehicles)
 
-struct StopsTabView: View {
+/// One Map tab with a Stops / Vehicles switch in the nav bar - two
+/// full-screen maps were taking two of the five tabs. Each mode keeps its
+/// own NavigationStack: the stop board registers its own `TripDestination`
+/// destination, so the two can't share one stack.
+struct MapTabView: View {
+    @Environment(DeepLinkRouter.self) private var router
+
+    var body: some View {
+        @Bindable var router = router
+        switch router.mapMode {
+        case .stops: StopsTabView(mode: $router.mapMode)
+        case .vehicles: VehiclesTabView(mode: $router.mapMode)
+        }
+    }
+}
+
+/// The Stops / Vehicles segmented control at the top of the Map tab.
+private struct MapModePicker: ToolbarContent {
+    @Binding var mode: DeepLinkRouter.MapMode
+
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            // Plain buttons, not a segmented Picker: in the glass nav bar
+            // the Picker's first tap after the tab appears was dropped.
+            HStack(spacing: 2) {
+                segment("Stops", .stops)
+                segment("Vehicles", .vehicles)
+            }
+            .padding(3)
+            .background(Theme.muted, in: Capsule())
+            .accessibilityElement(children: .contain)
+        }
+    }
+
+    private func segment(_ title: String, _ value: DeepLinkRouter.MapMode) -> some View {
+        Button {
+            mode = value
+        } label: {
+            Text(title)
+                .font(.geist(14, .medium, relativeTo: .subheadline))
+                .foregroundStyle(mode == value ? Theme.foreground : Theme.mutedForeground)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 30)
+                .background(mode == value ? Theme.card : .clear, in: Capsule())
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(mode == value ? .isSelected : [])
+    }
+}
+
+private struct StopsTabView: View {
+    @Binding var mode: DeepLinkRouter.MapMode
     @State private var path = NavigationPath()
 
     var body: some View {
         NavigationStack(path: $path) {
             StopsMapView(onOpenStop: { path.append($0) }).appToolbar()
+                .toolbar { MapModePicker(mode: $mode) }
                 .toolbarBackground(Theme.background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
                 .navigationDestination(for: BoardDestination.self) { destination in
@@ -412,12 +472,14 @@ struct StopsTabView: View {
     }
 }
 
-struct VehiclesTabView: View {
+private struct VehiclesTabView: View {
+    @Binding var mode: DeepLinkRouter.MapMode
     @State private var path = NavigationPath()
 
     var body: some View {
         NavigationStack(path: $path) {
             VehiclesMapView(onOpenVehicle: { path.append(TripDestination(tripID: $0)) }).appToolbar()
+                .toolbar { MapModePicker(mode: $mode) }
                 .toolbarBackground(Theme.background, for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
                 .navigationDestination(for: TripDestination.self) { destination in

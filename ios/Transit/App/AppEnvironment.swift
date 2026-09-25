@@ -25,7 +25,14 @@ final class AppEnvironment {
         }
     }
 
-    init(region: Region = .auckland) {
+    /// The rider's own choice (Settings, first launch) - saved, unlike a
+    /// shared link's `region=`, which only switches for this session.
+    func choose(region: Region) {
+        self.region = region
+        SharedStore.regionSlug = region.slug
+    }
+
+    init(region: Region = SharedStore.regionSlug.flatMap(Region.bySlug) ?? .auckland) {
         self.region = region
         let api = APIClient(region: region)
         self.api = api

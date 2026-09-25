@@ -72,18 +72,7 @@ struct StopsMapView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
 
             // Mode filters float on the map as pills, as on the web.
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 6) {
-                    ForEach(StopType.filterCases, id: \.self) { type in
-                        FilterChip(title: type.label, isSelected: typeFilter == type) {
-                            typeFilter = type
-                        }
-                        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-            }
+            MapModeFilterBar(modes: StopType.filterCases, label: \.label, selection: $typeFilter)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -97,7 +86,6 @@ struct StopsMapView: View {
             view.navigationTitle("Stops").navigationBarTitleDisplayMode(.inline)
         }
         .task { await load() }
-        .task { environment.location.requestPermission() }
         .onChange(of: typeFilter) { _, _ in Task { await load() } }
         // `initial: true` - the fix is often already in hand (Home asked
         // for location first), and then it never "changes" after appear.
