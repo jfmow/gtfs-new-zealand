@@ -101,6 +101,9 @@ export default function Page() {
         sharedTrips: { type: "string", default: "", keys: ["trips"] },
         sharedTrack: { type: "boolean", default: false, keys: ["track"] },
         resume: { type: "boolean", default: false, keys: ["resume"] },
+        // A saved place's chip on the home page: plan from the rider's
+        // location to endLat/endLon straight away.
+        fromHere: { type: "boolean", default: false, keys: ["fromHere"] },
     })
     const idLookupAttemptedRef = useRef(false)
     const resumeAttemptedRef = useRef(false)
@@ -252,6 +255,25 @@ export default function Page() {
         resumeJourney()
         window.history.replaceState(null, "", "/plan")
     }, [shared.resume.found, activeJourney, resumeJourney])
+
+    // ?fromHere=1 - locate the rider for From, then plan once both ends are in.
+    const [planFromHere, setPlanFromHere] = useState(false)
+    const fromHereAttemptedRef = useRef(false)
+    useEffect(() => {
+        if (!shared.fromHere.found || fromHereAttemptedRef.current) return
+        fromHereAttemptedRef.current = true
+        setPlanFromHere(true)
+        handleUseCurrentLocation('start')
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [shared.fromHere.found])
+    useEffect(() => {
+        if (!planFromHere) return
+        if (locationError) return setPlanFromHere(false)
+        if (!startLocation || !endLocation) return
+        setPlanFromHere(false)
+        planJourney()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [planFromHere, startLocation, endLocation, locationError])
 
     const handleSelectFromMap = (mode: 'start' | 'end') => {
         setLocationMode(mode)
