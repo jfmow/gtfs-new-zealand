@@ -241,11 +241,30 @@ func (s *apnsSender) pushLiveActivity(token, env string, aps map[string]any, pri
 	if err != nil {
 		return fmt.Errorf("apns live activity push: %w", err)
 	}
+	// Same as Send: BadDeviceToken almost always means the token is from
+	// the other APNs environment. The device's stored env is only right for
+	// its alert token once Send has corrected it, and the app overwrites it
+	// again on every launch - so without this retry a push-to-start token
+	// was rejected on every tick and the Live Activity never started.
+	if !res.Sent() && res.Reason == apns2.ReasonBadDeviceToken {
+		otherEnv := otherApnsEnv(env)
+		if retry, retryErr := s.clientFor(otherEnv).Push(n); retryErr == nil && retry.Sent() {
+			log.Printf("notifications: live activity push needed apns env %s, not %s", otherEnv, env)
+			return nil
+		}
+	}
 	if !res.Sent() {
+		if res.Reason == apns2.ReasonBadDeviceToken {
+			return fmt.Errorf("%w (%d %s)", errLiveActivityBadToken, res.StatusCode, res.Reason)
+		}
 		return fmt.Errorf("apns live activity push rejected: %d %s", res.StatusCode, res.Reason)
 	}
 	return nil
 }
+
+// errLiveActivityBadToken is a Live Activity push whose token neither APNs
+// environment accepts - the token is dead, and retrying it won't help.
+var errLiveActivityBadToken = errors.New("apns live activity push rejected: token invalid in both environments")
 
 func (s *apnsSender) Send(client NotificationClient, p Payload) error {
 	if client.ApnsToken == "" {

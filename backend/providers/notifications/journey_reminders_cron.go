@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math"
@@ -410,6 +411,11 @@ func jrMaybeStartLiveActivity(db *Database, r JourneyReminder, region string, pl
 	}
 	if err := apns.SendLiveActivityStart(client.PushToStartToken, env, attributes, state, alert, now.Add(activityStaleAfter)); err != nil {
 		log.Printf("notifications: push-to-start for reminder %d: %v", r.Id, err)
+		if errors.Is(err, errLiveActivityBadToken) {
+			// Dead token: drop it rather than retry it every tick. The
+			// app sends its current one again on next launch.
+			_ = db.ClearPushToStartToken(client.Id, client.PushToStartToken)
+		}
 		return false
 	}
 	_ = db.MarkJourneyReminderLiveActivityStarted(r.Id)

@@ -162,6 +162,17 @@ func (v *Database) setIOSDeviceApns(clientID int, apnsToken, apnsEnv string) err
 	return err
 }
 
+// ClearPushToStartToken forgets a device's push-to-start token that APNs
+// rejected - only if it's still the one that failed, so a fresh token the
+// app uploaded in the meantime isn't lost.
+func (v *Database) ClearPushToStartToken(clientID int, token string) error {
+	_, err := v.execContext(
+		`UPDATE notifications SET push_to_start_token = NULL WHERE id = ? AND push_to_start_token = ?`,
+		clientID, token,
+	)
+	return err
+}
+
 // FindIOSDeviceClient resolves a client from its device id + secret, as sent
 // via the X-Device-Id/X-Device-Secret request headers. Returns
 // ErrClientNotFound if no such device is registered, ErrDeviceSecretMismatch
