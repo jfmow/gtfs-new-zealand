@@ -27,6 +27,10 @@ type LatLng struct {
 // >= 24 for service that runs past midnight - and anchors it to `date`'s
 // calendar day, rolling the extra hours into the following day. Returns false on
 // an unparseable value.
+//
+// Per the GTFS spec the clock counts from "noon minus 12h", not midnight: on a
+// daylight-saving change day those differ by an hour, and anchoring to
+// midnight made every time that day an hour out.
 func parseGTFSClock(clock string, date time.Time, loc *time.Location) (time.Time, bool) {
 	parts := strings.Split(strings.TrimSpace(clock), ":")
 	if len(parts) < 2 {
@@ -41,8 +45,9 @@ func parseGTFSClock(clock string, date time.Time, loc *time.Location) (time.Time
 	if errH != nil || errM != nil || h < 0 || m < 0 || s < 0 {
 		return time.Time{}, false
 	}
-	midnight := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, loc)
-	return midnight.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second), true
+	date = date.In(loc)
+	dayStart := time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, loc).Add(-12 * time.Hour)
+	return dayStart.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second), true
 }
 
 func clampInt32Seconds(v int32, lo, hi int32) int32 {
