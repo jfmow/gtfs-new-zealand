@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Reorder, useDragControls } from "framer-motion"
-import { GripVertical, MoreVertical, Pencil, Trash2, Route as RouteIcon } from "lucide-react"
+import { GripVertical, MoreVertical, Pencil, Settings2, Trash2, Route as RouteIcon } from "lucide-react"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -31,16 +31,19 @@ interface QuickTripsRailProps {
     onReorderTrips: (trips: SavedTrip[]) => void
 }
 
-function TripMenu({
+export function TripMenu({
     trip,
     onRename,
     onSetColor,
     onDelete,
+    onManage,
 }: {
     trip: SavedTrip
     onRename: () => void
     onSetColor: (color: string) => void
     onDelete: () => void
+    /** Adds "Manage trips" (Schedule's saved trips). */
+    onManage?: () => void
 }) {
     return (
         <DropdownMenu>
@@ -58,6 +61,12 @@ function TripMenu({
                     <Pencil className="w-3.5 h-3.5" />
                     Rename
                 </DropdownMenuItem>
+                {onManage && (
+                    <DropdownMenuItem onSelect={onManage}>
+                        <Settings2 className="w-3.5 h-3.5" />
+                        Manage trips
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs">Colour</DropdownMenuLabel>
                 <div className="flex flex-wrap gap-1.5 px-2 py-1.5">
@@ -85,7 +94,7 @@ function TripMenu({
     )
 }
 
-function RenameDialog({
+export function RenameTripDialog({
     trip,
     onOpenChange,
     onSave,
@@ -239,7 +248,7 @@ export function QuickTripsRail({ trips, onLoadTrip, onUpdateTrip, onDeleteTrip, 
                     />
                 ))}
             </Reorder.Group>
-            <RenameDialog
+            <RenameTripDialog
                 trip={renaming}
                 onOpenChange={(open) => !open && setRenaming(null)}
                 onSave={(name) => {

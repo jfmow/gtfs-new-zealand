@@ -12,6 +12,7 @@ import { LocationSearchInput } from "@/components/map/search"
 import { ApiFetch } from "@/lib/url-context"
 import { cn } from "@/lib/utils"
 import type { Location } from "@/components/journey/types"
+import { HomeSection } from "@/components/home/home-section"
 import { PLACE_ICONS, placeIcon, useSavedPlaces, type PlaceIconKey, type SavedPlace } from "./use-saved-places"
 
 /** The rounded tile with a place's icon on its tint. */
@@ -299,17 +300,11 @@ export function SavedPlacesRow() {
     )
 
     return (
-        <section aria-labelledby="places-heading">
-            <div className="mb-1.5 flex items-center justify-between">
-                <h2 id="places-heading" className="text-xs font-display uppercase tracking-wide text-muted-foreground">
-                    Places
-                </h2>
-                {places.length > 0 && (
-                    <button type="button" onClick={() => setManaging(true)} className="text-xs font-medium text-muted-foreground hover:text-foreground">
-                        Edit
-                    </button>
-                )}
-            </div>
+        <HomeSection
+            title="Places"
+            count={places.length}
+            actions={places.length > 0 && <button type="button" onClick={() => setManaging(true)}>Edit</button>}
+        >
             <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 scrollbar-hide">
                 {places.map((place) => (
                     <Link
@@ -334,6 +329,6 @@ export function SavedPlacesRow() {
                 onEdit={(place) => { setManaging(false); setEditor({ place }) }}
                 onAdd={() => { setManaging(false); setEditor({ preset: { name: "", icon: "pin" } }) }}
             />
-        </section>
+        </HomeSection>
     )
 }

@@ -16,7 +16,18 @@ const MapComp = dynamic(() => import("../../map/map"), { ssr: false })
  * `mapId` must stay stable for the life of the mount so the ~10s poll doesn't tear
  * the map down and reset its zoom.
  */
-export default function TrackerMap({ height }: { height: string }) {
+export default function TrackerMap({
+    height,
+    padding,
+    follow = true,
+    onUserMove,
+}: {
+    height: string
+    padding?: { left?: number; top?: number; bottom?: number }
+    /** Keep the vehicle in view as it moves (off once the rider pans; see mobile-sheet's follow button). */
+    follow?: boolean
+    onUserMove?: () => void
+}) {
     const { vehicle, stops, stopTimes, previewData, tripId, currentStop } = useServiceTrackerContext()
     const routeLine = useRouteLine(tripId, vehicle?.route.id ?? previewData?.route_id)
 
@@ -28,11 +39,14 @@ export default function TrackerMap({ height }: { height: string }) {
         [stops],
     )
 
+    // With a follow button (onUserMove set), the map's own "zoom to vehicle" control would duplicate it.
+    const hasFollowButton = !!onUserMove
     const mapItems = useMemo(() => {
-        if (vehicle) return buildTrackerMapItems({ stops: sortedStops, stopTimes, vehicle, currentStop })
-        if (sortedStops) return buildPreviewMapItems({ stops: sortedStops, stopTimes })
-        return []
-    }, [vehicle, sortedStops, stopTimes, currentStop])
+        const items = vehicle
+            ? buildTrackerMapItems({ stops: sortedStops, stopTimes, vehicle, currentStop })
+            : sortedStops ? buildPreviewMapItems({ stops: sortedStops, stopTimes }) : []
+        return hasFollowButton ? items.map((item) => ({ ...item, zoomButton: undefined })) : items
+    }, [vehicle, sortedStops, stopTimes, currentStop, hasFollowButton])
 
     if (!vehicle && (!sortedStops || sortedStops.length === 0)) {
         return <LoadingSpinner description="Loading map…" height={height} />
@@ -70,6 +84,10 @@ export default function TrackerMap({ height }: { height: string }) {
                 map_id={mapIdRef.current}
                 height={height}
                 options={{ buttonPosition: "bottom" }}
+                padding={padding}
+                square={!!padding}
+                followPaused={!follow}
+                onUserMove={onUserMove}
             />
         </Suspense>
     )

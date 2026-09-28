@@ -14,6 +14,8 @@ export interface SavedTrip {
     maxTransfers: string
     color: string
     onlyRoutes: RouteOption[]
+    /** Transport the trip is planned with ("bus", "train", "ferry"); absent/empty = any. */
+    modes?: ("bus" | "train" | "ferry")[]
 }
 
 const STORAGE_KEY = "savedJourneyTrips"

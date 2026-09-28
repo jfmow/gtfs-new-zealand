@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react"
 import { Reorder, useDragControls } from "framer-motion"
-import { Star, GripVertical, MoreVertical, Pencil, Trash2, Loader2 } from "lucide-react"
+import { Star, GripVertical, MoreVertical, Pencil, Trash2, ArrowUpDown } from "lucide-react"
 import { Button } from "../ui/button"
 import {
     DropdownMenu,
@@ -21,17 +21,16 @@ import {
 } from "../ui/dialog"
 import { Input } from "../ui/input"
 import { toast } from "sonner"
-import Link from "next/link"
 import { cn } from "@/lib/utils"
 import { SWATCH_COLORS as FAVORITE_COLORS } from "@/lib/colors"
-import { timeTillArrivalString } from "@/lib/formating"
-import { useNextDepartures } from "../home/stop-preview-card"
+import { HomeHint, HomeSection } from "../home/home-section"
+import { FavouriteTile, HomeStopRow } from "../home/home-stop-row"
 
 const localStorageKey = "favorites"
 const FAVORITES_UPDATED_EVENT = "favoritesUpdated"
 const MAX_FAVORITES = 8
 
-type Favorite = { stop: string; displayName: string; color: string }
+export type Favorite = { stop: string; displayName: string; color: string }
 
 // ─── Storage helpers ──────────────────────────────────────────────────────────
 
@@ -67,7 +66,8 @@ function makeDisplayName(stopName: string): string {
     return lastSpace > 8 ? truncated.slice(0, lastSpace) : truncated
 }
 
-function useFavorites() {
+/** The saved stops, kept in sync with changes anywhere on the page. */
+export function useFavorites() {
     const [favorites, setFavorites] = useState<Favorite[]>([])
 
     useEffect(() => {
@@ -110,7 +110,7 @@ function RenameDialog({
         <Dialog open={!!favorite} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-sm">
                 <DialogHeader>
-                    <DialogTitle>Rename favourite</DialogTitle>
+                    <DialogTitle>Rename saved stop</DialogTitle>
                 </DialogHeader>
                 <Input
                     ref={inputRef}
@@ -139,10 +139,12 @@ function RenameDialog({
 function FavoriteMenu({
     favorite,
     onRename,
+    onReorder,
     triggerClassName,
 }: {
     favorite: Favorite
     onRename: () => void
+    onReorder?: () => void
     triggerClassName?: string
 }) {
     const setColor = (color: string) => {
@@ -151,11 +153,11 @@ function FavoriteMenu({
 
     const remove = () => {
         saveFavorites(getFavorites().filter((f) => f.stop !== favorite.stop))
-        toast.success("Removed from favourites")
+        toast.success("Removed from saved stops")
     }
 
     return (
-        <DropdownMenu>
+        <DropdownMenu modal={false}>
             <DropdownMenuTrigger asChild>
                 <button
                     aria-label={`Options for ${favorite.displayName}`}
@@ -173,6 +175,12 @@ function FavoriteMenu({
                     <Pencil className="w-3.5 h-3.5" />
                     Rename
                 </DropdownMenuItem>
+                {onReorder && (
+                    <DropdownMenuItem onSelect={onReorder}>
+                        <ArrowUpDown className="w-3.5 h-3.5" />
+                        Reorder
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuLabel className="text-xs">Colour</DropdownMenuLabel>
                 <div className="flex flex-wrap gap-1.5 px-2 py-1.5">
@@ -195,189 +203,145 @@ function FavoriteMenu({
                     className="text-destructive focus:text-destructive focus:bg-destructive/10"
                 >
                     <Trash2 className="w-3.5 h-3.5" />
-                    Remove
+                    Remove from saved
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>
     )
 }
 
-// ─── Compact chip (used in the mobile nav drawer) ────────────────────────────
+// ─── Home: saved stops ────────────────────────────────────────────────────────
 
-export function FavoritesChips({ onClick }: { onClick?: () => void }) {
+/** Saves a stop from somewhere other than its board (e.g. a nearby stop's menu). */
+export function saveStop(stopName: string, displayName?: string) {
+    const current = getFavorites()
+    if (current.some((f) => f.stop === stopName)) return
+    const color = FAVORITE_COLORS[current.length % FAVORITE_COLORS.length].value
+    const entry = { stop: stopName, displayName: displayName ? makeDisplayName(displayName) : makeDisplayName(stopName), color }
+    saveFavorites(current.length >= MAX_FAVORITES ? [...current.slice(1), entry] : [...current, entry])
+    toast.success("Saved to Schedule")
+}
+
+export function useIsSaved(stopName: string) {
+    const favorites = useFavorites()
+    return favorites.some((f) => f.stop === stopName)
+}
+
+/**
+ * Schedule's "Saved stops" - one row per stop with its next departures (the
+ * iOS Home section). Rename / colour / reorder / remove from each row's
+ * menu; "Edit" opens the list for dragging into order.
+ */
+export default function SavedStopsSection({ className }: { className?: string }) {
     const favorites = useFavorites()
     const [renaming, setRenaming] = useState<Favorite | null>(null)
-
-    if (favorites.length === 0) {
-        return (
-            <p className="text-xs text-muted-foreground py-1">
-                No favourites yet — star a stop to save it here.
-            </p>
-        )
-    }
+    const [managing, setManaging] = useState(false)
 
     return (
-        <>
-            <div className="flex flex-wrap gap-1.5">
-                {favorites.map((fav) => (
-                    <div
-                        key={fav.stop}
-                        className="group flex items-center gap-1 pl-2.5 pr-1 py-1.5 rounded-full bg-muted hover:bg-accent transition-colors text-xs shrink-0"
-                    >
-                        <span
-                            className="w-2 h-2 rounded-full shrink-0"
-                            style={{ background: fav.color }}
-                            aria-hidden
-                        />
-                        <Link
+        <HomeSection
+            title="Saved stops"
+            count={favorites.length}
+            className={className}
+            actions={favorites.length > 0 && <button type="button" onClick={() => setManaging(true)}>Edit</button>}
+        >
+            {favorites.length === 0 ? (
+                <HomeHint icon={Star} text="Tap the star on any stop to keep its departures here." />
+            ) : (
+                <div className="flex flex-col gap-2.5">
+                    {favorites.map((fav) => (
+                        <HomeStopRow
+                            key={fav.stop}
+                            stopQuery={fav.stop}
+                            title={fav.displayName}
                             href={`/?s=${encodeURIComponent(fav.stop)}`}
-                            onClick={onClick}
-                            className="font-medium text-foreground leading-none"
-                        >
-                            {fav.displayName}
-                        </Link>
-                        <FavoriteMenu
-                            favorite={fav}
-                            onRename={() => setRenaming(fav)}
-                            triggerClassName="w-5 h-5 ml-0.5"
+                            tile={<FavouriteTile color={fav.color} />}
+                            menu={
+                                <FavoriteMenu
+                                    favorite={fav}
+                                    onRename={() => setRenaming(fav)}
+                                    onReorder={() => setManaging(true)}
+                                    triggerClassName="h-8 w-8"
+                                />
+                            }
                         />
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
             <RenameDialog favorite={renaming} onOpenChange={(open) => !open && setRenaming(null)} />
-        </>
+            <ManageSavedStopsDialog open={managing} onOpenChange={setManaging} />
+        </HomeSection>
     )
 }
 
-// ─── Rich cards (used on the home page) ──────────────────────────────────────
+function ManageSavedStopsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
+    const favorites = useFavorites()
+    const [order, setOrder] = useState<Favorite[]>([])
+    const orderRef = useRef<Favorite[]>([])
 
-function FavoriteCard({
-    favorite,
-    onRename,
-    onDragEnd,
-}: {
-    favorite: Favorite
-    onRename: () => void
-    onDragEnd: () => void
-}) {
+    useEffect(() => setOrder(favorites), [favorites])
+    useEffect(() => { orderRef.current = order }, [order])
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Saved stops</DialogTitle>
+                </DialogHeader>
+                {order.length === 0 ? (
+                    <p className="py-6 text-center text-sm text-muted-foreground">No saved stops.</p>
+                ) : (
+                    <Reorder.Group as="ul" axis="y" values={order} onReorder={setOrder} className="flex max-h-[60vh] flex-col gap-1.5 overflow-y-auto">
+                        {order.map((fav) => (
+                            <ManageRow key={fav.stop} favorite={fav} onDragEnd={() => saveFavorites(orderRef.current)} />
+                        ))}
+                    </Reorder.Group>
+                )}
+                <DialogFooter>
+                    <Button onClick={() => onOpenChange(false)}>Done</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    )
+}
+
+function ManageRow({ favorite, onDragEnd }: { favorite: Favorite; onDragEnd: () => void }) {
     const controls = useDragControls()
-    const { services, error } = useNextDepartures(favorite.stop, 1)
-    const next = services && services.length > 0 ? services[0] : null
-
     return (
         <Reorder.Item
             value={favorite}
             dragListener={false}
             dragControls={controls}
             onDragEnd={onDragEnd}
-            as="li"
-            className="relative shrink-0 w-[190px] snap-start rounded-lg border border-border bg-card select-none"
-            style={{ borderLeft: `3px solid ${favorite.color}` }}
+            className="flex select-none items-center gap-2 rounded-lg border border-border bg-card px-2 py-1.5"
         >
-            <Link
-                href={`/?s=${encodeURIComponent(favorite.stop)}`}
-                className="absolute inset-0 z-0 rounded-lg"
-                aria-label={favorite.displayName}
-            />
-
-            <div className="relative z-10 pointer-events-none flex flex-col gap-2 p-3 pr-7">
-                <div className="flex items-center gap-1.5 min-w-0">
-                    <Star className="w-3 h-3 shrink-0" style={{ color: favorite.color, fill: favorite.color }} />
-                    <span className="text-sm font-medium truncate">{favorite.displayName}</span>
-                </div>
-
-                {services === null && !error && (
-                    <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        Loading...
-                    </div>
-                )}
-
-                {error && <p className="text-xs text-muted-foreground">Couldn&apos;t load departures</p>}
-
-                {services && services.length === 0 && (
-                    <p className="text-xs text-muted-foreground">No upcoming services</p>
-                )}
-
-                {next && (
-                    <div className="flex items-center gap-1.5 text-xs min-w-0">
-                        <span
-                            className="shrink-0 px-1.5 py-0.5 rounded text-white dark:text-gray-100 font-display font-medium"
-                            style={{
-                                background: "#" + (next.route.color !== "" ? next.route.color : "000000"),
-                                filter: "brightness(0.9) contrast(1.1)",
-                            }}
-                        >
-                            {next.route.name}
-                        </span>
-                        <span className="truncate text-foreground">{next.headsign}</span>
-                        <span className="ml-auto font-mono tabular-nums text-muted-foreground shrink-0">
-                            {timeTillArrivalString(next.arrival_time)}
-                        </span>
-                    </div>
-                )}
-            </div>
-
-            <div className="absolute top-1.5 right-1.5 z-20 flex items-center gap-0.5">
-                <FavoriteMenu favorite={favorite} onRename={onRename} triggerClassName="w-6 h-6" />
-            </div>
-
             <button
+                type="button"
                 onPointerDown={(e) => controls.start(e)}
-                aria-label="Drag to reorder"
-                className="absolute bottom-1 right-1.5 z-20 flex items-center justify-center w-6 h-6 rounded-full text-muted-foreground/60 hover:text-foreground hover:bg-foreground/10 transition-colors cursor-grab active:cursor-grabbing touch-none"
+                aria-label={`Drag ${favorite.displayName} to reorder`}
+                className="flex h-8 w-6 cursor-grab touch-none items-center justify-center text-muted-foreground active:cursor-grabbing"
             >
-                <GripVertical className="w-3.5 h-3.5" />
+                <GripVertical className="h-4 w-4" />
+            </button>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: favorite.color }} aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-sm">{favorite.displayName}</span>
+            <button
+                type="button"
+                aria-label={`Remove ${favorite.displayName}`}
+                onClick={() => {
+                    saveFavorites(getFavorites().filter((f) => f.stop !== favorite.stop))
+                    toast.success("Removed from saved stops")
+                }}
+                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            >
+                <Trash2 className="h-4 w-4" />
             </button>
         </Reorder.Item>
     )
 }
 
-export default function Favorites() {
-    const favorites = useFavorites()
-    const [order, setOrder] = useState<Favorite[]>([])
-    const [renaming, setRenaming] = useState<Favorite | null>(null)
-    const orderRef = useRef<Favorite[]>([])
-
-    useEffect(() => setOrder(favorites), [favorites])
-    useEffect(() => {
-        orderRef.current = order
-    }, [order])
-
-    if (favorites.length === 0) {
-        return (
-            <p className="text-xs text-muted-foreground py-1">
-                No favourites yet — star a stop to save it here.
-            </p>
-        )
-    }
-
-    return (
-        <>
-            <Reorder.Group
-                as="ul"
-                axis="x"
-                values={order}
-                onReorder={setOrder}
-                className="flex gap-2 overflow-x-auto snap-x snap-mandatory pb-1 -mx-0.5 px-0.5 list-none"
-            >
-                {order.map((fav) => (
-                    <FavoriteCard
-                        key={fav.stop}
-                        favorite={fav}
-                        onRename={() => setRenaming(fav)}
-                        onDragEnd={() => saveFavorites(orderRef.current)}
-                    />
-                ))}
-            </Reorder.Group>
-            <RenameDialog favorite={renaming} onOpenChange={(open) => !open && setRenaming(null)} />
-        </>
-    )
-}
-
 // ─── Add / remove button ──────────────────────────────────────────────────────
 
-export function AddToFavorites({ stopName }: { stopName: string }) {
+export function AddToFavorites({ stopName, className }: { stopName: string; className?: string }) {
     const [favorited, setFavorited] = useState(false)
 
     useEffect(() => {
@@ -393,7 +357,7 @@ export function AddToFavorites({ stopName }: { stopName: string }) {
         if (current.some((f) => f.stop === stopName)) {
             saveFavorites(current.filter((f) => f.stop !== stopName))
             setFavorited(false)
-            toast.success("Removed from favourites")
+            toast.success("Removed from saved stops")
             return
         }
 
@@ -404,12 +368,12 @@ export function AddToFavorites({ stopName }: { stopName: string }) {
         if (current.length >= MAX_FAVORITES) {
             // Replace the oldest (first in array)
             updated = [...current.slice(1), { stop: stopName, displayName, color }]
-            toast.success("Added to favourites", {
+            toast.success("Saved to Schedule", {
                 description: `Replaced "${current[0].displayName}"`,
             })
         } else {
             updated = [...current, { stop: stopName, displayName, color }]
-            toast.success("Added to favourites")
+            toast.success("Saved to Schedule")
         }
 
         saveFavorites(updated)
@@ -418,16 +382,16 @@ export function AddToFavorites({ stopName }: { stopName: string }) {
 
     return (
         <Button
-            aria-label={favorited ? "Remove from favourites" : "Add to favourites"}
+            aria-label={favorited ? "Remove from saved stops" : "Save stop"}
+            aria-pressed={favorited}
             onClick={handleToggle}
             disabled={!stopName}
-            variant="outline"
+            variant="ghost"
             size="icon"
-            className="flex-shrink-0"
+            className={cn("flex-shrink-0", className)}
         >
             <Star
-                className={`w-4 h-4 transition-colors ${favorited ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground"
-                    }`}
+                className={`w-4 h-4 transition-colors ${favorited ? "fill-yellow-500 text-yellow-500" : "text-foreground"}`}
             />
         </Button>
     )

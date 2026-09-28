@@ -5,11 +5,13 @@ import { Loader2, Clock, X } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { ApiFetch } from "@/lib/url-context"
 import { useQueryParams } from "@/lib/url-params"
+import { useRouter } from "next/router"
 
 // Maximum number of recent searches to store
 const MAX_RECENT_SEARCHES = 5
 
 export default function SearchForStop() {
+    const router = useRouter()
     const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } })
     const [searchTerm, setSearchTerm] = useState("")
     const [result, setResult] = useState<StopSearch[]>([])
@@ -103,11 +105,17 @@ export default function SearchForStop() {
         })
     }
 
+    // Pushed (not replaced), so the board's back button and the browser's
+    // back both return to the page the search was on.
+    const openStop = (stop: string) => {
+        router.push({ pathname: router.pathname, query: { ...router.query, s: stop } }, undefined, { shallow: true })
+    }
+
     // Handle selecting a search result
     const handleSelectSearch = (item: StopSearch) => {
         skipSearchRef.current = true
         setSearchTerm(item.name)
-        selected_stop.set(item.name)
+        openStop(item.name)
         setIsOpen(false)
         saveToRecentSearches(item.name)
     }
@@ -116,7 +124,7 @@ export default function SearchForStop() {
     const handleSelectRecentSearch = (search: string) => {
         skipSearchRef.current = true
         setSearchTerm(search)
-        selected_stop.set(search)
+        openStop(search)
         setIsOpen(false)
     }
 

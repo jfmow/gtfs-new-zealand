@@ -52,6 +52,8 @@ interface LiveMapProps {
     onUserLocation?: (lat: number, lon: number) => void
     /** True right when GO/live tracking starts - flies the map into a close zoom once, instead of leaving it at whatever the pre-tracking overview was. */
     trackingStarted?: boolean
+    /** Frame the whole journey - refits whenever its key changes (picking another journey). */
+    fitTo?: { key: string; points: LatLng[]; padding?: { top?: number; right?: number; bottom?: number; left?: number } }
 }
 
 const VEHICLE_ICONS = new Set(["bus", "train", "ferry", "school bus"])
@@ -112,6 +114,7 @@ export function LiveMap({
     followUser,
     onUserLocation,
     trackingStarted,
+    fitTo,
 }: LiveMapProps) {
     // Rebuilt only when a real input changes - not on every render. The 30s
     // useNow tick upstream would otherwise hand map.tsx a fresh array each time,
@@ -366,6 +369,7 @@ export function LiveMap({
                     onLocationUpdate={onUserLocation}
                     zoomInTrigger={trackingStarted}
                     zoomInCenter={zoomInCenter}
+                    fitTo={fitTo}
                     options={{ buttonPosition: "bottom" }}
                 />
             </Suspense>

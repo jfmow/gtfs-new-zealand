@@ -10,11 +10,13 @@ import { useRouter } from "next/router";
 import { Toaster } from "sonner";
 import { displayFont, bodyFont, monoFont } from "@/lib/fonts";
 import { cn } from "@/lib/utils";
+import { useTrackPreviousUrl } from "@/lib/url-overlay";
 import { ThemeProvider } from "@/components/ui/theme-provider";
 
 export default function App({ Component, pageProps }: AppProps) {
   const router = useRouter()
   const [transitioning, setTransitioning] = useState(false)
+  useTrackPreviousUrl()
 
   useEffect(() => {
     register("/pwa/sw.js", {}).then(() => {
@@ -47,7 +49,7 @@ export default function App({ Component, pageProps }: AppProps) {
       enableSystem
       disableTransitionOnChange
     >
-      <main className={cn(displayFont.variable, bodyFont.variable, monoFont.variable, bodyFont.className, "flex flex-col min-h-[100svh] bg-background")}>
+      <main className={cn(displayFont.variable, bodyFont.variable, monoFont.variable, bodyFont.className, "flex flex-col min-h-[100svh] pb-[var(--tabbar-h)] bg-background")}>
         <UrlProvider>
           <IosAppBanner />
           <NavBar />

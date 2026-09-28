@@ -44,6 +44,7 @@ import { useJourneyAlerts, boardProximityThreshold } from "./use-journey-alerts"
 import { JourneyAlertOverlay } from "./journey-alert-overlay"
 import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getFirstTransitLeg, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { useActiveJourney } from "./use-active-journey"
+import { useHideResumePrompt, useImmersive } from "@/lib/immersive"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
 interface RouteDetailSheetProps {
@@ -62,6 +63,12 @@ interface RouteDetailSheetProps {
     autoTrack?: boolean
     /** When set, a not-yet-departed journey shows a "remind me when to leave" action. */
     onRemindToLeave?: (route: JourneyType) => void
+    /**
+     * Desktop only: render in the page (the planner's detail column on wide
+     * screens, like the iPad app) instead of in a dialog. Phones always get the
+     * map-first drawer.
+     */
+    embedded?: boolean
 }
 
 // How far past its delay-adjusted departure the earliest pending transit leg
@@ -137,6 +144,23 @@ function clamp01(n: number): number {
     return Math.min(1, Math.max(0, n))
 }
 
+/** Every point the journey passes: start, end, each leg's stops, and its route line. */
+function journeyPoints(route: JourneyType): LatLng[] {
+    const points: LatLng[] = [[route.StartLat, route.StartLon], [route.EndLat, route.EndLon]]
+    for (const leg of route.Legs) {
+        if (leg.FromStop) points.push([leg.FromStop.stop_lat, leg.FromStop.stop_lon])
+        if (leg.ToStop) points.push([leg.ToStop.stop_lat, leg.ToStop.stop_lon])
+    }
+    // GeoJSON is [lon, lat], possibly nested (Multi* geometries).
+    const walk = (c: unknown) => {
+        if (!Array.isArray(c)) return
+        if (typeof c[0] === "number" && typeof c[1] === "number") points.push([c[1] as number, c[0] as number])
+        else for (const inner of c) walk(inner)
+    }
+    for (const feature of route.RouteGeoJSON?.features ?? []) walk(feature.geometry?.coordinates)
+    return points.filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0))
+}
+
 function journeyHeadsign(route: JourneyType): string | null {
     const transitLegs = route.Legs.filter(l => l.Mode === 'transit')
     const lastLeg = transitLegs[transitLegs.length - 1]
@@ -170,6 +194,7 @@ export function RouteDetailSheet({
     onReplanFromHere,
     autoTrack,
     onRemindToLeave,
+    embedded,
 }: RouteDetailSheetProps) {
     // immediate: true - resolve mobile vs desktop synchronously on the first
     // client render. This component renders no DOM until `open` (always false at
@@ -178,6 +203,10 @@ export function RouteDetailSheet({
     // the mount effect corrects isMobile, would strand body{pointer-events:none}
     // and kill the whole page.
     const isMobile = useIsMobile({ immediate: true })
+    // The phone layout is a full-screen map: hide the tab bar and resume card.
+    useImmersive(isMobile && open)
+    // Any layout: the resume card would only point back at what's open.
+    useHideResumePrompt(open && !!route)
     const [activeSnapPoint, setActiveSnapPoint] = useState<number | string | null>(0.4)
     const [journeyStarted, setJourneyStarted] = useState(false)
     // Highest journey-leg index the rider has been carried past - i.e. a tracked
@@ -428,6 +457,20 @@ export function RouteDetailSheet({
         [route?.EndLat ?? 0, route?.EndLon ?? 0],
     ], [route?.StartLat, route?.StartLon, route?.EndLat, route?.EndLon])
 
+    // Frame the whole journey - start, end, every stop and the route line -
+    // and again whenever the rider picks another one. Not while tracking,
+    // when the map follows the vehicle or the rider instead. On a phone the
+    // drawer covers the bottom ~60%, so the journey is framed above it.
+    const fitTo = useMemo(() => {
+        if (!route || journeyStarted) return undefined
+        return {
+            key: route.ID,
+            points: journeyPoints(route),
+            padding: isMobile && !embedded && typeof window !== "undefined" ? { top: 40, bottom: Math.round(window.innerHeight * 0.45) } : undefined,
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [route?.ID, journeyStarted, isMobile, embedded])
+
     // Derived render state is computed before the null guard below so the
     // journey-alert hook (which needs journeyArrived / replanUrgent) can run
     // unconditionally - it no-ops internally when there's no route or tracking.
@@ -625,6 +668,7 @@ export function RouteDetailSheet({
             followUser={journeyStarted && !followMarkerId}
             onUserLocation={(lat, lon) => setUserLoc({ lat, lon })}
             trackingStarted={journeyStarted}
+            fitTo={fitTo}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
@@ -675,6 +719,19 @@ export function RouteDetailSheet({
     const alertOverlay = (
         <JourneyAlertOverlay alerts={alerts} onDismiss={dismissAlert} onDismissAll={dismissAlerts} />
     )
+
+    if (!isMobile && embedded) {
+        return (
+            <>
+                {alertOverlay}
+                <div className="flex flex-col gap-4">
+                    <div className="relative h-[340px] overflow-hidden rounded-xl border border-border">{map}</div>
+                    {summary}
+                    {itinerary}
+                </div>
+            </>
+        )
+    }
 
     if (!isMobile) {
         return (

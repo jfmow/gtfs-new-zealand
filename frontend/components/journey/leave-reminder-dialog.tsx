@@ -31,6 +31,8 @@ export interface LeaveReminderContext {
     walkSpeed: string
     maxTransfers: string
     onlyRoutes: RouteOption[]
+    /** Transport the search was limited to ("bus", "train", "ferry"); empty = any. */
+    modes?: string[]
     timeType: "now" | "leaveat" | "arriveat"
     selectedDate: Date
 }
@@ -174,6 +176,8 @@ export function LeaveReminderDialog({
         if (requestContext.onlyRoutes.length > 0) {
             recurringDeeplink += `&onlyRoutes=${encodeURIComponent(requestContext.onlyRoutes.map((r) => r.route_id).join(","))}`
         }
+        const modes = requestContext.modes?.join(",") ?? ""
+        if (modes) recurringDeeplink += `&modes=${modes}`
 
         const common = {
             start: { lat: start.lat, lon: start.lon, label: start.label },
@@ -182,6 +186,7 @@ export function LeaveReminderDialog({
             walkSpeed: requestContext.walkSpeed,
             maxTransfers: requestContext.maxTransfers,
             onlyRoutes: requestContext.onlyRoutes.map((r) => r.route_id),
+            modes,
             offsets: usableOffsets,
         }
 

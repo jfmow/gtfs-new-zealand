@@ -1,28 +1,12 @@
 "use client"
 
-import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { LocationSearchInput } from "@/components/map/search"
 import { Spinner } from "@/components/ui/spinner"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
-import {
-    Collapsible,
-    CollapsibleContent,
-    CollapsibleTrigger,
-} from "@/components/ui/collapsible"
-import { Bookmark, BookmarkCheck, Settings2, Search, ArrowUpDown, ChevronDownIcon } from "lucide-react"
-import { Calendar } from "@/components/ui/calendar"
-import { Input } from "@/components/ui/input"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { format } from "date-fns"
+import { Bookmark, BookmarkCheck, Search, ArrowUpDown } from "lucide-react"
 import type { Location } from "./types"
-import { RouteMultiSelect, type RouteOption } from "./route-filter"
+import type { RouteOption } from "./route-filter"
+import { PlannerOptionsRow, type TravelMode } from "./planner-options"
 
 interface SearchFormProps {
     startLocation: Location | null
@@ -49,6 +33,8 @@ interface SearchFormProps {
     onMinResultsChange: (v: string) => void
     onlyRoutes: RouteOption[]
     onOnlyRoutesChange: (routes: RouteOption[]) => void
+    modes: TravelMode[]
+    onModesChange: (modes: TravelMode[]) => void
 
     isSearching: boolean
     canSave: boolean
@@ -81,6 +67,8 @@ export function SearchForm({
     onMinResultsChange,
     onlyRoutes,
     onOnlyRoutesChange,
+    modes,
+    onModesChange,
     isSearching,
     canSave,
     justSaved,
@@ -140,90 +128,24 @@ export function SearchForm({
                 </p>
             )}
 
-            {/* Options */}
-            <Collapsible>
-                <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5">
-                    <Settings2 className="h-3.5 w-3.5" />
-                    Options
-                </CollapsibleTrigger>
-                <CollapsibleContent>
-                    <div className="flex flex-wrap gap-2 pt-2">
-                        <Select value={timeType} onValueChange={(value) => onTimeTypeChange(value as "now" | "leaveat" | "arriveat")}>
-                            <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="now">Leave now</SelectItem>
-                                <SelectItem value="leaveat">Leave at</SelectItem>
-                                <SelectItem value="arriveat">Arrive by</SelectItem>
-                            </SelectContent>
-                        </Select>
-                        {timeType !== "now" && (
-                            <DatePicker date={selectedDate} onDateChange={onDateChange} />
-                        )}
-
-                        <Select value={maxWalkKm} onValueChange={onMaxWalkKmChange}>
-                            <SelectTrigger className="h-8 w-auto min-w-[120px] text-xs">
-                                <span className="text-muted-foreground mr-1">Max walk:</span>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="0.5">0.5 km</SelectItem>
-                                <SelectItem value="1">1 km</SelectItem>
-                                <SelectItem value="2">2 km</SelectItem>
-                                <SelectItem value="5">5 km</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={walkSpeed} onValueChange={onWalkSpeedChange}>
-                            <SelectTrigger className="h-8 w-auto min-w-[130px] text-xs">
-                                <span className="text-muted-foreground mr-1">Speed:</span>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="3">Slow</SelectItem>
-                                <SelectItem value="4.8">Normal</SelectItem>
-                                <SelectItem value="5.5">Brisk</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={maxTransfers} onValueChange={onMaxTransfersChange}>
-                            <SelectTrigger className="h-8 w-auto min-w-[140px] text-xs">
-                                <span className="text-muted-foreground mr-1">Transfers:</span>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="0">Direct only</SelectItem>
-                                <SelectItem value="1">Up to 1</SelectItem>
-                                <SelectItem value="2">Up to 2</SelectItem>
-                                <SelectItem value="3">Up to 3</SelectItem>
-                                <SelectItem value="4">Up to 4</SelectItem>
-                                <SelectItem value="5">Up to 5</SelectItem>
-                            </SelectContent>
-                        </Select>
-
-                        <Select value={minResults} onValueChange={onMinResultsChange}>
-                            <SelectTrigger className="h-8 w-auto min-w-[130px] text-xs">
-                                <span className="text-muted-foreground mr-1">Show:</span>
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="3">3 journeys</SelectItem>
-                                <SelectItem value="5">5 journeys</SelectItem>
-                                <SelectItem value="8">8 journeys</SelectItem>
-                            </SelectContent>
-                        </Select>
-                    </div>
-                    <div className="flex flex-wrap gap-3 pt-3">
-                        <RouteMultiSelect
-                            label="Only use these routes"
-                            placeholder="Search routes…"
-                            selected={onlyRoutes}
-                            onChange={onOnlyRoutesChange}
-                        />
-                    </div>
-                </CollapsibleContent>
-            </Collapsible>
+            <PlannerOptionsRow
+                timeType={timeType}
+                selectedDate={selectedDate}
+                maxWalkKm={maxWalkKm}
+                walkSpeed={walkSpeed}
+                maxTransfers={maxTransfers}
+                minResults={minResults}
+                onlyRoutes={onlyRoutes}
+                modes={modes}
+                onTimeTypeChange={onTimeTypeChange}
+                onDateChange={onDateChange}
+                onMaxWalkKmChange={onMaxWalkKmChange}
+                onWalkSpeedChange={onWalkSpeedChange}
+                onMaxTransfersChange={onMaxTransfersChange}
+                onMinResultsChange={onMinResultsChange}
+                onOnlyRoutesChange={onOnlyRoutesChange}
+                onModesChange={onModesChange}
+            />
 
             {/* Actions */}
             <div className="flex items-center gap-2">
@@ -255,66 +177,6 @@ export function SearchForm({
                     )}
                 </Button>
             </div>
-        </div>
-    )
-}
-
-function DatePicker({
-    date,
-    onDateChange,
-    disabled,
-}: {
-    date: Date
-    onDateChange: (date: Date) => void
-    disabled?: boolean
-}) {
-    const [open, setOpen] = useState(false)
-
-    const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (disabled) return
-        const [hours, minutes] = e.target.value.split(":").map(Number)
-        const updatedDate = new Date(date)
-        updatedDate.setHours(hours, minutes, 0)
-        onDateChange(updatedDate)
-    }
-
-    return (
-        <div className="flex items-center gap-1.5">
-            <Popover open={open} onOpenChange={setOpen}>
-                <PopoverTrigger asChild>
-                    <Button
-                        variant="outline"
-                        className="h-9 text-sm font-normal px-3"
-                        disabled={disabled}
-                    >
-                        {date ? format(date, "d MMM") : "Date"}
-                        <ChevronDownIcon className="h-3.5 w-3.5 ml-1" />
-                    </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto overflow-hidden p-0" align="start">
-                    <Calendar
-                        mode="single"
-                        selected={date}
-                        captionLayout="dropdown"
-                        defaultMonth={date}
-                        onSelect={(selectedDate) => {
-                            if (!selectedDate) return
-                            const updatedDate = new Date(selectedDate)
-                            updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
-                            onDateChange(updatedDate)
-                            setOpen(false)
-                        }}
-                    />
-                </PopoverContent>
-            </Popover>
-            <Input
-                type="time"
-                step="60"
-                value={date ? format(date, "HH:mm") : "00:00"}
-                onChange={handleTimeChange}
-                disabled={disabled}
-                className="h-9 w-[100px] text-sm bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
-            />
         </div>
     )
 }

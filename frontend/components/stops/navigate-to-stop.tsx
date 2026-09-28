@@ -1,8 +1,7 @@
-import { useState } from "react"
-import { Button } from "@/components/ui/button"
+import { useEffect, useState } from "react"
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Loader2, Navigation } from "lucide-react"
+import { Loader2 } from "lucide-react"
 import Navigate from "@/components/map/navigate"
 import { getUserLocation } from "@/lib/userLocation"
 import { ApiFetch } from "@/lib/url-context"
@@ -19,113 +18,68 @@ interface NavigateToStopProps {
     stopName: string
 }
 
-export default function NavigateToStop({ stopName }: NavigateToStopProps) {
-    const [open, setOpen] = useState(false)
-    const [loading, setLoading] = useState(false)
+/**
+ * "Directions to stop" opened from the board's ⋯ menu: walking directions
+ * from the rider's location, in a sheet on phones and a dialog on desktop.
+ */
+export function NavigateToStopDialog({ stopName, open, onOpenChange }: NavigateToStopProps & { open: boolean; onOpenChange: (open: boolean) => void }) {
+    const [route, setRoute] = useState<{ user: [number, number]; stop: [number, number] } | null>(null)
     const [error, setError] = useState<string | null>(null)
-    const [userLat, setUserLat] = useState(0)
-    const [userLon, setUserLon] = useState(0)
-    const [stopLat, setStopLat] = useState(0)
-    const [stopLon, setStopLon] = useState(0)
-    const [ready, setReady] = useState(false)
     const isMobile = useIsMobile()
 
-    async function handleNavigate() {
-        setLoading(true)
+    useEffect(() => {
+        if (!open) return
+        let cancelled = false
+        setRoute(null)
         setError(null)
-        setReady(false)
-
-        try {
-            const [userLocation, stopResponse] = await Promise.all([
-                getUserLocation(),
-                ApiFetch<StopSearchResult[]>(`stops/find-stop/${encodeURIComponent(stopName)}`),
-            ])
-
-            if (!stopResponse.ok || stopResponse.data.length === 0) {
-                setError("Could not find stop location")
-                setLoading(false)
-                return
-            }
-
+        Promise.all([
+            getUserLocation(),
+            ApiFetch<StopSearchResult[]>(`stops/find-stop/${encodeURIComponent(stopName)}`),
+        ]).then(([user, stopResponse]) => {
+            if (cancelled) return
+            if (!stopResponse.ok || stopResponse.data.length === 0) return setError("Could not find where this stop is.")
             const stop = stopResponse.data[0]
-            setUserLat(userLocation[0])
-            setUserLon(userLocation[1])
-            setStopLat(stop.stop_lat)
-            setStopLon(stop.stop_lon)
-            setReady(true)
-            setOpen(true)
-        } catch {
-            setError("Could not get your location. Please enable location services.")
-        } finally {
-            setLoading(false)
-        }
-    }
+            setRoute({ user, stop: [stop.stop_lat, stop.stop_lon] })
+        }).catch(() => {
+            if (!cancelled) setError("Could not get your location. Please allow location for this site.")
+        })
+        return () => { cancelled = true }
+    }, [open, stopName])
 
-    const content = ready ? (
+    const content = error ? (
+        <p className="py-6 text-center text-sm text-muted-foreground">{error}</p>
+    ) : route ? (
         <Navigate
-            start={{ lat: userLat, lon: userLon, name: "Your location" }}
-            end={{ lat: stopLat, lon: stopLon, name: stopName }}
+            start={{ lat: route.user[0], lon: route.user[1], name: "Your location" }}
+            end={{ lat: route.stop[0], lon: route.stop[1], name: stopName }}
             liveMode
         />
-    ) : null
+    ) : (
+        <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> Finding your location...
+        </div>
+    )
 
     if (isMobile) {
         return (
-            <>
-                <Button
-                    aria-label="Navigate to stop"
-                    variant="outline"
-                    size="icon"
-                    className="flex-shrink-0"
-                    onClick={handleNavigate}
-                    disabled={loading}
-                >
-                    {loading ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                        <Navigation className="w-4 h-4" />
-                    )}
-                </Button>
-                {error && <p className="text-xs text-destructive">{error}</p>}
-                <Sheet open={open} onOpenChange={setOpen}>
-                    <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
-                        <SheetHeader>
-                            <SheetTitle>Navigate to {stopName}</SheetTitle>
-                        </SheetHeader>
-                        <div className="mt-4">
-                            {content}
-                        </div>
-                    </SheetContent>
-                </Sheet>
-            </>
+            <Sheet open={open} onOpenChange={onOpenChange}>
+                <SheetContent side="bottom" className="max-h-[90vh] overflow-y-auto">
+                    <SheetHeader>
+                        <SheetTitle>Directions to {stopName}</SheetTitle>
+                    </SheetHeader>
+                    <div className="mt-4">{content}</div>
+                </SheetContent>
+            </Sheet>
         )
     }
-
     return (
-        <>
-            <Button
-                aria-label="Navigate to stop"
-                variant="outline"
-                size="icon"
-                className="flex-shrink-0"
-                onClick={handleNavigate}
-                disabled={loading}
-            >
-                {loading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                    <Navigation className="w-4 h-4" />
-                )}
-            </Button>
-            {error && <p className="text-xs text-destructive">{error}</p>}
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-                    <DialogHeader>
-                        <DialogTitle>Navigate to {stopName}</DialogTitle>
-                    </DialogHeader>
-                    {content}
-                </DialogContent>
-            </Dialog>
-        </>
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                    <DialogTitle>Directions to {stopName}</DialogTitle>
+                </DialogHeader>
+                {content}
+            </DialogContent>
+        </Dialog>
     )
 }
