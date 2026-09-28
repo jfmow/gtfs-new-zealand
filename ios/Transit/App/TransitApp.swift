@@ -8,18 +8,15 @@ struct TransitApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var environment: AppEnvironment
     @State private var router = DeepLinkRouter()
-    private let modelContainer: ModelContainer = {
-        do {
-            return try ModelContainer(for: FavouriteStop.self, SavedTrip.self, SavedPlace.self, ActiveJourney.self, RecentSearchEntry.self)
-        } catch {
-            fatalError("Failed to create SwiftData ModelContainer: \(error)")
-        }
-    }()
+    private let modelContainer: ModelContainer
 
     init() {
         ChromeAppearance.apply()
         let environment = AppEnvironment()
         _environment = State(initialValue: environment)
+        let (container, cloudError) = Self.makeModelContainer()
+        modelContainer = container
+        environment.cloudSync.attach(container, cloudSynced: cloudError == nil, openError: cloudError)
         // Started here rather than in a view's `.task`: iOS also launches
         // the app in the background (a reminder push-starting a Live
         // Activity, which then needs its update token registered), and no
@@ -72,7 +69,35 @@ struct TransitApp: App {
             environment.journey.setAppActive(phase != .background)
             if phase == .active {
                 Task { await environment.push.refreshAuthorizationStatus() }
+                environment.cloudSync.appBecameActive()
             }
+        }
+    }
+
+    /// Saved stops/places/trips sync through iCloud (`TransitStore`). If
+    /// the CloudKit-backed store won't open, the same file opens local-only
+    /// rather than the app failing to launch; a Debug launch with
+    /// `-disableCloudSync YES` (the UI tests) skips iCloud entirely.
+    /// The error is why iCloud is off - shown in Settings.
+    private static func makeModelContainer() -> (ModelContainer, cloudError: String?) {
+        #if DEBUG
+        let wantsCloud = !UserDefaults.standard.bool(forKey: "disableCloudSync")
+        #else
+        let wantsCloud = true
+        #endif
+        let directory = TransitStore.storeDirectory(appGroup: SharedStore.appGroup)
+        var cloudError = "Turned off for this launch"
+        if wantsCloud {
+            do {
+                return (try TransitStore.makeContainer(.cloudSynced, directory: directory), nil)
+            } catch {
+                cloudError = String(describing: error)
+            }
+        }
+        do {
+            return (try TransitStore.makeContainer(.localOnly, directory: directory), cloudError)
+        } catch {
+            fatalError("Failed to create SwiftData ModelContainer: \(error)")
         }
     }
 }

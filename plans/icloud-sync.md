@@ -1,5 +1,10 @@
 # iCloud sync
 
+Status (2026-09-28): phases 0-4 built on `feat/icloud-sync` (worktree
+`../gtfs-new-zealand-icloud`). Not yet done: enabling iCloud on the App ID /
+creating the container, a real two-device test, CloudKit schema deploy to
+production, optional synced settings.
+
 Branch: `feat/icloud-sync` (off master, after `feat/ipad-support` lands -
 iPad is where sync first matters)
 
@@ -48,16 +53,16 @@ is optional or has a default, and there are no `@Attribute(.unique)`s
    `createdAt: Date = .now`, `startLat: Double = 0`...). Inits unchanged.
    `onlyRouteIDs` / `modes` / `onlyRouteNames` arrays are fine as-is
    (stored as transformable/binary).
-2. Add a stable identity for dedupe: `var syncKey: String = ""`, set in the
-   inits and backfilled on first launch:
+2. Dedupe identity is a *computed* `dedupeKey` (no stored field to backfill
+   or go stale on rename):
    - `FavouriteStop`: `stopID`
    - `SavedPlace`: `"\(regionSlug)/\(name.lowercased())"` (matches
      `SharedStore.SavedPlace.id`)
-   - `SavedTrip`: rounded start+end coords (5dp) + name
+   - `SavedTrip`: name + start/end coords to 4dp
 3. Delete `RecentSearchEntry` (unused - `grep` shows only the model and the
    container list).
-4. Unit test in `TransitCore` (in-memory container): old-shaped store
-   opens and migrates in place.
+4. Upgrade verified on a simulator: a store written by the pre-sync build
+   (seeded via sqlite) opens under the new container with its data intact.
 
 **From here on the schema is additive-only.** Once deployed to CloudKit
 production, attributes can't be renamed, retyped or removed - new fields
@@ -72,7 +77,7 @@ header.
 let synced = ModelConfiguration(
     "Synced",
     schema: Schema([FavouriteStop.self, SavedPlace.self, SavedTrip.self]),
-    url: <existing default.store URL>,          // keeps today's data
+    url: <app group>/Library/Application Support/default.store, // keeps today's data
     cloudKitDatabase: .private("iCloud.dev.suddsy.transit"))
 let local = ModelConfiguration(
     "Local",
@@ -83,7 +88,10 @@ ModelContainer(for: FavouriteStop.self, SavedPlace.self, SavedTrip.self, ActiveJ
                configurations: synced, local)
 ```
 
-1. Reusing the existing store URL for `Synced` means current saved
+1. The existing store is in the **app group** container, not the app's
+   own Application Support - SwiftData's default `groupContainer: .automatic`
+   picks the first app group. `TransitStore.storeDirectory(appGroup:)`.
+   Reusing that URL for `Synced` means current saved
    stops/places/trips are exported to iCloud on first launch, no copy step.
    The `ActiveJourney` table in that file is dropped by the migration - an
    in-flight journey at upgrade time is lost (acceptable; or copy the one
@@ -111,9 +119,10 @@ sync. Add `SyncHygiene` (TransitCore, pure logic over a `ModelContext`):
 4. Run it on launch, on `.active`, and on
    `NSPersistentStoreRemoteChange` (debounced ~2s). Its own saves also post
    that notification - guard against re-entrancy.
-5. Insert paths (`StopBoardView.toggleFavourite`, `SavedPlacesViews`,
-   `PlannerView`/`EasyResultsView` save-trip) check `syncKey` before
-   inserting, not just the local list, so re-saving is idempotent.
+5. Insert paths: stops already check `stopID`; re-saving a trip replaces
+   the old copy in place (`ModelContext.replaceExistingCopy(of:)`); the
+   place editor refuses a second same-named place in a region (merging would
+   drop one address).
 6. Onboarding on a fresh device: the "have they used the app before"
    check in `RootView.onAppear` runs before the first import lands. Wait
    briefly (import event or ~3s) before showing onboarding if iCloud is

@@ -587,6 +587,7 @@ struct PlannerView: View {
         trip.minResults = minResults
         trip.travelModes = modes
         trip.minTransferSec = minTransferSec
+        modelContext.replaceExistingCopy(of: trip)
         modelContext.insert(trip)
         environment.toasts.show("Trip saved")
         justSaved = true

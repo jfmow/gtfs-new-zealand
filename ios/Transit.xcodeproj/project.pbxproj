@@ -32,6 +32,7 @@
 		4481E4CE9C5019736A47FA9F /* Geist-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = A91FBB0731CCD2E6BC0FC95B /* Geist-Medium.ttf */; };
 		4A177AB29E1035611AC36F9F /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38F351299B723C699480C900 /* OnboardingView.swift */; };
 		4B083A4E7C58673CD7324123 /* GeistMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = F80D10048B073FB6A99284CE /* GeistMono-Medium.ttf */; };
+		4B08880CF7393FEBA9F3B015 /* CloudSyncMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66DB10B1A8F442280391831A /* CloudSyncMonitor.swift */; };
 		4FCEF7452E7BD7FCBF04A6FF /* Geist-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4B999CF18305B715D1B381F6 /* Geist-SemiBold.ttf */; };
 		50B19908C51FE73E7762A9C6 /* DeepLinkRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8AB5EC6CD9EF2B870BB5A08 /* DeepLinkRouter.swift */; };
 		52E9B5A2B33649568F3CD8F2 /* SiriIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 281471C4D890085F107B3476 /* SiriIntents.swift */; };
@@ -161,6 +162,7 @@
 		59E8800859E3E6FF0485748F /* MapControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapControls.swift; sourceTree = "<group>"; };
 		5D014E99D90750C0745D985C /* TransitCore */ = {isa = PBXFileReference; lastKnownFileType = folder; name = TransitCore; path = Packages/TransitCore; sourceTree = SOURCE_ROOT; };
 		630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Regular.ttf"; sourceTree = "<group>"; };
+		66DB10B1A8F442280391831A /* CloudSyncMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudSyncMonitor.swift; sourceTree = "<group>"; };
 		6DD5849F0417F2C664EED9D9 /* PlannerTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlannerTab.swift; sourceTree = "<group>"; };
 		6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyOfflineNotifications.swift; sourceTree = "<group>"; };
 		730B65ECACBC01C98B02E8BD /* AlertsTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertsTabView.swift; sourceTree = "<group>"; };
@@ -400,6 +402,7 @@
 		80AB2A53B3A85A3D83842503 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				66DB10B1A8F442280391831A /* CloudSyncMonitor.swift */,
 				B8AB5EC6CD9EF2B870BB5A08 /* DeepLinkRouter.swift */,
 				6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */,
 				315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */,
@@ -668,6 +671,7 @@
 				6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */,
 				F8E9654754BB6B03D33EF7F6 /* AppShell.swift in Sources */,
 				0FB45BFA9AC39B625476B2B5 /* BottomDrawer.swift in Sources */,
+				4B08880CF7393FEBA9F3B015 /* CloudSyncMonitor.swift in Sources */,
 				2278E919732120AD8AFCD0F9 /* ComingSoonView.swift in Sources */,
 				6CA8D0ECC802A4221433D6C6 /* Components.swift in Sources */,
 				D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */,

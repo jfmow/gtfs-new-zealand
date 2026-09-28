@@ -16,6 +16,7 @@ final class AppEnvironment {
     let toasts = ToastCenter()
     let notificationFeed: NotificationFeed
     let journey: JourneyTrackingSession
+    let cloudSync = CloudSyncMonitor()
     var region: Region {
         didSet {
             guard region != oldValue else { return }

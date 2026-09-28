@@ -164,6 +164,7 @@ struct EasyResultsView: View {
         )
         trip.travelModes = model.plannedModes
         trip.minTransferSec = options.minTransferSec
+        modelContext.replaceExistingCopy(of: trip)
         modelContext.insert(trip)
         environment.toasts.show("Trip saved")
         saved = true
