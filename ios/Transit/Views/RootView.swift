@@ -13,6 +13,8 @@ struct RootView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
     @AppStorage("hasOnboarded") private var hasOnboarded = false
+    /// Onboarding waits for what's already in iCloud (see below).
+    @State private var isReadyToOnboard = false
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
     @Query(sort: \SavedPlace.sortOrder) private var places: [SavedPlace]
 
@@ -58,14 +60,19 @@ struct RootView: View {
             // Siri's "next departures from <stop>" phrases list the stops.
             TransitShortcuts.updateAppShortcutParameters()
         }
-        .onAppear {
+        .task {
+            // On a new iPad/iPhone, the rider's saved stops and places may
+            // be on their way from iCloud - give them a moment to land so
+            // someone who's used the app elsewhere isn't walked through it.
+            if !hasOnboarded { await environment.cloudSync.waitForFirstImport(timeout: .seconds(4)) }
             // Someone who used the app before first-launch setup existed
             // doesn't need walking through it.
             if !hasOnboarded, !favourites.isEmpty || !places.isEmpty || environment.location.isAuthorized || environment.push.isAuthorized {
                 hasOnboarded = true
             }
+            isReadyToOnboard = true
         }
-        .fullScreenCover(isPresented: Binding(get: { !hasOnboarded }, set: { if !$0 { hasOnboarded = true } })) {
+        .fullScreenCover(isPresented: Binding(get: { isReadyToOnboard && !hasOnboarded }, set: { if !$0 { hasOnboarded = true } })) {
             OnboardingView { hasOnboarded = true }
                 .environment(environment)
                 .interactiveDismissDisabled()

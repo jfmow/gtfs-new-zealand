@@ -108,9 +108,18 @@ struct SavedPlaceEditorSheet: View {
     @State private var location: PlannerLocation?
     @State private var confirmingDelete = false
     @State private var didLoad = false
+    @Query private var allPlaces: [SavedPlace]
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespaces) }
-    private var canSave: Bool { !trimmedName.isEmpty && location != nil }
+    /// One place per name per region - iCloud sync merges same-named places
+    /// (`SyncHygiene`), which would drop one of the two addresses.
+    private var nameTaken: Bool {
+        let region = place?.regionSlug ?? environment.region.slug
+        return allPlaces.contains {
+            $0 !== place && $0.regionSlug == region && $0.name.lowercased() == trimmedName.lowercased()
+        }
+    }
+    private var canSave: Bool { !trimmedName.isEmpty && !nameTaken && location != nil }
 
     var body: some View {
         NavigationStack {
@@ -126,6 +135,11 @@ struct SavedPlaceEditorSheet: View {
                         TextField("e.g. Home, Work, Sam's place", text: $name)
                             .textFieldStyle(.shad(height: 44))
                             .submitLabel(.done)
+                        if nameTaken {
+                            Text("You already have a place called \(trimmedName)")
+                                .font(.meta)
+                                .foregroundStyle(Theme.danger)
+                        }
                     }
 
                     field("Icon") {

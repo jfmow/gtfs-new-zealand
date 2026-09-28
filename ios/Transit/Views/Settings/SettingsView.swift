@@ -74,6 +74,9 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
 
                     RowDivider()
+                    iCloudRow
+
+                    RowDivider()
                     SettingsRow(title: "Region", detail: "Your transit provider") {
                         ShadSelect(
                             selection: Binding(get: { environment.region }, set: { environment.choose(region: $0) }),
@@ -125,6 +128,30 @@ struct SettingsView: View {
 }
 
 extension SettingsView {
+    /// Whether saved stops, places and trips are syncing. There's no switch
+    /// here - Transit's iCloud switch in the Settings app is the control.
+    var iCloudRow: some View {
+        let sync = environment.cloudSync
+        let detail: String
+        switch sync.status {
+        case .syncing:
+            detail = sync.lastSynced.map { "Saved stops, places and trips - synced \($0.formatted(.relative(presentation: .named)))" }
+                ?? "Syncing saved stops, places and trips"
+        case .checking: detail = "Checking iCloud..."
+        case .signedOut: detail = "Sign in to iCloud to sync saved stops, places and trips across your devices"
+        case .unavailable: detail = "Off - turn on iCloud for Transit in the Settings app"
+        case .off: detail = "Off on this device"
+        }
+        return SettingsRow(icon: "icloud", title: "iCloud sync", detail: detail) {
+            if let error = sync.lastError, sync.status == .syncing || sync.status == .off {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(Theme.warning)
+                    .accessibilityLabel(error)
+                    .help(error)
+            }
+        }
+    }
+
     /// One row saying whether notifications work here; the permission /
     /// registration / token details and the test push live one level down.
     var notificationsRow: some View {

@@ -48,7 +48,9 @@ targets:
         # Location keeps running in the background only while a journey is
         # being tracked (JourneyTrackingSession), so it can follow the ride
         # and send get-off alerts from GPS when there's no connection.
-        UIBackgroundModes: [location]
+        # remote-notification: CloudKit's silent pushes, so saved stops /
+        # places / trips from another device import in the background.
+        UIBackgroundModes: [location, remote-notification]
         NSSupportsLiveActivities: true
         # The server pushes on every stop the vehicle passes, not just on
         # key moments - lifts the per-hour push budget for that.
@@ -79,6 +81,10 @@ targets:
         # Shares saved stops/places and the region with the widget and
         # Siri (Shared/SharedStore.swift).
         com.apple.security.application-groups: [group.dev.suddsy.transit]
+        # Saved stops/places/trips mirror to the rider's private iCloud
+        # database (TransitApp.modelContainer, plans/icloud-sync.md).
+        com.apple.developer.icloud-container-identifiers: [iCloud.dev.suddsy.transit]
+        com.apple.developer.icloud-services: [CloudKit]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit

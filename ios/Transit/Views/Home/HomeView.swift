@@ -342,5 +342,5 @@ struct BoardDestination: Hashable {
     HomeView()
         .environment(AppEnvironment())
         .environment(DeepLinkRouter())
-        .modelContainer(for: [FavouriteStop.self, SavedTrip.self, SavedPlace.self, ActiveJourney.self, RecentSearchEntry.self], inMemory: true)
+        .modelContainer(try! TransitStore.makeContainer(.inMemory))
 }

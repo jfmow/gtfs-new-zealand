@@ -14,7 +14,7 @@ final class TransitDebugUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = true
         // Skip first-launch setup - it would sit over every walkthrough.
-        app.launchArguments += ["-hasOnboarded", "YES"]
+        app.launchArguments += ["-hasOnboarded", "YES", "-disableCloudSync", "YES"]
     }
 
     /// Taps through the system permission/"Open in" alerts that block
@@ -43,6 +43,20 @@ final class TransitDebugUITests: XCTestCase {
     }
 
     /// "Later departures" appends the next journeys under the results.
+    /// Settings' iCloud sync row, with sync left on (every other walkthrough
+    /// launches with `-disableCloudSync YES`).
+    func testICloudSettingsRow() throws {
+        app.launchArguments.removeAll { $0 == "-disableCloudSync" || $0 == "YES" }
+        app.launchArguments += ["-hasOnboarded", "YES"]
+        app.launch()
+        sleep(3)
+        app.navigationBars.buttons["Menu"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 3))
+        app.buttons["Settings"].tap()
+        sleep(2)
+        attach("icloud-settings")
+    }
+
     func testLaterDepartures() throws {
         app.launch()
         app.tabBars.buttons["Planner"].tap()
