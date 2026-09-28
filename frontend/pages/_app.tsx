@@ -1,4 +1,5 @@
 import NavBar from "@/components/nav";
+import { IosAppBanner } from "@/components/ios-app-banner";
 import { ResumeJourneyPrompt } from "@/components/journey/resume-journey-prompt";
 import { checkStopSubscription, register } from "@/lib/notifications";
 import { UrlProvider } from "@/lib/url-context";
@@ -48,6 +49,7 @@ export default function App({ Component, pageProps }: AppProps) {
     >
       <main className={cn(displayFont.variable, bodyFont.variable, monoFont.variable, bodyFont.className, "flex flex-col min-h-[100svh] bg-background")}>
         <UrlProvider>
+          <IosAppBanner />
           <NavBar />
           <ResumeJourneyPrompt />
           <Toaster richColors position={"top-center"} />

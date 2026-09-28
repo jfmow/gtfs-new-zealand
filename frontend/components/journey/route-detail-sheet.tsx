@@ -25,11 +25,13 @@ import {
     RefreshCw,
     Share2,
     Ship,
+    Smartphone,
     TrainFront,
     TramFront,
     WifiOff,
     X,
 } from "lucide-react"
+import { isIOS, openInApp } from "@/lib/ios-app"
 import { haversineDistance, useIsMobile, useOnlineStatus } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
@@ -596,6 +598,14 @@ export function RouteDetailSheet({
         }
     }
 
+    // Hands the journey to the iPhone app - tracking is richer there (Live
+    // Activity, lock-screen alerts), so carry on tracking if we already are.
+    const handleOpenInApp = () => {
+        const url = new URL(buildShareUrl(route), window.location.origin)
+        if (journeyStarted) url.searchParams.set("track", "1")
+        openInApp(url.pathname + url.search)
+    }
+
     const map = (
         <LiveMap
             mapId="journey-planner-route-map"
@@ -644,6 +654,7 @@ export function RouteDetailSheet({
         <JourneySummary
             route={shownRoute}
             onShare={handleShare}
+            onOpenInApp={handleOpenInApp}
             onRemindToLeave={canRemindToLeave ? () => onRemindToLeave!(route) : undefined}
             journeyStarted={journeyStarted}
             onGo={() => setJourneyStarted(true)}
@@ -745,6 +756,7 @@ export function RouteDetailSheet({
 function JourneySummary({
     route,
     onShare,
+    onOpenInApp,
     onRemindToLeave,
     journeyStarted,
     onGo,
@@ -762,6 +774,7 @@ function JourneySummary({
 }: {
     route: JourneyType
     onShare: () => void
+    onOpenInApp: () => void
     onRemindToLeave?: () => void
     journeyStarted: boolean
     onGo: () => void
@@ -781,6 +794,9 @@ function JourneySummary({
     /** Polling has been failing (or the browser itself is offline) for a while - what's on screen may be stale. */
     connectionLost?: boolean
 }) {
+    // Client-only (reads the UA), so it can't be computed during SSR.
+    const [onIOS, setOnIOS] = useState(false)
+    useEffect(() => setOnIOS(isIOS()), [])
     const headsign = journeyHeadsign(route)
     const stopCount = journeyStopCount(route)
 
@@ -931,6 +947,18 @@ function JourneySummary({
                 >
                     <Share2 className="h-4 w-4" />
                 </Button>
+                {onIOS && (
+                    <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 shrink-0"
+                        onClick={onOpenInApp}
+                        aria-label="Open in the Transit app"
+                        title="Open in app"
+                    >
+                        <Smartphone className="h-4 w-4" />
+                    </Button>
+                )}
                 {journeyStarted && onStopTracking ? (
                     <Popover>
                         <PopoverTrigger asChild>
