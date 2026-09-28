@@ -1448,6 +1448,59 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Home")).firstMatch.exists, "saved place not in dropdown")
     }
 
+    /// Stops must keep filling the screen after panning away from where
+    /// the map opened and zooming out/in (they used to thin out to the
+    /// stops nearest the *starting* centre).
+    func testMapStopsAfterPanAndZoom() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        tab("Map").tap()
+        sleep(4)
+        attach("pz-01-default")
+
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        func drag(dx: CGFloat, dy: CGFloat) {
+            map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + dx, dy: 0.5 + dy)))
+        }
+        for _ in 0..<3 { drag(dx: -0.4, dy: 0) }
+        sleep(2)
+        attach("pz-02-panned-east")
+        for _ in 0..<3 { drag(dx: 0, dy: -0.35) }
+        sleep(2)
+        attach("pz-03-panned-south")
+        map.pinch(withScale: 4, velocity: 2)
+        sleep(2)
+        attach("pz-04-zoomed-in")
+        for _ in 0..<2 { drag(dx: 0.4, dy: 0.2) }
+        sleep(2)
+        attach("pz-05-panned-back")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// Zoomed out: with location denied the map opens on the region-wide
+    /// view (XCUITest can't zoom a map out - pinch <1 and two-finger taps
+    /// both failed). Run after `simctl privacy <dev> revoke location`.
+    func testMapStopsZoomedOut() throws {
+        app.launch()
+        for label in ["Don’t Allow", "Don't Allow"] where springboard.buttons[label].waitForExistence(timeout: 3) {
+            springboard.buttons[label].tap()
+        }
+        tab("Map").tap()
+        sleep(4)
+        attach("zo-01-region")
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        for (index, offset) in [CGVector(dx: 0.1, dy: 0.5), CGVector(dx: 0.5, dy: 0.15)].enumerated() {
+            map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: offset))
+            sleep(2)
+            attach("zo-0\(index + 2)-panned")
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     // MARK: - iPad
 
     /// A tab, whether it's in the iPhone's tab bar or the iPad's top tab
