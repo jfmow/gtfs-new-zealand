@@ -3,8 +3,8 @@ import SwiftUI
 import TransitCore
 import WidgetKit
 
-// Next departures from a saved stop - Home Screen (small, medium) and Lock
-// Screen (rectangular, inline). Same tokens and Geist type as the Live
+// Next departures from a saved stop - Home Screen (small, medium, large, and
+// extra large on iPad) and Lock Screen (rectangular, inline). Same tokens and Geist type as the Live
 // Activity; the rows read like Home's stop cards (route badge, headsign,
 // countdown).
 
@@ -16,7 +16,7 @@ struct DeparturesWidget: Widget {
         }
         .configurationDisplayName("Departures")
         .description("The next services from one of your saved stops.")
-        .supportedFamilies([.systemSmall, .systemMedium, .accessoryRectangular, .accessoryInline])
+        .supportedFamilies([.systemSmall, .systemMedium, .systemLarge, .systemExtraLarge, .accessoryRectangular, .accessoryInline])
     }
 }
 
@@ -124,6 +124,8 @@ struct DeparturesWidgetView: View {
             case .accessoryInline: inline
             case .accessoryRectangular: rectangular
             case .systemMedium: home(rowLimit: 4, showsHeadsign: true)
+            // Every departure fetched (`load` asks for 8).
+            case .systemLarge, .systemExtraLarge: home(rowLimit: 8, showsHeadsign: true)
             default: home(rowLimit: 3, showsHeadsign: false)
             }
         }
@@ -251,6 +253,12 @@ private struct RouteTag: View {
 }
 
 #Preview(as: .systemMedium) {
+    DeparturesWidget()
+} timeline: {
+    DeparturesEntry(date: Date(), stop: nil, state: .rows(DeparturesEntry.placeholderRows))
+}
+
+#Preview(as: .systemLarge) {
     DeparturesWidget()
 } timeline: {
     DeparturesEntry(date: Date(), stop: nil, state: .rows(DeparturesEntry.placeholderRows))

@@ -1544,17 +1544,13 @@ final class TransitDebugUITests: XCTestCase {
         }
     }
 
-    /// iPad Map tab: a tapped stop's board opens in the side panel (map
-    /// still showing), a departure from it opens the service tracker (its
-    /// own side panel), and Back returns to the board in the panel.
-    func testIPadMapPanel() throws {
-        XCUIDevice.shared.orientation = .portrait
-        app.launch()
-        dismissSystemAlertIfPresent(timeout: 4)
+    /// Map tab, zoomed in, a stop near the middle tapped - on iPad its
+    /// board opens in the side panel.
+    private func openStopInMapPanel() -> Bool {
         tab("Map").tap()
         sleep(4)
         let map = app.maps.firstMatch
-        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        guard map.waitForExistence(timeout: 5) else { return false }
         // Zoom in so single stops (not clusters) are showing.
         map.pinch(withScale: 3, velocity: 2)
         sleep(3)
@@ -1562,15 +1558,62 @@ final class TransitDebugUITests: XCTestCase {
         // card.
         let safe = map.frame.insetBy(dx: 80, dy: 140)
         let stops = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stop-")).allElementsBoundByIndex
-        guard let stop = stops.first(where: { safe.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else {
-            attach("mp-00-no-stop")
-            return XCTFail("no single stop on the map")
-        }
+        guard let stop = stops.first(where: { safe.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else { return false }
         stop.tap()
         sleep(3)
+        return true
+    }
+
+    /// App Store iPad screenshots (portrait - XCUITest's landscape captures
+    /// come out letterboxed). Set a clean status bar first:
+    /// `xcrun simctl status_bar <iPad> override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3`,
+    /// then run with UX_SHOT_DIR set; files are `appstore-ipad-*.png`.
+    func testAppStoreScreenshotsIPad() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        // A leftover journey's resume card would sit in every shot.
+        let dismissResume = app.buttons["Dismiss"]
+        if dismissResume.waitForExistence(timeout: 2) { dismissResume.tap() }
+        sleep(6) // nearby stops' departures
+        attach("appstore-ipad-1-home")
+
+        if openStopInMapPanel() {
+            attach("appstore-ipad-2-map-board")
+            let row = app.buttons.matching(identifier: "departure-row").firstMatch
+            if row.waitForExistence(timeout: 8) {
+                row.tap()
+                sleep(5)
+                attach("appstore-ipad-3-service")
+                app.buttons["Back"].tap()
+                sleep(1)
+            }
+        }
+
+        guard openJourneyDetail(tag: "appstore-scratch") else { return XCTFail("no journey found") }
+        attach("appstore-ipad-4-planner")
+        let start = app.buttons["Start this journey"]
+        guard start.waitForExistence(timeout: 3) else { return }
+        start.tap()
+        sleep(5)
+        attach("appstore-ipad-5-journey")
+        if app.buttons["End"].waitForExistence(timeout: 3) {
+            app.buttons["End"].tap()
+            if app.buttons["End journey"].waitForExistence(timeout: 3) { app.buttons["End journey"].tap() }
+        }
+    }
+
+    /// iPad Map tab: a tapped stop's board opens in the side panel (map
+    /// still showing), a departure from it opens the service tracker (its
+    /// own side panel), and Back returns to the board in the panel.
+    func testIPadMapPanel() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        guard openStopInMapPanel() else { attach("mp-00-no-stop"); return XCTFail("no single stop on the map") }
         attach("mp-01-board-panel")
         XCTAssertTrue(app.buttons["Close"].exists, "board panel didn't open")
-        XCTAssertTrue(map.exists, "map gone behind the panel")
+        XCTAssertTrue(app.maps.firstMatch.exists, "map gone behind the panel")
 
         let row = app.buttons.matching(identifier: "departure-row").firstMatch
         guard row.waitForExistence(timeout: 8) else { throw XCTSkip("no trackable departures at this stop") }

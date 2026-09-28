@@ -64,13 +64,22 @@ camera insets beside it.
   column, and on iPad the Map tab now shows a board beside the map, so a
   stop map next to a pushed board would duplicate that.
 
-## Phase 4 - polish
+## Phase 4 - polish (done)
 
-- `DeparturesWidget`: `.systemLarge` (maybe `.systemExtraLarge`).
-- Context menus on stop/trip rows (right-click for free).
-- Wi-Fi iPads have no GPS: check `OfflineRideEstimator` / background
-  location tracking degrade cleanly.
-- App Store: 13" iPad screenshots (TransitUITests can capture).
+- `DeparturesWidget`: `.systemLarge` and `.systemExtraLarge` (all 8 fetched
+  departures, with headsigns). Builds; not yet eyeballed on a Home Screen.
+- Context menus: saved stops and saved trips already had them (right-click
+  on iPad for free); added one to Home's nearby rows (Save stop / Plan a
+  journey here).
+- Wi-Fi iPads have no GPS: no change needed. Offline with no fixes,
+  `OfflineRideEstimator` places nothing and tracking falls back to the
+  timetable; the "On board · from GPS" chip only shows when fixes exist.
+  Live Activities are off on iPad (`areActivitiesEnabled`), banners instead.
+  Checked by reading the code, not on a device.
+- App Store: `testAppStoreScreenshotsIPad` captures 2064x2752 portrait shots
+  (13" size). Set the status bar with `simctl status_bar ... override` first
+  and make sure the simulator has a location. Content depends on live data -
+  the stop it taps may have nothing running, so re-run or mix runs.
 
 ## Risks
 

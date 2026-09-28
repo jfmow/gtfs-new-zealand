@@ -182,6 +182,22 @@ struct HomeView: View {
         Button(role: .destructive) { remove(favourite) } label: { Label("Remove from saved", systemImage: "trash") }
     }
 
+    private func nearbyMenu(_ stop: Stop) -> some View {
+        Group {
+            if !favourites.contains(where: { $0.stopID == stop.boardQuery }) {
+                Button {
+                    let order = favourites.count
+                    modelContext.insert(FavouriteStop(stopID: stop.boardQuery, displayName: stop.stopName,
+                                                      colorHex: Swatches.color(at: order), sortOrder: order))
+                    environment.toasts.show("Saved to Home")
+                } label: { Label("Save stop", systemImage: "star") }
+            }
+            Button {
+                router.plan(to: PlannerLocation(label: stop.stopName, coordinate: stop.coordinate))
+            } label: { Label("Plan a journey here", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
+        }
+    }
+
     private func remove(_ favourite: FavouriteStop) {
         modelContext.delete(favourite)
         environment.toasts.show("Removed from saved stops")
@@ -257,6 +273,8 @@ struct HomeView: View {
                         .shadCardBackground()
                     }
                     .buttonStyle(.plain)
+                    // Long-press, or right-click with a pointer (iPad).
+                    .contextMenu { nearbyMenu(stop) }
                 }
                 if stops.count > 3 {
                     Button {
