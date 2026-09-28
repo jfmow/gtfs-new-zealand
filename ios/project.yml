@@ -85,6 +85,9 @@ targets:
         # database (TransitApp.modelContainer, plans/icloud-sync.md).
         com.apple.developer.icloud-container-identifiers: [iCloud.dev.suddsy.transit]
         com.apple.developer.icloud-services: [CloudKit]
+        # Key-value store, for syncing small settings later
+        # (plans/icloud-sync.md, phase 4 optional).
+        com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
