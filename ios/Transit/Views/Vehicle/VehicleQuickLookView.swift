@@ -14,6 +14,7 @@ struct VehicleQuickLookView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @State private var vehicle: Vehicle?
     @State private var stopTimes: [StopTimeUpdate] = []
@@ -25,6 +26,10 @@ struct VehicleQuickLookView: View {
     @State private var shape: RouteShape?
     @State private var hasLoaded = false
     @State private var pollTask: Task<Void, Never>?
+
+    /// Regular width: the summary and stop list in a side panel rather than
+    /// the bottom drawer (`MapSidePanel`).
+    private var usesSidePanel: Bool { horizontalSizeClass == .regular }
 
     @State private var drawer: DrawerDetent = .medium
     @State private var headerHeight: CGFloat = 150
@@ -138,31 +143,45 @@ struct VehicleQuickLookView: View {
                     polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: routeHex)] } ?? [],
                     camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400)
                         : tripStops.isEmpty ? .none : .frame(points: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }, minSpanMeters: 800),
-                    cameraInsets: UIEdgeInsets(
-                        top: proxy.safeAreaInsets.top + 60, left: 0,
-                        bottom: min(drawerHeight(available: proxy.size.height), fullHeight * 0.6) + proxy.safeAreaInsets.bottom, right: 0
-                    ),
+                    cameraInsets: usesSidePanel
+                        ? UIEdgeInsets(top: proxy.safeAreaInsets.top + 60, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
+                                       bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
+                        : UIEdgeInsets(
+                            top: proxy.safeAreaInsets.top + 60, left: 0,
+                            bottom: min(drawerHeight(available: proxy.size.height), fullHeight * 0.6) + proxy.safeAreaInsets.bottom, right: 0
+                        ),
                     onUserInteraction: { if autoFollow { autoFollow = false } },
                     cameraResetToken: cameraResetToken
                 )
                 .ignoresSafeArea()
 
-                topBar
+                if usesSidePanel {
+                    MapSidePanel {
+                        VStack(spacing: 0) {
+                            drawerHeader.padding(.top, 18)
+                            drawerContent
+                        }
+                    }
+                    // Over the map, right of the panel.
+                    topBar.padding(.leading, MapSidePanelMetrics.occupiedWidth - 16)
+                } else {
+                    topBar
 
-                BottomDrawer(
-                    detent: $drawer,
-                    collapsedHeight: headerHeight,
-                    availableHeight: proxy.size.height
-                ) {
-                    drawerHeader
-                        .background(GeometryReader { g in
-                            Color.clear.onAppear { headerHeight = g.size.height + 19 }
-                                .onChange(of: g.size.height) { _, h in headerHeight = h + 19 }
-                        })
-                } content: {
-                    drawerContent
+                    BottomDrawer(
+                        detent: $drawer,
+                        collapsedHeight: headerHeight,
+                        availableHeight: proxy.size.height
+                    ) {
+                        drawerHeader
+                            .background(GeometryReader { g in
+                                Color.clear.onAppear { headerHeight = g.size.height + 19 }
+                                    .onChange(of: g.size.height) { _, h in headerHeight = h + 19 }
+                            })
+                    } content: {
+                        drawerContent
+                    }
+                    .frame(maxHeight: .infinity, alignment: .bottom)
                 }
-                .frame(maxHeight: .infinity, alignment: .bottom)
             }
         }
         .toolbar(.hidden, for: .navigationBar)

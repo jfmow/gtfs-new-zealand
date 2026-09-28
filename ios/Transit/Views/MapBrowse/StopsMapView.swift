@@ -12,6 +12,11 @@ struct StopsMapView: View {
     /// mixed with the board's own value-based pushes made the service
     /// tracker render *behind* the board.
     var onOpenStop: (BoardDestination) -> Void = { _ in }
+    /// A tapped stop opens straight away rather than previewing in a card -
+    /// set when the board shows in a side panel beside the map (iPad).
+    var opensStopDirectly = false
+    /// Room kept clear on the leading edge (an open side panel).
+    var leadingInset: CGFloat = 0
 
     @Environment(AppEnvironment.self) private var environment
     @State private var stops: [Stop] = []
@@ -49,7 +54,13 @@ struct StopsMapView: View {
                     ?? .region(center: environment.region.defaultMapCenter, radiusMeters: 6000),
                 showsUserLocation: environment.location.isAuthorized,
                 onSelectStop: { id in
-                    withAnimation(.spring(duration: 0.3)) { previewStop = stops.first { $0.stopID == id } }
+                    guard let stop = stops.first(where: { $0.stopID == id }) else { return }
+                    if opensStopDirectly {
+                        previewStop = nil
+                        onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+                    } else {
+                        withAnimation(.spring(duration: 0.3)) { previewStop = stop }
+                    }
                 },
                 onVisibleRegionChange: { visibleRegion = $0 },
                 centerOnUserLocationTrigger: recenterTrigger
@@ -73,6 +84,7 @@ struct StopsMapView: View {
 
             // Mode filters float on the map as pills, as on the web.
             MapModeFilterBar(modes: StopType.filterCases, label: \.label, selection: $typeFilter)
+                .padding(.leading, leadingInset)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -137,42 +149,95 @@ struct StopsMapView: View {
     /// hang reproduced *before* the Map tab was ever selected, because
     /// `regionDidChangeAnimated` hadn't fired yet for an off-screen map, so
     /// the old `visibleRegion == nil` fallback returned the full list).
-    /// Nearest-N to the map centre if over cap; never the unfiltered list.
+    /// On-screen stops first if over cap (see `visibleStops`); never the
+    /// unfiltered list.
     private let maxAnnotatedStops = 400
 
-    /// `stops` filtered to a padded version of `visibleRegion` (2x span, so
-    /// panning a little doesn't immediately reveal an empty edge before the
-    /// next `regionDidChangeAnimated` callback lands), then capped at
-    /// `maxAnnotatedStops`. Before the map has reported a region at all
-    /// (including while an off-screen tab hasn't laid out yet), this starts
-    /// from the nearest stops to the map centre rather than the full list -
-    /// see `maxAnnotatedStops`'s comment for why that matters.
+    /// The stops to hand the map: everything actually on screen first, then
+    /// a margin around it (the region's span again on each side, so a
+    /// short pan doesn't reveal an empty edge before the next region
+    /// report), capped at `maxAnnotatedStops`.
+    ///
+    /// Two past bugs live here: the cap used to keep the stops nearest the
+    /// map's *starting* centre, so after panning, the stops on screen were
+    /// the ones dropped; and zoomed out, "nearest to the centre" left the
+    /// screen's edges empty. Now anything on screen wins over the margin,
+    /// and when even the on-screen stops are over the cap they're thinned
+    /// evenly across the screen (`spreadEvenly`).
+    ///
+    /// Before the map has reported a region at all (an off-screen tab that
+    /// hasn't laid out), the nearest stops to the map centre - never the
+    /// unfiltered list; see `maxAnnotatedStops`.
     private var visibleStops: [Stop] {
-        let center = mapCenter ?? environment.region.defaultMapCenter
-
-        let candidates: [Stop]
-        if let visibleRegion {
-            let latPad = visibleRegion.span.latitudeDelta
-            let lonPad = visibleRegion.span.longitudeDelta
-            let minLat = visibleRegion.center.latitude - latPad
-            let maxLat = visibleRegion.center.latitude + latPad
-            let minLon = visibleRegion.center.longitude - lonPad
-            let maxLon = visibleRegion.center.longitude + lonPad
-
-            candidates = stops.filter {
-                $0.stopLat >= minLat && $0.stopLat <= maxLat
-                    && $0.stopLon >= minLon && $0.stopLon <= maxLon
-            }
-        } else {
-            candidates = stops
+        guard let visibleRegion else {
+            let center = mapCenter ?? environment.region.defaultMapCenter
+            return nearest(stops, to: center, limit: maxAnnotatedStops)
         }
 
-        guard candidates.count > maxAnnotatedStops else { return candidates }
+        let center = Coordinate(latitude: visibleRegion.center.latitude, longitude: visibleRegion.center.longitude)
+        let span = visibleRegion.span
+        func contains(_ stop: Stop, scale: Double) -> Bool {
+            abs(stop.stopLat - center.latitude) <= span.latitudeDelta * scale
+                && abs(stop.stopLon - center.longitude) <= span.longitudeDelta * scale
+        }
 
-        return candidates
-            .sorted { squaredDistance($0.coordinate, center) < squaredDistance($1.coordinate, center) }
-            .prefix(maxAnnotatedStops)
-            .map { $0 }
+        var onScreen: [Stop] = []
+        var margin: [Stop] = []
+        for stop in stops {
+            // 0.55, not 0.5: a stop just past the edge still has half its
+            // marker on screen.
+            if contains(stop, scale: 0.55) {
+                onScreen.append(stop)
+            } else if contains(stop, scale: 1) {
+                margin.append(stop)
+            }
+        }
+
+        guard onScreen.count < maxAnnotatedStops else {
+            return spreadEvenly(onScreen, span: span, limit: maxAnnotatedStops)
+        }
+        return onScreen + nearest(margin, to: center, limit: maxAnnotatedStops - onScreen.count)
+    }
+
+    private func nearest(_ stops: [Stop], to center: Coordinate, limit: Int) -> [Stop] {
+        guard stops.count > limit else { return stops }
+        return Array(stops.sorted { squaredDistance($0.coordinate, center) < squaredDistance($1.coordinate, center) }.prefix(limit))
+    }
+
+    /// Up to `limit` stops spread across the screen: bucketed into a grid
+    /// about 16 cells across, then taken one per cell in turn. The grid is
+    /// anchored to fixed coordinates (a power-of-two cell size), so at one
+    /// zoom level panning keeps picking the same stops instead of
+    /// reshuffling markers on every region report.
+    private func spreadEvenly(_ stops: [Stop], span: MKCoordinateSpan, limit: Int) -> [Stop] {
+        func cellSize(_ delta: Double) -> Double { pow(2, (log2(max(delta, 1e-6) / 16)).rounded(.down)) }
+        let latCell = cellSize(span.latitudeDelta)
+        let lonCell = cellSize(span.longitudeDelta)
+
+        struct Cell: Hashable { let x: Int; let y: Int }
+        var buckets: [Cell: [Stop]] = [:]
+        for stop in stops {
+            let cell = Cell(x: Int((stop.stopLon / lonCell).rounded(.down)), y: Int((stop.stopLat / latCell).rounded(.down)))
+            buckets[cell, default: []].append(stop)
+        }
+        // Stable orders, so the same stops win each time.
+        let cells = buckets.keys.sorted { ($0.y, $0.x) < ($1.y, $1.x) }
+        let queues = cells.map { buckets[$0]!.sorted { $0.stopID < $1.stopID } }
+
+        var picked: [Stop] = []
+        picked.reserveCapacity(limit)
+        var round = 0
+        while picked.count < limit {
+            var tookAny = false
+            for index in queues.indices where round < queues[index].count {
+                picked.append(queues[index][round])
+                tookAny = true
+                if picked.count == limit { break }
+            }
+            if !tookAny { break }
+            round += 1
+        }
+        return picked
     }
 
     /// Not true distance (no cos-latitude correction) - only used to rank

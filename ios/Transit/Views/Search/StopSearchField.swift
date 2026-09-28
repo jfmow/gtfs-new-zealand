@@ -13,6 +13,8 @@ struct StopSearchField: View {
     /// Called with the stop's "name code" query string - what
     /// `/services/{stop}` and `StopBoardView` expect.
     let onSelect: (String) -> Void
+    /// Bump to focus the field (⌘F).
+    var focusRequest = 0
 
     @Environment(AppEnvironment.self) private var environment
     @FocusState private var isFocused: Bool
@@ -39,6 +41,14 @@ struct StopSearchField: View {
                 .textInputAutocapitalization(.words)
                 .onChange(of: text) { _, newValue in scheduleSearch(newValue) }
                 .onSubmit { if let first = results.first { select(first.name) } }
+                .onChange(of: focusRequest) { _, _ in
+                    // After any pop back to this screen has finished -
+                    // focus requested mid-transition is dropped.
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(350))
+                        isFocused = true
+                    }
+                }
             if !text.isEmpty {
                 Button {
                     text = ""

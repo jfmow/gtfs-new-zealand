@@ -60,6 +60,22 @@ final class DeepLinkRouter {
         selectedTab = .planner
     }
 
+    /// Bumped by ⌘F - Home pops back to its root and focuses stop search.
+    var stopSearchFocusRequest = 0
+
+    /// ⌘F (a hardware keyboard, mostly iPad).
+    func focusStopSearch() {
+        activeLink = nil
+        selectedTab = .schedule
+        stopSearchFocusRequest += 1
+    }
+
+    /// ⌘1-⌘4.
+    func select(_ tab: Tab) {
+        activeLink = nil
+        selectedTab = tab
+    }
+
     /// The "Plan a journey" Home Screen quick action.
     func openPlanner() {
         activeLink = nil

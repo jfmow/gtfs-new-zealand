@@ -15,6 +15,7 @@ struct JourneyTrackingView: View {
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     @Query private var activeJourneys: [ActiveJourney]
 
@@ -65,6 +66,12 @@ struct JourneyTrackingView: View {
     /// tracking, alerts and Live Activity outright.
     @State private var isConfirmingEnd = false
 
+    /// Regular width (iPad, bar a narrow Split View window): the itinerary
+    /// sits in a panel beside the map instead of the detent sheet - an iPad
+    /// shows a detent sheet as a form sheet in the middle of the screen,
+    /// covering the map the drawer exists to leave visible.
+    private var usesSidePanel: Bool { horizontalSizeClass == .regular }
+
     /// The web tracker's "live" blue for the current leg/step.
     private var accent: Color { Theme.live }
 
@@ -95,6 +102,10 @@ struct JourneyTrackingView: View {
                 )
                 .ignoresSafeArea()
 
+                if usesSidePanel {
+                    MapSidePanel { itinerarySheetContent }
+                }
+
                 VStack(spacing: 8) {
                     topBar
                     JourneyAlertOverlay(alerts: alertStack) { id in
@@ -107,19 +118,18 @@ struct JourneyTrackingView: View {
                     currentStepCard
                 }
                 .padding(.top, 8)
+                // Over the map, right of the panel.
+                .padding(.leading, usesSidePanel ? MapSidePanelMetrics.occupiedWidth : 0)
             }
         }
-        .sheet(isPresented: $isTrackerSheetPresented) {
-            itinerarySheetContent
-                // Presented from the sheet: the view under it can't present
-                // anything while the sheet itself is up.
-                .confirmationDialog("End this journey?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
-                    Button("End journey", role: .destructive) { endJourney() }
-                    Button("Minimise instead") { leaveTracker() }
-                    Button("Keep tracking", role: .cancel) {}
-                } message: {
-                    Text("Get-off alerts and the Live Activity will stop. Minimise keeps them going.")
-                }
+        // Not presented while the side panel stands in for it. The setter
+        // ignores the sheet going away because of that, so it comes back if
+        // the window narrows again.
+        .sheet(isPresented: Binding(
+            get: { isTrackerSheetPresented && !usesSidePanel },
+            set: { if !usesSidePanel { isTrackerSheetPresented = $0 } }
+        )) {
+            endConfirmation(itinerarySheetContent)
                 .presentationDetents([.height(Self.compactDrawerHeight), .medium, .large], selection: $sheetDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
@@ -177,9 +187,14 @@ struct JourneyTrackingView: View {
             // Up here rather than the map's bottom corner, which the
             // drawer covers.
             RecenterButton(isAuthorized: environment.location.isAuthorized) { recenter() }
-            FloatingBarButton {
+            let endButton = FloatingBarButton {
                 Button("End", role: .destructive) { isConfirmingEnd = true }
                     .padding(.horizontal, 12)
+            }
+            if usesSidePanel {
+                endConfirmation(endButton)
+            } else {
+                endButton
             }
         }
         .padding(.horizontal, 16)
@@ -287,6 +302,21 @@ struct JourneyTrackingView: View {
     }
 
     // MARK: - Drawer
+
+    /// The "End this journey?" dialog. With the sheet up it has to hang off
+    /// the sheet (the view underneath can't present anything); with the
+    /// side panel it hangs off the End button, which an iPad anchors its
+    /// popover to.
+    private func endConfirmation(_ content: some View) -> some View {
+        content
+            .confirmationDialog("End this journey?", isPresented: $isConfirmingEnd, titleVisibility: .visible) {
+                Button("End journey", role: .destructive) { endJourney() }
+                Button("Minimise instead") { leaveTracker() }
+                Button("Keep tracking", role: .cancel) {}
+            } message: {
+                Text("Get-off alerts and the Live Activity will stop. Minimise keeps them going.")
+            }
+    }
 
     /// The tracker's bottom drawer: what you're doing now (hero), live
     /// facts (chips), what you can do about it (actions), then the whole
@@ -801,6 +831,10 @@ struct JourneyTrackingView: View {
         let fullHeight = proxy.size.height + proxy.safeAreaInsets.top + proxy.safeAreaInsets.bottom
         let hasStepCard = snapshot?.phase == .walking && walkDirections?.steps.isEmpty == false
         let top = proxy.safeAreaInsets.top + 8 + 48 + (hasStepCard ? 76 : 0)
+        if usesSidePanel {
+            return UIEdgeInsets(top: top, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
+                                bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
+        }
         let drawer: CGFloat = sheetDetent == .height(Self.compactDrawerHeight) ? Self.compactDrawerHeight : fullHeight / 2
         return UIEdgeInsets(top: top, left: 0, bottom: min(drawer, fullHeight - top - 120), right: 0)
     }

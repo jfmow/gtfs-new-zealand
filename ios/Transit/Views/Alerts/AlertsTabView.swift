@@ -7,42 +7,43 @@ import TransitCore
 /// right on the page (the web keeps them on the same route via `?s=`).
 struct AlertsTabView: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedStop: String?
     @State private var isShowingSubscription = false
+
+    /// Regular width (iPad): your stops listed on the left, the chosen
+    /// stop's alerts on the right, instead of one replacing the other.
+    private var usesSplit: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                StopSearchField { selectedStop = $0 }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-                .zIndex(1)
+                if !usesSplit {
+                    searchField.readableContentWidth()
+                }
 
-                if let selectedStop {
-                    HStack(spacing: 8) {
-                        Text(selectedStop).font(.pageTitle).lineLimit(2)
-                        Spacer(minLength: 8)
-                        Button {
-                            isShowingSubscription = true
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: "bell.badge").font(.system(size: 12, weight: .medium))
-                                Text("Get alerts")
+                if usesSplit {
+                    HStack(spacing: 0) {
+                        // Search heads the list column it belongs with.
+                        VStack(spacing: 0) {
+                            searchField
+                            AlertsOverview { selectedStop = $0 }
+                        }
+                        .frame(width: 400)
+                        Divider()
+                        Group {
+                            if let selectedStop {
+                                selectedStopAlerts(selectedStop)
+                            } else {
+                                EmptyState(systemImage: "exclamationmark.bubble", title: "Travel alerts",
+                                           message: "Pick one of your stops, or search for any stop.")
+                                    .frame(maxHeight: .infinity)
                             }
                         }
-                        .buttonStyle(.shad(.outline, size: .sm))
-                        Button {
-                            self.selectedStop = nil
-                        } label: {
-                            Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
-                        }
-                        .buttonStyle(.shad(.ghost, size: .iconSm))
-                        .accessibilityLabel("Clear stop")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
-                    .padding(.horizontal, 16)
-                    AlertsView(stopQuery: selectedStop, title: selectedStop, standalone: false)
-                        .frame(maxHeight: .infinity, alignment: .top)
+                } else if let selectedStop {
+                    selectedStopAlerts(selectedStop)
                 } else {
                     // Your stops' alerts straight away, rather than an empty
                     // page asking for a search.
@@ -58,6 +59,46 @@ struct AlertsTabView: View {
                     AlertSubscriptionSheet(target: .stop(query: selectedStop, title: selectedStop)).shadSheet(detents: [.large])
                 }
             }
+        }
+    }
+
+    private var searchField: some View {
+        StopSearchField { selectedStop = $0 }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .zIndex(1)
+    }
+
+    /// The stop's name, "Get alerts" and clear, then its alerts.
+    private func selectedStopAlerts(_ selectedStop: String) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text(selectedStop).font(.pageTitle).lineLimit(2)
+                Spacer(minLength: 8)
+                Button {
+                    isShowingSubscription = true
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "bell.badge").font(.system(size: 12, weight: .medium))
+                        Text("Get alerts")
+                    }
+                }
+                .buttonStyle(.shad(.outline, size: .sm))
+                Button {
+                    self.selectedStop = nil
+                } label: {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.shad(.ghost, size: .iconSm))
+                .accessibilityLabel("Clear stop")
+            }
+            .padding(.horizontal, 16)
+            .readableContentWidth()
+            AlertsView(stopQuery: selectedStop, title: selectedStop, standalone: false)
+                // Another stop picked beside it (iPad) loads fresh.
+                .id(selectedStop)
+                .frame(maxHeight: .infinity, alignment: .top)
         }
     }
 }
@@ -110,6 +151,7 @@ private struct AlertsOverview: View {
                 }
             }
             .padding(16)
+            .readableContentWidth()
         }
         .task(id: environment.location.coordinate == nil) {
             guard let here = environment.location.coordinate else { return }

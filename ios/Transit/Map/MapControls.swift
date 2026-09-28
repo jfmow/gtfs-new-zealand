@@ -19,6 +19,8 @@ struct RecenterButton: View {
                     .background(.ultraThinMaterial, in: Circle())
                     .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
                     .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+                    .contentShape(.hoverEffect, Circle())
+                    .hoverEffect()
             }
             .accessibilityLabel("Centre on my location")
         }
@@ -40,6 +42,8 @@ struct FloatingBarButton<Content: View>: View {
             .background(.ultraThinMaterial, in: Capsule())
             .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
             .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
+            .contentShape(.hoverEffect, Capsule())
+            .hoverEffect()
     }
 }
 

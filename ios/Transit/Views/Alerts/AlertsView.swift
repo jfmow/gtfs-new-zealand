@@ -68,6 +68,7 @@ struct AlertsView: View {
                     }
                 }
                 .padding(16)
+                .readableContentWidth()
             }
             .refreshable { await load() }
         }

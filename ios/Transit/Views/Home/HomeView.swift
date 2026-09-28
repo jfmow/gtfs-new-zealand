@@ -12,6 +12,7 @@ struct HomeView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
     @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
@@ -31,12 +32,13 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                StopSearchField { query in
+                StopSearchField(onSelect: { query in
                     path.append(BoardDestination(stopQuery: query, title: query))
-                }
+                }, focusRequest: router.stopSearchFocusRequest)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
+                .readableContentWidth(contentWidth)
                 .zIndex(1)
 
                 ScrollView {
@@ -45,13 +47,29 @@ struct HomeView: View {
                             StaleDataBanner(isOffline: true, lastUpdated: nil)
                                 .padding(.horizontal, 16)
                         }
-                        placesSection
-                        savedStopsSection
-                        savedTripsSection
-                        nearbySection
+                        if usesColumns {
+                            // Your things on the left, what's around you on
+                            // the right.
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 28) {
+                                    placesSection
+                                    savedStopsSection
+                                    savedTripsSection
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                nearbySection
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            placesSection
+                            savedStopsSection
+                            savedTripsSection
+                            nearbySection
+                        }
                     }
                     .padding(.top, 4)
                     .padding(.bottom, 24)
+                    .readableContentWidth(contentWidth)
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .refreshable { await loadNearby() }
@@ -61,6 +79,7 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
             .task { await loadNearby() }
+            .onChange(of: router.stopSearchFocusRequest) { _, _ in path = NavigationPath() }
             .onChange(of: environment.location.coordinate == nil) { _, _ in Task { await loadNearby() } }
             // A single registration for the whole stack - registering the
             // same type's navigationDestination more than once per stack is
@@ -98,6 +117,11 @@ struct HomeView: View {
     }
 
     // MARK: - Places
+
+    /// Regular width (iPad): the sections in two columns across a wider
+    /// page, rather than one phone-width column.
+    private var usesColumns: Bool { horizontalSizeClass == .regular }
+    private var contentWidth: CGFloat { usesColumns ? 1100 : 720 }
 
     private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
 
@@ -156,6 +180,22 @@ struct HomeView: View {
         Button { isManagingFavourites = true } label: { Label("Reorder", systemImage: "arrow.up.arrow.down") }
         Divider()
         Button(role: .destructive) { remove(favourite) } label: { Label("Remove from saved", systemImage: "trash") }
+    }
+
+    private func nearbyMenu(_ stop: Stop) -> some View {
+        Group {
+            if !favourites.contains(where: { $0.stopID == stop.boardQuery }) {
+                Button {
+                    let order = favourites.count
+                    modelContext.insert(FavouriteStop(stopID: stop.boardQuery, displayName: stop.stopName,
+                                                      colorHex: Swatches.color(at: order), sortOrder: order))
+                    environment.toasts.show("Saved to Home")
+                } label: { Label("Save stop", systemImage: "star") }
+            }
+            Button {
+                router.plan(to: PlannerLocation(label: stop.stopName, coordinate: stop.coordinate))
+            } label: { Label("Plan a journey here", systemImage: "point.topleft.down.to.point.bottomright.curvepath") }
+        }
     }
 
     private func remove(_ favourite: FavouriteStop) {
@@ -233,6 +273,8 @@ struct HomeView: View {
                         .shadCardBackground()
                     }
                     .buttonStyle(.plain)
+                    // Long-press, or right-click with a pointer (iPad).
+                    .contextMenu { nearbyMenu(stop) }
                 }
                 if stops.count > 3 {
                     Button {

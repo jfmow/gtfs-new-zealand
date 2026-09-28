@@ -9,6 +9,13 @@ struct PlannerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    /// Regular width (iPad): form and results in a column on the left, the
+    /// selected journey's detail beside them, instead of pushing it.
+    private var usesSplit: Bool { horizontalSizeClass == .regular }
+    @State private var selectedPlanID: String?
+    private var selectedPlan: JourneyPlan? { results.first { $0.id == selectedPlanID } }
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
     /// Set when opened over the step-by-step Planner tab (for a re-plan or a
     /// reminder link) - shows a Close button in place of the saved-trips menu.
@@ -73,47 +80,23 @@ struct PlannerView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    // Above everything below it, so the From/To dropdowns
-                    // draw over the saved trips and results rather than
-                    // behind them.
-                    form.zIndex(1)
-                    // Saved trips fill the page until there are results.
-                    if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
-                        SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
+            Group {
+                if usesSplit {
+                    HStack(spacing: 0) {
+                        plannerColumn.frame(width: 440)
+                        Divider()
+                        detailColumn.frame(maxWidth: .infinity)
                     }
-                    // The step-by-step planner otherwise only lives in
-                    // Settings, where the riders it's for won't look.
-                    if onClose == nil, results.isEmpty, !isPlanning, planError == nil {
-                        Button {
-                            plannerStyleRaw = PlannerStyle.stepByStep.rawValue
-                        } label: {
-                            (Text("Prefer a few simple questions? ").foregroundColor(Theme.mutedForeground)
-                                + Text("Try step by step").foregroundColor(Theme.foreground).underline())
-                                .font(.meta)
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    replanBanner
-                    latestLeaveBanner
-                    if let planError, !isPlanning {
-                        Text(planError)
-                            .font(.bodyText)
-                            .foregroundStyle(Theme.danger)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Theme.danger.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
-                            .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.danger.opacity(0.3), lineWidth: 1))
-                    }
-                    resultsList
+                } else {
+                    plannerColumn
                 }
-                .padding(16)
             }
-            .scrollDismissesKeyboard(.interactively)
             .pageBackground()
+            // iPad: the first result is shown straight away, and a
+            // selection that's gone (a re-plan) moves to the new first.
+            .onChange(of: results.map(\.id), initial: true) { _, ids in
+                if selectedPlanID.map(ids.contains) != true { selectedPlanID = ids.first }
+            }
             .navigationTitle("Planner")
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
@@ -191,6 +174,68 @@ struct PlannerView: View {
             guard let trip = modelContext.model(for: id) as? SavedTrip else { return }
             path = NavigationPath()
             apply(trip)
+        }
+    }
+
+    /// The form, saved trips and results - the whole screen on a phone,
+    /// the left column on iPad.
+    private var plannerColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Above everything below it, so the From/To dropdowns
+                // draw over the saved trips and results rather than
+                // behind them.
+                form.zIndex(1)
+                // Saved trips fill the page until there are results.
+                if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
+                    SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
+                }
+                // The step-by-step planner otherwise only lives in
+                // Settings, where the riders it's for won't look.
+                if onClose == nil, results.isEmpty, !isPlanning, planError == nil {
+                    Button {
+                        plannerStyleRaw = PlannerStyle.stepByStep.rawValue
+                    } label: {
+                        (Text("Prefer a few simple questions? ").foregroundColor(Theme.mutedForeground)
+                            + Text("Try step by step").foregroundColor(Theme.foreground).underline())
+                            .font(.meta)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.plain)
+                }
+                replanBanner
+                latestLeaveBanner
+                if let planError, !isPlanning {
+                    Text(planError)
+                        .font(.bodyText)
+                        .foregroundStyle(Theme.danger)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Theme.danger.opacity(0.06), in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.danger.opacity(0.3), lineWidth: 1))
+                }
+                resultsList
+            }
+            .padding(16)
+            .readableContentWidth()
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    /// iPad: the selected result's detail, or a prompt until there is one.
+    @ViewBuilder
+    private var detailColumn: some View {
+        if let selectedPlan {
+            JourneyDetailView(plan: selectedPlan, context: resultsContext, isEmbedded: true)
+                .id(selectedPlan.id)
+        } else {
+            EmptyState(
+                systemImage: "point.topleft.down.to.point.bottomright.curvepath",
+                title: isPlanning ? "Finding routes..." : "Plan a journey",
+                message: "Choose where from and where to - the route you pick shows here."
+            )
+            .frame(maxHeight: .infinity)
         }
     }
 
@@ -390,10 +435,22 @@ struct PlannerView: View {
                     resultsHeader(now: context.date)
                     ForEach(results) { plan in
                         let missed = hasLeft(plan, now: context.date)
-                        NavigationLink(value: plan) {
-                            JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil, isMissed: missed)
+                        let card = JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil, isMissed: missed)
+                        if usesSplit {
+                            Button { selectedPlanID = plan.id } label: {
+                                card.overlay {
+                                    if plan.id == selectedPlanID {
+                                        RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous)
+                                            .strokeBorder(Theme.primary, lineWidth: 2)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(plan.id == selectedPlanID ? .isSelected : [])
+                        } else {
+                            NavigationLink(value: plan) { card }
+                                .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                     if lastRequest != nil {
                         Button {

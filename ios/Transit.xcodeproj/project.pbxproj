@@ -49,6 +49,7 @@
 		6BD460B54033B3B80A54519A /* TripReminders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4DE963D4D7D2CAD76EC6FDD2 /* TripReminders.swift */; };
 		6CA8D0ECC802A4221433D6C6 /* Components.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81A7BB232C09EA20A6B41A02 /* Components.swift */; };
 		6DB7DC4E6766F3C999EE9FED /* AppEnvironment.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8BD8A6BDA69E3FF448D272B /* AppEnvironment.swift */; };
+		6E5BAC87473234D52F5EF395 /* MapSidePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D5FA11D9BCA687B14AC3460 /* MapSidePanel.swift */; };
 		709C8A07D9678EA5C511CADE /* SavedStopIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A2E1A880225E7007A21FA6 /* SavedStopIntents.swift */; };
 		808AE404E59DB50626AA6677 /* LiveActivityCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9688C841EB837031FC494A7 /* LiveActivityCoordinator.swift */; };
 		83E880DF8B286B11AB3606DC /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */; };
@@ -136,6 +137,7 @@
 		281471C4D890085F107B3476 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
 		288949DB4B8429132B54B591 /* OFL-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-LICENSE.txt"; sourceTree = "<group>"; };
 		2A0C64D9A0AF6AA67A9DED78 /* StopSearchField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopSearchField.swift; sourceTree = "<group>"; };
+		2D5FA11D9BCA687B14AC3460 /* MapSidePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapSidePanel.swift; sourceTree = "<group>"; };
 		2F82856DF144B212A703AE82 /* SavedPlacesViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedPlacesViews.swift; sourceTree = "<group>"; };
 		3084ED761F944CE8CDC2E9C6 /* SharedStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedStore.swift; sourceTree = "<group>"; };
 		315624B062736ACE138C4B11 /* JourneyTrackingSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingSession.swift; sourceTree = "<group>"; };
@@ -319,6 +321,7 @@
 				4F5C411FF76F4666324ADD38 /* BottomDrawer.swift */,
 				81A7BB232C09EA20A6B41A02 /* Components.swift */,
 				3EED87D07EBAC42A622A9029 /* FlowLayout.swift */,
+				2D5FA11D9BCA687B14AC3460 /* MapSidePanel.swift */,
 				561D49DE86ADCD03A767B01F /* Theme.swift */,
 			);
 			path = DesignSystem;
@@ -690,6 +693,7 @@
 				5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */,
 				EA987E588AB7E725036D9225 /* MapControls.swift in Sources */,
 				55613541D06874817DB6E3B6 /* MapLocationPickerView.swift in Sources */,
+				6E5BAC87473234D52F5EF395 /* MapSidePanel.swift in Sources */,
 				06B32DC2183F46A52E10CD4F /* NetworkMonitor.swift in Sources */,
 				66C0021A0F5697C77A78BB4E /* NotificationCenterViews.swift in Sources */,
 				4A177AB29E1035611AC36F9F /* OnboardingView.swift in Sources */,
@@ -775,7 +779,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit.TransitUITests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Transit;
 			};
 			name = Release;
@@ -853,7 +857,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -874,7 +878,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -893,7 +897,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit.TransitUITests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Transit;
 			};
 			name = Debug;
@@ -915,7 +919,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -936,7 +940,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

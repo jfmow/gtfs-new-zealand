@@ -43,12 +43,14 @@ struct EasyQuestionScreen<Content: View>: View {
                 content
             }
             .padding(20)
+            .readableContentWidth()
         }
         .scrollDismissesKeyboard(.interactively)
         .safeAreaInset(edge: .bottom) {
             EasyPrimaryButton(title: buttonTitle, isEnabled: canContinue, action: onContinue)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
+                .readableContentWidth()
                 .background(Theme.background)
         }
         .pageBackground()

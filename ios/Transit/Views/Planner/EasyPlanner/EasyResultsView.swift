@@ -35,6 +35,7 @@ struct EasyResultsView: View {
                 }
             }
             .padding(20)
+            .readableContentWidth()
         }
         .pageBackground()
         .navigationTitle("Your journey")

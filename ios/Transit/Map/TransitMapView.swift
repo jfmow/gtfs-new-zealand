@@ -86,7 +86,14 @@ struct TransitMapView: UIViewRepresentable {
     var cameraResetToken: Int = 0
 
     func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
+        let mapView = LayoutReportingMapView()
+        // A resize (the tab laid out for the first time, an iPad rotating
+        // or its window changing size) changes what's visible without a
+        // pan - `regionDidChangeAnimated` isn't reliably sent for that.
+        mapView.onBoundsSizeChange = { [weak coordinator = context.coordinator, weak mapView] in
+            guard let coordinator, let mapView else { return }
+            coordinator.reportVisibleRegion(of: mapView)
+        }
 
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = showsUserLocation
@@ -237,39 +244,32 @@ struct TransitMapView: UIViewRepresentable {
             mapView.addAnnotations(newWaypoints)
         }
 
+        /// `stopsByID` holds the annotation objects actually on the map. The
+        /// screen hands over fresh `StopAnnotation`s every render, so a stop
+        /// already shown keeps its original object - replacing it here (as
+        /// this used to) meant a later removal was aimed at an object that
+        /// was never added, and the real marker stayed on the map for good:
+        /// stale stops after a filter change, and an ever-growing
+        /// annotation count.
         private func reconcileStops(
             _ newStops: [StopAnnotation],
             in mapView: MKMapView
         ) {
             let newIDs = Set(newStops.map(\.id))
 
-            let toRemove = stopsByID
-                .filter { !newIDs.contains($0.key) }
-                .values
-
-            if !toRemove.isEmpty {
-                mapView.removeAnnotations(Array(toRemove))
+            let gone = stopsByID.filter { !newIDs.contains($0.key) }
+            if !gone.isEmpty {
+                mapView.removeAnnotations(Array(gone.values))
+                for id in gone.keys { stopsByID.removeValue(forKey: id) }
             }
 
             var toAdd: [StopAnnotation] = []
-
-            for stop in newStops {
+            for stop in newStops where stopsByID[stop.id] == nil {
                 stopsByID[stop.id] = stop
-
-                if !mapView.annotations.contains(
-                    where: { ($0 as? StopAnnotation)?.id == stop.id }
-                ) {
-                    toAdd.append(stop)
-                }
+                toAdd.append(stop)
             }
-
             if !toAdd.isEmpty {
                 mapView.addAnnotations(toAdd)
-            }
-
-            for id in stopsByID.keys
-            where !newIDs.contains(id) {
-                stopsByID.removeValue(forKey: id)
             }
         }
 
@@ -528,7 +528,25 @@ struct TransitMapView: UIViewRepresentable {
             _ mapView: MKMapView,
             regionDidChangeAnimated animated: Bool
         ) {
-            parent.onVisibleRegionChange?(mapView.region)
+            reportVisibleRegion(of: mapView)
+        }
+
+        /// While a pan/zoom is still moving too - a few times a second, so
+        /// stops fill in as you drag rather than only once the map settles.
+        func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            guard Date().timeIntervalSince(lastRegionReport) > 0.25 else { return }
+            reportVisibleRegion(of: mapView)
+        }
+
+        private var lastRegionReport = Date.distantPast
+
+        func reportVisibleRegion(of mapView: MKMapView) {
+            guard let onVisibleRegionChange = parent.onVisibleRegionChange,
+                  // A not-yet-laid-out map (an off-screen tab) has no real
+                  // region - reporting it filtered every stop away.
+                  mapView.bounds.width > 1, mapView.bounds.height > 1 else { return }
+            lastRegionReport = Date()
+            onVisibleRegionChange(mapView.region)
         }
 
         func mapView(
@@ -848,5 +866,19 @@ final class WaypointMarkerView: MKAnnotationView {
             pill.textColor = .black
             pill.layer.borderColor = UIColor.black.withAlphaComponent(0.15).cgColor
         }
+    }
+}
+
+/// Tells the map's coordinator when its size changes (see `makeUIView`).
+final class LayoutReportingMapView: MKMapView {
+    var onBoundsSizeChange: (() -> Void)?
+    private var lastSize: CGSize = .zero
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard bounds.size != lastSize else { return }
+        lastSize = bounds.size
+        // Out of the layout pass - the callback updates SwiftUI state.
+        DispatchQueue.main.async { [weak self] in self?.onBoundsSizeChange?() }
     }
 }

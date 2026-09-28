@@ -1447,4 +1447,330 @@ final class TransitDebugUITests: XCTestCase {
         attach("sp-05-from-dropdown")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Home")).firstMatch.exists, "saved place not in dropdown")
     }
+
+    /// Stops must keep filling the screen after panning away from where
+    /// the map opened and zooming out/in (they used to thin out to the
+    /// stops nearest the *starting* centre).
+    func testMapStopsAfterPanAndZoom() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        tab("Map").tap()
+        sleep(4)
+        attach("pz-01-default")
+
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        func drag(dx: CGFloat, dy: CGFloat) {
+            map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + dx, dy: 0.5 + dy)))
+        }
+        for _ in 0..<3 { drag(dx: -0.4, dy: 0) }
+        sleep(2)
+        attach("pz-02-panned-east")
+        for _ in 0..<3 { drag(dx: 0, dy: -0.35) }
+        sleep(2)
+        attach("pz-03-panned-south")
+        map.pinch(withScale: 4, velocity: 2)
+        sleep(2)
+        attach("pz-04-zoomed-in")
+        for _ in 0..<2 { drag(dx: 0.4, dy: 0.2) }
+        sleep(2)
+        attach("pz-05-panned-back")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// Zoomed out: with location denied the map opens on the region-wide
+    /// view (XCUITest can't zoom a map out - pinch <1 and two-finger taps
+    /// both failed). Run after `simctl privacy <dev> revoke location`.
+    func testMapStopsZoomedOut() throws {
+        app.launch()
+        for label in ["Don’t Allow", "Don't Allow"] where springboard.buttons[label].waitForExistence(timeout: 3) {
+            springboard.buttons[label].tap()
+        }
+        tab("Map").tap()
+        sleep(4)
+        attach("zo-01-region")
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        for (index, offset) in [CGVector(dx: 0.1, dy: 0.5), CGVector(dx: 0.5, dy: 0.15)].enumerated() {
+            map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: offset))
+            sleep(2)
+            attach("zo-0\(index + 2)-panned")
+        }
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    // MARK: - iPad
+
+    /// iPad wide pages: Home's two columns, the Planner's results + detail
+    /// split (starting a journey from the detail column), Alerts' split.
+    func testIPadWidePages() throws {
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            let tag = orientation == .portrait ? "portrait" : "landscape"
+            XCUIDevice.shared.orientation = orientation
+            app.launch()
+            dismissSystemAlertIfPresent(timeout: 4)
+            sleep(4)
+            attach("wide-\(tag)-01-home")
+
+            if openJourneyDetail(tag: "wide-\(tag)") {
+                let start = app.buttons["Start this journey"]
+                XCTAssertTrue(start.waitForExistence(timeout: 3), "detail column missing")
+                start.tap()
+                sleep(3)
+                attach("wide-\(tag)-07-tracking")
+                if app.buttons["End"].waitForExistence(timeout: 3) {
+                    app.buttons["End"].tap()
+                    if app.buttons["End journey"].waitForExistence(timeout: 3) { app.buttons["End journey"].tap() }
+                    sleep(2)
+                    attach("wide-\(tag)-08-after-end")
+                }
+            }
+
+            tab("Alerts").tap()
+            sleep(3)
+            attach("wide-\(tag)-09-alerts")
+            let search = app.textFields["Search for stop..."]
+            if search.waitForExistence(timeout: 3) {
+                search.tap()
+                search.typeText("Britomart")
+                sleep(2)
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Britomart")).firstMatch.tap()
+                sleep(3)
+                attach("wide-\(tag)-10-alerts-selected")
+            }
+            app.terminate()
+        }
+    }
+
+    /// Map tab, zoomed in, a stop near the middle tapped - on iPad its
+    /// board opens in the side panel.
+    private func openStopInMapPanel() -> Bool {
+        tab("Map").tap()
+        sleep(4)
+        let map = app.maps.firstMatch
+        guard map.waitForExistence(timeout: 5) else { return false }
+        // Zoom in so single stops (not clusters) are showing.
+        map.pinch(withScale: 3, velocity: 2)
+        sleep(3)
+        // One well inside the map - not under the filter bar or the resume
+        // card.
+        let safe = map.frame.insetBy(dx: 80, dy: 140)
+        let stops = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stop-")).allElementsBoundByIndex
+        guard let stop = stops.first(where: { safe.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else { return false }
+        stop.tap()
+        sleep(3)
+        return true
+    }
+
+    /// App Store iPad screenshots (portrait - XCUITest's landscape captures
+    /// come out letterboxed). Set a clean status bar first:
+    /// `xcrun simctl status_bar <iPad> override --time 9:41 --batteryState charged --batteryLevel 100 --wifiBars 3`,
+    /// then run with UX_SHOT_DIR set; files are `appstore-ipad-*.png`.
+    func testAppStoreScreenshotsIPad() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        // A leftover journey's resume card would sit in every shot.
+        let dismissResume = app.buttons["Dismiss"]
+        if dismissResume.waitForExistence(timeout: 2) { dismissResume.tap() }
+        sleep(6) // nearby stops' departures
+        attach("appstore-ipad-1-home")
+
+        if openStopInMapPanel() {
+            attach("appstore-ipad-2-map-board")
+            let row = app.buttons.matching(identifier: "departure-row").firstMatch
+            if row.waitForExistence(timeout: 8) {
+                row.tap()
+                sleep(5)
+                attach("appstore-ipad-3-service")
+                app.buttons["Back"].tap()
+                sleep(1)
+            }
+        }
+
+        guard openJourneyDetail(tag: "appstore-scratch") else { return XCTFail("no journey found") }
+        attach("appstore-ipad-4-planner")
+        let start = app.buttons["Start this journey"]
+        guard start.waitForExistence(timeout: 3) else { return }
+        start.tap()
+        sleep(5)
+        attach("appstore-ipad-5-journey")
+        if app.buttons["End"].waitForExistence(timeout: 3) {
+            app.buttons["End"].tap()
+            if app.buttons["End journey"].waitForExistence(timeout: 3) { app.buttons["End journey"].tap() }
+        }
+    }
+
+    /// iPad Map tab: a tapped stop's board opens in the side panel (map
+    /// still showing), a departure from it opens the service tracker (its
+    /// own side panel), and Back returns to the board in the panel.
+    func testIPadMapPanel() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        guard openStopInMapPanel() else { attach("mp-00-no-stop"); return XCTFail("no single stop on the map") }
+        attach("mp-01-board-panel")
+        XCTAssertTrue(app.buttons["Close"].exists, "board panel didn't open")
+        XCTAssertTrue(app.maps.firstMatch.exists, "map gone behind the panel")
+
+        let row = app.buttons.matching(identifier: "departure-row").firstMatch
+        guard row.waitForExistence(timeout: 8) else { throw XCTSkip("no trackable departures at this stop") }
+        row.tap()
+        sleep(4)
+        attach("mp-02-service-panel")
+        app.buttons["Back"].tap()
+        sleep(2)
+        attach("mp-03-back-to-board")
+        XCTAssertTrue(app.buttons["Close"].exists, "board panel lost after Back")
+        app.buttons["Close"].tap()
+        sleep(1)
+        attach("mp-04-closed")
+    }
+
+    /// iPad shell: the resume card at regular width (no tab bar accessory
+    /// there), ⌘F to stop search, ⌘3 to the Map tab.
+    func testIPadShell() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        sleep(2)
+        guard openJourneyDetail(tag: "shell") else { return XCTFail("no journey found") }
+        app.buttons["Start this journey"].tap()
+        sleep(3)
+        app.buttons["Minimise"].tap()
+        sleep(2)
+        tab("Home").tap()
+        sleep(2)
+        attach("shell-01-resume-card")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume journey")).firstMatch.exists, "no resume control")
+
+        app.typeKey("3", modifierFlags: .command)
+        sleep(2)
+        attach("shell-02-cmd3-map")
+        app.typeKey("f", modifierFlags: .command)
+        sleep(2)
+        attach("shell-03-cmdf-search")
+        XCTAssertTrue(app.textFields["Search for stop..."].hasKeyboardFocusCompat, "⌘F didn't focus stop search")
+    }
+
+    /// A tab, whether it's in the iPhone's tab bar or the iPad's top tab
+    /// bar / sidebar (which isn't a `tabBars` element).
+    private func tab(_ name: String) -> XCUIElement {
+        let inTabBar = app.tabBars.buttons[name]
+        return inTabBar.exists ? inTabBar : app.buttons[name].firstMatch
+    }
+
+    /// Planner: Britomart -> Newmarket, first result, its detail screen.
+    /// Screenshots are prefixed with `tag`.
+    @discardableResult
+    private func openJourneyDetail(tag: String) -> Bool {
+        tab("Planner").tap()
+        sleep(1)
+        // A named origin rather than "My location", which sometimes
+        // wasn't offered in time.
+        let fromField = app.textFields.element(boundBy: 0)
+        if fromField.waitForExistence(timeout: 3) {
+            fromField.tap()
+            fromField.typeText("Britomart")
+            sleep(2)
+            let origin = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Britomart", "Resume")).firstMatch
+            if origin.waitForExistence(timeout: 5) { origin.tap() }
+        }
+        sleep(1)
+        let toField = app.textFields.element(boundBy: 1)
+        if toField.waitForExistence(timeout: 3) {
+            toField.tap()
+            toField.typeText("Newmarket")
+            sleep(2)
+            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
+            if result.waitForExistence(timeout: 5) { result.tap() }
+        }
+        sleep(1)
+        let planButton = app.buttons["Plan journey"]
+        guard planButton.waitForExistence(timeout: 5) else { return false }
+        planButton.tap()
+        sleep(4)
+        attach("\(tag)-05-results")
+
+        // A results card: "17 min ... Direct" / "... 1 transfer" - not
+        // the Options row, whose summary also says "transfers".
+        let firstResult = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS[c] %@ AND (label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@",
+            "min", "Direct", "transfer", "Options"
+        )).firstMatch
+        guard firstResult.waitForExistence(timeout: 8) else {
+            attach("\(tag)-06-no-results")
+            return false
+        }
+        firstResult.tap()
+        sleep(2)
+        attach("\(tag)-06-detail")
+        return true
+    }
+
+    /// iPad walkthrough in both orientations: Home, a stop board, a
+    /// service tracker, the planner and a live journey (its side panel).
+    func testIPadSurvey() throws {
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+            let tag = orientation == .portrait ? "portrait" : "landscape"
+            XCUIDevice.shared.orientation = orientation
+            app.launch()
+            dismissSystemAlertIfPresent(timeout: 4)
+            sleep(4)
+            attach("ipad-\(tag)-01-home")
+
+            let search = app.textFields["Search for stop..."]
+            if search.waitForExistence(timeout: 5) {
+                search.tap()
+                search.typeText("Ponsonby Road 8100")
+                sleep(2)
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "8100")).firstMatch.tap()
+                sleep(3)
+                attach("ipad-\(tag)-02-board")
+                let row = app.buttons.matching(identifier: "departure-row").firstMatch
+                if row.waitForExistence(timeout: 5) {
+                    row.tap()
+                    sleep(4)
+                    attach("ipad-\(tag)-03-service")
+                }
+            }
+
+            // The tracker hides the tab bar - start the next part afresh.
+            app.terminate()
+            app.launch()
+            sleep(3)
+            tab("Map").tap()
+            sleep(3)
+            attach("ipad-\(tag)-04-map")
+
+            guard openJourneyDetail(tag: "ipad-\(tag)") else { continue }
+
+            let startButton = app.buttons["Start this journey"]
+            guard startButton.waitForExistence(timeout: 3) else { continue }
+            startButton.tap()
+            sleep(3)
+            attach("ipad-\(tag)-07-tracking")
+
+            let endButton = app.buttons["End"]
+            if endButton.waitForExistence(timeout: 3) {
+                endButton.tap()
+                let confirm = app.buttons["End journey"]
+                if confirm.waitForExistence(timeout: 3) {
+                    attach("ipad-\(tag)-08-end-confirm")
+                    confirm.tap()
+                    sleep(2)
+                    attach("ipad-\(tag)-09-after-end")
+                }
+            }
+            app.terminate()
+        }
+    }
+}
+
+private extension XCUIElement {
+    /// Whether this field has keyboard focus (with a hardware keyboard
+    /// there's no on-screen keyboard to look for).
+    var hasKeyboardFocusCompat: Bool { (value(forKey: "hasKeyboardFocus") as? Bool) ?? false }
 }

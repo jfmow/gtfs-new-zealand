@@ -36,6 +36,14 @@ targets:
           UIImageName: LaunchMark
           UIImageRespectsSafeAreaInsets: true
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # iPad: every orientation - required for Split View / Stage
+        # Manager. Layouts switch on horizontal size class, so a narrow
+        # iPad window gets the iPhone layout (plans/ipad-support.md).
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         NSLocationWhenInUseUsageDescription: "Used to show nearby stops, your position on the map, to time walking directions, and to follow a journey you're on - including with no mobile data."
         # Location keeps running in the background only while a journey is
         # being tracked (JourneyTrackingSession), so it can follow the ride
@@ -76,7 +84,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
         DEVELOPMENT_TEAM: 2A422A733W
         CODE_SIGN_STYLE: Automatic
-        TARGETED_DEVICE_FAMILY: "1" # iPhone only
+        TARGETED_DEVICE_FAMILY: "1,2" # iPhone + iPad
         SWIFT_VERSION: "5.10"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
@@ -110,7 +118,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit.TransitWidgets
         DEVELOPMENT_TEAM: 2A422A733W
         CODE_SIGN_STYLE: Automatic
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         SWIFT_VERSION: "5.10"
         GENERATE_INFOPLIST_FILE: NO
         SKIP_INSTALL: YES
@@ -131,7 +139,7 @@ targets:
         DEVELOPMENT_TEAM: 2A422A733W
         CODE_SIGN_STYLE: Automatic
         SWIFT_VERSION: "5.10"
-        TARGETED_DEVICE_FAMILY: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: Transit
 
