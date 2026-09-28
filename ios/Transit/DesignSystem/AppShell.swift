@@ -474,21 +474,63 @@ private struct MapModePicker: ToolbarContent {
     }
 }
 
+/// Regular width (iPad): a tapped stop's board opens in a side panel beside
+/// the map instead of being pushed over it, and a departure from there
+/// pushes its service tracker full screen.
 private struct StopsTabView: View {
     @Binding var mode: DeepLinkRouter.MapMode
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var path = NavigationPath()
+    @State private var panelStop: BoardDestination?
+
+    private var usesSidePanel: Bool { horizontalSizeClass == .regular }
 
     var body: some View {
         NavigationStack(path: $path) {
-            StopsMapView(onOpenStop: { path.append($0) }).appToolbar()
-                .toolbar { MapModePicker(mode: $mode) }
-                .toolbarBackground(Theme.background, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-                .navigationDestination(for: BoardDestination.self) { destination in
-                    StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
+            ZStack {
+                StopsMapView(
+                    onOpenStop: { destination in
+                        if usesSidePanel { panelStop = destination } else { path.append(destination) }
+                    },
+                    opensStopDirectly: usesSidePanel,
+                    leadingInset: usesSidePanel && panelStop != nil ? MapSidePanelMetrics.occupiedWidth : 0
+                )
+                if usesSidePanel, let panelStop {
+                    MapSidePanel {
+                        StopBoardView(
+                            stopQuery: panelStop.stopQuery, title: panelStop.title,
+                            embedding: .init(
+                                onOpenTrip: { path.append(PanelTripDestination(trip: $0)) },
+                                onClose: { self.panelStop = nil }
+                            )
+                        )
+                        // A different stop is a fresh board, not this one's
+                        // state (departures, filters) carried over.
+                        .id(panelStop.stopQuery)
+                    }
+                    .transition(.move(edge: .leading).combined(with: .opacity))
                 }
+            }
+            .animation(.spring(duration: 0.3), value: panelStop?.stopQuery)
+            .appToolbar()
+            .toolbar { MapModePicker(mode: $mode) }
+            .toolbarBackground(Theme.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .navigationDestination(for: BoardDestination.self) { destination in
+                StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
+            }
+            // Its own type: a pushed board registers `TripDestination`
+            // itself, and a stack mustn't register one type twice.
+            .navigationDestination(for: PanelTripDestination.self) { destination in
+                VehicleQuickLookView(tripID: destination.trip.tripID, fromStopName: destination.trip.fromStopName)
+            }
         }
     }
+}
+
+/// A service opened from the side panel's board (see `StopsTabView`).
+private struct PanelTripDestination: Hashable {
+    let trip: TripDestination
 }
 
 private struct VehiclesTabView: View {

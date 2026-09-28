@@ -71,7 +71,6 @@ struct JourneyTrackingView: View {
     /// shows a detent sheet as a form sheet in the middle of the screen,
     /// covering the map the drawer exists to leave visible.
     private var usesSidePanel: Bool { horizontalSizeClass == .regular }
-    static let sidePanelWidth: CGFloat = 400
 
     /// The web tracker's "live" blue for the current leg/step.
     private var accent: Color { Theme.live }
@@ -104,8 +103,7 @@ struct JourneyTrackingView: View {
                 .ignoresSafeArea()
 
                 if usesSidePanel {
-                    sidePanel
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    MapSidePanel { itinerarySheetContent }
                 }
 
                 VStack(spacing: 8) {
@@ -121,7 +119,7 @@ struct JourneyTrackingView: View {
                 }
                 .padding(.top, 8)
                 // Over the map, right of the panel.
-                .padding(.leading, usesSidePanel ? Self.sidePanelWidth + 16 : 0)
+                .padding(.leading, usesSidePanel ? MapSidePanelMetrics.occupiedWidth : 0)
             }
         }
         // Not presented while the side panel stands in for it. The setter
@@ -318,19 +316,6 @@ struct JourneyTrackingView: View {
             } message: {
                 Text("Get-off alerts and the Live Activity will stop. Minimise keeps them going.")
             }
-    }
-
-    /// Regular width: the itinerary as a floating panel down the map's
-    /// leading edge, like Maps on iPad.
-    private var sidePanel: some View {
-        itinerarySheetContent
-            .frame(width: Self.sidePanelWidth)
-            .frame(maxHeight: .infinity)
-            .background(Theme.background, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-            .shadow(color: .black.opacity(0.2), radius: 16, y: 4)
-            .padding(16)
     }
 
     /// The tracker's bottom drawer: what you're doing now (hero), live
@@ -847,7 +832,7 @@ struct JourneyTrackingView: View {
         let hasStepCard = snapshot?.phase == .walking && walkDirections?.steps.isEmpty == false
         let top = proxy.safeAreaInsets.top + 8 + 48 + (hasStepCard ? 76 : 0)
         if usesSidePanel {
-            return UIEdgeInsets(top: top, left: proxy.safeAreaInsets.leading + Self.sidePanelWidth + 32,
+            return UIEdgeInsets(top: top, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
                                 bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
         }
         let drawer: CGFloat = sheetDetent == .height(Self.compactDrawerHeight) ? Self.compactDrawerHeight : fullHeight / 2

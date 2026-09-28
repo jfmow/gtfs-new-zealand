@@ -8,6 +8,18 @@ import TransitCore
 struct StopBoardView: View {
     let stopQuery: String
     let title: String
+    /// Set when the board sits in the Map tab's side panel (iPad) rather
+    /// than being pushed.
+    var embedding: Embedding?
+
+    /// A board in a side panel has no navigation bar of its own: the title
+    /// and actions sit in a header with a close button, and a departure
+    /// opens through `onOpenTrip` onto the owning screen's stack - a
+    /// NavigationLink from here would need a stack nested inside that one.
+    struct Embedding {
+        let onOpenTrip: (TripDestination) -> Void
+        let onClose: () -> Void
+    }
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
@@ -32,71 +44,115 @@ struct StopBoardView: View {
     @State private var lastUpdated: Date?
     @State private var reminderDeparture: Departure?
 
-    init(stopQuery: String, title: String) {
+    init(stopQuery: String, title: String, embedding: Embedding? = nil) {
         self.stopQuery = stopQuery
         self.title = title
+        self.embedding = embedding
         let query = stopQuery
         _favourites = Query(filter: #Predicate<FavouriteStop> { $0.stopID == query })
     }
 
     var body: some View {
+        if let embedding {
+            VStack(spacing: 0) {
+                embeddedHeader(embedding)
+                board
+            }
+        } else {
+            board
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                // Registered here - stably, on `body` - rather than nested
+                // inside `content`'s conditional branches. `content` rebuilds
+                // on every poll tick (every 10s, including while a pushed
+                // child like VehicleQuickLookView sits on top of this screen -
+                // NavigationStack doesn't fire `onDisappear` on a mere push, so
+                // this view's poll timer keeps running underneath). A
+                // navigationDestination nested inside a branch that gets torn
+                // down and rebuilt while a stack it's part of has a live pushed
+                // child is exactly what caused that child to intermittently
+                // render behind this list instead of on top of it - same root
+                // cause class as the HomeView fix earlier (a destination
+                // registration needs a stable, always-present home in the tree).
+                .navigationDestination(for: TripDestination.self) { destination in
+                    VehicleQuickLookView(tripID: destination.tripID, fromStopName: destination.fromStopName)
+                }
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) { alertsButton }
+                    ToolbarItem(placement: .topBarTrailing) { favouriteButton }
+                    ToolbarItem(placement: .topBarTrailing) { moreMenu }
+                }
+        }
+    }
+
+    /// The side panel's stand-in for the navigation bar.
+    private func embeddedHeader(_ embedding: Embedding) -> some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.geist(17, .semibold, relativeTo: .headline))
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                alertsButton
+                favouriteButton
+                moreMenu
+                Button(action: embedding.onClose) { Image(systemName: "xmark") }
+                    .accessibilityLabel("Close")
+            }
+            .font(.system(size: 16, weight: .medium))
+            .foregroundStyle(Theme.foreground)
+            .frame(width: 38, height: 38)
+            .contentShape(Rectangle())
+            .hoverEffect()
+        }
+        .padding(.leading, 16)
+        .padding(.trailing, 8)
+        .padding(.top, 12)
+        .padding(.bottom, 4)
+    }
+
+    private var alertsButton: some View {
+        Button {
+            isShowingSubscriptionSheet = true
+        } label: {
+            Image(systemName: "bell")
+        }
+        .accessibilityLabel("Get alerts for this stop")
+    }
+
+    private var favouriteButton: some View {
+        Button {
+            toggleFavourite()
+        } label: {
+            Image(systemName: favourites.isEmpty ? "star" : "star.fill")
+                .foregroundStyle(favourites.isEmpty ? Theme.foreground : Color(hex: "eab308"))
+        }
+        .accessibilityLabel(favourites.isEmpty ? "Save stop" : "Remove from saved stops")
+    }
+
+    /// The web header's other actions: timetable for a date, directions to
+    /// the stop, the stop's service alerts.
+    private var moreMenu: some View {
+        Menu {
+            Button {
+                draftDate = selectedDate ?? Date()
+                isPickingDate = true
+            } label: { Label("Timetable for a date", systemImage: "calendar") }
+            if let coordinate = stopCoordinate {
+                Button { openDirections(to: coordinate) } label: { Label("Directions to stop", systemImage: "location.north.line") }
+            }
+            // A sheet, not a push: a view-based NavigationLink inside a
+            // toolbar menu is unreliable in the tabs' path-driven stacks.
+            Button { isShowingAlerts = true } label: { Label("Service alerts", systemImage: "exclamationmark.bubble") }
+        } label: {
+            Image(systemName: "ellipsis.circle")
+        }
+        .accessibilityLabel("More")
+    }
+
+    /// Everything but the navigation chrome.
+    private var board: some View {
         content
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            // Registered here - stably, on `body` - rather than nested
-            // inside `content`'s conditional branches. `content` rebuilds
-            // on every poll tick (every 10s, including while a pushed
-            // child like VehicleQuickLookView sits on top of this screen -
-            // NavigationStack doesn't fire `onDisappear` on a mere push, so
-            // this view's poll timer keeps running underneath). A
-            // navigationDestination nested inside a branch that gets torn
-            // down and rebuilt while a stack it's part of has a live pushed
-            // child is exactly what caused that child to intermittently
-            // render behind this list instead of on top of it - same root
-            // cause class as the HomeView fix earlier (a destination
-            // registration needs a stable, always-present home in the tree).
-            .navigationDestination(for: TripDestination.self) { destination in
-                VehicleQuickLookView(tripID: destination.tripID, fromStopName: destination.fromStopName)
-            }
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isShowingSubscriptionSheet = true
-                    } label: {
-                        Image(systemName: "bell")
-                    }
-                    .accessibilityLabel("Get alerts for this stop")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        toggleFavourite()
-                    } label: {
-                        Image(systemName: favourites.isEmpty ? "star" : "star.fill")
-                            .foregroundStyle(favourites.isEmpty ? Theme.foreground : Color(hex: "eab308"))
-                    }
-                    .accessibilityLabel(favourites.isEmpty ? "Save stop" : "Remove from saved stops")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    // The web header's other actions: timetable for a date,
-                    // directions to the stop, the stop's service alerts.
-                    Menu {
-                        Button {
-                            draftDate = selectedDate ?? Date()
-                            isPickingDate = true
-                        } label: { Label("Timetable for a date", systemImage: "calendar") }
-                        if let coordinate = stopCoordinate {
-                            Button { openDirections(to: coordinate) } label: { Label("Directions to stop", systemImage: "location.north.line") }
-                        }
-                        // A sheet, not a push: a view-based NavigationLink
-                        // inside a toolbar menu is unreliable in the tabs'
-                        // path-driven stacks.
-                        Button { isShowingAlerts = true } label: { Label("Service alerts", systemImage: "exclamationmark.bubble") }
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
-                    }
-                    .accessibilityLabel("More")
-                }
-            }
             .sheet(item: $reminderDeparture) { departure in
                 StopReminderSheet(stopName: title, time: nil, offersGetOff: false) { kind, offset in
                     await setReminder(kind, offset: offset, for: departure)
@@ -171,7 +227,7 @@ struct StopBoardView: View {
             .padding(.vertical, 12)
             .background(departure.departed && !preview ? Theme.warning.opacity(0.06) : .clear)
         if departure.isTrackable && !preview {
-            NavigationLink(value: TripDestination(tripID: departure.tripID, fromStopName: title)) { rowView.contentShape(Rectangle()) }
+            tripLink(TripDestination(tripID: departure.tripID, fromStopName: title)) { rowView.contentShape(Rectangle()) }
                 .accessibilityIdentifier("departure-row")
                 .buttonStyle(DropdownRowStyle())
                 .contextMenu {
@@ -182,6 +238,17 @@ struct StopBoardView: View {
                 .accessibilityAction(named: "Remind me before it arrives") { reminderDeparture = departure }
         } else {
             rowView
+        }
+    }
+
+    /// A departure's link to its service tracker - pushed on this stack, or
+    /// handed to the owner when embedded.
+    @ViewBuilder
+    private func tripLink<Label: View>(_ destination: TripDestination, @ViewBuilder label: () -> Label) -> some View {
+        if let embedding {
+            Button(action: { embedding.onOpenTrip(destination) }, label: label)
+        } else {
+            NavigationLink(value: destination, label: label)
         }
     }
 

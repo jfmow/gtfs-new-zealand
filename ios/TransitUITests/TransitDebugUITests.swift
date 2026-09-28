@@ -1503,6 +1503,48 @@ final class TransitDebugUITests: XCTestCase {
 
     // MARK: - iPad
 
+    /// iPad Map tab: a tapped stop's board opens in the side panel (map
+    /// still showing), a departure from it opens the service tracker (its
+    /// own side panel), and Back returns to the board in the panel.
+    func testIPadMapPanel() throws {
+        XCUIDevice.shared.orientation = .portrait
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        tab("Map").tap()
+        sleep(4)
+        let map = app.maps.firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 5))
+        // Zoom in so single stops (not clusters) are showing.
+        map.pinch(withScale: 3, velocity: 2)
+        sleep(3)
+        // One well inside the map - not under the filter bar or the resume
+        // card.
+        let safe = map.frame.insetBy(dx: 80, dy: 140)
+        let stops = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "stop-")).allElementsBoundByIndex
+        guard let stop = stops.first(where: { safe.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY)) }) else {
+            attach("mp-00-no-stop")
+            return XCTFail("no single stop on the map")
+        }
+        stop.tap()
+        sleep(3)
+        attach("mp-01-board-panel")
+        XCTAssertTrue(app.buttons["Close"].exists, "board panel didn't open")
+        XCTAssertTrue(map.exists, "map gone behind the panel")
+
+        let row = app.buttons.matching(identifier: "departure-row").firstMatch
+        guard row.waitForExistence(timeout: 8) else { throw XCTSkip("no trackable departures at this stop") }
+        row.tap()
+        sleep(4)
+        attach("mp-02-service-panel")
+        app.buttons["Back"].tap()
+        sleep(2)
+        attach("mp-03-back-to-board")
+        XCTAssertTrue(app.buttons["Close"].exists, "board panel lost after Back")
+        app.buttons["Close"].tap()
+        sleep(1)
+        attach("mp-04-closed")
+    }
+
     /// iPad shell: the resume card at regular width (no tab bar accessory
     /// there), ⌘F to stop search, ⌘3 to the Map tab.
     func testIPadShell() throws {

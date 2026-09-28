@@ -12,6 +12,11 @@ struct StopsMapView: View {
     /// mixed with the board's own value-based pushes made the service
     /// tracker render *behind* the board.
     var onOpenStop: (BoardDestination) -> Void = { _ in }
+    /// A tapped stop opens straight away rather than previewing in a card -
+    /// set when the board shows in a side panel beside the map (iPad).
+    var opensStopDirectly = false
+    /// Room kept clear on the leading edge (an open side panel).
+    var leadingInset: CGFloat = 0
 
     @Environment(AppEnvironment.self) private var environment
     @State private var stops: [Stop] = []
@@ -49,7 +54,13 @@ struct StopsMapView: View {
                     ?? .region(center: environment.region.defaultMapCenter, radiusMeters: 6000),
                 showsUserLocation: environment.location.isAuthorized,
                 onSelectStop: { id in
-                    withAnimation(.spring(duration: 0.3)) { previewStop = stops.first { $0.stopID == id } }
+                    guard let stop = stops.first(where: { $0.stopID == id }) else { return }
+                    if opensStopDirectly {
+                        previewStop = nil
+                        onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+                    } else {
+                        withAnimation(.spring(duration: 0.3)) { previewStop = stop }
+                    }
                 },
                 onVisibleRegionChange: { visibleRegion = $0 },
                 centerOnUserLocationTrigger: recenterTrigger
@@ -73,6 +84,7 @@ struct StopsMapView: View {
 
             // Mode filters float on the map as pills, as on the web.
             MapModeFilterBar(modes: StopType.filterCases, label: \.label, selection: $typeFilter)
+                .padding(.leading, leadingInset)
 
             if let errorMessage {
                 Text(errorMessage)

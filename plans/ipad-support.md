@@ -34,18 +34,21 @@ and get the existing iPhone layout for free; the iPhone app is untouched.
   focuses it). ⌘R dropped - boards poll and have pull-to-refresh.
 - `.hoverEffect()` on `RecenterButton` / `FloatingBarButton`.
 
-## Phase 2 - map screens get a side panel
+## Phase 2 - map screens get a side panel (done)
 
-`MapDetailLayout` (DesignSystem): compact = map + `BottomDrawer`; regular =
-full map + floating leading panel (~380-420pt, full height, scrolls), camera
-insets on the leading edge instead of the bottom. Like Apple Maps on iPad /
-the web's desktop split tracker.
+`MapSidePanel` (DesignSystem): 400pt floating panel on the map's leading
+edge at regular width; `MapSidePanelMetrics.occupiedWidth` for controls and
+camera insets beside it.
 
-1. `VehicleQuickLookView` - drawer header+content into the panel.
-2. `JourneyTrackingView` - itinerary in the panel, current-step card over the
-   map. Replaces the Phase 0 stopgap.
-3. Map tab - tapping a stop opens `StopBoardView` in the panel (map stays);
-   vehicles mode opens the vehicle tracker there.
+1. `VehicleQuickLookView` - summary + stop list in the panel instead of
+   `BottomDrawer`; top bar and camera to the right of it.
+2. `JourneyTrackingView` - Phase 0's one-off panel now uses `MapSidePanel`.
+3. Map tab (stops) - a tapped stop opens straight into a panel board
+   (`StopBoardView(embedding:)`: inline header with bell/star/more/close, no
+   nav bar of its own). A departure hands its trip back to `StopsTabView`,
+   which pushes it as `PanelTripDestination` (a pushed board already
+   registers `TripDestination` on the same stack). Vehicles mode unchanged:
+   a vehicle pushes the tracker, which has its own panel.
 
 ## Phase 3 - wide list pages
 
