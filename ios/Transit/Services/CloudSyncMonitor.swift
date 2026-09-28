@@ -17,6 +17,10 @@ final class CloudSyncMonitor {
         case checking
         case syncing
         case signedOut
+        /// Signed in, but iCloud isn't usable on this device yet - pending
+        /// verification, or an Advanced Data Protection account on a device
+        /// that isn't trusted. Usually sorts itself out in Settings.
+        case notReady
         /// Restricted (Screen Time / MDM), or Transit's iCloud switch off.
         case unavailable
     }
@@ -69,7 +73,7 @@ final class CloudSyncMonitor {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             switch status {
-            case .off, .signedOut, .unavailable: return
+            case .off, .signedOut, .notReady, .unavailable: return
             case .checking, .syncing: if hasFinishedFirstImport { return }
             }
             try? await Task.sleep(for: .milliseconds(200))
@@ -82,7 +86,8 @@ final class CloudSyncMonitor {
         switch account {
         case .available: status = .syncing
         case .noAccount: status = .signedOut
-        case .restricted, .temporarilyUnavailable: status = .unavailable
+        case .temporarilyUnavailable: status = .notReady
+        case .restricted: status = .unavailable
         case .couldNotDetermine, nil: status = .unavailable
         @unknown default: status = .unavailable
         }

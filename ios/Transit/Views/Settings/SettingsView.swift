@@ -139,6 +139,7 @@ extension SettingsView {
                 ?? "Syncing saved stops, places and trips"
         case .checking: detail = "Checking iCloud..."
         case .signedOut: detail = "Sign in to iCloud to sync saved stops, places and trips across your devices"
+        case .notReady: detail = "Waiting for iCloud - check your Apple Account in the Settings app"
         case .unavailable: detail = "Off - turn on iCloud for Transit in the Settings app"
         case .off: detail = "Off on this device"
         }
