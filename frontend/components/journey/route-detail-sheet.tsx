@@ -947,18 +947,6 @@ function JourneySummary({
                 >
                     <Share2 className="h-4 w-4" />
                 </Button>
-                {onIOS && (
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0"
-                        onClick={onOpenInApp}
-                        aria-label="Open in the Transit app"
-                        title="Open in app"
-                    >
-                        <Smartphone className="h-4 w-4" />
-                    </Button>
-                )}
                 {journeyStarted && onStopTracking ? (
                     <Popover>
                         <PopoverTrigger asChild>
@@ -991,6 +979,13 @@ function JourneySummary({
                     </Button>
                 )}
             </div>
+
+            {onIOS && (
+                <Button size="sm" variant="outline" className="w-full gap-1.5" onClick={onOpenInApp}>
+                    <Smartphone className="h-3.5 w-3.5" />
+                    Open in app
+                </Button>
+            )}
 
             {journeyStarted && onReplan && replanOptions.length > 0 && (() => {
                 const label = replanUrgent ? "You'll miss a connection - find another route" : "Find a better route from here"
