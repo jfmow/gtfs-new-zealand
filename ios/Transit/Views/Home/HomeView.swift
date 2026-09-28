@@ -31,9 +31,9 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                StopSearchField { query in
+                StopSearchField(onSelect: { query in
                     path.append(BoardDestination(stopQuery: query, title: query))
-                }
+                }, focusRequest: router.stopSearchFocusRequest)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
@@ -63,6 +63,7 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
             .task { await loadNearby() }
+            .onChange(of: router.stopSearchFocusRequest) { _, _ in path = NavigationPath() }
             .onChange(of: environment.location.coordinate == nil) { _, _ in Task { await loadNearby() } }
             // A single registration for the whole stack - registering the
             // same type's navigationDestination more than once per stack is

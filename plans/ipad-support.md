@@ -8,7 +8,7 @@ Branch layouts on `horizontalSizeClass == .regular`, never on device idiom.
 Split View ⅓, Slide Over and small Stage Manager windows report `.compact`
 and get the existing iPhone layout for free; the iPhone app is untouched.
 
-## Phase 0 - turn it on, fix breakage (shippable alone)
+## Phase 0 - turn it on, fix breakage (done)
 
 1. `project.yml`: `TARGETED_DEVICE_FAMILY: "1,2"` on Transit, TransitWidgets,
    TransitUITests. iPhone stays portrait; `UISupportedInterfaceOrientations~ipad`
@@ -23,13 +23,16 @@ and get the existing iPhone layout for free; the iPhone app is untouched.
    map camera insets on rotation; `shadSheet` detents (ignored on iPad);
    onboarding + deep-link covers.
 
-## Phase 1 - shell
+## Phase 1 - shell (done)
 
-- `TabView` `.tabViewStyle(.sidebarAdaptable)` behind `#available(iOS 18)`.
-- Resume journey: keep `ResumeJourneyCard` fallback on regular width
-  (`tabViewBottomAccessory` is an iPhone tab-bar thing).
-- Keyboard: ⌘1-4 tabs, ⌘F stop search, ⌘R refresh. `.hoverEffect()` on map
-  buttons/cards.
+- Sidebar: skipped. iPadOS 26 already shows the TabView as a top tab bar,
+  and with 4 tabs a sidebar adds little; `.sidebarAdaptable` wants the iOS 18
+  `Tab` API, i.e. a second copy of the tab shell while we support 17.2.
+- Resume journey: `ResumeJourneyCard` at regular width (the tab bar
+  accessory is for the iPhone's bottom bar); accessory unchanged on iPhone.
+- Go menu (`.commands`): ⌘1-4 tabs, ⌘F stop search (Home pops to root and
+  focuses it). ⌘R dropped - boards poll and have pull-to-refresh.
+- `.hoverEffect()` on `RecenterButton` / `FloatingBarButton`.
 
 ## Phase 2 - map screens get a side panel
 

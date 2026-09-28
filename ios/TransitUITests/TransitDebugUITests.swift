@@ -1503,11 +1503,85 @@ final class TransitDebugUITests: XCTestCase {
 
     // MARK: - iPad
 
+    /// iPad shell: the resume card at regular width (no tab bar accessory
+    /// there), ⌘F to stop search, ⌘3 to the Map tab.
+    func testIPadShell() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        sleep(2)
+        guard openJourneyDetail(tag: "shell") else { return XCTFail("no journey found") }
+        app.buttons["Start this journey"].tap()
+        sleep(3)
+        app.buttons["Minimise"].tap()
+        sleep(2)
+        tab("Home").tap()
+        sleep(2)
+        attach("shell-01-resume-card")
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Resume journey")).firstMatch.exists, "no resume control")
+
+        app.typeKey("3", modifierFlags: .command)
+        sleep(2)
+        attach("shell-02-cmd3-map")
+        app.typeKey("f", modifierFlags: .command)
+        sleep(2)
+        attach("shell-03-cmdf-search")
+        XCTAssertTrue(app.textFields["Search for stop..."].hasKeyboardFocusCompat, "⌘F didn't focus stop search")
+    }
+
     /// A tab, whether it's in the iPhone's tab bar or the iPad's top tab
     /// bar / sidebar (which isn't a `tabBars` element).
     private func tab(_ name: String) -> XCUIElement {
         let inTabBar = app.tabBars.buttons[name]
         return inTabBar.exists ? inTabBar : app.buttons[name].firstMatch
+    }
+
+    /// Planner: Britomart -> Newmarket, first result, its detail screen.
+    /// Screenshots are prefixed with `tag`.
+    @discardableResult
+    private func openJourneyDetail(tag: String) -> Bool {
+        tab("Planner").tap()
+        sleep(1)
+        // A named origin rather than "My location", which sometimes
+        // wasn't offered in time.
+        let fromField = app.textFields.element(boundBy: 0)
+        if fromField.waitForExistence(timeout: 3) {
+            fromField.tap()
+            fromField.typeText("Britomart")
+            sleep(2)
+            let origin = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Britomart", "Resume")).firstMatch
+            if origin.waitForExistence(timeout: 5) { origin.tap() }
+        }
+        sleep(1)
+        let toField = app.textFields.element(boundBy: 1)
+        if toField.waitForExistence(timeout: 3) {
+            toField.tap()
+            toField.typeText("Newmarket")
+            sleep(2)
+            let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
+            if result.waitForExistence(timeout: 5) { result.tap() }
+        }
+        sleep(1)
+        let planButton = app.buttons["Plan journey"]
+        guard planButton.waitForExistence(timeout: 5) else { return false }
+        planButton.tap()
+        sleep(4)
+        attach("\(tag)-05-results")
+
+        // A results card: "17 min ... Direct" / "... 1 transfer" - not
+        // the Options row, whose summary also says "transfers".
+        let firstResult = app.descendants(matching: .any).matching(NSPredicate(
+            format: "label CONTAINS[c] %@ AND (label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@",
+            "min", "Direct", "transfer", "Options"
+        )).firstMatch
+        guard firstResult.waitForExistence(timeout: 8) else {
+            attach("\(tag)-06-no-results")
+            return false
+        }
+        firstResult.tap()
+        sleep(2)
+        attach("\(tag)-06-detail")
+        return true
     }
 
     /// iPad walkthrough in both orientations: Home, a stop board, a
@@ -1545,47 +1619,7 @@ final class TransitDebugUITests: XCTestCase {
             sleep(3)
             attach("ipad-\(tag)-04-map")
 
-            tab("Planner").tap()
-            sleep(1)
-            // A named origin rather than "My location", which sometimes
-            // wasn't offered in time.
-            let fromField = app.textFields.element(boundBy: 0)
-            if fromField.waitForExistence(timeout: 3) {
-                fromField.tap()
-                fromField.typeText("Britomart")
-                sleep(2)
-                let origin = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Britomart", "Resume")).firstMatch
-                if origin.waitForExistence(timeout: 5) { origin.tap() }
-            }
-            sleep(1)
-            let toField = app.textFields.element(boundBy: 1)
-            if toField.waitForExistence(timeout: 3) {
-                toField.tap()
-                toField.typeText("Newmarket")
-                sleep(2)
-                let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
-                if result.waitForExistence(timeout: 5) { result.tap() }
-            }
-            sleep(1)
-            let planButton = app.buttons["Plan journey"]
-            guard planButton.waitForExistence(timeout: 5) else { continue }
-            planButton.tap()
-            sleep(4)
-            attach("ipad-\(tag)-05-results")
-
-            // A results card: "17 min ... Direct" / "... 1 transfer" - not
-            // the Options row, whose summary also says "transfers".
-            let firstResult = app.descendants(matching: .any).matching(NSPredicate(
-                format: "label CONTAINS[c] %@ AND (label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@",
-                "min", "Direct", "transfer", "Options"
-            )).firstMatch
-            guard firstResult.waitForExistence(timeout: 8) else {
-                attach("ipad-\(tag)-06-no-results")
-                continue
-            }
-            firstResult.tap()
-            sleep(2)
-            attach("ipad-\(tag)-06-detail")
+            guard openJourneyDetail(tag: "ipad-\(tag)") else { continue }
 
             let startButton = app.buttons["Start this journey"]
             guard startButton.waitForExistence(timeout: 3) else { continue }
@@ -1607,4 +1641,10 @@ final class TransitDebugUITests: XCTestCase {
             app.terminate()
         }
     }
+}
+
+private extension XCUIElement {
+    /// Whether this field has keyboard focus (with a hardware keyboard
+    /// there's no on-screen keyboard to look for).
+    var hasKeyboardFocusCompat: Bool { (value(forKey: "hasKeyboardFocus") as? Bool) ?? false }
 }

@@ -246,11 +246,27 @@ extension View {
         modifier(ResumeJourneyAccessoryModifier())
     }
 
-    /// On each tab's root - the pre-iOS 26.1 fallback; does nothing where
-    /// the tab bar accessory is available.
+    /// On each tab's root - the card, where the tab bar accessory isn't
+    /// used: before iOS 26.1, and at regular width (iPad), where the tab
+    /// bar sits at the top and there's no bottom bar to attach to.
     func resumeJourneyInset() -> some View {
-        safeAreaInset(edge: .bottom, spacing: 0) {
-            if #unavailable(iOS 26.1) {
+        modifier(ResumeJourneyInsetModifier())
+    }
+}
+
+/// Whether the resume control is the tab bar's accessory (true) or the
+/// docked card (false).
+private func usesResumeAccessory(_ sizeClass: UserInterfaceSizeClass?) -> Bool {
+    guard #available(iOS 26.1, *) else { return false }
+    return sizeClass != .regular
+}
+
+private struct ResumeJourneyInsetModifier: ViewModifier {
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
+            if !usesResumeAccessory(horizontalSizeClass) {
                 ResumeJourneyCard().padding(.bottom, 8)
             }
         }
@@ -276,13 +292,14 @@ private struct ResumeJourneyAccessoryModifier: ViewModifier {
     @Environment(DeepLinkRouter.self) private var router
     @Query(sort: \ActiveJourney.startedAt, order: .reverse) private var journeys: [ActiveJourney]
     @AppStorage("dismissedResumePlanID") private var dismissedPlanID = ""
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var now = Date()
 
     func body(content: Content) -> some View {
         let journey = ResumeJourneyVisibility.journey(journeys, dismissedPlanID: dismissedPlanID, router: router, now: now)
         Group {
             if #available(iOS 26.1, *) {
-                content.tabViewBottomAccessory(isEnabled: journey != nil) {
+                content.tabViewBottomAccessory(isEnabled: journey != nil && usesResumeAccessory(horizontalSizeClass)) {
                     if let journey {
                         ResumeJourneyAccessoryContent(journey: journey) { dismissedPlanID = journey.planID }
                     }
