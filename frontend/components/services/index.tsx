@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import {
     AccessibilityIcon,
+    Bell,
     BikeIcon,
     ChevronDown,
     ChevronRight,
     ChevronUp,
     ClockIcon,
+    History,
     InfoIcon,
     MapPinIcon,
     WaypointsIcon,
@@ -16,7 +18,9 @@ import { getOccupancyShort } from "./occupancy"
 import ServiceTrackerView from "./tracker/panel"
 import type { PreviewData } from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
-import { cn, fullyEncodeURIComponent, useIsMobile } from "@/lib/utils"
+import { cn, fullyEncodeURIComponent, useIsMobile, useOnlineStatus } from "@/lib/utils"
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../ui/context-menu"
+import { StopReminderDialog } from "./stop-reminder-dialog"
 import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
@@ -25,6 +29,50 @@ import { motion, AnimatePresence } from "framer-motion"
 interface ServicesProps {
     stopName: string
     filterDate: Date | undefined
+    /**
+     * Hands a tapped departure to the parent instead of opening the tracker
+     * here - the /map side panel shows it in the panel, over the page's map.
+     */
+    onOpenService?: (target: ServiceTrackerTarget) => void
+    /** The service the parent is showing, highlighted in the list. */
+    openTripId?: string
+}
+
+/** What ServiceTrackerView needs to open one departure. */
+export interface ServiceTrackerTarget {
+    tripId: string
+    has: boolean
+    tripUpdateTracking: boolean
+    currentStop: {
+        parent_stop_id: string
+        child_stop_id: string
+        lat: number
+        lon: number
+        name: string
+    }
+    previewData: PreviewData
+}
+
+function trackerTargetFor(service: Service): ServiceTrackerTarget {
+    return {
+        tripId: service.trip_id,
+        has: service.location_tracking,
+        tripUpdateTracking: service.trip_update_tracking,
+        currentStop: {
+            parent_stop_id: service.stop.parent_stop_id,
+            child_stop_id: service.stop.child_stop_id,
+            lat: service.stop.lat,
+            lon: service.stop.lon,
+            name: service.stop.name,
+        },
+        previewData: {
+            tripHeadsign: service.headsign,
+            route_id: service.route.id,
+            route_name: service.route.name,
+            trip_id: service.trip_id,
+            route_color: service.route.color,
+        } as PreviewData,
+    }
 }
 
 export interface Service {
@@ -73,7 +121,7 @@ type PlatformFilter = {
 
 const REFRESH_INTERVAL = 10
 
-export default function Services({ stopName, filterDate }: ServicesProps) {
+export default function Services({ stopName, filterDate, onOpenService, openTripId }: ServicesProps) {
     const [services, setServices] = useState<Service[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [errorTrace, setErrorTrace] = useState("")
@@ -82,6 +130,12 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
     const displayingSchedulePreview = filterDate ? true : false
     const [showAllPlatforms, setShowAllPlatforms] = useState(false)
     const [selectedService, setSelectedService] = useState<Service | null>(null)
+    const [reminderFor, setReminderFor] = useState<Service | null>(null)
+    /** When the departures last came back - shown once refreshes start failing, so a frozen board doesn't pass for live. */
+    const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+    const [refreshFailed, setRefreshFailed] = useState(false)
+    const retryRef = useRef<(() => void) | null>(null)
+    const online = useOnlineStatus()
     const isMobile = useIsMobile()
 
     const getUniquePlatforms = (services: Service[]) => {
@@ -110,8 +164,11 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         // after this effect re-runs for a new one - `cancelled` stops it from
         // clobbering the new stop's services with the old stop's response.
         let cancelled = false
+        let hasData = false
 
         setServices([])
+        setLastUpdated(null)
+        setRefreshFailed(false)
         setPlatformFilter({ type: 'platforms', value: "all" })
         setSelectedService(null)
         setIsInitialLoading(true)
@@ -124,9 +181,15 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
             )
             if (cancelled) return
             if (req.ok) {
+                hasData = true
                 setServices(req.data)
                 setIsInitialLoading(false)
                 setErrorMessage("")
+                setLastUpdated(new Date())
+                setRefreshFailed(false)
+            } else if (hasData && req.status_code !== 404) {
+                // Keep the last good board and say how old it is.
+                setRefreshFailed(true)
             } else {
                 setErrorTrace(req.trace_id || "")
                 if (req.status_code === 404) {
@@ -148,6 +211,7 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         }
 
         startAutoRefresh()
+        retryRef.current = () => fetchServices(filterDate)
 
         const handleVisibilityChange = () => {
             if (document.visibilityState === "visible") {
@@ -198,30 +262,27 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
         : uniquePlatforms.platforms
 
     const visibleServices = sortServices(services, platformFilter)
+    const isStale = !filterDate && (refreshFailed || !online) && lastUpdated !== null
 
-    const trackerProps = selectedService && {
-        tripId: selectedService.trip_id,
-        has: selectedService.location_tracking,
-        tripUpdateTracking: selectedService.trip_update_tracking,
-        currentStop: {
-            parent_stop_id: selectedService.stop.parent_stop_id,
-            child_stop_id: selectedService.stop.child_stop_id,
-            lat: selectedService.stop.lat,
-            lon: selectedService.stop.lon,
-            name: selectedService.stop.name,
-        },
-        previewData: {
-            tripHeadsign: selectedService.headsign,
-            route_id: selectedService.route.id,
-            route_name: selectedService.route.name,
-            trip_id: selectedService.trip_id,
-            route_color: selectedService.route.color,
-        } as PreviewData,
-    }
+    const trackerProps = selectedService && trackerTargetFor(selectedService)
 
     return (
         <div className="mx-auto w-full max-w-2xl px-4 pb-10">
             <div className="min-w-0 flex-1">
+                {isStale && (
+                    <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-300" role="status">
+                        <History className="h-3.5 w-3.5 shrink-0" />
+                        <span className="flex-1">
+                            {online ? "Couldn't refresh" : "You're offline"} · times as of{" "}
+                            {lastUpdated!.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                        </span>
+                        {online && (
+                            <button type="button" onClick={() => retryRef.current?.()} className="font-medium underline-offset-2 hover:underline">
+                                Retry
+                            </button>
+                        )}
+                    </div>
+                )}
                 {uniquePlatforms.platforms.length > 1 && (
                     <section className="mb-3" aria-labelledby="platform-filter-heading">
                         <h2 id="platform-filter-heading" className="sr-only">
@@ -290,8 +351,9 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
                                         <ServiceRow
                                             service={service}
                                             displayingSchedulePreview={displayingSchedulePreview}
-                                            selected={selectedService?.trip_id === service.trip_id}
-                                            onOpen={() => setSelectedService(service)}
+                                            selected={(openTripId ?? selectedService?.trip_id) === service.trip_id}
+                                            onOpen={() => onOpenService ? onOpenService(trackerTargetFor(service)) : setSelectedService(service)}
+                                            onRemind={() => setReminderFor(service)}
                                         />
                                     </motion.li>
                                 ))}
@@ -302,6 +364,17 @@ export default function Services({ stopName, filterDate }: ServicesProps) {
 
                 <IconKey />
             </div>
+
+            <StopReminderDialog
+                offersGetOff={false}
+                target={reminderFor && {
+                    tripId: reminderFor.trip_id,
+                    parentStopId: reminderFor.stop.parent_stop_id,
+                    stopName: reminderFor.stop.name,
+                    serviceLabel: `${reminderFor.route.name} to ${formatTextToNiceLookingWords(reminderFor.headsign)}`,
+                }}
+                onOpenChange={(open) => { if (!open) setReminderFor(null) }}
+            />
 
             {selectedService && trackerProps && (
                 <ServiceTrackerView
@@ -351,11 +424,14 @@ function ServiceRow({
     displayingSchedulePreview,
     selected,
     onOpen,
+    onRemind,
 }: {
     service: Service
     displayingSchedulePreview: boolean
     selected: boolean
     onOpen: () => void
+    /** "Remind me before it arrives" - right-click, or long-press on touch (the iOS row's context menu). */
+    onRemind: () => void
 }) {
     const isCanceled = service.canceled
     const isSkipped = service.skipped
@@ -501,17 +577,27 @@ function ServiceRow({
     }
 
     return (
-        <button
-            type="button"
-            onClick={onOpen}
-            aria-label={`Track ${service.route.name} to ${formatTextToNiceLookingWords(service.headsign)}`}
-            className={cn(
-                "block w-full transition-colors hover:bg-muted/50 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-                selected && "bg-accent ring-1 ring-inset ring-border",
-            )}
-        >
-            {inner}
-        </button>
+        <ContextMenu>
+            <ContextMenuTrigger asChild>
+                <button
+                    type="button"
+                    onClick={onOpen}
+                    aria-label={`Track ${service.route.name} to ${formatTextToNiceLookingWords(service.headsign)}`}
+                    className={cn(
+                        "block w-full select-none transition-colors hover:bg-muted/50 active:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [-webkit-touch-callout:none]",
+                        selected && "bg-accent ring-1 ring-inset ring-border",
+                    )}
+                >
+                    {inner}
+                </button>
+            </ContextMenuTrigger>
+            <ContextMenuContent>
+                <ContextMenuItem onSelect={onRemind} className="gap-2">
+                    <Bell className="h-3.5 w-3.5" />
+                    Remind me before it arrives
+                </ContextMenuItem>
+            </ContextMenuContent>
+        </ContextMenu>
     )
 }
 

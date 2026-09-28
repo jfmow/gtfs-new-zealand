@@ -34,6 +34,8 @@ export interface ServiceTrackerContextValue {
      * flow with a full-screen page and pins the reminder actions to the bottom.
      */
     stopsLayout?: "inset" | "page"
+    /** Route alerts live in the floating buttons over the map (phone sheet), not inline. */
+    alertsInChrome?: boolean
 }
 
 const ServiceTrackerContext = createContext<ServiceTrackerContextValue | null>(null)

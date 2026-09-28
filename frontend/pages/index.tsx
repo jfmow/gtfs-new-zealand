@@ -1,86 +1,57 @@
-import Favorites, { AddToFavorites } from "@/components/stops/favourites";
-import NavigateToStop from "@/components/stops/navigate-to-stop";
 import SearchForStop from "@/components/stops/search";
-import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/ui/date-picker";
-import { useQueryParams } from "@/lib/url-params";
-import { MessageCircleWarningIcon } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import SavedStopsSection from "@/components/stops/favourites";
+import { StopBoardPage } from "@/components/stops/stop-board";
 import { Header } from "@/components/nav";
-import { NearbyStops } from "@/components/home/nearby-stops";
+import { NearbySection } from "@/components/home/nearby-stops";
+import { SavedTripsSection } from "@/components/home/saved-trips-section";
 import { SavedPlacesRow } from "@/components/places/places";
+import { useUrlOverlay } from "@/lib/url-overlay";
+import { useOnlineStatus } from "@/lib/utils";
+import { WifiOff } from "lucide-react";
+import { FirstVisitCard } from "@/components/home/first-visit-card";
 
-const Services = lazy(() => import("@/components/services"))
-const StopsMap = lazy(() => import("./stops").then(module => ({ default: module.StopsMap })))
-
+/**
+ * The Schedule tab - the iOS Home tab: stop search, then Places, Saved
+ * stops, Saved trips and Nearby (two columns on wide screens). A stop's
+ * board (`?s=`) takes over the tab, with a back button to here.
+ */
 export default function Home() {
-  const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s"] } });
-  const [selectedStop, setSelectedStop] = useState<string>("");
-  const [selectedDate, setSelectedDate] = useState<Date | undefined>()
+  const board = useUrlOverlay("s");
+  const online = useOnlineStatus();
 
-  useEffect(() => {
-    setSelectedStop(selected_stop.value);
-  }, [selected_stop]);
+  if (board.value !== "") {
+    return (
+      <>
+        <Header title={`${board.value} — departures`} />
+        <StopBoardPage stopQuery={board.value} title={board.value} backLabel="Schedule" onClose={board.close} />
+      </>
+    );
+  }
 
   return (
     <>
       <Header title="Train, Bus, Ferry — Find your next journey" />
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-7 px-4 pb-8">
+        <SearchForStop />
 
-      {selectedStop === "" ? (
-        <div className="flex flex-col flex-grow h-[calc(100svh-4rem)] overflow-hidden md:h-auto md:overflow-visible">
-          <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4 shrink-0">
-            <div className="flex gap-2 items-center w-full">
-              <SearchForStop />
-            </div>
-            <div className="mt-3">
-              <SavedPlacesRow />
-            </div>
-            <div className="mt-3">
-              <Favorites />
-            </div>
+        <FirstVisitCard />
+
+        {!online && (
+          <p className="flex items-center gap-2 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700/50 dark:bg-amber-950/30 dark:text-amber-300">
+            <WifiOff className="h-3.5 w-3.5" /> You&apos;re offline - departures will update when you&apos;re back online.
+          </p>
+        )}
+
+        {/* Your things on the left, what's around you on the right. */}
+        <div className="grid gap-7 lg:grid-cols-2 lg:gap-8">
+          <div className="flex min-w-0 flex-col gap-7">
+            <SavedPlacesRow />
+            <SavedStopsSection />
+            <SavedTripsSection />
           </div>
-
-          <div className="flex flex-col flex-grow min-h-0 px-4 pb-4 max-w-[1400px] mx-auto w-full gap-4">
-            <div className="shrink-0">
-              <div className="flex items-center gap-1.5 mb-1.5">
-                <span className="live-dot h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />
-                <h2 className="text-xs font-display uppercase tracking-wide text-muted-foreground">Near you</h2>
-              </div>
-              <NearbyStops />
-            </div>
-
-            <div className="flex flex-col flex-grow min-h-0 md:min-h-[400px]">
-              <Suspense fallback={null}>
-                <StopsMap buttonPosition="bottom" />
-              </Suspense>
-            </div>
-          </div>
+          <NearbySection className="min-w-0" />
         </div>
-      ) : (
-        <>
-          <div className="mx-auto w-full max-w-[1400px] flex flex-col px-4 pb-4">
-            <div className="flex gap-2 items-center w-full">
-              <SearchForStop />
-              <DatePicker onChange={(date) => setSelectedDate(date)} />
-              <NavigateToStop stopName={selectedStop} />
-              <Button
-                aria-label="Travel alerts"
-                variant="outline"
-                size="icon"
-                className="flex-shrink-0"
-                onClick={() => { window.location.href = `/alerts?s=${selectedStop}` }}
-              >
-                <MessageCircleWarningIcon className="w-4 h-4" />
-              </Button>
-              <AddToFavorites stopName={selectedStop} />
-            </div>
-          </div>
-
-          <Suspense fallback={null}>
-            <Services filterDate={selectedDate} stopName={selectedStop} />
-          </Suspense>
-        </>
-      )}
+      </div>
     </>
   );
 }

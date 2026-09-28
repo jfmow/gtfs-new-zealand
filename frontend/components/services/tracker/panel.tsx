@@ -8,6 +8,7 @@ import LoadingSpinner from "../../loading-spinner"
 import ServiceTrackerContent from "./body"
 import TrackerMap from "./tracker-map"
 import TrackerMobileSheet from "./mobile-sheet"
+import { MapSidePanel, MapSidePanelHeader, MAP_SIDE_PANEL_OCCUPIED_WIDTH } from "../../map/map-side-panel"
 import { useServiceTracker, ServiceTrackerProvider } from "./use-service-tracker"
 import type { PreviewData } from "."
 
@@ -31,12 +32,13 @@ interface ServiceTrackerViewProps {
     hideMap?: boolean
     onClose: () => void
     /**
-     * "panel" docks beside an existing view (desktop); "sheet" is the map-first
+     * "panel" floats on the left of a full-bleed page map (desktop), bringing its
+     * own map over the page's when `hasOwnMap`; "sheet" is the map-first
      * mobile drawer; "dialog" is the desktop split (map + detail); "page" is the
      * legacy full-screen mobile view.
      */
     variant?: Variant
-    /** For "sheet": render the tracker's own full-screen map behind the drawer. Off when the page already shows one (e.g. /vehicles). */
+    /** For "sheet" and "panel": render the tracker's own map behind it. Off when the page's map already shows the vehicle (/map vehicles mode). */
     hasOwnMap?: boolean
     /** Label for the back/close affordance, e.g. "Departures". */
     backLabel?: string
@@ -82,6 +84,7 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
                 refreshing,
                 hideMap: resolvedHideMap,
                 stopsLayout,
+                alertsInChrome: variant === "sheet" && hasOwnMap,
             }}
         >
             {children}
@@ -166,17 +169,37 @@ const ServiceTrackerView = memo(function ServiceTrackerView({
         )
     }
 
-    // "panel" - docked beside a full-page map on desktop.
+    // "panel" - floating on the left of a full-bleed page map (desktop).
+    const hasBack = backLabel !== "Back"
     return withProvider(
-        <aside className="flex h-full max-h-full w-[400px] max-w-[38vw] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background">
-            <div className="flex items-center justify-between border-b border-border p-3">
-                <span className="text-sm font-medium text-muted-foreground">Live tracker</span>
-                <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close tracker">
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
-            <div className="flex-1 overflow-y-auto overscroll-contain p-4">{detail}</div>
-        </aside>,
+        <>
+            {hasOwnMap && ready && (
+                <div className="absolute inset-0 z-10">
+                    <TrackerMap height="100%" padding={{ left: MAP_SIDE_PANEL_OCCUPIED_WIDTH }} />
+                </div>
+            )}
+            <MapSidePanel>
+                <MapSidePanelHeader
+                    title={hasBack ? "" : "Live tracker"}
+                    leading={hasBack ? (
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                            {backLabel}
+                        </button>
+                    ) : undefined}
+                    actions={hasBack ? undefined : (
+                        <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close tracker">
+                            <X className="h-4 w-4" />
+                        </Button>
+                    )}
+                />
+                <div className="flex-1 overflow-y-auto overscroll-contain p-4">{detail}</div>
+            </MapSidePanel>
+        </>,
     )
 })
 

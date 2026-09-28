@@ -253,6 +253,8 @@ export interface JourneyReminderInput {
     walkSpeed: string
     maxTransfers: string
     onlyRoutes?: string[]
+    /** "bus,train,ferry" subset - empty/absent means any transport. */
+    modes?: string
     offsets: number[]
     recurrence?: string
     recurrenceUntil?: string
@@ -301,6 +303,7 @@ export async function addJourneyReminder(
     form.set("walkSpeed", p.walkSpeed)
     form.set("maxTransfers", p.maxTransfers)
     if (p.onlyRoutes && p.onlyRoutes.length > 0) form.set("onlyRoutes", JSON.stringify(p.onlyRoutes))
+    if (p.modes) form.set("modes", p.modes)
     form.set("offsets", JSON.stringify(p.offsets))
     if (p.recurrence) form.set("recurrence", p.recurrence)
     if (p.recurrenceUntil) form.set("recurrenceUntil", p.recurrenceUntil)
@@ -493,7 +496,8 @@ export async function checkRouteSubscription(routeId: string): Promise<{ has: bo
     return match ? { has: true, subscription: match } : { has: false }
 }
 
-async function ensureSubscription(): Promise<PushSubscription | undefined> {
+/** This browser's push subscription, created if permission allows. */
+export async function ensureSubscription(): Promise<PushSubscription | undefined> {
     const existing = await (await getSwRegistration()).pushManager.getSubscription()
     if (existing) return existing
     const state = await getNotificationPermissionState()

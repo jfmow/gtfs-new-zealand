@@ -14,6 +14,8 @@ interface StopPreviewCardProps {
     code?: string
     meta?: string
     className?: string
+    /** Where tapping it goes - the stop's board on the Schedule tab by default. */
+    href?: string
 }
 
 /** Fetches the soonest upcoming departures for a stop, sorted and capped to `limit`. */
@@ -47,12 +49,12 @@ export function useNextDepartures(stopId: string, limit = 2) {
     return { services, error }
 }
 
-export function StopPreviewCard({ stopId, label, code, meta, className }: StopPreviewCardProps) {
+export function StopPreviewCard({ stopId, label, code, meta, className, href }: StopPreviewCardProps) {
     const { services, error } = useNextDepartures(stopId, 2)
 
     return (
         <Link
-            href={`/?s=${encodeURIComponent(stopId)}`}
+            href={href ?? `/?s=${encodeURIComponent(stopId)}`}
             className={cn(
                 "flex flex-col gap-2 rounded-md border border-border bg-card p-3 hover:border-primary/50 transition-colors min-w-0",
                 className

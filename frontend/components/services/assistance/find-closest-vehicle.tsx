@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -15,12 +15,15 @@ export interface ClosestVehicle {
     tripId: string
 }
 
-function FindCurrentVehicle() {
+/** Opened from the header menu (controlled, no trigger of its own) or, with no props, from its own button. */
+function FindCurrentVehicle({ open, onOpenChange }: { open?: boolean; onOpenChange?: (open: boolean) => void } = {}) {
     const [vehicles, setVehicles] = useState<ClosestVehicle[]>([])
     const [errorMessage, setErrorMessage] = useState("")
     const [traceId, setTraceId] = useState("")
     const [isLoading, setIsLoading] = useState(false)
-    const [isOpen, setIsOpen] = useState(false)
+    const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
+    const isControlled = open !== undefined
+    const isOpen = isControlled ? open : uncontrolledOpen
 
     async function getVehicle() {
         setIsLoading(true)
@@ -79,21 +82,27 @@ function FindCurrentVehicle() {
         }
     }
 
-    const handleDialogOpen = (open: boolean) => {
-        setIsOpen(open)
-        if (open) {
-            getVehicle()
-        }
+    const handleDialogOpen = (next: boolean) => {
+        if (isControlled) onOpenChange?.(next)
+        else setUncontrolledOpen(next)
     }
+
+    // Look again each time it opens - however it was opened.
+    useEffect(() => {
+        if (isOpen) getVehicle()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isOpen])
 
     return (
         <Dialog open={isOpen} onOpenChange={handleDialogOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                    <Locate className="w-4 h-4" />
-                    Find My Vehicle
-                </Button>
-            </DialogTrigger>
+            {!isControlled && (
+                <DialogTrigger asChild>
+                    <Button>
+                        <Locate className="w-4 h-4" />
+                        Find My Vehicle
+                    </Button>
+                </DialogTrigger>
+            )}
             <DialogContent className="max-w-md">
                 <DialogHeader>
                     <DialogTitle>Find Your Current Vehicle</DialogTitle>

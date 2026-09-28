@@ -39,6 +39,22 @@ interface MapProps {
     /** Flips false→true once (e.g. when live tracking starts) to fly the map into a close zoom on zoomInCenter - a one-shot trigger, not a held state. */
     zoomInTrigger?: boolean
     zoomInCenter?: LatLng
+    /** No +/- buttons (phones pinch - the iOS map has none either). */
+    hideZoomControls?: boolean
+    /** Square corners, for a map that fills the page edge to edge. Default rounded. */
+    square?: boolean
+    /**
+     * Frame these points whenever `key` changes (e.g. the rider picks another
+     * journey) - `defaultZoom` only applies when the map is first created.
+     * `padding` keeps them clear of overlays such as a bottom drawer.
+     */
+    fitTo?: { key: string; points: LatLng[]; padding?: { top?: number; right?: number; bottom?: number; left?: number } }
+    /** Stop auto-panning to `followMarkerId` (the rider moved the map); set back to false to resume. */
+    followPaused?: boolean
+    /** The rider panned or zoomed the map themselves. */
+    onUserMove?: () => void
+    /** Screen space covered by overlays (e.g. a side panel) - the camera centres, follows and fits within the rest. */
+    padding?: { top?: number; right?: number; bottom?: number; left?: number }
 }
 
 interface MapOptions {
@@ -63,6 +79,12 @@ export default function MapComp({
     followFitWith,
     zoomInTrigger,
     zoomInCenter,
+    hideZoomControls,
+    square,
+    padding,
+    followPaused,
+    onUserMove,
+    fitTo,
 }: MapProps) {
     const { currentUrl } = useUrl();
     const { resolvedTheme } = useTheme();
@@ -74,11 +96,14 @@ export default function MapComp({
     const markerManagerRef = useRef<MarkerManager | null>(null);
     const userRef = useRef<{ marker: maplibregl.Marker | null; control: maplibregl.IControl | null }>({ marker: null, control: null });
     const zoomButtonsRef = useRef<Record<string, maplibregl.IControl>>({});
+    const zoomControlsRef = useRef<maplibregl.IControl[]>([]);
     const readyRef = useRef(false);
     const [ready, setReady] = React.useState(false);
 
     // Kept current every render so the async callbacks below never need re-subscribing.
     const onLocationUpdateRef = useRef(onLocationUpdate);
+    const onUserMoveRef = useRef(onUserMove);
+    onUserMoveRef.current = onUserMove;
     const followUserRef = useRef(followUser);
     const followFitWithRef = useRef(followFitWith);
     const themeRef = useRef(theme);
@@ -130,9 +155,11 @@ export default function MapComp({
 
         // Controls need neither style nor tiles - add them now so the buttons are
         // there from the first frame instead of only after tiles finish loading.
-        addZoomControls(map, buttonPos === "bottom" ? "bottom-left" : "top-left");
+        if (!hideZoomControls) zoomControlsRef.current = addZoomControls(map, buttonPos === "bottom" ? "bottom-left" : "top-left");
         basemap.addControl(buttonPos === "bottom" ? "bottom-right" : "top-right");
         if (onMapClick) map.on("click", (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
+        // Only gestures carry an originalEvent - not our own panTo/fitBounds.
+        map.on("movestart", (e) => { if ((e as { originalEvent?: unknown }).originalEvent) onUserMoveRef.current?.(); });
 
         // Gate marker/line setup on `style.load` (style parsed) rather than
         // `load` (which also waits for the first tiles) - markers are DOM
@@ -176,11 +203,60 @@ export default function MapComp({
             basemapRef.current = null;
             userRef.current = { marker: null, control: null };
             zoomButtonsRef.current = {};
+            zoomControlsRef.current = [];
             readyRef.current = false;
             setReady(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [map_id]);
+
+    // --- zoom buttons appear/disappear with the layout (phone <-> desktop) ---
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!map) return;
+        const has = zoomControlsRef.current.length > 0;
+        if (hideZoomControls && has) {
+            zoomControlsRef.current.forEach((c) => map.removeControl(c));
+            zoomControlsRef.current = [];
+        } else if (!hideZoomControls && !has) {
+            zoomControlsRef.current = addZoomControls(map, options?.buttonPosition === "bottom" ? "bottom-left" : "top-left");
+        }
+    }, [hideZoomControls, options?.buttonPosition]);
+
+    // --- camera padding (overlays covering part of the map) --------------
+    const padTop = padding?.top ?? 0;
+    const padRight = padding?.right ?? 0;
+    const padBottom = padding?.bottom ?? 0;
+    const padLeft = padding?.left ?? 0;
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!ready || !map) return;
+        map.easeTo({ padding: { top: padTop, right: padRight, bottom: padBottom, left: padLeft }, duration: 300 });
+    }, [ready, padTop, padRight, padBottom, padLeft]);
+
+    // --- refit when the thing being shown changes (fitTo.key) -------------
+    const fittedKey = useRef<string | null>(null);
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!ready || !map || !fitTo || fitTo.points.length === 0 || fittedKey.current === fitTo.key) return;
+        const first = fittedKey.current === null;
+        fittedKey.current = fitTo.key;
+        const bounds = new maplibregl.LngLatBounds();
+        for (const point of fitTo.points) bounds.extend(toLngLat(point));
+        if (bounds.isEmpty()) return;
+        const pad = fitTo.padding ?? {};
+        map.fitBounds(bounds, {
+            padding: {
+                top: FIT_PADDING + (pad.top ?? 0),
+                right: FIT_PADDING + (pad.right ?? 0),
+                bottom: FIT_PADDING + (pad.bottom ?? 0),
+                left: FIT_PADDING + (pad.left ?? 0),
+            },
+            maxZoom: 16,
+            // The first fit lands straight away; switching journeys glides.
+            duration: first ? 0 : 600,
+        });
+    }, [ready, fitTo]);
 
     // --- theme swap --------------------------------------------------------
     useEffect(() => {
@@ -250,7 +326,7 @@ export default function MapComp({
         }
 
         // Follow a moving marker.
-        if (followMarkerId) {
+        if (followMarkerId && !followPaused) {
             const target = mapItems.find((i) => i.id === followMarkerId);
             if (target) {
                 const fitWith = followFitWithRef.current;
@@ -274,7 +350,7 @@ export default function MapComp({
             addLineLayers(map);
             (map.getSource(WAYPOINT_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(waypointFc);
         });
-    }, [ready, mapItems, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId]);
+    }, [ready, mapItems, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId, followPaused]);
 
     // --- one-shot fly-in on zoomInTrigger false→true ---------------------
     const wasZoomInTriggered = useRef(false);
@@ -308,7 +384,7 @@ export default function MapComp({
                 width: "100%",
                 maxHeight: height ? "" : "50vh",
                 zIndex: 1,
-                borderRadius: "var(--radius)",
+                borderRadius: square ? 0 : "var(--radius)",
                 overflow: "hidden",
                 flexGrow: 1,
                 // Match the eventual basemap ground colour so there's no white
@@ -549,9 +625,13 @@ const ZOOM_IN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="
 const ZOOM_OUT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
 const LOCATE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>`;
 
-function addZoomControls(map: maplibregl.Map, position: maplibregl.ControlPosition) {
-    map.addControl(new ButtonControl(ZOOM_IN_SVG, () => map.zoomIn()), position);
-    map.addControl(new ButtonControl(ZOOM_OUT_SVG, () => map.zoomOut()), position);
+function addZoomControls(map: maplibregl.Map, position: maplibregl.ControlPosition): maplibregl.IControl[] {
+    const controls = [
+        new ButtonControl(ZOOM_IN_SVG, () => map.zoomIn()),
+        new ButtonControl(ZOOM_OUT_SVG, () => map.zoomOut()),
+    ];
+    controls.forEach((c) => map.addControl(c, position));
+    return controls;
 }
 
 function addUserMarker(

@@ -95,6 +95,44 @@
   stroke-width: 2px;
 }
 
+/* App chrome (components/nav.tsx). --tabbar-h is the height of the mobile
+   bottom tab bar, so pages that size themselves to the viewport can leave
+   room for it. `data-tabbar` is set on <html> while the bar shows;
+   `data-immersive` while a full-screen map (a tracker) hides it, the way
+   the iOS app hides its tab bar there. */
+:root {
+  --tabbar-h: 0px;
+}
+
+html[data-tabbar] {
+  --tabbar-h: calc(3.5rem + env(safe-area-inset-bottom));
+}
+
+html[data-immersive] {
+  --tabbar-h: 0px;
+}
+
+html[data-immersive] [data-hide-immersive] {
+  display: none;
+}
+
+html[data-journey-open] [data-resume-prompt] {
+  display: none;
+}
+
+/* The Map tab (pages/map.tsx): its corner buttons sit above the resume card
+   (--resume-h, set on <html>) and a stop's preview card (--map-card-h). */
+.map-page .maplibregl-ctrl-bottom-left,
+.map-page .maplibregl-ctrl-bottom-right {
+  margin-bottom: calc(var(--resume-h, 0px) + var(--map-card-h, 0px));
+  transition: margin-bottom 0.2s ease-out;
+}
+
+/* ...and the bottom-left ones clear an open side panel (components/map/map-side-panel.tsx). */
+.map-page:has(.map-side-panel) .maplibregl-ctrl-bottom-left {
+  margin-left: 424px;
+}
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;

@@ -60,7 +60,9 @@ export default function TripPage() {
                         <div className="rounded-md border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
                             This vehicle isn&apos;t currently live-tracked (the trip may have ended). Showing its scheduled stops.
                         </div>
-                        <StopsList tripId={tripId.value} stops={stops} stopTimes={stopTimes} />
+                        <ServiceTrackerProvider value={{ stops, stopTimes, tripId: tripId.value, refreshing }}>
+                            <StopsList tripId={tripId.value} stops={stops} stopTimes={stopTimes} />
+                        </ServiceTrackerProvider>
                     </div>
                 ) : (
                     <ErrorScreen errorTitle="Trip not found" errorText="This trip couldn't be found - the link may have expired." />

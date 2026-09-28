@@ -95,6 +95,16 @@ public enum DeepLink: Equatable, Sendable, Identifiable {
         case "", "stop":
             guard let stop = query["s"], !stop.isEmpty else { return nil }
             self = .stop(query: stop)
+        case "map":
+            // The web's Map tab: `/map?mode=vehicles&tripId=` (a tracked
+            // vehicle) or `/map?mode=stops&s=` (a stop's board).
+            if let tripID = query["tripId"], !tripID.isEmpty {
+                self = .trip(tripID: tripID, region: query["region"])
+            } else if let stop = query["s"], !stop.isEmpty {
+                self = .stop(query: stop)
+            } else {
+                return nil
+            }
         case "alerts":
             guard let stop = query["s"], !stop.isEmpty else { return nil }
             self = .stopAlerts(query: stop)

@@ -126,9 +126,13 @@ export function useIsMobile({ mobileWidth = 768, immediate = false }: UseMobileO
 
 /** Tracks the browser's own online/offline signal (e.g. flight mode, a dropped wifi/cell connection) - fast and free compared to waiting for a poll to fail. */
 export function useOnlineStatus(): boolean {
-  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine)
+  // Online until the browser says otherwise - read in the effect, not the
+  // initializer: Node 21+ has a global `navigator` without `onLine`, so the
+  // server would render "offline" and fail hydration.
+  const [online, setOnline] = useState(true)
 
   useEffect(() => {
+    setOnline(navigator.onLine)
     const goOnline = () => setOnline(true)
     const goOffline = () => setOnline(false)
     window.addEventListener("online", goOnline)

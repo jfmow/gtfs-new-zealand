@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
-import { BellDot, Clock, ChevronDown, ChevronUp } from "lucide-react"
+import { BellDot, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Loader2, LocateFixed, MessageCircleWarning, Star, X } from "lucide-react"
+import { useFavorites } from "@/components/stops/favourites"
+import type { Stop } from "@/components/map/stops-map"
+import { getUserLocation } from "@/lib/userLocation"
+import { useUrlOverlay } from "@/lib/url-overlay"
+import { cn } from "@/lib/utils"
 import { causeSeverityMap, type AlertResponseData } from "@/lib/alert-causes"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
@@ -19,67 +24,211 @@ interface AlertResponse {
     routes_to_display: string[]
 }
 
-type AlertByRouteId = Record<string, AlertType[]>;
+export type AlertByRouteId = Record<string, AlertType[]>;
 
-export default function Alerts() {
+/** A stop's alerts grouped by route, and the routes its alert subscription can pick from. */
+export function useStopAlerts(stopName: string, enabled = true) {
     const [alerts, setAlerts] = useState<AlertByRouteId>({})
-    const { selected_stop } = useQueryParams({ selected_stop: { type: "string", default: "", keys: ["s", "r"] } })
-    const [loading, setLoading] = useState(false)
     const [routes, setRoutes] = useState<string[]>([])
+    const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        if (selected_stop.found) {
-            setLoading(true)
-            ApiFetch<AlertResponse>(`realtime/alerts/${fullyEncodeURIComponent(selected_stop.value)}`).then(async (res) => {
-                if (res.ok) {
-                    setAlerts(res.data.alerts)
-                    setRoutes(res.data.routes_to_display)
-                    console.log(res.data)
-                } else {
-                    setAlerts({})
-                    setRoutes([])
-                }
-                setLoading(false)
-            })
-        }
-    }, [selected_stop])
+        if (!enabled || stopName === "") return
+        let cancelled = false
+        setLoading(true)
+        ApiFetch<AlertResponse>(`realtime/alerts/${fullyEncodeURIComponent(stopName)}`).then((res) => {
+            if (cancelled) return
+            setAlerts(res.ok ? res.data.alerts : {})
+            setRoutes(res.ok ? res.data.routes_to_display : [])
+            setLoading(false)
+        })
+        return () => { cancelled = true }
+    }, [stopName, enabled])
+
+    return { alerts, routes, loading }
+}
+
+/**
+ * The Alerts tab - the iOS Alerts tab: before a search, your saved stops and
+ * the nearest few, each with a one-line summary of its alerts; a chosen stop
+ * shows its alerts, with "Get alerts" and a way back. Two columns on wide
+ * screens (stops left, alerts right).
+ */
+export default function Alerts() {
+    const stop = useUrlOverlay("s")
+    const legacy = useQueryParams({ r: { type: "string", default: "", keys: ["r"] } }).r
+    const selected = stop.value || (legacy.found ? legacy.value : "")
+    const isWide = useMediaQuery("(min-width: 1024px)")
+
+    const overview = (
+        <div className="space-y-4">
+            <SearchForStop />
+            <AlertsOverview selected={selected} onSelect={stop.open} />
+        </div>
+    )
+
+    const detail = selected ? (
+        <SelectedStopAlerts key={selected} stopName={selected} onClear={stop.close} />
+    ) : (
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border px-6 py-16 text-center text-sm text-muted-foreground">
+            <MessageCircleWarning className="h-6 w-6" />
+            <p className="font-medium text-foreground">Travel alerts</p>
+            Pick one of your stops, or search for any stop.
+        </div>
+    )
 
     return (
         <>
             <Header title="Travel Alerts" />
-            <div className="w-full">
-                <div className="mx-auto max-w-[1400px] flex flex-col p-4 pt-0">
-                    <div className="flex items-center gap-2 mb-4">
-                        <StopNotifications stopName={selected_stop.value} routes={routes}>
-                            <Button variant={"secondary"}>
-                                <BellDot />
-                                <span className="hidden sm:block">Notifications</span>
-                            </Button>
-                        </StopNotifications>
-                        <SearchForStop />
-                    </div>
-                    {loading ? (
-                        <LoadingSpinner description="Loading alerts..." />
-                    ) : (
-                        <div className="">
-                            {selected_stop.found ? (
-                                <GroupedAlertsByRoute alerts={alerts} />
-                            ) : (
-                                <div className="col-span-full">
-                                    <div className="text-center py-8">
-                                        <p className="text-muted-foreground">Search for a stop to view alerts.</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
+            {isWide ? (
+                <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[400px_1fr] gap-8 px-4 pb-8">
+                    {overview}
+                    <div className="min-w-0">{detail}</div>
                 </div>
-            </div>
+            ) : (
+                <div className="mx-auto w-full max-w-2xl px-4 pb-8">
+                    {selected ? detail : overview}
+                </div>
+            )}
         </>
     )
 }
 
-function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
+function useMediaQuery(query: string) {
+    const [matches, setMatches] = useState(false)
+    useEffect(() => {
+        const mql = window.matchMedia(query)
+        const update = () => setMatches(mql.matches)
+        update()
+        mql.addEventListener("change", update)
+        return () => mql.removeEventListener("change", update)
+    }, [query])
+    return matches
+}
+
+/** The stop's name, "Get alerts" and clear, then its alerts by route. */
+function SelectedStopAlerts({ stopName, onClear }: { stopName: string; onClear: () => void }) {
+    const { alerts, routes, loading } = useStopAlerts(stopName)
+    return (
+        <div className="space-y-4">
+            <div className="flex items-center gap-2">
+                <h1 className="min-w-0 flex-1 text-xl font-semibold leading-tight">{stopName}</h1>
+                <StopNotifications stopName={stopName} routes={routes}>
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5">
+                        <BellDot className="h-3.5 w-3.5" /> Get alerts
+                    </Button>
+                </StopNotifications>
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Clear stop" onClick={onClear}>
+                    <X className="h-4 w-4" />
+                </Button>
+            </div>
+            {loading ? <LoadingSpinner description="Loading alerts..." height="200px" /> : <GroupedAlertsByRoute alerts={alerts} />}
+        </div>
+    )
+}
+
+/** Saved stops, then the nearest few (when location is already allowed - no prompt here). */
+function AlertsOverview({ selected, onSelect }: { selected: string; onSelect: (stop: string) => void }) {
+    const favourites = useFavorites()
+    const [nearby, setNearby] = useState<Stop[]>([])
+
+    useEffect(() => {
+        let cancelled = false
+        navigator.permissions?.query({ name: "geolocation" }).then((perm) => {
+            if (perm.state !== "granted") return
+            getUserLocation().then(([lat, lon]) =>
+                ApiFetch<Stop[]>(`stops/closest-stop?lat=${lat}&lon=${lon}`).then((res) => {
+                    if (!cancelled && res.ok) setNearby(res.data)
+                })
+            ).catch(() => { })
+        }, () => { })
+        return () => { cancelled = true }
+    }, [])
+
+    const entries: { query: string; title: string; saved: boolean }[] = []
+    const seen = new Set<string>()
+    for (const f of favourites) {
+        if (seen.has(f.stop)) continue
+        seen.add(f.stop)
+        entries.push({ query: f.stop, title: f.displayName, saved: true })
+    }
+    const names = new Set(entries.map((e) => e.title))
+    let nearbyCount = 0
+    for (const stop of nearby) {
+        const query = `${stop.stop_name} ${stop.stop_code}`
+        if (nearbyCount === 3 || names.has(stop.stop_name) || seen.has(query)) continue
+        names.add(stop.stop_name)
+        seen.add(query)
+        entries.push({ query, title: stop.stop_name, saved: false })
+        nearbyCount++
+    }
+
+    if (entries.length === 0) {
+        return <p className="py-8 text-center text-sm text-muted-foreground">Search for a stop to view alerts. Saved and nearby stops show up here.</p>
+    }
+    return (
+        <section className="space-y-2.5" aria-labelledby="alerts-your-stops">
+            <h2 id="alerts-your-stops" className="font-display text-xs uppercase tracking-wide text-muted-foreground">Your stops</h2>
+            {entries.map((entry) => (
+                <StopAlertsSummaryRow key={entry.query} {...entry} selected={entry.query === selected} onSelect={() => onSelect(entry.query)} />
+            ))}
+        </section>
+    )
+}
+
+/** "2 active, 1 upcoming" with the affected routes. */
+function StopAlertsSummaryRow({ query, title, saved, selected, onSelect }: { query: string; title: string; saved: boolean; selected: boolean; onSelect: () => void }) {
+    const { alerts, routes, loading } = useStopAlerts(query)
+    const [loadedOnce, setLoadedOnce] = useState(false)
+    useEffect(() => { if (!loading) setLoadedOnce(true) }, [loading])
+
+    let active = 0
+    let upcoming = 0
+    const affected: string[] = []
+    for (const route of routes) {
+        const kinds = (alerts[route] ?? []).map((a) => getAlertStatus(a).status)
+        active += kinds.filter((k) => k === "active").length
+        upcoming += kinds.filter((k) => k === "soon").length
+        if (kinds.some((k) => k !== "inactive")) affected.push(shortRouteName(route))
+    }
+    const counts = [active && `${active} active`, upcoming && `${upcoming} upcoming`].filter(Boolean).join(", ")
+
+    return (
+        <button
+            type="button"
+            onClick={onSelect}
+            aria-current={selected || undefined}
+            className={cn(
+                "flex w-full items-start gap-3 rounded-xl border bg-card p-3.5 text-left shadow-sm transition-colors hover:bg-accent/40",
+                selected ? "border-primary ring-1 ring-primary" : "border-border",
+            )}
+        >
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground" aria-hidden>
+                {saved ? <Star className="h-3.5 w-3.5 fill-current" /> : <LocateFixed className="h-3.5 w-3.5" />}
+            </span>
+            <span className="min-w-0 flex-1 space-y-1.5">
+                <span className="block text-sm font-medium">{title}</span>
+                {!loadedOnce || loading ? (
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Checking alerts</span>
+                ) : !counts ? (
+                    <span className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" /> No current alerts</span>
+                ) : (
+                    <>
+                        <span className={cn("block text-xs font-medium", active ? "text-destructive" : "text-amber-600 dark:text-amber-400")}>{counts}</span>
+                        <span className="flex flex-wrap gap-1">
+                            {affected.slice(0, 8).map((r) => (
+                                <span key={r} className="rounded bg-foreground/85 px-1.5 py-0.5 text-[11px] font-bold leading-4 text-background">{r}</span>
+                            ))}
+                        </span>
+                    </>
+                )}
+            </span>
+            <ChevronRight className="mt-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+        </button>
+    )
+}
+
+export function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
     const routes = Object.keys(alerts)
     const [openRoute, setOpenRoute] = useState<string>(routes[0] ?? "")
 
@@ -94,14 +243,14 @@ function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
     return (
         <div className="space-y-4">
             <Tabs value={openRoute} onValueChange={setOpenRoute}>
-                <TabsList className="flex flex-wrap h-auto gap-1 bg-transparent p-0 mb-4">
+                <TabsList className="flex flex-wrap justify-start h-auto gap-1 bg-transparent p-0 mb-4">
                     {routes.map((route) => (
                         <TabsTrigger
                             key={route}
                             value={route}
                             className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-full px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground"
                         >
-                            {route}
+                            {shortRouteName(route)}
                             <span className="text-[10px] opacity-70">{alerts[route].length}</span>
                         </TabsTrigger>
                     ))}
@@ -123,23 +272,31 @@ function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
 
 
 
+/** Active now, starting soon (within a week), or not relevant - the iOS `AlertStatusCalculator`. */
+export function getAlertStatus(alert: AlertType): { status: "active" | "soon" | "inactive"; label: string } {
+    const now = Date.now() / 1000
+    const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + 86400
+    if (alert.start_date <= now && endDate >= now) return { status: "active", label: "Active" }
+    if (alert.start_date > now) {
+        const daysUntil = Math.round((alert.start_date - now) / 86400)
+        if (daysUntil === 0) return { status: "soon", label: "Today" }
+        if (daysUntil === 1) return { status: "soon", label: "Tomorrow" }
+        if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil}d` }
+        return { status: "inactive", label: "Upcoming" }
+    }
+    return { status: "inactive", label: "Ended" }
+}
+
+/** Route ids carry a feed version suffix ("INN-202") that means nothing to a rider. */
+export function shortRouteName(routeId: string) {
+    const m = routeId.match(/^(.+)-\d+$/)
+    return m ? m[1] : routeId
+}
+
 function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent?: boolean }) {
     const [expanded, setExpanded] = useState(false)
     const canExpand = alert.description.length > 140
 
-    const getAlertStatus = (alert: AlertType) => {
-        const now = Date.now() / 1000
-        const endDate = alert.end_date && alert.end_date > 0 ? alert.end_date : now + 86400
-        if (alert.start_date <= now && endDate >= now) return { status: "active", label: "Active" }
-        if (alert.start_date > now) {
-            const daysUntil = Math.round((alert.start_date - now) / 86400)
-            if (daysUntil === 0) return { status: "soon", label: "Today" }
-            if (daysUntil === 1) return { status: "soon", label: "Tomorrow" }
-            if (daysUntil <= 7) return { status: "soon", label: `In ${daysUntil}d` }
-            return { status: "inactive", label: "Upcoming" }
-        }
-        return { status: "inactive", label: "Ended" }
-    }
 
     const formatDuration = (start: number, end: number) => {
         const s = new Date(start * 1000)
