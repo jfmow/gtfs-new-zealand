@@ -37,6 +37,18 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(DeepLink(string: "/vehicles?tripId=257-870006"), .trip(tripID: "257-870006", region: nil))
     }
 
+    func testMapPathWithTripIsATrip() {
+        XCTAssertEqual(DeepLink(string: "/map?mode=vehicles&tripId=257-870006"), .trip(tripID: "257-870006", region: nil))
+    }
+
+    func testMapPathWithStopIsABoard() {
+        XCTAssertEqual(DeepLink(string: "/map?mode=stops&s=Newmarket Train Station 9218"), .stop(query: "Newmarket Train Station 9218"))
+    }
+
+    func testBareMapPathFails() {
+        XCTAssertNil(DeepLink(string: "/map?mode=stops"))
+    }
+
     func testStopAlertsPath() {
         XCTAssertEqual(DeepLink(string: "/alerts?s=Newmarket Train Station 9218"), .stopAlerts(query: "Newmarket Train Station 9218"))
     }
