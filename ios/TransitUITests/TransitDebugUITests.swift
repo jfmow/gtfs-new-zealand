@@ -1503,6 +1503,47 @@ final class TransitDebugUITests: XCTestCase {
 
     // MARK: - iPad
 
+    /// iPad wide pages: Home's two columns, the Planner's results + detail
+    /// split (starting a journey from the detail column), Alerts' split.
+    func testIPadWidePages() throws {
+        for orientation in [UIDeviceOrientation.portrait, .landscapeLeft] {
+            let tag = orientation == .portrait ? "portrait" : "landscape"
+            XCUIDevice.shared.orientation = orientation
+            app.launch()
+            dismissSystemAlertIfPresent(timeout: 4)
+            sleep(4)
+            attach("wide-\(tag)-01-home")
+
+            if openJourneyDetail(tag: "wide-\(tag)") {
+                let start = app.buttons["Start this journey"]
+                XCTAssertTrue(start.waitForExistence(timeout: 3), "detail column missing")
+                start.tap()
+                sleep(3)
+                attach("wide-\(tag)-07-tracking")
+                if app.buttons["End"].waitForExistence(timeout: 3) {
+                    app.buttons["End"].tap()
+                    if app.buttons["End journey"].waitForExistence(timeout: 3) { app.buttons["End journey"].tap() }
+                    sleep(2)
+                    attach("wide-\(tag)-08-after-end")
+                }
+            }
+
+            tab("Alerts").tap()
+            sleep(3)
+            attach("wide-\(tag)-09-alerts")
+            let search = app.textFields["Search for stop..."]
+            if search.waitForExistence(timeout: 3) {
+                search.tap()
+                search.typeText("Britomart")
+                sleep(2)
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Britomart")).firstMatch.tap()
+                sleep(3)
+                attach("wide-\(tag)-10-alerts-selected")
+            }
+            app.terminate()
+        }
+    }
+
     /// iPad Map tab: a tapped stop's board opens in the side panel (map
     /// still showing), a departure from it opens the service tracker (its
     /// own side panel), and Back returns to the board in the panel.

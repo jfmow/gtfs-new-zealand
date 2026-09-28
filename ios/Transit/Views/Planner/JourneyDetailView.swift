@@ -13,6 +13,9 @@ struct JourneyDetailView: View {
     var context: PlannerSearchContext?
     /// Shown inside a link's full-screen cover rather than the Planner tab.
     var presentedFromLink = false
+    /// The Planner's detail column on iPad, beside the results - not a
+    /// screen of its own, so it leaves the navigation title to the Planner.
+    var isEmbedded = false
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
@@ -28,7 +31,7 @@ struct JourneyDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 TransitMapView(waypoints: waypoints, polylines: polylines, camera: .fitAll)
-                    .frame(height: 240)
+                    .frame(height: isEmbedded ? 340 : 240)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
 
@@ -65,8 +68,9 @@ struct JourneyDetailView: View {
             .readableContentWidth()
         }
         .pageBackground()
-        .navigationTitle("Journey")
-        .navigationBarTitleDisplayMode(.inline)
+        .if(!isEmbedded) { view in
+            view.navigationTitle("Journey").navigationBarTitleDisplayMode(.inline)
+        }
         .toolbar {
             if let shareURL {
                 ToolbarItem(placement: .topBarTrailing) {

@@ -12,6 +12,7 @@ struct HomeView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Query(sort: \FavouriteStop.sortOrder) private var favourites: [FavouriteStop]
     @Query(sort: \SavedTrip.sortOrder) private var savedTrips: [SavedTrip]
     @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
@@ -37,7 +38,7 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
-                .readableContentWidth()
+                .readableContentWidth(contentWidth)
                 .zIndex(1)
 
                 ScrollView {
@@ -46,14 +47,29 @@ struct HomeView: View {
                             StaleDataBanner(isOffline: true, lastUpdated: nil)
                                 .padding(.horizontal, 16)
                         }
-                        placesSection
-                        savedStopsSection
-                        savedTripsSection
-                        nearbySection
+                        if usesColumns {
+                            // Your things on the left, what's around you on
+                            // the right.
+                            HStack(alignment: .top, spacing: 8) {
+                                VStack(alignment: .leading, spacing: 28) {
+                                    placesSection
+                                    savedStopsSection
+                                    savedTripsSection
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                nearbySection
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        } else {
+                            placesSection
+                            savedStopsSection
+                            savedTripsSection
+                            nearbySection
+                        }
                     }
                     .padding(.top, 4)
                     .padding(.bottom, 24)
-                    .readableContentWidth()
+                    .readableContentWidth(contentWidth)
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .refreshable { await loadNearby() }
@@ -101,6 +117,11 @@ struct HomeView: View {
     }
 
     // MARK: - Places
+
+    /// Regular width (iPad): the sections in two columns across a wider
+    /// page, rather than one phone-width column.
+    private var usesColumns: Bool { horizontalSizeClass == .regular }
+    private var contentWidth: CGFloat { usesColumns ? 1100 : 720 }
 
     private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
 

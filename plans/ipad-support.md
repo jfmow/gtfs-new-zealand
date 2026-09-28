@@ -50,13 +50,19 @@ camera insets beside it.
    registers `TripDestination` on the same stack). Vehicles mode unchanged:
    a vehicle pushes the tracker, which has its own panel.
 
-## Phase 3 - wide list pages
+## Phase 3 - wide list pages (done)
 
-- Planner: form + results left, selected `JourneyDetailView` right (with a
-  route map preview) instead of a push. Step-by-step planner: width cap only.
-- Home: two-column section grid (places + saved stops | trips + nearby).
-- Stop board: departures + side column (stop map, alerts).
-- Alerts: list + detail.
+- Planner: form + results in a 440pt left column, the selected result's
+  `JourneyDetailView(isEmbedded: true)` beside it (first result selected
+  automatically; a re-plan reselects). Starting a journey from the detail
+  column pushes the tracker as before. Step-by-step planner: width cap only.
+- Home: two columns at 1100pt - places / saved stops / saved trips left,
+  nearby right.
+- Alerts: search + your stops in a 400pt left column, the chosen stop's
+  alerts on the right.
+- Stop board side column: skipped. The board is already a readable 720pt
+  column, and on iPad the Map tab now shows a board beside the map, so a
+  stop map next to a pushed board would duplicate that.
 
 ## Phase 4 - polish
 
