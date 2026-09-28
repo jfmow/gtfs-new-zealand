@@ -775,7 +775,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit.TransitUITests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Transit;
 			};
 			name = Release;
@@ -853,7 +853,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -874,7 +874,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -893,7 +893,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit.TransitUITests;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = Transit;
 			};
 			name = Debug;
@@ -915,7 +915,7 @@
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -936,7 +936,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = dev.suddsy.transit;
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.10;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};

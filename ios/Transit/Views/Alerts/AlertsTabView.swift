@@ -17,6 +17,7 @@ struct AlertsTabView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
+                .readableContentWidth()
                 .zIndex(1)
 
                 if let selectedStop {
@@ -41,6 +42,7 @@ struct AlertsTabView: View {
                         .accessibilityLabel("Clear stop")
                     }
                     .padding(.horizontal, 16)
+                    .readableContentWidth()
                     AlertsView(stopQuery: selectedStop, title: selectedStop, standalone: false)
                         .frame(maxHeight: .infinity, alignment: .top)
                 } else {
@@ -110,6 +112,7 @@ private struct AlertsOverview: View {
                 }
             }
             .padding(16)
+            .readableContentWidth()
         }
         .task(id: environment.location.coordinate == nil) {
             guard let here = environment.location.coordinate else { return }

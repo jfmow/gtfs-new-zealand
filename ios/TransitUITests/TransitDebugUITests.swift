@@ -1447,4 +1447,111 @@ final class TransitDebugUITests: XCTestCase {
         attach("sp-05-from-dropdown")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Home")).firstMatch.exists, "saved place not in dropdown")
     }
+
+    // MARK: - iPad
+
+    /// A tab, whether it's in the iPhone's tab bar or the iPad's top tab
+    /// bar / sidebar (which isn't a `tabBars` element).
+    private func tab(_ name: String) -> XCUIElement {
+        let inTabBar = app.tabBars.buttons[name]
+        return inTabBar.exists ? inTabBar : app.buttons[name].firstMatch
+    }
+
+    /// iPad walkthrough in both orientations: Home, a stop board, a
+    /// service tracker, the planner and a live journey (its side panel).
+    func testIPadSurvey() throws {
+        for orientation in [UIDeviceOrientation.landscapeLeft, .portrait] {
+            let tag = orientation == .portrait ? "portrait" : "landscape"
+            XCUIDevice.shared.orientation = orientation
+            app.launch()
+            dismissSystemAlertIfPresent(timeout: 4)
+            sleep(4)
+            attach("ipad-\(tag)-01-home")
+
+            let search = app.textFields["Search for stop..."]
+            if search.waitForExistence(timeout: 5) {
+                search.tap()
+                search.typeText("Ponsonby Road 8100")
+                sleep(2)
+                app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "8100")).firstMatch.tap()
+                sleep(3)
+                attach("ipad-\(tag)-02-board")
+                let row = app.buttons.matching(identifier: "departure-row").firstMatch
+                if row.waitForExistence(timeout: 5) {
+                    row.tap()
+                    sleep(4)
+                    attach("ipad-\(tag)-03-service")
+                }
+            }
+
+            // The tracker hides the tab bar - start the next part afresh.
+            app.terminate()
+            app.launch()
+            sleep(3)
+            tab("Map").tap()
+            sleep(3)
+            attach("ipad-\(tag)-04-map")
+
+            tab("Planner").tap()
+            sleep(1)
+            // A named origin rather than "My location", which sometimes
+            // wasn't offered in time.
+            let fromField = app.textFields.element(boundBy: 0)
+            if fromField.waitForExistence(timeout: 3) {
+                fromField.tap()
+                fromField.typeText("Britomart")
+                sleep(2)
+                let origin = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Britomart", "Resume")).firstMatch
+                if origin.waitForExistence(timeout: 5) { origin.tap() }
+            }
+            sleep(1)
+            let toField = app.textFields.element(boundBy: 1)
+            if toField.waitForExistence(timeout: 3) {
+                toField.tap()
+                toField.typeText("Newmarket")
+                sleep(2)
+                let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
+                if result.waitForExistence(timeout: 5) { result.tap() }
+            }
+            sleep(1)
+            let planButton = app.buttons["Plan journey"]
+            guard planButton.waitForExistence(timeout: 5) else { continue }
+            planButton.tap()
+            sleep(4)
+            attach("ipad-\(tag)-05-results")
+
+            // A results card: "17 min ... Direct" / "... 1 transfer" - not
+            // the Options row, whose summary also says "transfers".
+            let firstResult = app.descendants(matching: .any).matching(NSPredicate(
+                format: "label CONTAINS[c] %@ AND (label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@",
+                "min", "Direct", "transfer", "Options"
+            )).firstMatch
+            guard firstResult.waitForExistence(timeout: 8) else {
+                attach("ipad-\(tag)-06-no-results")
+                continue
+            }
+            firstResult.tap()
+            sleep(2)
+            attach("ipad-\(tag)-06-detail")
+
+            let startButton = app.buttons["Start this journey"]
+            guard startButton.waitForExistence(timeout: 3) else { continue }
+            startButton.tap()
+            sleep(3)
+            attach("ipad-\(tag)-07-tracking")
+
+            let endButton = app.buttons["End"]
+            if endButton.waitForExistence(timeout: 3) {
+                endButton.tap()
+                let confirm = app.buttons["End journey"]
+                if confirm.waitForExistence(timeout: 3) {
+                    attach("ipad-\(tag)-08-end-confirm")
+                    confirm.tap()
+                    sleep(2)
+                    attach("ipad-\(tag)-09-after-end")
+                }
+            }
+            app.terminate()
+        }
+    }
 }

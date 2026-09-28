@@ -156,6 +156,7 @@ struct StopBoardView: View {
                     .shadCardBackground()
                 }
                 .padding(16)
+                .readableContentWidth()
             }
             .refreshable { await refresh() }
             .pageBackground()

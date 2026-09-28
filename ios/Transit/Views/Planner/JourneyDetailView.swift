@@ -62,6 +62,7 @@ struct JourneyDetailView: View {
                 actions
             }
             .padding(16)
+            .readableContentWidth()
         }
         .pageBackground()
         .navigationTitle("Journey")

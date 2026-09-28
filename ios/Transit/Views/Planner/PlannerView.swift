@@ -111,6 +111,7 @@ struct PlannerView: View {
                     resultsList
                 }
                 .padding(16)
+                .readableContentWidth()
             }
             .scrollDismissesKeyboard(.interactively)
             .pageBackground()

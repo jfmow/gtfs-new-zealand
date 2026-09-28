@@ -497,6 +497,19 @@ extension View {
     }
 }
 
+// MARK: - Readable width
+
+extension View {
+    /// Caps a page's content column at a comfortable reading width, centred
+    /// - on an iPad a phone-shaped list stretched across the whole screen
+    /// reads badly. Never kicks in on an iPhone, which is narrower than the
+    /// cap. Goes on the content *inside* a ScrollView, so the scroll area
+    /// (and its indicator) still spans the screen.
+    func readableContentWidth(_ maxWidth: CGFloat = 720) -> some View {
+        frame(maxWidth: maxWidth).frame(maxWidth: .infinity)
+    }
+}
+
 // MARK: - Conditional modifiers
 
 extension View {

@@ -65,6 +65,8 @@ private struct ToastView: View {
         .background(Theme.popover, in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
         .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+        // A toast the width of an iPad screen reads as a banner.
+        .frame(maxWidth: 440)
         .padding(.horizontal, 16)
         .onTapGesture(perform: onDismiss)
         .accessibilityAddTraits(.isStaticText)

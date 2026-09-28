@@ -37,6 +37,7 @@ struct HomeView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
+                .readableContentWidth()
                 .zIndex(1)
 
                 ScrollView {
@@ -52,6 +53,7 @@ struct HomeView: View {
                     }
                     .padding(.top, 4)
                     .padding(.bottom, 24)
+                    .readableContentWidth()
                 }
                 .scrollDismissesKeyboard(.immediately)
                 .refreshable { await loadNearby() }
