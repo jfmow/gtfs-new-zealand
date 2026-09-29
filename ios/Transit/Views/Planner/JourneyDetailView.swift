@@ -23,6 +23,7 @@ struct JourneyDetailView: View {
     @State private var isActive = false
     @State private var isTracking = false
     @State private var isShowingReminder = false
+    @State private var isShowingMap = false
 
     private var hasTransit: Bool { plan.legs.contains { $0.mode == "transit" } }
     private var hasDisruption: Bool { plan.legs.contains { $0.mode == "transit" && !$0.tripUsable } }
@@ -30,10 +31,29 @@ struct JourneyDetailView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                TransitMapView(waypoints: waypoints, polylines: polylines, camera: .fitAll)
-                    .frame(height: isEmbedded ? 340 : 240)
-                    .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                // A still preview: a tap opens the route full screen, where
+                // it can be panned and zoomed.
+                Button { isShowingMap = true } label: {
+                    TransitMapView(waypoints: waypoints, polylines: polylines, camera: .fitAll)
+                        .allowsHitTesting(false)
+                        .frame(height: isEmbedded ? 340 : 240)
+                        .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
+                        // The map ignores touches, so without this only the
+                        // expand badge would take the tap.
+                        .contentShape(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+                        .overlay(alignment: .topTrailing) {
+                            Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(Theme.foreground)
+                                .frame(width: 32, height: 32)
+                                .background(.regularMaterial, in: Circle())
+                                .padding(8)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Map of this journey")
+                .accessibilityHint("Opens the map full screen")
 
                 summary
 
@@ -92,6 +112,19 @@ struct JourneyDetailView: View {
         }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)
+        }
+        .fullScreenCover(isPresented: $isShowingMap) {
+            NavigationStack {
+                TransitMapView(waypoints: waypoints, polylines: polylines, camera: .fitAll, showsUserLocation: true)
+                    .ignoresSafeArea(edges: .bottom)
+                    .navigationTitle("Journey map")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { isShowingMap = false }
+                        }
+                    }
+            }
         }
         .sheet(isPresented: $isShowingReminder) {
             LeaveReminderSheet(plan: plan, context: context ?? defaultContext).shadSheet(detents: [.large])
@@ -185,14 +218,7 @@ struct JourneyDetailView: View {
     }
 
     private var waypoints: [WaypointAnnotation] {
-        var result: [WaypointAnnotation] = []
-        if let first = plan.legs.first?.fromStop {
-            result.append(WaypointAnnotation(id: "start", coordinate: first.coordinate, label: "Start", isDestination: false))
-        }
-        if let last = plan.legs.last?.toStop {
-            result.append(WaypointAnnotation(id: "end", coordinate: last.coordinate, label: "End", isDestination: true))
-        }
-        return result
+        WaypointAnnotation.journey(plan, fallbackColorHex: environment.region.brandColorHex)
     }
 
     private func startJourney() {

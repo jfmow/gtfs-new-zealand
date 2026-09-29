@@ -57,22 +57,73 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
     }
 }
 
-/// A journey's start/end marker - the web map's white "Start"/"End" pill
-/// bubbles (`components/journey/live-map.tsx`), not a route/vehicle marker.
+/// A journey's own markers - start, end, where each ride is boarded and
+/// left, and each change of vehicle. Drawn with the same symbols and colours
+/// as the trip timeline (`TrackedLegRow`).
 final class WaypointAnnotation: NSObject, MKAnnotation {
+    enum Kind: Equatable {
+        case start
+        case end
+        /// Getting on - the route's name tag, drawn beside the stop like a
+        /// label so a transfer badge or the start marker there stays visible.
+        case board(routeName: String, colorHex: String)
+        /// Getting off - a ring in the route colour.
+        case alight(colorHex: String)
+        case transfer
+    }
+
     let id: String
     @objc dynamic var coordinate: CLLocationCoordinate2D
     let label: String
-    /// `true` for the journey's end (tinted with the region accent, like
-    /// the web's red "End" pin) - `false` for the start (plain/dark, like
-    /// the web's blue "Start" pill).
-    let isDestination: Bool
+    let kind: Kind
 
-    init(id: String, coordinate: Coordinate, label: String, isDestination: Bool) {
+    init(id: String, coordinate: Coordinate, label: String, kind: Kind) {
         self.id = id
         self.coordinate = CLLocationCoordinate2D(latitude: coordinate.latitude, longitude: coordinate.longitude)
         self.label = label
-        self.isDestination = isDestination
+        self.kind = kind
+    }
+
+    /// Everything to mark for `plan`. Start and end sit on the searched
+    /// origin and destination - a journey that starts or ends with a walk
+    /// has no stop there. `fallbackColorHex` colours a route with none.
+    /// `rideStops: false` leaves out the get on / get off markers - the live
+    /// tracker marks the stops of the ride you're on itself.
+    static func journey(_ plan: JourneyPlan, fallbackColorHex: String, rideStops: Bool = true) -> [WaypointAnnotation] {
+        func point(_ lat: Double, _ lon: Double, else stop: Stop?) -> Coordinate? {
+            if lat != 0 || lon != 0 { return Coordinate(latitude: lat, longitude: lon) }
+            return stop?.coordinate
+        }
+        var result: [WaypointAnnotation] = []
+        var hasRidden = false
+        for (index, leg) in plan.legs.enumerated() where leg.mode == "transit" {
+            let routeColor = leg.route?.routeColor ?? ""
+            let hex = routeColor.isEmpty ? fallbackColorHex : routeColor
+            let name = leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID
+            if let stop = leg.fromStop {
+                if hasRidden {
+                    result.append(WaypointAnnotation(id: "transfer-\(index)", coordinate: stop.coordinate,
+                                                     label: "Transfer at \(stop.stopName)", kind: .transfer))
+                }
+                if rideStops {
+                    result.append(WaypointAnnotation(id: "board-\(index)", coordinate: stop.coordinate,
+                                                     label: "Get on the \(name) at \(stop.stopName)",
+                                                     kind: .board(routeName: name, colorHex: hex)))
+                }
+            }
+            if rideStops, let stop = leg.toStop {
+                result.append(WaypointAnnotation(id: "alight-\(index)", coordinate: stop.coordinate,
+                                                 label: "Get off the \(name) at \(stop.stopName)", kind: .alight(colorHex: hex)))
+            }
+            hasRidden = true
+        }
+        if let start = point(plan.startLat, plan.startLon, else: plan.legs.first?.fromStop) {
+            result.append(WaypointAnnotation(id: "start", coordinate: start, label: "Start", kind: .start))
+        }
+        if let end = point(plan.endLat, plan.endLon, else: plan.legs.last?.toStop) {
+            result.append(WaypointAnnotation(id: "end", coordinate: end, label: "End", kind: .end))
+        }
+        return result
     }
 }
 
@@ -83,7 +134,7 @@ struct RoutePolylineData {
     let coordinates: [CLLocationCoordinate2D]
     let colorHex: String
     let lineWidth: CGFloat
-    /// Walking legs draw as a dotted grey line with no casing.
+    /// Walking legs draw as haloed dots with direction chevrons (`WalkPolylineRenderer`).
     let isWalk: Bool
     /// Part of a vehicle's route that isn't part of your ride (before you
     /// board, after you get off) - a faded grey line under everything else,
@@ -175,6 +226,91 @@ final class CasedPolylineRenderer: MKPolylineRenderer {
             }
         }
         super.draw(mapRect, zoomScale: zoomScale, in: context)
+    }
+}
+
+/// A walking leg: haloed dots, with every few a chevron pointing the way
+/// you walk. Drawn by hand rather than with a dash pattern so the arrows
+/// can follow the path's direction.
+final class WalkPolylineRenderer: MKPolylineRenderer {
+    var dotColor: UIColor = .darkGray
+    var haloColor: UIColor = .white
+    /// Screen points.
+    var dotDiameter: CGFloat = 5
+    /// One mark in this many is a chevron.
+    var arrowEvery = 4
+
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        let count = polyline.pointCount
+        guard count > 1 else { return }
+        let mapPoints = polyline.points()
+        let points = (0..<count).map { point(for: mapPoints[$0]) }
+
+        // Everything below is in map points; divide screen sizes by zoom.
+        let unit = 1 / zoomScale
+        let dot = dotDiameter * unit
+        let step = dotDiameter * 1.9 * unit
+        let halo = 1.75 * unit
+
+        // Cumulative distance to each vertex, for positions along the path.
+        var along: [CGFloat] = [0]
+        for i in 1..<count {
+            along.append(along[i - 1] + hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y))
+        }
+        let total = along[count - 1]
+        guard total > 0 else { return }
+        func position(at distance: CGFloat) -> CGPoint {
+            let d = min(max(distance, 0), total)
+            var i = 1
+            while i < count - 1 && along[i] < d { i += 1 }
+            let span = along[i] - along[i - 1]
+            let t = span > 0 ? (d - along[i - 1]) / span : 0
+            return CGPoint(x: points[i - 1].x + (points[i].x - points[i - 1].x) * t,
+                           y: points[i - 1].y + (points[i].y - points[i - 1].y) * t)
+        }
+
+        // Evenly spaced marks. A mark's heading comes from the path a step
+        // either side of it, so a tiny kink in the route can't flip an arrow.
+        var marks: [(point: CGPoint, angle: CGFloat)] = []
+        var distance = step / 2
+        while distance <= total {
+            let behind = position(at: distance - step), ahead = position(at: distance + step)
+            marks.append((position(at: distance), atan2(ahead.y - behind.y, ahead.x - behind.x)))
+            distance += step
+        }
+        guard !marks.isEmpty else { return }
+
+        // Chevrons at every `arrowEvery`th mark, starting part-way in; a walk
+        // too short for that still gets one in the middle.
+        let arrows: Set<Int> = marks.count < arrowEvery
+            ? [marks.count / 2]
+            : Set(stride(from: arrowEvery / 2, to: marks.count, by: arrowEvery))
+
+        context.saveGState()
+        context.setLineCap(.round)
+        context.setLineJoin(.round)
+        for (index, mark) in marks.enumerated() {
+            if arrows.contains(index) {
+                let size = dot * 2.2
+                let path = CGMutablePath()
+                let transform = CGAffineTransform(translationX: mark.point.x, y: mark.point.y).rotated(by: mark.angle)
+                path.move(to: CGPoint(x: -size * 0.3, y: -size * 0.45), transform: transform)
+                path.addLine(to: CGPoint(x: size * 0.3, y: 0), transform: transform)
+                path.addLine(to: CGPoint(x: -size * 0.3, y: size * 0.45), transform: transform)
+                for (color, width) in [(haloColor, dot * 0.8 + halo * 2), (dotColor, dot * 0.8)] {
+                    context.addPath(path)
+                    context.setStrokeColor(color.cgColor)
+                    context.setLineWidth(width)
+                    context.strokePath()
+                }
+            } else {
+                for (color, radius) in [(haloColor, dot / 2 + halo), (dotColor, dot / 2)] {
+                    context.setFillColor(color.cgColor)
+                    context.fillEllipse(in: CGRect(x: mark.point.x - radius, y: mark.point.y - radius, width: radius * 2, height: radius * 2))
+                }
+            }
+        }
+        context.restoreGState()
     }
 }
 
@@ -315,6 +451,42 @@ enum MapMarkerArt {
         return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
             ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: UIColor.black.withAlphaComponent(0.3).cgColor)
             drawBadge(symbol: symbol, fill: fill, in: CGRect(x: pad, y: pad, width: diameter, height: diameter))
+        }
+    }
+
+    /// A route-coloured name tag, like the timeline's boarding marker.
+    static func routeTag(_ name: String, colorHex: String) -> UIImage {
+        let fill = UIColor(hex: colorHex)
+        let font = UIFont.systemFont(ofSize: 10, weight: .bold)
+        let text = NSAttributedString(string: name, attributes: [.font: font, .foregroundColor: contrast(on: fill)])
+        let textSize = text.size()
+        let pad: CGFloat = 3
+        let tag = CGRect(x: pad, y: pad, width: max(22, ceil(textSize.width) + 8), height: 18)
+        let size = CGSize(width: tag.width + pad * 2, height: tag.height + pad * 2)
+        return UIGraphicsImageRenderer(size: size).image { ctx in
+            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: UIColor.black.withAlphaComponent(0.3).cgColor)
+            UIColor.white.setFill()
+            UIBezierPath(roundedRect: tag, cornerRadius: 6).fill()
+            ctx.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+            fill.setFill()
+            UIBezierPath(roundedRect: tag.insetBy(dx: 1.5, dy: 1.5), cornerRadius: 5).fill()
+            text.draw(at: CGPoint(x: tag.midX - textSize.width / 2, y: tag.midY - textSize.height / 2))
+        }
+    }
+
+    /// A white dot with a route-coloured ring, like the timeline's
+    /// getting-off marker.
+    static func ring(colorHex: String, diameter: CGFloat) -> UIImage {
+        let pad: CGFloat = 3
+        let side = diameter + pad * 2
+        return UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { ctx in
+            let rect = CGRect(x: pad, y: pad, width: diameter, height: diameter)
+            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: UIColor.black.withAlphaComponent(0.3).cgColor)
+            UIColor(hex: colorHex).setFill()
+            UIBezierPath(ovalIn: rect).fill()
+            ctx.cgContext.setShadow(offset: .zero, blur: 0, color: nil)
+            UIColor.white.setFill()
+            UIBezierPath(ovalIn: rect.insetBy(dx: 3, dy: 3)).fill()
         }
     }
 

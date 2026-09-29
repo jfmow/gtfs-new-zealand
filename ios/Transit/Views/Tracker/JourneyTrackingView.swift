@@ -731,17 +731,10 @@ struct JourneyTrackingView: View {
 
     // MARK: - Map
 
-    /// "Start"/"End" pill bubbles at the journey's first and last stop -
-    /// matches the web live map's markers.
+    /// "Start"/"End" pill bubbles and transfer badges - matches the web
+    /// live map's markers.
     private var waypoints: [WaypointAnnotation] {
-        var result: [WaypointAnnotation] = []
-        if let first = plan.legs.first?.fromStop {
-            result.append(WaypointAnnotation(id: "start", coordinate: first.coordinate, label: "Start", isDestination: false))
-        }
-        if let last = plan.legs.last?.toStop {
-            result.append(WaypointAnnotation(id: "end", coordinate: last.coordinate, label: "End", isDestination: true))
-        }
-        return result
+        WaypointAnnotation.journey(plan, fallbackColorHex: environment.region.brandColorHex, rideStops: false)
     }
 
     /// Each ride in its own route colour, walks in grey - same as the

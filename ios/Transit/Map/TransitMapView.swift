@@ -642,7 +642,7 @@ struct TransitMapView: UIViewRepresentable {
                 ) as! WaypointMarkerView
 
                 view.annotation = waypoint
-                view.apply(label: waypoint.label, isDestination: waypoint.isDestination)
+                view.apply(waypoint)
 
                 return view
             }
@@ -659,6 +659,15 @@ struct TransitMapView: UIViewRepresentable {
                 return MKOverlayRenderer(overlay: overlay)
             }
 
+            if line.isWalk {
+                let renderer = WalkPolylineRenderer(polyline: line)
+                let isDarkMap = mapView.traitCollection.userInterfaceStyle == .dark
+                renderer.dotColor = isDarkMap ? UIColor(hex: "E2E8F0") : UIColor(hex: "334155")
+                renderer.haloColor = isDarkMap ? UIColor.black.withAlphaComponent(0.7) : .white
+                renderer.dotDiameter = max(5, line.lineWidth)
+                return renderer
+            }
+
             let renderer = CasedPolylineRenderer(polyline: line)
             let color = UIColor(hex: line.colorHex)
 
@@ -670,9 +679,6 @@ struct TransitMapView: UIViewRepresentable {
             if line.isMuted {
                 renderer.strokeColor = color.withAlphaComponent(0.6)
                 renderer.lineWidth = max(3, line.lineWidth - 1)
-            } else if line.isWalk {
-                renderer.lineWidth = max(3, line.lineWidth - 1)
-                renderer.lineDashPattern = [0, NSNumber(value: Double(renderer.lineWidth) * 2)]
             } else {
                 // Dark outline for light/mid colours; a light one for dark
                 // colours (navy ferries, black routes) that would otherwise
@@ -827,44 +833,41 @@ final class VehicleMarkerView: MKAnnotationView {
 /// (start) / accent-tinted (end) rounded labels
 /// (`components/journey/live-map.tsx`), not a route/vehicle marker style.
 final class WaypointMarkerView: MKAnnotationView {
-
-    private let pill = UILabel()
-
-    override init(
-        annotation: MKAnnotation?,
-        reuseIdentifier: String?
-    ) {
+    override init(annotation: MKAnnotation?, reuseIdentifier: String?) {
         super.init(annotation: annotation, reuseIdentifier: reuseIdentifier)
-
-        pill.font = .systemFont(ofSize: 12, weight: .semibold)
-        pill.textAlignment = .center
-        pill.layer.cornerRadius = 11
-        pill.layer.masksToBounds = true
-        pill.layer.borderWidth = 1
-
-        addSubview(pill)
         canShowCallout = false
-        centerOffset = CGPoint(x: 0, y: -11)
+        isAccessibilityElement = true
+        // Journey markers never hide behind each other or the map's labels.
+        displayPriority = .required
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    func apply(label: String, isDestination: Bool) {
-        pill.text = "  \(label)  "
-        pill.sizeToFit()
-        frame = CGRect(x: 0, y: 0, width: max(pill.frame.width, 44), height: 22)
-        pill.frame = bounds
-
-        if isDestination {
-            pill.backgroundColor = .systemRed
-            pill.textColor = .white
-            pill.layer.borderColor = UIColor.white.cgColor
-        } else {
-            pill.backgroundColor = .white
-            pill.textColor = .black
-            pill.layer.borderColor = UIColor.black.withAlphaComponent(0.15).cgColor
+    func apply(_ waypoint: WaypointAnnotation) {
+        accessibilityLabel = waypoint.label
+        centerOffset = .zero
+        switch waypoint.kind {
+        case .start:
+            image = MapMarkerArt.badge(symbol: "location.fill", fill: MapMarkerArt.foreground, diameter: 26)
+            zPriority = .max
+        case .end:
+            image = MapMarkerArt.badge(symbol: "flag.checkered", fill: .systemRed, diameter: 26)
+            zPriority = .max
+        case .transfer:
+            image = MapMarkerArt.badge(symbol: "arrow.left.arrow.right", fill: MapMarkerArt.foreground, diameter: 20)
+            zPriority = MKAnnotationViewZPriority(rawValue: 600)
+        case .board(let name, let hex):
+            image = MapMarkerArt.routeTag(name, colorHex: hex)
+            zPriority = MKAnnotationViewZPriority(rawValue: 500)
+            // Up and to the right of the stop, clear of whatever marks it.
+            if let size = image?.size {
+                centerOffset = CGPoint(x: size.width / 2 + 6, y: -(size.height / 2 + 4))
+            }
+        case .alight(let hex):
+            image = MapMarkerArt.ring(colorHex: hex, diameter: 14)
+            zPriority = MKAnnotationViewZPriority(rawValue: 400)
         }
     }
 }

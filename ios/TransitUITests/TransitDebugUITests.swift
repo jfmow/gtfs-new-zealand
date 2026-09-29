@@ -1343,6 +1343,28 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground)
     }
 
+    /// The journey preview's map opens full screen on a tap, and Done closes it.
+    func testJourneyMapExpands() throws {
+        let id = ProcessInfo.processInfo.environment["JOURNEY_ID"] ?? ""
+        guard !id.isEmpty, let url = URL(string: "transit://journey?id=\(id)&region=at") else { throw XCTSkip("no JOURNEY_ID") }
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 4)
+        app.open(url)
+        for _ in 0..<3 { dismissSystemAlertIfPresent(timeout: 3) }
+        let map = app.buttons["Map of this journey"]
+        XCTAssertTrue(map.waitForExistence(timeout: 15), "journey preview didn't open")
+        sleep(2)
+        attach("journey-map-preview")
+        map.tap()
+        XCTAssertTrue(app.navigationBars["Journey map"].waitForExistence(timeout: 5), "map didn't expand")
+        dismissSystemAlertIfPresent(timeout: 3)
+        sleep(2)
+        attach("journey-map-expanded")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(map.waitForExistence(timeout: 5), "Done didn't return to the preview")
+        attach("journey-map-closed")
+    }
+
     /// End on the tracker takes the Live Activity off straight away.
     func testEndDismissesLiveActivity() throws {
         let id = ProcessInfo.processInfo.environment["OFFLINE_JOURNEY_ID"] ?? ""
