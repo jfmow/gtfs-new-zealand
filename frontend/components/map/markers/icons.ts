@@ -1,6 +1,6 @@
 import { createElement } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { ArrowDown, Backpack, Bus, Flag, MapPin, Ship, TrainFront, type LucideIcon } from "lucide-react"
+import { Backpack, Bus, Flag, MapPin, Ship, TrainFront, Triangle, type LucideIcon } from "lucide-react"
 
 /**
  * Map marker artwork, drawn with the same Lucide icons the lists use
@@ -10,11 +10,17 @@ import { ArrowDown, Backpack, Bus, Flag, MapPin, Ship, TrainFront, type LucideIc
  */
 const svgCache = new Map<string, string>()
 
-function iconSvg(Icon: LucideIcon, size: number, color: string): string {
-    const key = `${Icon.displayName}|${size}|${color}`
+type GlyphStyle = { rotate?: number; filled?: boolean }
+
+function iconSvg(Icon: LucideIcon, size: number, color: string, style: GlyphStyle = {}): string {
+    const key = `${Icon.displayName}|${size}|${color}|${style.rotate ?? 0}|${style.filled ?? false}`
     let svg = svgCache.get(key)
     if (!svg) {
-        svg = renderToStaticMarkup(createElement(Icon, { size, color, strokeWidth: 2.25, "aria-hidden": true }))
+        svg = renderToStaticMarkup(createElement(Icon, {
+            size, color, strokeWidth: 2.25, "aria-hidden": true,
+            fill: style.filled ? color : "none",
+            style: style.rotate ? { transform: `rotate(${style.rotate}deg)` } : undefined,
+        }))
         svgCache.set(key, svg)
     }
     return svg
@@ -55,9 +61,9 @@ function contrastOn(hex: string): string {
 }
 
 /** A filled circle with a white ring and an icon in the middle. */
-function badge(Icon: LucideIcon, fill: string, size: number): string {
+function badge(Icon: LucideIcon, fill: string, size: number, style?: GlyphStyle): string {
     const fg = contrastOn(fill)
-    return `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${fill};border:2px solid #fff;box-shadow:${SHADOW};box-sizing:border-box;display:flex;align-items:center;justify-content:center;">${iconSvg(Icon, Math.round(size * 0.5), fg)}</div>`
+    return `<div style="width:${size}px;height:${size}px;border-radius:9999px;background:${fill};border:2px solid #fff;box-shadow:${SHADOW};box-sizing:border-box;display:flex;align-items:center;justify-content:center;">${iconSvg(Icon, Math.round(size * (style?.filled ? 0.4 : 0.5)), fg, style)}</div>`
 }
 
 /**
@@ -81,9 +87,9 @@ export function stopPinHtml(mode: string, size: number): string {
     return pinHtml(modeIcon(mode), MODE_COLORS[mode] ?? MODE_COLORS.bus, size)
 }
 
-function pinHtml(Icon: LucideIcon, fill: string, size: number): string {
+function pinHtml(Icon: LucideIcon, fill: string, size: number, style?: GlyphStyle): string {
     return `<div style="position:relative;width:${size}px;height:${size + 6}px;">
-        ${badge(Icon, fill, size)}
+        ${badge(Icon, fill, size, style)}
         <div style="position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid #fff;"></div>
     </div>`
 }
@@ -114,11 +120,11 @@ export function staticMarkerHtml(icon: MarkerIcon): string {
         case "start marker": return dotHtml("#22c55e", "#ffffff", 16)
         case "current stop marker": return dotHtml("#f59e0b", "#ffffff", 16)
         case "user": return dotHtml("#3b82f6", "#ffffff", 18)
-        case "next stop marker": return pinHtml(ArrowDown, "#3b82f6", 26)
-        case "marked stop marker": return pinHtml(MapPin, FOREGROUND, 26)
+        case "next stop marker": return pinHtml(Triangle, "#3b82f6", 26, { rotate: 180, filled: true })
+        case "marked stop marker": return pinHtml(MapPin, "#ef4444", 26)
         case "stop marker": return pinHtml(MapPin, "#64748b", 26)
         case "pin": return pinHtml(MapPin, "#ef4444", 26)
-        case "end marker": return pinHtml(Flag, "#ef4444", 26)
+        case "end marker": return pinHtml(Flag, FOREGROUND, 26)
         case "train stop marker": return stopPinHtml("train", 26)
         case "bus stop marker": return stopPinHtml("bus", 26)
         case "ferry stop marker": return stopPinHtml("ferry", 26)

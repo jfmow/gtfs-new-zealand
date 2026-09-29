@@ -223,9 +223,9 @@ final class TripStopAnnotation: NSObject, MKAnnotation {
             case .passed: MapMarkerArt.dot(fill: UIColor(hex: "d4d4d8"), ring: UIColor(hex: "a1a1aa"), diameter: 12)
             case .start: MapMarkerArt.dot(fill: UIColor(hex: "22c55e"), ring: .white, diameter: 16)
             case .current: MapMarkerArt.dot(fill: UIColor(hex: "f59e0b"), ring: .white, diameter: 16)
-            case .next: MapMarkerArt.pin(symbol: "arrow.down", fill: UIColor(hex: "3b82f6"), diameter: 26)
-            case .marked: MapMarkerArt.pin(symbol: "mappin", fill: MapMarkerArt.foreground, diameter: 26)
-            case .end: MapMarkerArt.pin(symbol: "flag.fill", fill: UIColor(hex: "ef4444"), diameter: 26)
+            case .next: MapMarkerArt.pin(symbol: "arrowtriangle.down.fill", fill: UIColor(hex: "3b82f6"), diameter: 26)
+            case .marked: MapMarkerArt.pin(symbol: "mappin", fill: UIColor(hex: "ef4444"), diameter: 26)
+            case .end: MapMarkerArt.pin(symbol: "flag.fill", fill: MapMarkerArt.foreground, diameter: 26)
             }
         }
 
