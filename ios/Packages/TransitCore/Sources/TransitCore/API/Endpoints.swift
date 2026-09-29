@@ -74,6 +74,21 @@ extension APIClient {
         try await get("services/plan/\(Self.pathSegment(id))")
     }
 
+    /// `plan(id:)` shifted to realtime predictions for its rides - what the
+    /// rider will actually do if they go now. The stored plan is as planned;
+    /// a ride whose live times can't be fetched keeps its scheduled times.
+    public func livePlan(id: String) async throws -> JourneyPlan? {
+        guard let plan = try await plan(id: id).first else { return nil }
+        let tripIDs = Set(plan.legs.filter { $0.mode == "transit" && !$0.tripID.isEmpty }.map(\.tripID))
+        var stopTimesByTripID: [String: [StopTimeUpdate]] = [:]
+        for tripID in tripIDs {
+            if let times = try? await stopTimes(tripID: tripID), !times.isEmpty {
+                stopTimesByTripID[tripID] = times
+            }
+        }
+        return JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: stopTimesByTripID)
+    }
+
     // MARK: - Realtime
 
     public func liveVehicles(tripIDs: [String] = [], type: VehicleFilterType = .all) async throws -> [Vehicle] {

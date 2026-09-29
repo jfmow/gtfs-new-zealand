@@ -675,7 +675,8 @@ struct PlannerView: View {
             apply(prefill)
         case .journey(let planID):
             do {
-                guard let plan = try await environment.api.plan(id: planID).first else { throw URLError(.fileDoesNotExist) }
+                // Live, so it matches the leave/arrive times on the list.
+                guard let plan = try await environment.api.livePlan(id: planID) else { throw URLError(.fileDoesNotExist) }
                 path.append(plan)
             } catch {
                 environment.toasts.show("Couldn't open that journey", .error)

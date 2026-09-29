@@ -9,6 +9,15 @@ struct UpcomingRemindersList: View {
     let reminders: [JourneyReminderDTO]
     let onOpen: (JourneyReminderTarget) -> Void
 
+    @Environment(AppEnvironment.self) private var environment
+    /// Each planned reminder's journey shifted to realtime, by reminder id -
+    /// so the row's leave/arrive match what the journey says right now.
+    @State private var livePlans: [Int: JourneyPlan] = [:]
+
+    /// How far ahead live times are worth fetching; beyond this the feed has
+    /// nothing and the server's estimate is as good.
+    private static let liveWindow: TimeInterval = 3 * 3600
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             SectionLabel(text: "Upcoming reminders")
@@ -20,6 +29,28 @@ struct UpcomingRemindersList: View {
             }
             .shadCardBackground()
         }
+        .task(id: reminders.map(\.id)) {
+            while !Task.isCancelled {
+                await refreshLivePlans()
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
+    private func refreshLivePlans() async {
+        var updated: [Int: JourneyPlan] = [:]
+        for reminder in reminders {
+            guard let planID = reminder.planID, !planID.isEmpty,
+                  let date = reminder.nextLeaveDate ?? reminder.targetDate,
+                  date.timeIntervalSinceNow < Self.liveWindow
+            else { continue }
+            if let plan = try? await environment.api.livePlan(id: planID) {
+                updated[reminder.id] = plan
+            } else if let previous = livePlans[reminder.id] {
+                updated[reminder.id] = previous
+            }
+        }
+        livePlans = updated
     }
 
     private func row(_ reminder: JourneyReminderDTO) -> some View {
@@ -41,7 +72,7 @@ struct UpcomingRemindersList: View {
                         .font(.bodyMedium)
                         .foregroundStyle(Theme.foreground)
                         .lineLimit(2)
-                    Text(Self.when(reminder))
+                    Text(Self.when(reminder, live: livePlans[reminder.id]))
                         .font(.meta)
                         .foregroundStyle(Theme.mutedForeground)
                         .fixedSize(horizontal: false, vertical: true)
@@ -60,24 +91,28 @@ struct UpcomingRemindersList: View {
         .disabled(reminder.target == nil)
     }
 
-    /// "Tomorrow · arrive by 8:30 am · leave ~8:02 · Weekdays"
-    static func when(_ reminder: JourneyReminderDTO) -> String {
+    /// "Today · leave 10:07 am · arrive 10:36 am · Weekdays" - from the live
+    /// journey when there is one, else the server's leave estimate and the
+    /// arrive-by target.
+    static func when(_ reminder: JourneyReminderDTO, live: JourneyPlan?) -> String {
         var parts: [String] = []
-        // A depart-at target is the ride's boarding time, not when to walk
-        // out the door - that's next_leave_local.
-        let verb = reminder.timeType == "arriveat" ? "arrive by" : "depart"
-        if let date = reminder.targetDate {
-            let day = JourneyReminderMath.relativeDay(date)
-            parts.append(day.prefix(1).uppercased() + day.dropFirst())
-            // target_unix is the boarding time on a one-off reminder, not the
-            // arrive-by time - target_hhmm is always what the rider asked for.
-            let time = localTime(reminder.targetHHMM) ?? date.formatted(date: .omitted, time: .shortened)
-            parts.append("\(verb) \(time)")
-        } else {
-            parts.append("\(verb) \(reminder.targetHHMM)")
+        let leave = live?.departureTime.date ?? reminder.nextLeaveDate
+        let arrive = live?.arrivalTime.date
+        if let day = leave ?? reminder.targetDate {
+            let label = JourneyReminderMath.relativeDay(day)
+            parts.append(label.prefix(1).uppercased() + label.dropFirst())
         }
-        if let local = reminder.nextLeaveLocal, !local.isEmpty {
-            parts.append("leave ~\(local)")
+        if let leave {
+            parts.append("leave \(live == nil ? "~" : "")\(leave.formatted(date: .omitted, time: .shortened))")
+        }
+        if let arrive {
+            parts.append("arrive \(arrive.formatted(date: .omitted, time: .shortened))")
+        } else if reminder.timeType == "arriveat" {
+            parts.append("arrive by \(localTime(reminder.targetHHMM) ?? reminder.targetHHMM)")
+        } else if leave == nil {
+            // A repeat not planned for the day yet: all we have is the ride
+            // the rider picked (a depart-at target is its boarding time).
+            parts.append("catch the \(localTime(reminder.targetHHMM) ?? reminder.targetHHMM)")
         }
         if reminder.isRepeating {
             parts.append(JourneyReminderMath.weekdayMaskLabel(reminder.recurrence))

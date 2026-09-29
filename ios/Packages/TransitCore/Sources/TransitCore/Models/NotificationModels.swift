@@ -202,6 +202,7 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
 
     public var isRepeating: Bool { recurrence.contains("1") }
     public var targetDate: Date? { targetUnix.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil } }
+    public var nextLeaveDate: Date? { nextLeaveUnix.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil } }
 
     /// What tapping the reminder opens: its journey if one's been planned,
     /// otherwise the planner filled in for the next occurrence (a repeat
