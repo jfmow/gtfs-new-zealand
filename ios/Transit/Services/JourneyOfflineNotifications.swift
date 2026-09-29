@@ -25,7 +25,9 @@ final class JourneyOfflineNotifications {
         content.title = title
         content.body = body
         content.sound = .default
-        content.interruptionLevel = .active
+        // Time Sensitive, like the server's journey pushes: gets through a
+        // Focus, and Siri announces it through AirPods by default.
+        content.interruptionLevel = .timeSensitive
         content.threadIdentifier = "journey"
         // Same shape as the server's journey pushes: AppDelegate hides the
         // banner while the tracker is on screen, and a tap resumes it.

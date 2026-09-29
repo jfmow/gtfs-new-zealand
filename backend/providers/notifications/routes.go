@@ -1337,7 +1337,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 		legIndex, _ := strconv.Atoi(c.FormValue("legIndex"))
 		phase := c.FormValue("phase")
-		if err := notificationDB.UpdateLiveActivityLeg(client.Id, activityId, legIndex, phase); err != nil {
+		headphones := c.FormValue("headphones") == "1"
+		if err := notificationDB.UpdateLiveActivityLeg(client.Id, activityId, legIndex, phase, headphones); err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to update leg"})
 		}
 		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})

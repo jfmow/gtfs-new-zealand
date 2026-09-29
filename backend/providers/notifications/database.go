@@ -339,6 +339,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// A leave-by reminder waiting to go out as this activity's alert -
 		// see QueueLiveActivityAlert.
 		{"pending_alert", `ALTER TABLE live_activities ADD COLUMN pending_alert TEXT NOT NULL DEFAULT '';`},
+		// The app last reported the rider listening through headphones - see
+		// LiveActivity.announcesAlerts.
+		{"headphones", `ALTER TABLE live_activities ADD COLUMN headphones INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range laMigrations {
 		if laExistingColumns[m.column] {

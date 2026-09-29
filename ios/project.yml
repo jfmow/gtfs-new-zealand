@@ -88,6 +88,10 @@ targets:
         # Key-value store, for syncing small settings later
         # (plans/icloud-sync.md, phase 4 optional).
         com.apple.developer.ubiquity-kvstore-identifier: $(TeamIdentifierPrefix)$(CFBundleIdentifier)
+        # Journey moments are Time Sensitive - without this iOS quietly
+        # downgrades them, and Siri only announces Time Sensitive
+        # notifications through AirPods by default.
+        com.apple.developer.usernotifications.time-sensitive: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: dev.suddsy.transit
