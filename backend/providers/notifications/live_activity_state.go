@@ -68,6 +68,10 @@ type journeyActivityState struct {
 	HasVehicle     bool   `json:"hasVehicle"`
 	Occupancy      *int   `json:"occupancy,omitempty"`   // GTFS-RT occupancy status
 	VehicleMode    string `json:"vehicleMode,omitempty"` // bus | train | ferry - the current (or next) ride's vehicle
+	// CountdownStartUnix is when the current countdown's segment began (the
+	// walk, the wait at the stop, or the ride) so the ring drains across it -
+	// 0 when there's no natural start (e.g. "Leave by").
+	CountdownStartUnix float64 `json:"countdownStartUnix,omitempty"`
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -275,6 +279,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.SecondaryText = fmt.Sprintf("Arrive about %s", clock(t.arr))
 		state.CountdownLabel = "Arrive in"
 		state.TargetUnix = float64(t.arr.Unix())
+		state.CountdownStartUnix = float64(t.dep.Unix())
 		state.Status = "onTime"
 		return
 	}
@@ -307,6 +312,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.SecondaryText = fmt.Sprintf("%s departs %s%s", routeLabel(next.Route), clock(nt.dep), platformSuffix(state.Platform))
 	state.CountdownLabel = "Departs in"
 	state.TargetUnix = float64(nt.dep.Unix())
+	state.CountdownStartUnix = float64(t.dep.Unix())
 
 	if prevTransit(plan, idx) < 0 && !now.Before(leaveBy.Add(-60*time.Second)) {
 		state.alert = &activityAlert{
@@ -349,6 +355,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.Platform = platformOf(leg)
 		state.CountdownLabel = "Departs in"
 		state.TargetUnix = float64(t.dep.Unix())
+		state.CountdownStartUnix = waitStart(plan, timings, idx)
 		state.DelayMinutes = delayMinutes(t.live.DepartureDelay, t.hasLive && t.live.HasTripUpdate)
 		state.Status = statusFor(leg, t, "waiting")
 
@@ -377,6 +384,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.Phase = "onboard"
 		state.CountdownLabel = "Arrives in"
 		state.TargetUnix = float64(t.arr.Unix())
+		state.CountdownStartUnix = float64(t.dep.Unix())
 		state.DelayMinutes = delayMinutes(t.live.ArrivalDelay, t.hasLive && t.live.HasTripUpdate)
 		state.Status = statusFor(leg, t, "onboard")
 		alight := stopLabel(leg.ToStop)
@@ -618,6 +626,19 @@ func routeColorOrEmpty(leg gtfs.JourneyLeg) string {
 		return ""
 	}
 	return leg.Route.RouteColor
+}
+
+// waitStart is where the countdown to boarding leg idx starts: the walk to
+// the stop (so the ring carries on from the walking phase), or getting off
+// the previous ride. 0 for the first leg. Same rule as the Swift builder.
+func waitStart(plan gtfs.JourneyPlan, timings []legTiming, idx int) float64 {
+	if idx == 0 {
+		return 0
+	}
+	if plan.Legs[idx-1].Mode == "walk" {
+		return float64(timings[idx-1].dep.Unix())
+	}
+	return float64(timings[idx-1].arr.Unix())
 }
 
 // vehicleModeOf is the ride's travel mode (bus | train | ferry) from its
