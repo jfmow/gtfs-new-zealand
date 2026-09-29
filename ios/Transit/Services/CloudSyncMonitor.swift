@@ -10,10 +10,20 @@ import TransitCore
 @MainActor
 @Observable
 final class CloudSyncMonitor {
+    /// The rider's choice (onboarding, Settings) - on unless they turn it
+    /// off. Read when the store opens at launch, so a change takes effect
+    /// the next time the app opens.
+    static let enabledKey = "iCloudSyncEnabled"
+    static var isEnabled: Bool {
+        UserDefaults.standard.object(forKey: enabledKey) as? Bool ?? true
+    }
+
     enum Status: Equatable {
         /// Local-only container (a debug `-disableCloudSync YES` launch, or
         /// the CloudKit store wouldn't open).
         case off
+        /// The rider turned sync off - nothing leaves the device.
+        case disabled
         case checking
         case syncing
         case signedOut
@@ -26,6 +36,9 @@ final class CloudSyncMonitor {
     }
 
     private(set) var status: Status = .off
+    /// `isEnabled` as it was when the store opened - what's in effect
+    /// until the app next launches.
+    private(set) var enabledAtLaunch = CloudSyncMonitor.isEnabled
     private(set) var lastSynced: Date?
     private(set) var lastError: String?
     /// The first import after launch finished (or failed) - what's already
@@ -40,7 +53,11 @@ final class CloudSyncMonitor {
         self.container = container
         scheduleTidy(after: .zero)
         guard cloudSynced else {
-            lastError = openError
+            if enabledAtLaunch {
+                lastError = openError
+            } else {
+                status = .disabled
+            }
             return
         }
         status = .checking
@@ -63,8 +80,15 @@ final class CloudSyncMonitor {
 
     func appBecameActive() {
         scheduleTidy(after: .zero)
-        guard status != .off else { return }
+        guard status != .off, status != .disabled else { return }
         Task { await refreshAccountStatus() }
+    }
+
+    /// When the rider's choice differs from what's running, says when it
+    /// kicks in - nil when it already has.
+    func pendingChangeNote(enabled: Bool) -> String? {
+        guard enabled != enabledAtLaunch else { return nil }
+        return enabled ? "Turns on the next time Transit opens" : "Turns off the next time Transit opens"
     }
 
     /// Waits (up to `timeout`) for what's already in iCloud to arrive -
@@ -73,7 +97,7 @@ final class CloudSyncMonitor {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             switch status {
-            case .off, .signedOut, .notReady, .unavailable: return
+            case .off, .disabled, .signedOut, .notReady, .unavailable: return
             case .checking, .syncing: if hasFinishedFirstImport { return }
             }
             try? await Task.sleep(for: .milliseconds(200))
@@ -81,7 +105,7 @@ final class CloudSyncMonitor {
     }
 
     private func refreshAccountStatus() async {
-        guard status != .off else { return }
+        guard status != .off, status != .disabled else { return }
         let account = try? await CKContainer(identifier: TransitStore.cloudKitContainerID).accountStatus()
         switch account {
         case .available: status = .syncing

@@ -3,16 +3,18 @@ import TransitCore
 
 /// First launch: pick the region (or have location pick it), then location
 /// and notifications - each asked with a line on why, rather than a cold
-/// system prompt the moment Home appears - then which planner to use.
+/// system prompt the moment Home appears - then whether to sync with
+/// iCloud, and which planner to use.
 struct OnboardingView: View {
     let onFinish: () -> Void
 
     @Environment(AppEnvironment.self) private var environment
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
+    @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
     @State private var step = Step.region
     @State private var isLocating = false
 
-    enum Step: Int, CaseIterable { case region, location, notifications, planner }
+    enum Step: Int, CaseIterable { case region, location, notifications, sync, planner }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -97,6 +99,28 @@ struct OnboardingView: View {
             bullet("Reminders you set, and alerts for stops you choose.")
             bullet("Turn any of them off in Settings.")
 
+        case .sync:
+            header(icon: "icloud.fill", title: "Sync with iCloud",
+                   message: "Your saved stops, places and trips follow you to your other iPhones and iPads, through your own iCloud account.")
+            Toggle(isOn: $iCloudSyncEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("iCloud sync").font(.bodyMedium).foregroundStyle(Theme.foreground)
+                    Text(environment.cloudSync.pendingChangeNote(enabled: iCloudSyncEnabled)
+                         ?? (iCloudSyncEnabled ? "On" : "Off - everything stays on this device"))
+                        .font(.meta).foregroundStyle(Theme.mutedForeground)
+                }
+            }
+            .tint(Theme.primary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous)
+                    .strokeBorder(Theme.border, lineWidth: 1)
+            )
+            bullet("Only you can see it - Transit's server never does.")
+            bullet("Change it any time in Settings.")
+
         case .planner:
             header(icon: "point.topleft.down.to.point.bottomright.curvepath", title: "How do you like to plan?",
                    message: "You can change this any time in Settings.")
@@ -146,6 +170,9 @@ struct OnboardingView: View {
                     .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
                     Button("Not now") { advance() }.buttonStyle(.shad(.ghost, size: .default, fullWidth: true))
                 }
+            case .sync:
+                Button("Continue") { advance() }
+                    .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
             case .planner:
                 Button("Get started") { onFinish() }
                     .buttonStyle(.shad(.default, size: .lg, fullWidth: true))

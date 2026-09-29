@@ -54,6 +54,7 @@ struct SettingsView: View {
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
+    @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
 
     var body: some View {
         ScrollView {
@@ -128,11 +129,12 @@ struct SettingsView: View {
 }
 
 extension SettingsView {
-    /// Whether saved stops, places and trips are syncing. There's no switch
-    /// here - Transit's iCloud switch in the Settings app is the control.
+    /// Whether saved stops, places and trips are syncing, and the switch to
+    /// stop them leaving the device (Transit's iCloud switch in the
+    /// Settings app works too).
     var iCloudRow: some View {
         let sync = environment.cloudSync
-        let detail: String
+        var detail: String
         switch sync.status {
         case .syncing:
             detail = sync.lastSynced.map { "Saved stops, places and trips - synced \($0.formatted(.relative(presentation: .named)))" }
@@ -142,13 +144,20 @@ extension SettingsView {
         case .notReady: detail = "Waiting for iCloud - check your Apple Account in the Settings app"
         case .unavailable: detail = "Off - turn on iCloud for Transit in the Settings app"
         case .off: detail = "Off on this device"
+        case .disabled: detail = "Off - saved stops, places and trips stay on this device"
         }
+        if let note = sync.pendingChangeNote(enabled: iCloudSyncEnabled) { detail = note }
         return SettingsRow(icon: "icloud", title: "iCloud sync", detail: detail) {
-            if let error = sync.lastError, sync.status == .syncing || sync.status == .off {
-                Image(systemName: "exclamationmark.triangle")
-                    .foregroundStyle(Theme.warning)
-                    .accessibilityLabel(error)
-                    .help(error)
+            HStack(spacing: 8) {
+                if let error = sync.lastError, sync.status == .syncing || sync.status == .off {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(Theme.warning)
+                        .accessibilityLabel(error)
+                        .help(error)
+                }
+                Toggle("iCloud sync", isOn: $iCloudSyncEnabled)
+                    .labelsHidden()
+                    .tint(Theme.primary)
             }
         }
     }
