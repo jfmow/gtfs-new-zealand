@@ -54,7 +54,7 @@ public final class SavedTrip {
     public var endLon: Double = 0
     public var savedAt: Date = Date.distantPast
     public var maxWalkKm: Double = 1.0
-    public var walkSpeed: Double = 4.8
+    public var walkSpeed: Double = WalkSpeed.normal
     public var maxTransfers: Int = 5
     public var colorHex: String = ""
     /// Route ids this trip's planner results are filtered to; empty = no filter.
@@ -76,7 +76,7 @@ public final class SavedTrip {
         endLabel: String, endCoordinate: Coordinate,
         savedAt: Date = Date(),
         maxWalkKm: Double = 1.0,
-        walkSpeed: Double = 4.8,
+        walkSpeed: Double = WalkSpeed.normal,
         maxTransfers: Int = 5,
         colorHex: String,
         onlyRouteIDs: [String] = [],

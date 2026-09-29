@@ -232,7 +232,7 @@ public struct JourneyPlanRequest: Sendable {
         date: Date = Date(),
         timeType: TimeType = .now,
         maxWalkKm: Double = 1.0,
-        walkSpeed: Double = 4.8,
+        walkSpeed: Double = WalkSpeed.normal,
         maxTransfers: Int = 5,
         minResults: Int = 3,
         onlyRoutes: [String] = [],

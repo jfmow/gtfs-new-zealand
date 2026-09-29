@@ -27,6 +27,7 @@ import { EasyPlanner } from "@/components/journey/easy/easy-planner"
 import { Header } from "@/components/nav"
 import { usePlannerStyle } from "@/lib/planner-style"
 import { useRouter } from "next/router"
+import { DEFAULT_WALK_SPEED, normalizeWalkSpeed } from "@/lib/walk-speed"
 
 function useMediaQuery(query: string) {
     const [matches, setMatches] = useState(false)
@@ -84,7 +85,7 @@ function StandardPlanner() {
     const [endLocation, setEndLocation] = useState<Location | null>(null)
     const [isLocating, setIsLocating] = useState<'start' | 'end' | null>(null)
     const [maxWalkKm, setMaxWalkKm] = useState("1")
-    const [walkSpeed, setWalkSpeed] = useState("4.8")
+    const [walkSpeed, setWalkSpeed] = useState(DEFAULT_WALK_SPEED)
     const [maxTransfers, setMaxTransfers] = useState("5")
     const [minResults, setMinResults] = useState("3")
     const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
@@ -178,7 +179,7 @@ function StandardPlanner() {
             setEndLocation({ lat: shared.endLat.value, lon: shared.endLon.value, label: shared.endLabel.value || "Destination" })
         }
         if (shared.sharedMaxWalkKm.found) setMaxWalkKm(shared.sharedMaxWalkKm.value)
-        if (shared.sharedWalkSpeed.found) setWalkSpeed(shared.sharedWalkSpeed.value)
+        if (shared.sharedWalkSpeed.found) setWalkSpeed(normalizeWalkSpeed(shared.sharedWalkSpeed.value))
         if (shared.sharedMaxTransfers.found) setMaxTransfers(shared.sharedMaxTransfers.value)
         if (shared.sharedMinResults.found) setMinResults(shared.sharedMinResults.value)
         if (shared.sharedOnlyRoutes.found) {
@@ -277,7 +278,7 @@ function StandardPlanner() {
         setTimeType("now")
         setSelectedDate(new Date())
         setMaxWalkKm(trip.maxWalkKm)
-        setWalkSpeed(trip.walkSpeed)
+        setWalkSpeed(normalizeWalkSpeed(trip.walkSpeed))
         setMaxTransfers(trip.maxTransfers)
         setOnlyRoutes(trip.onlyRoutes ?? [])
         setModes(trip.modes ?? [])

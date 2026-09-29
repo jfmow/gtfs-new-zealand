@@ -63,12 +63,12 @@ public struct EasyPlannerOptions: Equatable, Sendable {
     }
 
     /// A slower pace, a short walk, at most one change, two spare minutes at it.
-    public static let gentle = EasyPlannerOptions(maxWalkKm: 0.6, walkSpeed: 3.6, maxTransfers: 1, minTransferSec: 120)
+    public static let gentle = EasyPlannerOptions(maxWalkKm: 0.6, walkSpeed: 3.2, maxTransfers: 1, minTransferSec: 120)
     /// Still a slower pace with spare change time, but the planner's usual
     /// reach - the fallback when `gentle` finds nothing.
-    public static let relaxed = EasyPlannerOptions(maxWalkKm: 1.0, walkSpeed: 3.6, maxTransfers: 3, minTransferSec: 60)
+    public static let relaxed = EasyPlannerOptions(maxWalkKm: 1.0, walkSpeed: 3.2, maxTransfers: 3, minTransferSec: 60)
     /// The full planner's defaults.
-    public static let standard = EasyPlannerOptions(maxWalkKm: 1.0, walkSpeed: 4.8, maxTransfers: 5, minTransferSec: 0)
+    public static let standard = EasyPlannerOptions(maxWalkKm: 1.0, walkSpeed: WalkSpeed.normal, maxTransfers: 5, minTransferSec: 0)
 }
 
 /// Picks the one journey to recommend to a rider who'd rather not compare

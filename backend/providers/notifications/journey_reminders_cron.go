@@ -465,7 +465,7 @@ func buildJourneyRequest(r JourneyReminder, osrmURL string, rt *realtime.Realtim
 		EndLat:            r.EndLat,
 		EndLon:            r.EndLon,
 		MaxWalkKm:         r.MaxWalkKm,
-		WalkSpeedKmph:     r.WalkSpeed,
+		WalkSpeedKmph:     NormalizeWalkSpeed(r.WalkSpeed),
 		MaxTransfers:      r.MaxTransfers,
 		MaxNearbyStops:    50,
 		MaxResults:        5,

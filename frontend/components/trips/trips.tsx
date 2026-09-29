@@ -26,6 +26,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Pencil, Trash2 } from "lucide-react"
+import { DEFAULT_WALK_SPEED, normalizeWalkSpeed, WALK_SPEED_OPTIONS, walkSpeedLabel } from "@/lib/walk-speed"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,12 +50,6 @@ export interface SavedTrip {
 type OverrideKey = "maxWalkKm" | "walkSpeed" | "maxTransfers"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const WALK_SPEED_LABELS: Record<string, string> = {
-  "3": "Slow",
-  "4.8": "Normal",
-  "5.5": "Brisk",
-}
 
 // ─── SaveTripDialog ───────────────────────────────────────────────────────────
 
@@ -144,14 +139,14 @@ function EditTripDialog({
 }) {
   const [name, setName] = useState(trip.name)
   const [maxWalkKm, setMaxWalkKm] = useState(trip.maxWalkKm)
-  const [walkSpeed, setWalkSpeed] = useState(trip.walkSpeed)
+  const [walkSpeed, setWalkSpeed] = useState(normalizeWalkSpeed(trip.walkSpeed))
   const [maxTransfers, setMaxTransfers] = useState(trip.maxTransfers)
 
   useEffect(() => {
     if (open) {
       setName(trip.name)
       setMaxWalkKm(trip.maxWalkKm)
-      setWalkSpeed(trip.walkSpeed)
+      setWalkSpeed(normalizeWalkSpeed(trip.walkSpeed))
       setMaxTransfers(trip.maxTransfers)
     }
   }, [open, trip])
@@ -201,9 +196,7 @@ function EditTripDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="3">Slow</SelectItem>
-                  <SelectItem value="4.8">Normal</SelectItem>
-                  <SelectItem value="5.5">Brisk</SelectItem>
+                  {WALK_SPEED_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -297,7 +290,7 @@ export function ManageTripsSheet({
                       </p>
                       <p className="text-[11px] text-muted-foreground/60">
                         {trip.maxWalkKm} km &middot;{" "}
-                        {WALK_SPEED_LABELS[trip.walkSpeed] ?? trip.walkSpeed} &middot;{" "}
+                        {walkSpeedLabel(trip.walkSpeed)} &middot;{" "}
                         {trip.maxTransfers === "0" ? "Direct" : `≤${trip.maxTransfers} transfers`}
                       </p>
                     </button>
@@ -379,7 +372,7 @@ export function GlobalTripSettingsDialog({
   onApply,
 }: GlobalTripSettingsDialogProps) {
   const [maxWalkKm, setMaxWalkKm] = useState("1")
-  const [walkSpeed, setWalkSpeed] = useState("4.8")
+  const [walkSpeed, setWalkSpeed] = useState(DEFAULT_WALK_SPEED)
   const [maxTransfers, setMaxTransfers] = useState("5")
   const [checked, setChecked] = useState<Record<OverrideKey, boolean>>({
     maxWalkKm: false,
@@ -428,9 +421,7 @@ export function GlobalTripSettingsDialog({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="3">Slow</SelectItem>
-            <SelectItem value="4.8">Normal</SelectItem>
-            <SelectItem value="5.5">Brisk</SelectItem>
+            {WALK_SPEED_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
       ),

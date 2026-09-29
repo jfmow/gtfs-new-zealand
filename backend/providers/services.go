@@ -330,11 +330,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				ResponseDetails("maxWalkKm", c.QueryParam("maxWalkKm"), "error", err.Error()))
 		}
 
-		walkSpeed, err := queryFloat(c, "walkSpeed", 4.8)
+		walkSpeed, err := queryFloat(c, "walkSpeed", notifications.DefaultWalkSpeed)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid walkSpeedKmph", nil,
-				ResponseDetails("walkSpeedKmph", c.QueryParam("walkSpeedKmph"), "error", err.Error()))
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid walkSpeed", nil,
+				ResponseDetails("walkSpeed", c.QueryParam("walkSpeed"), "error", err.Error()))
 		}
+		walkSpeed = notifications.NormalizeWalkSpeed(walkSpeed)
 
 		maxTransfers, err := queryInt(c, "maxTransfers", 2)
 		if err != nil {

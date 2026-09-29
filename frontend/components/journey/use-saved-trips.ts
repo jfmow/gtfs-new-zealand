@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { SWATCH_COLORS } from "@/lib/colors"
 import type { Location } from "./types"
 import type { RouteOption } from "./route-filter"
+import { normalizeWalkSpeed } from "@/lib/walk-speed"
 
 export interface SavedTrip {
     id: string
@@ -32,6 +33,7 @@ function readTrips(): SavedTrip[] {
             ...t,
             color: t.color || SWATCH_COLORS[i % SWATCH_COLORS.length].value,
             onlyRoutes: t.onlyRoutes ?? [],
+            walkSpeed: normalizeWalkSpeed(t.walkSpeed),
         }))
     } catch {
         return []

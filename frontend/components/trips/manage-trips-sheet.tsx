@@ -43,6 +43,7 @@ import { useIsMobile } from "@/lib/utils"
 import { SWATCH_COLORS } from "@/lib/colors"
 import type { SavedTrip } from "@/components/journey/use-saved-trips"
 import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-filter"
+import { normalizeWalkSpeed, WALK_SPEED_OPTIONS, walkSpeedLabel } from "@/lib/walk-speed"
 
 interface ManageTripsSheetProps {
   open: boolean
@@ -68,7 +69,7 @@ function EditTripDialog({
   const [name, setName] = useState(trip.name)
   const [color, setColor] = useState(trip.color)
   const [maxWalkKm, setMaxWalkKm] = useState(trip.maxWalkKm)
-  const [walkSpeed, setWalkSpeed] = useState(trip.walkSpeed)
+  const [walkSpeed, setWalkSpeed] = useState(normalizeWalkSpeed(trip.walkSpeed))
   const [maxTransfers, setMaxTransfers] = useState(trip.maxTransfers)
   const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>(trip.onlyRoutes ?? [])
 
@@ -133,9 +134,7 @@ function EditTripDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="3">Slow</SelectItem>
-                  <SelectItem value="4.8">Normal</SelectItem>
-                  <SelectItem value="5.5">Brisk</SelectItem>
+                  {WALK_SPEED_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
@@ -221,7 +220,7 @@ function TripRow({
         </p>
         <p className="text-[11px] text-muted-foreground/60 mt-0.5">
           {trip.maxWalkKm} km &middot;{" "}
-          {trip.walkSpeed === "3" ? "Slow" : trip.walkSpeed === "4.8" ? "Normal" : "Brisk"} &middot;{" "}
+          {walkSpeedLabel(trip.walkSpeed)} &middot;{" "}
           {trip.maxTransfers === "0" ? "Direct" : `≤${trip.maxTransfers} transfers`}
         </p>
         {trip.onlyRoutes?.length > 0 && (
