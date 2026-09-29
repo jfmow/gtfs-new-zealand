@@ -147,17 +147,20 @@ final class JourneyProgressModelTests: XCTestCase {
             )
         }
 
-        // Still on the train at the stop: not yet.
+        // Still on the train at the stop (~5 m from its reported position): not yet.
         let onBoard = JourneyProgressModel()
-        tick(onBoard, vehicle: atStop, user: Coordinate(latitude: 0.0002, longitude: 0))
+        tick(onBoard, vehicle: atStop, user: Coordinate(latitude: 0.00005, longitude: 0))
         XCTAssertEqual(onBoard.alightedThroughLeg, -1)
 
-        // ~170 m from the train, which the feed still has at the stop: off.
+        // ~17 m from the train, which the feed still has at the stop: off.
         let walkedAway = JourneyProgressModel()
-        tick(walkedAway, vehicle: atStop, user: Coordinate(latitude: 0.0015, longitude: 0))
+        tick(walkedAway, vehicle: atStop, user: Coordinate(latitude: 0.00015, longitude: 0))
         XCTAssertEqual(walkedAway.alightedThroughLeg, 1)
 
-        // A stop short of the alight stop, a lagging position mustn't count.
+        // Pulling in, or a stop short: a lagging position mustn't count.
+        let arriving = JourneyProgressModel()
+        tick(arriving, vehicle: makeVehicle(tripID: "T1", current: 5, next: 6, state: "Arriving"), user: Coordinate(latitude: 0.0015, longitude: 0))
+        XCTAssertEqual(arriving.alightedThroughLeg, -1)
         let approaching = JourneyProgressModel()
         tick(approaching, vehicle: makeVehicle(tripID: "T1", current: 4, next: 5, state: "Travelling"), user: Coordinate(latitude: 0.0015, longitude: 0))
         XCTAssertEqual(approaching.alightedThroughLeg, -1)

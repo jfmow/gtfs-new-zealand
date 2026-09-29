@@ -146,6 +146,14 @@ final class OfflineRideEstimatorTests: XCTestCase {
         XCTAssertTrue(JourneyTracking.hasDepartedStop(walking, stopSeq: 5), "latches the ride as done in the progress model")
     }
 
+    func testTwentyMetresFromTheAlightStopIsAlighted() {
+        let estimator = boardedEstimator()
+        feed(estimator, fix(at: 4, speed: 0.5, seconds: 1000))
+        // ~20m east (0.00022° of longitude at -36.8°).
+        feed(estimator, fix(at: 4, speed: 1.3, seconds: 1015, lonOffset: 0.00022))
+        XCTAssertTrue(estimator.hasAlighted(tripID: "T1"))
+    }
+
     func testStayingOnPastTheStopIsNotAlighted() {
         let estimator = boardedEstimator()
         feed(estimator, fix(at: 4, speed: 8, seconds: 1000))

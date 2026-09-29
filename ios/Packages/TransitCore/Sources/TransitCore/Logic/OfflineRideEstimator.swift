@@ -42,6 +42,10 @@ public final class OfflineRideEstimator {
     static let onRouteMeters: Double = 150
     /// Within this of a stop counts as being at it.
     static let atStopMeters: Double = 40
+    /// Having reached the alight stop, this far from it at walking pace is
+    /// getting off. Tight on purpose: the rider should see "walking" as they
+    /// step off - firing a moment early costs nothing, they're at their stop.
+    static let walkedAwayMeters: Double = 10
     /// Boarding can't be detected more than this before the (predicted)
     /// departure - the rider walking along the route to the stop early.
     static let earlyBoardingSeconds: TimeInterval = 180
@@ -146,7 +150,7 @@ public final class OfflineRideEstimator {
             if metresFromAlight <= Self.atStopMeters * 2 { state.reachedAlight = true }
             // Got off: was at the stop and is now walking away from it - or
             // is nowhere near the route any more.
-            let walkingAway = state.reachedAlight && metresFromAlight >= 60 && (speed ?? 0) < Self.walkingSpeed
+            let walkingAway = state.reachedAlight && metresFromAlight >= Self.walkedAwayMeters && (speed ?? 0) < Self.walkingSpeed
             let leftRoute = state.reachedAlight && projection.distanceFromRoute > Self.onRouteMeters && (speed ?? 0) < Self.ridingSpeed
             if walkingAway || leftRoute { state.alighted = true }
         }
