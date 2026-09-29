@@ -65,10 +65,12 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         /// bus | train | ferry - the current (or next) ride's vehicle, for
         /// its icon. Empty when unknown; the widget falls back to a bus.
         public var vehicleMode: String
-        /// When the current countdown's segment began (the walk, the wait at
-        /// the stop, or the ride), so the ring drains across the whole
-        /// segment. 0 when there's no natural start (e.g. "Leave by").
-        public var countdownStartUnix: Double
+        /// The segment the ring drains across - the walk, the wait at the
+        /// stop, or the ride - independent of the countdown text's target
+        /// (walking to a stop counts down to departure, but its ring empties
+        /// on reaching the stop). 0 when there's no segment (e.g. "Leave by").
+        public var segmentStartUnix: Double
+        public var segmentEndUnix: Double
 
         public var targetDate: Date { Date(timeIntervalSince1970: targetUnix) }
         public var arrivalDate: Date { Date(timeIntervalSince1970: arrivalUnix) }
@@ -78,7 +80,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             case version, legIndex, phase, routeShortName, routeColorHex, headsign, primaryText, secondaryText
             case countdownLabel, targetUnix, delayMinutes, status, stopsAway, arrivalUnix, progressFraction
             case totalLegs, platform, nextLeg, legChain, updatedUnix, isRealtime
-            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline, vehicleMode, countdownStartUnix
+            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline, vehicleMode, segmentStartUnix, segmentEndUnix
         }
 
         public init(from decoder: Decoder) throws {
@@ -114,7 +116,8 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             occupancy = try? c.decodeIfPresent(Int.self, forKey: .occupancy)
             offline = (try? c.decodeIfPresent(Bool.self, forKey: .offline)) ?? false
             vehicleMode = (try? c.decodeIfPresent(String.self, forKey: .vehicleMode)) ?? ""
-            countdownStartUnix = (try? c.decodeIfPresent(Double.self, forKey: .countdownStartUnix)) ?? 0
+            segmentStartUnix = (try? c.decodeIfPresent(Double.self, forKey: .segmentStartUnix)) ?? 0
+            segmentEndUnix = (try? c.decodeIfPresent(Double.self, forKey: .segmentEndUnix)) ?? 0
         }
     }
 

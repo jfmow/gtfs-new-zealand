@@ -58,8 +58,9 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
     public var offline: Bool?
     /// bus | train | ferry - the current (or next) ride's vehicle.
     public var vehicleMode: String?
-    /// When the current countdown's segment began - see `segmentStart`.
-    public var countdownStartUnix: Double?
+    /// The walk, wait or ride the widget's ring drains across.
+    public var segmentStartUnix: Double?
+    public var segmentEndUnix: Double?
 
     public init() {}
 }
@@ -147,7 +148,7 @@ public enum LiveActivityContentBuilder {
             c.secondaryText = "Arrive about \(clock(leg.arrivalTime.date))"
             c.countdownLabel = "Arrive in"
             c.targetUnix = unix(leg.arrivalTime.date) ?? c.arrivalUnix
-            c.countdownStartUnix = unix(leg.departureTime.date)
+            setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
             c.status = "onTime"
             return
         }
@@ -176,7 +177,7 @@ public enum LiveActivityContentBuilder {
         c.secondaryText = "\(routeLabel(next)) departs \(clock(next.departureTime.date))\(platformSuffix(c.platform))"
         c.countdownLabel = "Departs in"
         c.targetUnix = unix(next.departureTime.date) ?? 0
-        c.countdownStartUnix = unix(leg.departureTime.date)
+        setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
 
         if let p = previousTransit(legs, before: idx) {
             applyConnection(&c, legs: legs, from: p, to: f)
@@ -198,7 +199,7 @@ public enum LiveActivityContentBuilder {
             c.platform = platform(leg)
             c.countdownLabel = "Departs in"
             c.targetUnix = unix(leg.departureTime.date) ?? 0
-            c.countdownStartUnix = waitStart(legs, idx: idx)
+            if idx > 0 { setSegment(&c, legs[idx - 1].arrivalTime.date, leg.departureTime.date) }
             c.delayMinutes = delayMinutes(leg)
             c.status = status(leg, phase: "waiting")
             c.primaryText = c.phase == "boarding" ? "Your \(route) is arriving" : "Board the \(route)"
@@ -212,7 +213,7 @@ public enum LiveActivityContentBuilder {
             c.phase = "onboard"
             c.countdownLabel = "Arrives in"
             c.targetUnix = unix(leg.arrivalTime.date) ?? 0
-            c.countdownStartUnix = unix(leg.departureTime.date)
+            setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
             c.delayMinutes = delayMinutes(leg)
             c.status = status(leg, phase: "onboard")
             let alight = stopLabel(leg.toStop)
@@ -277,13 +278,13 @@ public enum LiveActivityContentBuilder {
 
     // MARK: - Helpers
 
-    /// Where the countdown to boarding leg `idx` starts: the walk to the stop
-    /// (so the ring carries on from the walking phase), or getting off the
-    /// previous ride. Same rule as the Go builder's `waitStart`.
-    private static func waitStart(_ legs: [JourneyLeg], idx: Int) -> Double? {
-        guard idx > 0 else { return nil }
-        let prev = legs[idx - 1]
-        return unix(prev.mode == "walk" ? prev.departureTime.date : prev.arrivalTime.date)
+    /// The ring's segment: the walk (start -> reaching the stop or
+    /// destination), the wait (reaching the stop -> departure) or the ride
+    /// (departure -> arrival). Same rule as the Go builder's `setSegment`.
+    private static func setSegment(_ c: inout LiveActivityContent, _ start: Date?, _ end: Date?) {
+        guard let start, let end, end > start else { return }
+        c.segmentStartUnix = start.timeIntervalSince1970
+        c.segmentEndUnix = end.timeIntervalSince1970
     }
 
     private static func status(_ leg: JourneyLeg, phase: String) -> String {

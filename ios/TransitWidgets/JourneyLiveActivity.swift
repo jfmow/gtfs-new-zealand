@@ -700,28 +700,33 @@ private struct CompactHeadline: View {
 }
 
 /// A ring counting down to the moment that matters, round the phase glyph.
-/// It drains across the current segment (`countdownStartUnix` -> target),
-/// never from `updatedDate`: every content update moves that to now, which
-/// restarted the ring from full each time the island was expanded.
+/// It drains across the current segment - the walk, the wait at the stop,
+/// or the ride - then the next one starts full. Never from `updatedDate`:
+/// every content update moves that to now, which restarted the ring from
+/// full each time the island was expanded.
 private struct MinimalRing: View {
     let state: JourneyState
 
-    /// With no segment start (e.g. "Leave by"): full until this long before
-    /// the target, empty at it.
+    /// With no segment (e.g. "Leave by"): full until this long before the
+    /// countdown target, empty at it.
     private static let fallbackWindow: TimeInterval = 10 * 60
 
-    private var ringStart: Date {
-        let start = state.countdownStartUnix
-        if start > 0, start < state.targetUnix { return Date(timeIntervalSince1970: start) }
-        return state.targetDate.addingTimeInterval(-Self.fallbackWindow)
+    private var ringInterval: ClosedRange<Date> {
+        let start = state.segmentStartUnix, end = state.segmentEndUnix
+        if start > 0, end > start {
+            return Date(timeIntervalSince1970: start)...Date(timeIntervalSince1970: end)
+        }
+        return state.targetDate.addingTimeInterval(-Self.fallbackWindow)...state.targetDate
     }
 
     var body: some View {
         let tint = state.routeColorHex.isEmpty ? Color.white : Color(hex: state.routeColorHex)
         if state.phase == "arrived" {
             Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Tokens.success)
-        } else if state.targetDate > state.updatedDate {
-            ProgressView(timerInterval: ringStart...state.targetDate, countsDown: true) {
+        } else if state.segmentEndUnix > 0 || state.targetDate > state.updatedDate {
+            // A segment that's run over stays an empty ring until the next
+            // update moves on to the next segment.
+            ProgressView(timerInterval: ringInterval, countsDown: true) {
                 EmptyView()
             } currentValueLabel: {
                 Image(systemName: phaseSymbol(state)).font(.system(size: 9, weight: .bold))
