@@ -1,12 +1,15 @@
 import maplibregl from "maplibre-gl";
 import { toLngLat } from "../geo";
+import { isCentredIcon, staticMarkerHtml, vehicleMarkerHtml, type MarkerIcon } from "./icons";
 
 export interface MapItem {
     lat: number;
     lon: number;
-    icon: "bus" | "train" | "ferry" | "school bus" | "dot" | "dot gray" | "pin" | "user" | "stop marker" | "end marker" | "marked stop marker" | "next stop marker" | "start marker" | "current stop marker" | "hidden" | "train stop marker" | "bus stop marker" | "ferry stop marker";
+    icon: MarkerIcon;
     id: string;
     routeID: string;
+    /** Route colour ("RRGGBB" or "#RRGGBB") - fills a vehicle's badge. */
+    color?: string;
     zIndex: number;
     onClick: (id: string) => void;
     /**
@@ -43,37 +46,30 @@ export interface MapItem {
 type MarkerStyle = { anchor: maplibregl.PositionAnchor; offset: [number, number] };
 
 function markerStyle(item: MapItem): MarkerStyle {
-    if (item.icon === "hidden") return { anchor: "center", offset: [0, 0] };
-    // Dots mark an exact point, so they sit centred on it; every other icon
-    // reads as a pin and hangs above the point by its bottom edge.
-    if (item.icon === "dot" || item.icon === "dot gray") return { anchor: "center", offset: [0, 0] };
+    // Dots and vehicles mark an exact point, so they sit centred on it; the
+    // pins hang above the point by their tail.
+    if (item.type === "vehicle" || isCentredIcon(item.icon)) return { anchor: "center", offset: [0, 0] };
     return { anchor: "bottom", offset: [0, 0] };
 }
 
+const VEHICLE_SIZE = 30;
+
 function iconInnerHtml(item: MapItem): string {
-    const { routeID, icon, visibleLabel, bearing, opacity } = item;
+    const { icon, color, visibleLabel, bearing, opacity } = item;
 
     if (icon === "hidden") {
         return `<div style="width: 0px; height: 0px;"></div>`;
     }
 
-    const iconUrl = routesWithIcons.includes(routeID)
-        ? `/route_icons/${routeID}.png`
-        : getIconUrl(icon);
+    const artwork = item.type === "vehicle" || icon === "bus" || icon === "train" || icon === "ferry" || icon === "school bus"
+        ? vehicleMarkerHtml(icon, color, bearing, VEHICLE_SIZE)
+        : staticMarkerHtml(icon);
 
-    // Bearing 0 is indistinguishable from "no data" (proto3 default) - only
-    // custom route logos are skipped, since rotating a logo looks wrong.
-    const rotation = bearing !== undefined && bearing !== 0 && !routesWithIcons.includes(routeID)
-        ? `rotate(${bearing}deg)`
-        : "";
-
-    if (visibleLabel) {
-        return `
-            <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
-            <span
+    const label = visibleLabel
+        ? `<span
               style="
                 position: absolute;
-                bottom: 32px;
+                bottom: calc(100% + 6px);
                 left: 50%;
                 transform: translateX(-50%);
                 color: #1d4ed8;
@@ -88,23 +84,10 @@ function iconInnerHtml(item: MapItem): string {
               "
             >
               ${visibleLabel}
-            </span>
-            <img
-              src="${iconUrl}" alt=""
-              style="position: absolute; inset: 0; width: 28px; height: 28px; transform: ${rotation};"
-            />
-            </div>
-        `;
-    }
+            </span>`
+        : "";
 
-    return `
-        <div style="position: relative; width: 28px; height: 28px; opacity: ${opacity ?? 1};">
-            <img
-              src="${iconUrl}" alt=""
-              style="width: 28px; height: 28px; transform: ${rotation};"
-            />
-        </div>
-    `;
+    return `<div style="position: relative; opacity: ${opacity ?? 1};">${label}${artwork}</div>`;
 }
 
 /** The click listener is bound once and reads the marker's current item, which
@@ -196,67 +179,16 @@ function createPopupHtml(popup: NonNullable<MapItem["popup"]>): string {
     return `<div style="font-size:13px;min-width:120px;">${title}${subtitle}${link}</div>`
 }
 
-function getIconUrl(icon: string): string {
-    const iconMap: Record<string, string> = {
-        bus: "/vehicle_icons/bus.png",
-        train: "/vehicle_icons/train.png",
-        ferry: "/vehicle_icons/ferry.png",
-        "school bus": "/vehicle_icons/school bus.png",
-        dot: "/vehicle_icons/stop_dot.png",
-        pin: "/vehicle_icons/pin.png",
-        user: "/vehicle_icons/location.png",
-        "stop marker": "/vehicle_icons/stop marker.png",
-        "next stop marker": "/vehicle_icons/next stop marker.png",
-        "end marker": "/vehicle_icons/end marker.png",
-        "marked stop marker": "/vehicle_icons/marked stop marker.png",
-        "dot gray": "/vehicle_icons/stop_dot_passed.png",
-        "current stop marker": "/vehicle_icons/stop_dot_currently_at.png",
-        "start marker": '/vehicle_icons/stop_dot_start.png',
-        "train stop marker": "/vehicle_icons/train stop marker.png",
-        "bus stop marker": "/vehicle_icons/bus stop marker.png",
-        "ferry stop marker": "/vehicle_icons/ferry stop marker.png",
-    };
-    return iconMap[icon.toLowerCase()] || icon; // Return icon URL or use the provided custom URL
-}
-
 /** Cluster-bubble marker element - ported from the old markercluster iconCreateFunction. */
 export function createClusterElement(count: number): HTMLDivElement {
     const el = document.createElement("div");
     el.className = "custom-cluster-icon";
     el.style.cursor = "pointer";
-    el.innerHTML = `<div style="position: relative; width: 32px; height: 32px;">
-         <img src="/vehicle_icons/blank.png" style="width: 100%; height: 100%;" />
-         <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 10px; color: black;">
-           ${count}
-         </div>
+    el.innerHTML = `<div style="width: 32px; height: 32px; border-radius: 9999px; background: #fff; border: 2px solid #18181b; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35); box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #18181b;">
+         ${count}
        </div>`;
     return el;
 }
-
-const routesWithIcons = [
-    //Buses
-    "TMK-202",
-    "RBW-402",
-    "RBSX-402",
-    "RBS-402",
-    "RBO-402",
-    "RBE-402",
-    "OUT-202",
-    "MEX-403",
-    "INN-202",
-    "CTY-202",
-    "AIR-221",
-    //Ferry's
-    "HOBS-209",
-    "HMB-209",
-    "DEV-209",
-    "GULF-209",
-    //Trains
-    "ONE-201",
-    "EAST-201",
-    "STH-201",
-    "WEST-201",
-]
 
 function animateMarkerTo(marker: maplibregl.Marker, newLat: number, newLng: number, duration = 500) {
     const start = marker.getLngLat();

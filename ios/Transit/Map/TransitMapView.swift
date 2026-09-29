@@ -751,13 +751,17 @@ struct TransitMapView: UIViewRepresentable {
     }
 }
 
-/// A rotated vehicle marker, using the same PNG vehicle icons as the web
-/// map (`public/vehicle_icons/`) rather than an SF Symbol, for visual
-/// parity - each already has its own rounded-badge look baked in, so this
-/// just rotates it for bearing, no extra background chrome needed.
+/// A live vehicle: its mode symbol on its route colour (dark when the route
+/// has none), kept upright, with a small pointer riding round the edge for
+/// its bearing - the web map's vehicle marker (`markers/icons.ts`).
 final class VehicleMarkerView: MKAnnotationView {
 
+    private static let diameter: CGFloat = 30
+    private static var cache: [String: UIImage] = [:]
+
     private let badge = UIImageView()
+    private let pointerHost = UIView()
+    private let pointer = CAShapeLayer()
 
     override init(
         annotation: MKAnnotation?,
@@ -768,18 +772,25 @@ final class VehicleMarkerView: MKAnnotationView {
             reuseIdentifier: reuseIdentifier
         )
 
-        frame = CGRect(
-            x: 0,
-            y: 0,
-            width: 34,
-            height: 34
-        )
-
+        frame = CGRect(x: 0, y: 0, width: 46, height: 46)
         centerOffset = .zero
 
-        badge.frame = bounds
-        badge.contentMode = .scaleAspectFit
+        pointerHost.frame = bounds
+        pointerHost.isUserInteractionEnabled = false
+        let path = UIBezierPath()
+        path.move(to: CGPoint(x: bounds.midX - 5, y: 8))
+        path.addLine(to: CGPoint(x: bounds.midX + 5, y: 8))
+        path.addLine(to: CGPoint(x: bounds.midX, y: 1))
+        path.close()
+        pointer.path = path.cgPath
+        pointer.strokeColor = UIColor.white.cgColor
+        pointer.lineWidth = 1.5
+        pointer.lineJoin = .round
+        pointerHost.layer.addSublayer(pointer)
+        addSubview(pointerHost)
 
+        badge.frame = bounds
+        badge.contentMode = .center
         addSubview(badge)
 
         canShowCallout = true
@@ -794,32 +805,21 @@ final class VehicleMarkerView: MKAnnotationView {
         colorHex: String?,
         vehicleType: String
     ) {
-        let imageName: String
-
-        switch vehicleType {
-        case "train":
-            imageName = "VehicleIconTrain"
-
-        case "ferry":
-            imageName = "VehicleIconFerry"
-
-        case "school bus":
-            imageName = "VehicleIconSchoolBus"
-
-        default:
-            imageName = "VehicleIconBus"
-        }
-
-        badge.image = UIImage(named: imageName)
-
-        // bearing == 0 means "no data" on this API - don't rotate.
-        if bearing > 0 {
-            transform = CGAffineTransform(
-                rotationAngle: CGFloat(bearing) * .pi / 180
-            )
+        let fill = colorHex.map { UIColor(hex: $0) } ?? MapMarkerArt.foreground
+        let symbol = MapMarkerArt.symbolName(forMode: vehicleType)
+        let key = "\(symbol)|\(colorHex ?? "")"
+        if let cached = Self.cache[key] {
+            badge.image = cached
         } else {
-            transform = .identity
+            let image = MapMarkerArt.badge(symbol: symbol, fill: fill, diameter: Self.diameter)
+            Self.cache[key] = image
+            badge.image = image
         }
+
+        pointer.fillColor = fill.cgColor
+        // bearing == 0 means "no data" on this API - no pointer.
+        pointerHost.isHidden = bearing <= 0
+        pointerHost.transform = CGAffineTransform(rotationAngle: CGFloat(bearing) * .pi / 180)
     }
 }
 
