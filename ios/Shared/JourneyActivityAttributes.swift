@@ -62,6 +62,9 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         /// Set by the app only (never the server): no connection, so times
         /// are timetable-based and on-board progress is from the rider's GPS.
         public var offline: Bool
+        /// bus | train | ferry - the current (or next) ride's vehicle, for
+        /// its icon. Empty when unknown; the widget falls back to a bus.
+        public var vehicleMode: String
 
         public var targetDate: Date { Date(timeIntervalSince1970: targetUnix) }
         public var arrivalDate: Date { Date(timeIntervalSince1970: arrivalUnix) }
@@ -71,7 +74,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             case version, legIndex, phase, routeShortName, routeColorHex, headsign, primaryText, secondaryText
             case countdownLabel, targetUnix, delayMinutes, status, stopsAway, arrivalUnix, progressFraction
             case totalLegs, platform, nextLeg, legChain, updatedUnix, isRealtime
-            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline
+            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline, vehicleMode
         }
 
         public init(from decoder: Decoder) throws {
@@ -106,6 +109,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             hasVehicle = (try? c.decodeIfPresent(Bool.self, forKey: .hasVehicle)) ?? false
             occupancy = try? c.decodeIfPresent(Int.self, forKey: .occupancy)
             offline = (try? c.decodeIfPresent(Bool.self, forKey: .offline)) ?? false
+            vehicleMode = (try? c.decodeIfPresent(String.self, forKey: .vehicleMode)) ?? ""
         }
     }
 

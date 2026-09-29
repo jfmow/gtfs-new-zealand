@@ -379,7 +379,7 @@ private struct ApproachRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if let away = state.stopsAway, state.hasVehicle {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex)
+                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
                 Text(away == 0 ? "Arriving now" : away == 1 ? "1 stop away" : "\(away) stops away")
                     .font(.geist(12, .semibold).monospacedDigit())
                     .foregroundStyle(Tokens.foreground)
@@ -406,12 +406,13 @@ private struct ApproachRow: View {
 private struct VehicleApproach: View {
     let stopsAway: Int
     let colorHex: String
+    let symbol: String
 
     var body: some View {
         let color = colorHex.isEmpty ? Tokens.foreground : Color(hex: colorHex)
         let shown = min(stopsAway, 5)
         HStack(spacing: 3) {
-            Image(systemName: "bus.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(RouteColors.text(onHex: colorHex.isEmpty ? Tokens.neutralRoute : colorHex))
                 .frame(width: 16, height: 16)
@@ -438,7 +439,7 @@ private struct WalkRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if let away = state.stopsAway, state.hasVehicle, !state.routeShortName.isEmpty {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex)
+                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
                 Text(away == 0 ? "\(state.routeShortName) arriving" : "\(state.routeShortName) \(away == 1 ? "1 stop" : "\(away) stops") away")
                     .font(.geist(12, .semibold).monospacedDigit())
                     .foregroundStyle(Tokens.foreground)
@@ -758,7 +759,16 @@ private func phaseSymbol(_ state: JourneyState) -> String {
     case "walking": return "figure.walk"
     case "waiting": return "clock"
     case "boarding": return "bell.fill"
-    default: return "tram.fill"
+    default: return vehicleSymbol(state)
+    }
+}
+
+/// The ride's vehicle - matches `TravelMode.systemImage` in the app.
+private func vehicleSymbol(_ state: JourneyState) -> String {
+    switch state.vehicleMode {
+    case "train": return "tram.fill"
+    case "ferry": return "ferry.fill"
+    default: return "bus.fill"
     }
 }
 

@@ -66,7 +66,8 @@ type journeyActivityState struct {
 	WalkMinutes    *int   `json:"walkMinutes,omitempty"`
 	WalkMeters     *int   `json:"walkMeters,omitempty"`
 	HasVehicle     bool   `json:"hasVehicle"`
-	Occupancy      *int   `json:"occupancy,omitempty"` // GTFS-RT occupancy status
+	Occupancy      *int   `json:"occupancy,omitempty"`   // GTFS-RT occupancy status
+	VehicleMode    string `json:"vehicleMode,omitempty"` // bus | train | ferry - the current (or next) ride's vehicle
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -281,6 +282,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	next, nt := plan.Legs[f], timings[f]
 	state.RouteShortName = routeShortNameOrEmpty(next)
 	state.RouteColorHex = routeColorOrEmpty(next)
+	state.VehicleMode = vehicleModeOf(next)
 	state.Platform = platformOf(next)
 	fillRide(state, next, nt)
 	if state.HasVehicle && nt.live.StopsToBoard >= 0 {
@@ -327,6 +329,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 
 	state.RouteShortName = routeShortNameOrEmpty(leg)
 	state.RouteColorHex = routeColorOrEmpty(leg)
+	state.VehicleMode = vehicleModeOf(leg)
 	state.Headsign = stopLabel(leg.ToStop)
 	fillRide(state, leg, t)
 
@@ -615,6 +618,22 @@ func routeColorOrEmpty(leg gtfs.JourneyLeg) string {
 		return ""
 	}
 	return leg.Route.RouteColor
+}
+
+// vehicleModeOf is the ride's travel mode (bus | train | ferry) from its
+// route_type, for the widget's vehicle icon. Empty for walks or unknown types.
+func vehicleModeOf(leg gtfs.JourneyLeg) string {
+	if leg.Mode == "walk" || leg.Route == nil {
+		return ""
+	}
+	for mode, types := range travelModeRouteTypes {
+		for _, t := range types {
+			if t == leg.Route.RouteType {
+				return mode
+			}
+		}
+	}
+	return ""
 }
 
 // stateHash fingerprints what a rider would notice changing. Countdown

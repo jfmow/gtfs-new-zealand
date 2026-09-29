@@ -56,6 +56,8 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
     /// The phone has no connection: times are the timetable plus the last
     /// delay seen, and progress on board comes from the rider's own GPS.
     public var offline: Bool?
+    /// bus | train | ferry - the current (or next) ride's vehicle.
+    public var vehicleMode: String?
 
     public init() {}
 }
@@ -150,6 +152,7 @@ public enum LiveActivityContentBuilder {
         let next = legs[f]
         c.routeShortName = shortName(next)
         c.routeColorHex = next.route?.routeColor ?? ""
+        c.vehicleMode = vehicleMode(next)
         c.platform = platform(next)
         fillRide(&c, next, progress: progress)
         if progress.hasVehicle, let away = progress.stopsAway, away >= 0 { c.stopsAway = away }
@@ -181,6 +184,7 @@ public enum LiveActivityContentBuilder {
         let route = routeLabel(leg)
         c.routeShortName = shortName(leg)
         c.routeColorHex = leg.route?.routeColor ?? ""
+        c.vehicleMode = vehicleMode(leg)
         c.headsign = stopLabel(leg.toStop)
         fillRide(&c, leg, progress: progress)
 
@@ -310,6 +314,12 @@ public enum LiveActivityContentBuilder {
         guard leg.mode != "walk" else { return "" }
         if let name = leg.route?.routeShortName, !name.isEmpty { return name }
         return leg.routeID
+    }
+
+    /// Mirrors `vehicleModeOf` in the Go builder.
+    private static func vehicleMode(_ leg: JourneyLeg) -> String? {
+        guard let type = leg.route?.routeType else { return nil }
+        return TravelMode(routeType: type)?.rawValue
     }
 
     private static func routeLabel(_ leg: JourneyLeg) -> String {
