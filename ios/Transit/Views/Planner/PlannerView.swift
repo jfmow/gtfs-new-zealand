@@ -235,10 +235,16 @@ struct PlannerView: View {
         }
         .scrollDismissesKeyboard(.interactively)
         // Pull down: fresh reminders, and fresh times for any results.
+        // The work runs in its own Task so SwiftUI ending the refresh
+        // early can't cancel the request halfway.
         .refreshable {
-            async let reminders: Void = loadUpcomingReminders()
-            if !results.isEmpty, !isPlanning { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
-            await reminders
+            await Task {
+                async let reminders: Void = loadUpcomingReminders()
+                if !results.isEmpty, !isPlanning {
+                    await plan(keepingReplanSnapshot: replanSnapshot != nil, refreshing: true)
+                }
+                await reminders
+            }.value
         }
     }
 
@@ -564,13 +570,18 @@ struct PlannerView: View {
                              modes: modes, minTransferSec: minTransferSec)
     }
 
-    private func plan(keepingReplanSnapshot: Bool = false) async {
+    /// `refreshing` (pull to refresh) keeps the current results on screen until
+    /// the new ones arrive: blanking them mid-pull rebuilds the scroll content,
+    /// which cancels the refresh.
+    private func plan(keepingReplanSnapshot: Bool = false, refreshing: Bool = false) async {
         guard let start, let end else { return }
         if timeType == .now { date = Date() }
         if !keepingReplanSnapshot { replanSnapshot = nil }
-        isPlanning = true
         planError = nil
-        results = []
+        if !refreshing {
+            isPlanning = true
+            results = []
+        }
         defer { isPlanning = false }
         let context = currentContext
         do {
@@ -586,6 +597,9 @@ struct PlannerView: View {
             lastRequest = request
             resultsPlannedAt = Date()
             if plans.isEmpty { planError = "No journeys found. Try walking further or allowing more transfers." }
+        } catch let error as APIError where error.isCancellation {
+            // Superseded or torn down, not a failure - leave things as they were.
+        } catch is CancellationError {
         } catch {
             planError = error.localizedDescription.isEmpty ? "Couldn't plan that journey." : error.localizedDescription
         }

@@ -27,6 +27,13 @@ extension APIError: LocalizedError {
         }
     }
 
+    /// The request was cancelled (its task went away) rather than failing -
+    /// not something to show the rider.
+    public var isCancellation: Bool {
+        guard case .transport(let underlying) = self else { return false }
+        return underlying is CancellationError || (underlying as? URLError)?.code == .cancelled
+    }
+
     /// The trace id to show for support/debugging, if one is known.
     public var traceID: String? {
         switch self {
