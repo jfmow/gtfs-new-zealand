@@ -198,7 +198,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             time_type TEXT NOT NULL DEFAULT 'arriveat',
             target_hhmm TEXT NOT NULL DEFAULT '',
             max_walk_km REAL NOT NULL DEFAULT 1.0,
-            walk_speed REAL NOT NULL DEFAULT 4.0,
+            walk_speed REAL NOT NULL DEFAULT 3.6,
             max_transfers INTEGER NOT NULL DEFAULT 5,
             only_route_ids TEXT NOT NULL DEFAULT '[]',
             route_types TEXT NOT NULL DEFAULT '[]',
