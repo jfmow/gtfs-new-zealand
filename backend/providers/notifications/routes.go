@@ -418,7 +418,10 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return
 		}
 		defer journeyRemindersCronMutex.Unlock()
-		runJourneyRemindersCron(notificationDB, gtfsData, realtime, localTimeZone, region, osrmURL, planLookup, planPut, now)
+		// The Live Activity's own realtime lookup, so a reminder's leave time
+		// is the one on the Lock Screen card.
+		live := newLiveLegLookup(realtime, stopsForTripCache, parentStopsCache, localTimeZone)
+		runJourneyRemindersCron(notificationDB, gtfsData, realtime, live, localTimeZone, region, osrmURL, planLookup, planPut, now)
 	})
 
 	// Live Activity progress - background safety net for when the app isn't

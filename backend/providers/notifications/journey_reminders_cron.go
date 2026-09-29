@@ -34,6 +34,7 @@ func runJourneyRemindersCron(
 	db *Database,
 	gtfsData gtfs.Database,
 	rt realtime.Realtime,
+	live liveLegLookup,
 	tz *time.Location,
 	region, osrmURL string,
 	planLookup func(id string) (gtfs.JourneyPlan, bool),
@@ -58,7 +59,7 @@ func runJourneyRemindersCron(
 	updates, _ := rt.GetTripUpdates() // nil / partial tolerated per row
 
 	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, planPut, now)
-	jrCronNotify(db, updates, tz, region, planLookup, now)
+	jrCronNotify(db, updates, live, tz, region, planLookup, now)
 	jrCronReroute(db, gtfsData, &rt, updates, tz, region, osrmURL, planLookup, planPut, now)
 }
 
@@ -208,7 +209,7 @@ func jrHandleResolveFailure(db *Database, tz *time.Location, r JourneyReminder, 
 
 // ── PASS 2 — arm / notify ────────────────────────────────────────────────────
 
-func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time) {
+func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLookup, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time) {
 	rows, err := db.GetArmedJourneyReminders(region)
 	if err != nil {
 		return
@@ -248,6 +249,20 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 		// Rounded down to the minute like the Live Activity's leave-by, so
 		// the push and the card give the same time.
 		leaveUnix := leaveByTime(time.Unix(departUnix-access, 0)).Unix()
+		// With the journey on hand, work it out exactly as the Live Activity
+		// does - the same realtime lookup, which trusts an early bus once
+		// it's on the road. Clamping it here while the card didn't sent
+		// "leave in 5" with the card saying 3 (2026-09-30).
+		var plan gtfs.JourneyPlan
+		havePlan := false
+		if planLookup != nil {
+			plan, havePlan = planLookup(reminderPlanID(r))
+		}
+		if havePlan && live != nil {
+			if dep, leave, ok := planLiveLeave(plan, live, r.BoardTripID.String); ok {
+				departUnix, leaveUnix = dep.Unix(), leave.Unix()
+			}
+		}
 		leaveTime := time.Unix(leaveUnix, 0).In(tz)
 		departTime := time.Unix(departUnix, 0).In(tz)
 		minsUntilLeave := int(math.Round(time.Until(leaveTime).Minutes()))
@@ -297,15 +312,21 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 		// (b) fire pending offsets. When a poll gap makes several rungs due at
 		// once, collapse them into one push phrased from the most urgent
 		// (smallest) rung reached - never a larger one, or the copy under-reports.
+		// A running Live Activity sends its own "Get ready to leave" (5 min
+		// out) and "Time to leave" - the 5 and 0 rungs would repeat them.
+		activityAlerts := r.LAStarted && havePlan && db.HasLiveActivityForPlan(r.ClientId, plan.ID)
 		fireMins := -1
 		for _, o := range offsets {
 			if containsInt(sent, o) {
 				continue
 			}
 			if now.Unix() >= leaveUnix-int64(o)*60 {
-				fireMins = o // offsets are sorted desc, so the last write is the smallest rung
 				sent = append(sent, o)
 				changed = true
+				if activityAlerts && o*60 <= int(getReadyLead.Seconds()) {
+					continue
+				}
+				fireMins = o // offsets are sorted desc, so the last write is the smallest rung
 			}
 		}
 		if fireMins != -1 {
@@ -530,4 +551,26 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// planLiveLeave is the leave and boarding times for plan exactly as the Live
+// Activity computes them (effectiveTimings + leaveByTime), when its first
+// ride is still boardTripID.
+func planLiveLeave(plan gtfs.JourneyPlan, live liveLegLookup, boardTripID string) (depart, leave time.Time, ok bool) {
+	f := -1
+	for i := range plan.Legs {
+		if plan.Legs[i].Mode == "transit" {
+			f = i
+			break
+		}
+	}
+	if f < 0 || plan.Legs[f].TripID != boardTripID {
+		return time.Time{}, time.Time{}, false
+	}
+	timings := effectiveTimings(plan, live)
+	leave = timings[f].dep
+	if plan.Legs[0].Mode == "walk" {
+		leave = timings[0].dep
+	}
+	return timings[f].dep, leaveByTime(leave), true
 }
