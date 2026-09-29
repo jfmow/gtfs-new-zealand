@@ -63,7 +63,9 @@ struct UpcomingRemindersList: View {
     /// "Tomorrow · arrive by 8:30 am · leave ~8:02 · Weekdays"
     static func when(_ reminder: JourneyReminderDTO) -> String {
         var parts: [String] = []
-        let verb = reminder.timeType == "arriveat" ? "arrive by" : "leave"
+        // A depart-at target is the ride's boarding time, not when to walk
+        // out the door - that's next_leave_local.
+        let verb = reminder.timeType == "arriveat" ? "arrive by" : "depart"
         if let date = reminder.targetDate {
             let day = JourneyReminderMath.relativeDay(date)
             parts.append(day.prefix(1).uppercased() + day.dropFirst())
@@ -74,7 +76,7 @@ struct UpcomingRemindersList: View {
         } else {
             parts.append("\(verb) \(reminder.targetHHMM)")
         }
-        if reminder.timeType == "arriveat", let local = reminder.nextLeaveLocal, !local.isEmpty {
+        if let local = reminder.nextLeaveLocal, !local.isEmpty {
             parts.append("leave ~\(local)")
         }
         if reminder.isRepeating {

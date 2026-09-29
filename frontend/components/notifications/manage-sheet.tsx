@@ -84,7 +84,7 @@ function subscriptionDetail(causes: string[] | null, minSeverity: string, notify
 
 function journeyReminderDetail(r: JourneyReminder): string {
     const parts: string[] = [weekdayMaskLabel(r.recurrence)]
-    parts.push(`${r.time_type === "arriveat" ? "arrive by" : "leave"} ${r.target_hhmm}`)
+    parts.push(`${r.time_type === "arriveat" ? "arrive by" : "depart"} ${r.target_hhmm}`)
     if (r.status === "pending_resolve") {
         parts.push("finding your trip…")
     } else if (r.status === "scheduled") {

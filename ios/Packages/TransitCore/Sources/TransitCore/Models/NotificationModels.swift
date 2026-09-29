@@ -106,7 +106,7 @@ public enum SubscriptionDetail {
     /// `journeyReminderDetail` on the web.
     public static func text(for reminder: JourneyReminderDTO) -> String {
         var parts = [JourneyReminderMath.weekdayMaskLabel(reminder.recurrence)]
-        parts.append("\(reminder.timeType == "arriveat" ? "arrive by" : "leave") \(reminder.targetHHMM)")
+        parts.append("\(reminder.timeType == "arriveat" ? "arrive by" : "depart") \(reminder.targetHHMM)")
         if reminder.status == "pending_resolve" {
             parts.append("finding your trip…")
         } else if reminder.status == "scheduled" {
