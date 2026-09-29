@@ -503,13 +503,19 @@ final class JourneyTrackingSession {
             }
         }
 
-        // The feed wins while it's fresh; past that, the rider's GPS.
+        // The feed wins while it's fresh - except where the rider's GPS puts
+        // the ride further along (the feed lags a stop or getting off by up
+        // to minutes). Past fresh, the rider's GPS.
         let liveAge = lastLiveFetch.map { now.timeIntervalSince($0) } ?? .infinity
         var vehicles = liveAge <= Self.liveDataMaxAge ? liveVehicles : [:]
         var estimatedIDs = Set<String>()
-        for (tripID, vehicle) in estimated where vehicles[tripID] == nil || liveAge > Self.liveFreshAge {
-            vehicles[tripID] = vehicle
-            estimatedIDs.insert(tripID)
+        for (tripID, vehicle) in estimated {
+            if let live = vehicles[tripID], liveAge <= Self.liveFreshAge {
+                vehicles[tripID] = OfflineRideEstimator.advancing(live, to: vehicle)
+            } else {
+                vehicles[tripID] = vehicle
+                estimatedIDs.insert(tripID)
+            }
         }
 
         var times = fetchedStopTimes
