@@ -234,6 +234,12 @@ struct PlannerView: View {
             .readableContentWidth()
         }
         .scrollDismissesKeyboard(.interactively)
+        // Pull down: fresh reminders, and fresh times for any results.
+        .refreshable {
+            async let reminders: Void = loadUpcomingReminders()
+            if !results.isEmpty, !isPlanning { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
+            await reminders
+        }
     }
 
     /// iPad: the selected result's detail, or a prompt until there is one.
