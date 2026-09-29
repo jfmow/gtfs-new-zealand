@@ -74,16 +74,17 @@ struct TransitApp: App {
         }
     }
 
-    /// Saved stops/places/trips sync through iCloud (`TransitStore`). If
-    /// the CloudKit-backed store won't open, the same file opens local-only
+    /// Saved stops/places/trips sync through iCloud (`TransitStore`) unless
+    /// the rider turned it off (`CloudSyncMonitor.isEnabled`). If the
+    /// CloudKit-backed store won't open, the same file opens local-only
     /// rather than the app failing to launch; a Debug launch with
     /// `-disableCloudSync YES` (the UI tests) skips iCloud entirely.
     /// The error is why iCloud is off - shown in Settings.
     private static func makeModelContainer() -> (ModelContainer, cloudError: String?) {
         #if DEBUG
-        let wantsCloud = !UserDefaults.standard.bool(forKey: "disableCloudSync")
+        let wantsCloud = CloudSyncMonitor.isEnabled && !UserDefaults.standard.bool(forKey: "disableCloudSync")
         #else
-        let wantsCloud = true
+        let wantsCloud = CloudSyncMonitor.isEnabled
         #endif
         let directory = TransitStore.storeDirectory(appGroup: SharedStore.appGroup)
         var cloudError = "Turned off for this launch"

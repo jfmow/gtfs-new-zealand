@@ -66,7 +66,7 @@ type journeyActivityState struct {
 	WalkMinutes    *int   `json:"walkMinutes,omitempty"`
 	WalkMeters     *int   `json:"walkMeters,omitempty"`
 	HasVehicle     bool   `json:"hasVehicle"`
-	Occupancy      *int   `json:"occupancy,omitempty"` // GTFS-RT occupancy status; device-only for now
+	Occupancy      *int   `json:"occupancy,omitempty"` // GTFS-RT occupancy status
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -111,6 +111,9 @@ type legLive struct {
 	// RideStops is how many stops the rider travels (board -> alight), from
 	// the trip's stop list - 0 when it isn't known.
 	RideStops int
+	// Occupancy is the running vehicle's GTFS-RT occupancy status, when it
+	// reports one.
+	Occupancy *int
 }
 
 // liveLegLookup returns realtime for the transit leg at index i, or false
@@ -431,6 +434,7 @@ func fillRide(state *journeyActivityState, leg gtfs.JourneyLeg, t legTiming) {
 	state.HasVehicle = t.live.HasVehicle
 	if t.live.HasVehicle {
 		state.NextStopName = t.live.NextStopName
+		state.Occupancy = t.live.Occupancy
 	}
 	if t.live.RideStops > 0 {
 		n := t.live.RideStops

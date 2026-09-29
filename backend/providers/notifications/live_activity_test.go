@@ -356,3 +356,33 @@ func TestStopDisplayName_UsesParentName(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestLegLive_EarlyDelayTrustedOnceVehicleRuns(t *testing.T) {
+	running := legLive{HasTripUpdate: true, HasVehicle: true, DepartureDelay: -12 * 60, ArrivalDelay: -12 * 60}
+	running.clampUnstartedDelays()
+	if running.DepartureDelay != -12*60 || running.ArrivalDelay != -12*60 {
+		t.Errorf("running vehicle's delays clamped: %d/%d", running.DepartureDelay, running.ArrivalDelay)
+	}
+
+	unstarted := legLive{HasTripUpdate: true, DepartureDelay: -12 * 60, ArrivalDelay: -12 * 60}
+	unstarted.clampUnstartedDelays()
+	if unstarted.DepartureDelay != jrMinTrustedDelaySeconds || unstarted.ArrivalDelay != jrMinTrustedDelaySeconds {
+		t.Errorf("pre-trip delays not clamped: %d/%d", unstarted.DepartureDelay, unstarted.ArrivalDelay)
+	}
+}
+
+func TestActivity_OnboardEarlyMatchesApp(t *testing.T) {
+	occupancy := 2
+	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: -5, StopsToAlight: 0,
+		DepartureDelay: -12 * 60, ArrivalDelay: -12 * 60, Occupancy: &occupancy}})
+	state := computeJourneyActivityState(testPlan(base), base.Add(12*time.Minute), live, noHint)
+	if state.DelayMinutes != -12 || state.Status != "early" {
+		t.Errorf("delay = %d status = %s", state.DelayMinutes, state.Status)
+	}
+	if want := float64(base.Add(13 * time.Minute).Unix()); state.TargetUnix != want {
+		t.Errorf("target = %v, want %v", state.TargetUnix, want)
+	}
+	if state.Occupancy == nil || *state.Occupancy != 2 {
+		t.Errorf("occupancy = %v", state.Occupancy)
+	}
+}
