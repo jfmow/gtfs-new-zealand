@@ -3,7 +3,7 @@ import Link from "next/link"
 import type { ReactNode } from "react"
 
 /** Where privacy questions and deletion requests go. */
-const CONTACT_URL = "https://github.com/jfmow/gtfs-new-zealand/issues"
+const CONTACT_EMAIL = "james@suddsy.dev"
 const LAST_UPDATED = "29 September 2026"
 
 /**
@@ -27,7 +27,7 @@ export default function Privacy() {
                     <Section title="The short version">
                         <ul>
                             <li>There are no accounts, no ads, no analytics and no tracking.</li>
-                            <li>Your saved stops, places and trips stay on your device, or in your own iCloud if you turn on sync.</li>
+                            <li>Your saved stops, places and trips stay on your device, or in the app&apos;s iCloud storage if you turn on sync.</li>
                             <li>Your location is used to answer the request you make (nearby stops, a journey plan, walking directions) and isn&apos;t kept as a history of where you&apos;ve been.</li>
                             <li>If you turn on notifications, reminders or a Live Activity, the server keeps what it needs to send them, and removes it when you turn them off or the journey is over.</li>
                             <li>We never sell or share your data.</li>
@@ -41,9 +41,9 @@ export default function Privacy() {
                             None of this is sent to us.
                         </p>
                         <p>
-                            If you turn on <strong>iCloud sync</strong>, this data is also stored in your private iCloud database through Apple&apos;s
-                            CloudKit, so it appears on your other devices. It is stored in your own iCloud account, which we can&apos;t see. You can
-                            turn sync off in the app&apos;s settings.
+                            If you turn on <strong>iCloud sync</strong>, this data is also stored in the app&apos;s iCloud container through Apple&apos;s
+                            CloudKit, so it appears on your other devices. We can see what is stored there, and only use it to run and support
+                            the app. You can turn sync off in the app&apos;s settings.
                         </p>
                     </Section>
 
@@ -155,7 +155,7 @@ export default function Privacy() {
                     <Section title="Contact">
                         <p>
                             Questions or requests about your privacy:{" "}
-                            <a href={CONTACT_URL} target="_blank" rel="noreferrer">{CONTACT_URL.replace(/^https:\/\//, "")}</a>
+                            <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a>
                         </p>
                     </Section>
 
