@@ -343,6 +343,7 @@ function VehiclesMode() {
                 opacity: focused && !isSelected ? 0.35 : 1,
                 id: vehicle.trip_id,
                 routeID: vehicle.route.id,
+                color: vehicle.route.color,
                 visibleLabel: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
                 zIndex: isSelected ? 10 : 1,
                 type: "vehicle",

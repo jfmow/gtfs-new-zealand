@@ -125,6 +125,47 @@ final class JourneyProgressModelTests: XCTestCase {
         XCTAssertEqual(settled.progressLegIndex, 2, "the final walking leg is what the UI should show as current")
     }
 
+    /// The feed can keep a train "AtStop" at the rider's stop for minutes
+    /// after they've got off - walking away from it is enough.
+    func testWalkingAwayFromVehicleAtAlightStopCountsAsAlighted() {
+        let board = makeStop(id: "board")
+        let alight = makeStop(id: "alight")
+        let scheduledDeparture = base.addingTimeInterval(300)
+        let scheduledArrival = scheduledDeparture.addingTimeInterval(600)
+        let plan = makeThreeLegJourney(boardStop: board, alightStop: alight, transitDeparture: scheduledDeparture, transitArrival: scheduledArrival)
+        let trackedStops = [
+            TripStopRef(lat: 0, lon: 0, parentStopID: board.parentStation, name: "board", platform: "1", sequence: 3, childStopID: "board-child"),
+            TripStopRef(lat: 0, lon: 0, parentStopID: alight.parentStation, name: "alight", platform: "1", sequence: 5, childStopID: "alight-child"),
+        ]
+        let atStop = makeVehicle(tripID: "T1", current: 5, next: 6, state: "AtStop")
+        let now = scheduledArrival.addingTimeInterval(30)
+
+        func tick(_ model: JourneyProgressModel, vehicle: Vehicle, user: Coordinate) {
+            _ = model.update(
+                plan: plan, displayPlan: plan, now: now, vehiclesByTripID: ["T1": vehicle],
+                stopTimesByTripID: [:], journeyStarted: true, trackedStops: trackedStops, userLocation: user
+            )
+        }
+
+        // Still on the train at the stop (~5 m from its reported position): not yet.
+        let onBoard = JourneyProgressModel()
+        tick(onBoard, vehicle: atStop, user: Coordinate(latitude: 0.00005, longitude: 0))
+        XCTAssertEqual(onBoard.alightedThroughLeg, -1)
+
+        // ~17 m from the train, which the feed still has at the stop: off.
+        let walkedAway = JourneyProgressModel()
+        tick(walkedAway, vehicle: atStop, user: Coordinate(latitude: 0.00015, longitude: 0))
+        XCTAssertEqual(walkedAway.alightedThroughLeg, 1)
+
+        // Pulling in, or a stop short: a lagging position mustn't count.
+        let arriving = JourneyProgressModel()
+        tick(arriving, vehicle: makeVehicle(tripID: "T1", current: 5, next: 6, state: "Arriving"), user: Coordinate(latitude: 0.0015, longitude: 0))
+        XCTAssertEqual(arriving.alightedThroughLeg, -1)
+        let approaching = JourneyProgressModel()
+        tick(approaching, vehicle: makeVehicle(tripID: "T1", current: 4, next: 5, state: "Travelling"), user: Coordinate(latitude: 0.0015, longitude: 0))
+        XCTAssertEqual(approaching.alightedThroughLeg, -1)
+    }
+
     func testAlightedThroughLegRatchetNeverGoesBackwards() {
         let board = makeStop(id: "board")
         let alight = makeStop(id: "alight")

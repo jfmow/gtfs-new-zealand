@@ -69,3 +69,19 @@ func TestQueueLiveActivityAlert(t *testing.T) {
 		t.Fatal("pending alert not cleared once sent")
 	}
 }
+
+func TestAnnouncesAlertsOnlyWithFreshHeadphonesReport(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	fresh := LiveActivity{Headphones: true, ClientReported: now.Add(-time.Minute).Unix()}
+	if !fresh.announcesAlerts(now) {
+		t.Error("headphones reported a minute ago should announce")
+	}
+	stale := LiveActivity{Headphones: true, ClientReported: now.Add(-headphonesFreshFor - time.Second).Unix()}
+	if stale.announcesAlerts(now) {
+		t.Error("a stale headphones report shouldn't announce")
+	}
+	none := LiveActivity{Headphones: false, ClientReported: now.Unix()}
+	if none.announcesAlerts(now) {
+		t.Error("no headphones shouldn't announce")
+	}
+}

@@ -42,6 +42,10 @@ public final class OfflineRideEstimator {
     static let onRouteMeters: Double = 150
     /// Within this of a stop counts as being at it.
     static let atStopMeters: Double = 40
+    /// Having reached the alight stop, this far from it at walking pace is
+    /// getting off. Tight on purpose: the rider should see "walking" as they
+    /// step off - firing a moment early costs nothing, they're at their stop.
+    static let walkedAwayMeters: Double = 10
     /// Boarding can't be detected more than this before the (predicted)
     /// departure - the rider walking along the route to the stop early.
     static let earlyBoardingSeconds: TimeInterval = 180
@@ -146,7 +150,7 @@ public final class OfflineRideEstimator {
             if metresFromAlight <= Self.atStopMeters * 2 { state.reachedAlight = true }
             // Got off: was at the stop and is now walking away from it - or
             // is nowhere near the route any more.
-            let walkingAway = state.reachedAlight && metresFromAlight >= 60 && (speed ?? 0) < Self.walkingSpeed
+            let walkingAway = state.reachedAlight && metresFromAlight >= Self.walkedAwayMeters && (speed ?? 0) < Self.walkingSpeed
             let leftRoute = state.reachedAlight && projection.distanceFromRoute > Self.onRouteMeters && (speed ?? 0) < Self.ridingSpeed
             if walkingAway || leftRoute { state.alighted = true }
         }
@@ -236,6 +240,34 @@ public final class OfflineRideEstimator {
     static func stopTime(_ stopTimes: [StopTimeUpdate], stop: TripStopRef) -> StopTimeUpdate? {
         stopTimes.first(where: { $0.childStopID == stop.childStopID })
             ?? stopTimes.first(where: { !stop.parentStopID.isEmpty && $0.parentStopID == stop.parentStopID })
+    }
+
+    // MARK: - With a live feed
+
+    /// The live vehicle, moved on to where the rider's GPS puts the ride
+    /// when that's further along. The feed lags - positions arrive every
+    /// 30s or so, and a vehicle can read "AtStop" long after it's left (or
+    /// after the rider has got off) - while the rider's own phone knows
+    /// they've passed a stop, or walked away from their alight stop, as it
+    /// happens. Only ever moves the ride forward, so a GPS estimate behind
+    /// the feed changes nothing; the feed's route, occupancy and headsign
+    /// are kept.
+    public static func advancing(_ live: Vehicle, to estimate: Vehicle) -> Vehicle {
+        let liveSeq = live.trip?.currentStop?.sequence ?? Int.min
+        guard let gps = estimate.trip, let gpsSeq = gps.currentStop?.sequence, gpsSeq > liveSeq else { return live }
+        return Vehicle(
+            tripID: live.tripID,
+            route: live.route,
+            trip: VehicleTrip(firstStop: live.trip?.firstStop ?? gps.firstStop, nextStop: gps.nextStop,
+                              finalStop: live.trip?.finalStop ?? gps.finalStop, currentStop: gps.currentStop,
+                              headsign: live.trip?.headsign ?? gps.headsign),
+            occupancy: live.occupancy,
+            licensePlate: live.licensePlate,
+            position: VehiclePosition(lat: estimate.position.lat, lon: estimate.position.lon, bearing: live.position.bearing),
+            type: live.type,
+            state: estimate.state,
+            offCourse: live.offCourse
+        )
     }
 
     // MARK: - Synthetic vehicle

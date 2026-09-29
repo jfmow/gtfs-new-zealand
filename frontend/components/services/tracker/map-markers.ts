@@ -27,6 +27,7 @@ function vehicleMarker(vehicle: VehiclesResponse): MapItem {
         bearing: vehicle.position.bearing,
         id: vehicle.trip_id,
         routeID: vehicle.route.id,
+        color: vehicle.route.color,
         zIndex: 1,
         type: "vehicle",
         onClick: () => { },

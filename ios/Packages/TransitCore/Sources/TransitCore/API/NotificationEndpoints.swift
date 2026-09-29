@@ -180,10 +180,12 @@ extension APIClient {
     /// app is foregrounded - the server's own computation is a simplified
     /// subset (see the plan doc), so this lets the server's next push stay
     /// aligned with what the app already knows, rather than the two
-    /// disagreeing right after a foreground update.
-    public func reportLiveActivityLeg(activityID: String, legIndex: Int, phase: String) async throws {
+    /// disagreeing right after a foreground update. `headphones`: the rider
+    /// is listening through headphones, so the server sends journey moments
+    /// as notifications Siri can announce, not just the activity's alert.
+    public func reportLiveActivityLeg(activityID: String, legIndex: Int, phase: String, headphones: Bool = false) async throws {
         try await postFormExpectingNoData("live-activities/leg", form: [
-            "activityId": activityID, "legIndex": String(legIndex), "phase": phase,
+            "activityId": activityID, "legIndex": String(legIndex), "phase": phase, "headphones": headphones ? "1" : "0",
         ])
     }
 

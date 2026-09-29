@@ -10,6 +10,7 @@ import { buttonVariants } from "../ui/button";
 import { BasemapManager, styleUrlForTheme, type MapTheme } from "./tile-layer";
 import { resolveMapTheme, useMapThemeOverride } from "./map-theme";
 import { MapItem } from "./markers/create";
+import { USER_LOCATION_HTML } from "./markers/icons";
 import { MarkerManager } from "./cluster-manager";
 import { useUrl } from "@/lib/url-context";
 import { boundsOf, toLngLat, whenStyleReady, type LatLng } from "./geo";
@@ -647,8 +648,8 @@ function addUserMarker(
     } else {
         const el = document.createElement("div");
         el.className = "flex items-center justify-center";
-        el.innerHTML = `<div style="position: relative; width: 24px; height: 24px;"><img class="user-marker-arrow" src="/vehicle_icons/location.png" style="width: 24px; height: 24px;"/></div>`;
-        user.marker = new maplibregl.Marker({ element: el, anchor: "bottom", offset: [0, 6] }).setLngLat(toLngLat(userLocation)).addTo(map);
+        el.innerHTML = USER_LOCATION_HTML;
+        user.marker = new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(toLngLat(userLocation)).addTo(map);
     }
 
     if (!user.control) {

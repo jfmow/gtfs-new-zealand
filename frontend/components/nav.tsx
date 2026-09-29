@@ -41,6 +41,7 @@ const NAV_TABS: NavTab[] = [
 const PAGE_TITLES: Record<string, string> = {
     '/settings': 'Settings',
     '/history': 'History',
+    '/privacy': 'Privacy',
 }
 
 function useActiveTab(): NavTab | undefined {

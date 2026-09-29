@@ -39,6 +39,21 @@ type LiveActivity struct {
 	// PendingAlert is a leave-by reminder queued for this activity's next
 	// push (QueueLiveActivityAlert), as stored - "" when there isn't one.
 	PendingAlert string
+	// Headphones: the app last reported the rider listening through
+	// headphones (AirPods) - see announcesAlerts.
+	Headphones bool
+}
+
+// headphonesFreshFor is how long a "headphones in" report is trusted - the
+// app reports every ~30s while it's running, so past this it's been
+// suspended and the rider may well have taken them out.
+const headphonesFreshFor = 10 * time.Minute
+
+// announcesAlerts: send this activity's key moments as Time Sensitive
+// notifications rather than the activity's own alert. Siri announces
+// notifications through AirPods, but never reads out a Live Activity alert.
+func (a LiveActivity) announcesAlerts(now time.Time) bool {
+	return a.Headphones && now.Sub(time.Unix(a.ClientReported, 0)) < headphonesFreshFor
 }
 
 // CreateLiveActivity registers a newly-started activity, or updates one
@@ -69,10 +84,10 @@ func (d *Database) UpdateLiveActivityToken(clientId int, activityId, pushToken s
 	return err
 }
 
-func (d *Database) UpdateLiveActivityLeg(clientId int, activityId string, legIndex int, phase string) error {
+func (d *Database) UpdateLiveActivityLeg(clientId int, activityId string, legIndex int, phase string, headphones bool) error {
 	_, err := d.execContext(
-		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, updated = ?, client_reported = ? WHERE clientId = ? AND activity_id = ?`,
-		legIndex, phase, time.Now().Unix(), time.Now().Unix(), clientId, activityId,
+		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, headphones = ?, updated = ?, client_reported = ? WHERE clientId = ? AND activity_id = ?`,
+		legIndex, phase, headphones, time.Now().Unix(), time.Now().Unix(), clientId, activityId,
 	)
 	return err
 }
@@ -157,7 +172,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 	rows, err := d.db.Query(`
         SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, la.push_token,
                COALESCE(NULLIF(la.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
-               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert
+               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert, la.headphones
         FROM live_activities la
         JOIN notifications n ON n.id = la.clientId
         WHERE la.region = ?`, region)
@@ -171,7 +186,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 		var a LiveActivity
 		var alerted string
 		if err := rows.Scan(&a.Id, &a.ClientId, &a.Region, &a.PlanId, &a.ActivityId, &a.PushToken,
-			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported, &a.PendingAlert); err != nil {
+			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported, &a.PendingAlert, &a.Headphones); err != nil {
 			continue
 		}
 		if alerted != "" {
@@ -275,16 +290,23 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		// Key moments (time to leave, get on, get off...) are the activity's
 		// own alert, with sound: it expands the Dynamic Island (or shows on
 		// the Lock Screen) in place of a separate notification banner. A
-		// regular time-sensitive notification is only the fallback, when the
-		// activity can't be pushed to.
+		// regular time-sensitive notification is the fallback, when the
+		// activity can't be pushed to - and instead of the activity's alert
+		// while the rider has headphones in, since Siri only announces
+		// notifications.
+		announce := alert != nil && activity.announcesAlerts(now)
+		laAlert := alert
+		if announce {
+			laAlert = nil
+		}
 		stale := now.Add(activityStaleAfter)
-		err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, alert, &stale, nil)
-		alertDelivered := alert != nil && err == nil
+		err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, laAlert, &stale, nil)
+		alertDelivered := laAlert != nil && err == nil
 		if err != nil {
 			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
-			if alert != nil {
-				alertDelivered = sendJourneyMomentNotification(db, activity, *alert)
-			}
+		}
+		if alert != nil && (announce || err != nil) {
+			alertDelivered = sendJourneyMomentNotification(db, activity, *alert)
 		}
 
 		alerted := activity.AlertedKeys

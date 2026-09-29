@@ -66,7 +66,14 @@ type journeyActivityState struct {
 	WalkMinutes    *int   `json:"walkMinutes,omitempty"`
 	WalkMeters     *int   `json:"walkMeters,omitempty"`
 	HasVehicle     bool   `json:"hasVehicle"`
-	Occupancy      *int   `json:"occupancy,omitempty"` // GTFS-RT occupancy status
+	Occupancy      *int   `json:"occupancy,omitempty"`   // GTFS-RT occupancy status
+	VehicleMode    string `json:"vehicleMode,omitempty"` // bus | train | ferry - the current (or next) ride's vehicle
+	// SegmentStartUnix/SegmentEndUnix are the walk, wait or ride the ring
+	// drains across - separate from TargetUnix (walking to a stop counts
+	// down to departure, but its ring empties on reaching the stop). 0 when
+	// there's no segment (e.g. "Leave by").
+	SegmentStartUnix float64 `json:"segmentStartUnix,omitempty"`
+	SegmentEndUnix   float64 `json:"segmentEndUnix,omitempty"`
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
@@ -274,6 +281,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.SecondaryText = fmt.Sprintf("Arrive about %s", clock(t.arr))
 		state.CountdownLabel = "Arrive in"
 		state.TargetUnix = float64(t.arr.Unix())
+		setSegment(state, t.dep, t.arr)
 		state.Status = "onTime"
 		return
 	}
@@ -281,6 +289,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	next, nt := plan.Legs[f], timings[f]
 	state.RouteShortName = routeShortNameOrEmpty(next)
 	state.RouteColorHex = routeColorOrEmpty(next)
+	state.VehicleMode = vehicleModeOf(next)
 	state.Platform = platformOf(next)
 	fillRide(state, next, nt)
 	if state.HasVehicle && nt.live.StopsToBoard >= 0 {
@@ -305,6 +314,7 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.SecondaryText = fmt.Sprintf("%s departs %s%s", routeLabel(next.Route), clock(nt.dep), platformSuffix(state.Platform))
 	state.CountdownLabel = "Departs in"
 	state.TargetUnix = float64(nt.dep.Unix())
+	setSegment(state, t.dep, t.arr)
 
 	if prevTransit(plan, idx) < 0 && !now.Before(leaveBy.Add(-60*time.Second)) {
 		state.alert = &activityAlert{
@@ -327,6 +337,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 
 	state.RouteShortName = routeShortNameOrEmpty(leg)
 	state.RouteColorHex = routeColorOrEmpty(leg)
+	state.VehicleMode = vehicleModeOf(leg)
 	state.Headsign = stopLabel(leg.ToStop)
 	fillRide(state, leg, t)
 
@@ -346,6 +357,9 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.Platform = platformOf(leg)
 		state.CountdownLabel = "Departs in"
 		state.TargetUnix = float64(t.dep.Unix())
+		if idx > 0 {
+			setSegment(state, timings[idx-1].arr, t.dep)
+		}
 		state.DelayMinutes = delayMinutes(t.live.DepartureDelay, t.hasLive && t.live.HasTripUpdate)
 		state.Status = statusFor(leg, t, "waiting")
 
@@ -374,6 +388,7 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 		state.Phase = "onboard"
 		state.CountdownLabel = "Arrives in"
 		state.TargetUnix = float64(t.arr.Unix())
+		setSegment(state, t.dep, t.arr)
 		state.DelayMinutes = delayMinutes(t.live.ArrivalDelay, t.hasLive && t.live.HasTripUpdate)
 		state.Status = statusFor(leg, t, "onboard")
 		alight := stopLabel(leg.ToStop)
@@ -615,6 +630,33 @@ func routeColorOrEmpty(leg gtfs.JourneyLeg) string {
 		return ""
 	}
 	return leg.Route.RouteColor
+}
+
+// setSegment sets the ring's segment: the walk (start -> reaching the stop or
+// destination), the wait (reaching the stop -> departure) or the ride
+// (departure -> arrival). Same rule as the Swift builder's `setSegment`.
+func setSegment(state *journeyActivityState, start, end time.Time) {
+	if !end.After(start) {
+		return
+	}
+	state.SegmentStartUnix = float64(start.Unix())
+	state.SegmentEndUnix = float64(end.Unix())
+}
+
+// vehicleModeOf is the ride's travel mode (bus | train | ferry) from its
+// route_type, for the widget's vehicle icon. Empty for walks or unknown types.
+func vehicleModeOf(leg gtfs.JourneyLeg) string {
+	if leg.Mode == "walk" || leg.Route == nil {
+		return ""
+	}
+	for mode, types := range travelModeRouteTypes {
+		for _, t := range types {
+			if t == leg.Route.RouteType {
+				return mode
+			}
+		}
+	}
+	return ""
 }
 
 // stateHash fingerprints what a rider would notice changing. Countdown

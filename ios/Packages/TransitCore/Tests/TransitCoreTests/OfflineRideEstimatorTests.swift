@@ -146,6 +146,14 @@ final class OfflineRideEstimatorTests: XCTestCase {
         XCTAssertTrue(JourneyTracking.hasDepartedStop(walking, stopSeq: 5), "latches the ride as done in the progress model")
     }
 
+    func testTwentyMetresFromTheAlightStopIsAlighted() {
+        let estimator = boardedEstimator()
+        feed(estimator, fix(at: 4, speed: 0.5, seconds: 1000))
+        // ~20m east (0.00022° of longitude at -36.8°).
+        feed(estimator, fix(at: 4, speed: 1.3, seconds: 1015, lonOffset: 0.00022))
+        XCTAssertTrue(estimator.hasAlighted(tripID: "T1"))
+    }
+
     func testStayingOnPastTheStopIsNotAlighted() {
         let estimator = boardedEstimator()
         feed(estimator, fix(at: 4, speed: 8, seconds: 1000))
@@ -222,6 +230,42 @@ final class OfflineRideEstimatorTests: XCTestCase {
         XCTAssertEqual(snapshot.phase, .onboard)
         XCTAssertEqual(snapshot.progressLegIndex, 1)
         XCTAssertEqual(snapshot.trackedStopsAway, 1) // stop 3 next, then stop 4
+    }
+
+    // MARK: - Alongside the live feed
+
+    private func feedVehicle(current: Int, next: Int?, state: String, lat: Double, occupancy: Int = 0) -> Vehicle {
+        func ref(_ seq: Int) -> TripStopRef {
+            TripStopRef(lat: 0, lon: 0, parentStopID: "p\(seq)", name: "Stop \(seq)", platform: "", sequence: seq, childStopID: "c\(seq)")
+        }
+        return Vehicle(
+            tripID: "T1", route: RouteSummary(id: "R", name: "R", color: "", type: "train"),
+            trip: VehicleTrip(firstStop: ref(1), nextStop: next.map(ref), finalStop: ref(9), currentStop: ref(current), headsign: "Swanson"),
+            occupancy: occupancy, licensePlate: "AMP123", position: VehiclePosition(lat: lat, lon: 0, bearing: 45),
+            type: "train", state: state, offCourse: false
+        )
+    }
+
+    /// The feed still has the train at the rider's stop; their GPS says
+    /// they've got off - the ride moves on, keeping the feed's details.
+    func testGPSAheadOfTheFeedMovesTheLiveVehicleOn() {
+        let live = feedVehicle(current: 5, next: 6, state: "AtStop", lat: 0, occupancy: 2)
+        let gps = feedVehicle(current: 6, next: nil, state: "Travelling", lat: 0.001)
+        let merged = OfflineRideEstimator.advancing(live, to: gps)
+        XCTAssertEqual(merged.trip?.currentStop?.sequence, 6)
+        XCTAssertEqual(merged.state, "Travelling")
+        XCTAssertEqual(merged.position.lat, 0.001)
+        XCTAssertEqual(merged.occupancy, 2)
+        XCTAssertEqual(merged.licensePlate, "AMP123")
+        XCTAssertEqual(merged.trip?.headsign, "Swanson")
+        XCTAssertEqual(merged.position.bearing, 45)
+    }
+
+    /// GPS level with or behind the feed never moves the ride back.
+    func testGPSBehindOrLevelWithTheFeedChangesNothing() {
+        let live = feedVehicle(current: 5, next: 6, state: "Travelling", lat: 0)
+        XCTAssertEqual(OfflineRideEstimator.advancing(live, to: feedVehicle(current: 4, next: 5, state: "Travelling", lat: 0.001)), live)
+        XCTAssertEqual(OfflineRideEstimator.advancing(live, to: feedVehicle(current: 5, next: 6, state: "AtStop", lat: 0.001)), live)
     }
 }
 

@@ -379,7 +379,7 @@ private struct ApproachRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if let away = state.stopsAway, state.hasVehicle {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex)
+                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
                 Text(away == 0 ? "Arriving now" : away == 1 ? "1 stop away" : "\(away) stops away")
                     .font(.geist(12, .semibold).monospacedDigit())
                     .foregroundStyle(Tokens.foreground)
@@ -406,12 +406,13 @@ private struct ApproachRow: View {
 private struct VehicleApproach: View {
     let stopsAway: Int
     let colorHex: String
+    let symbol: String
 
     var body: some View {
         let color = colorHex.isEmpty ? Tokens.foreground : Color(hex: colorHex)
         let shown = min(stopsAway, 5)
         HStack(spacing: 3) {
-            Image(systemName: "bus.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 9, weight: .bold))
                 .foregroundStyle(RouteColors.text(onHex: colorHex.isEmpty ? Tokens.neutralRoute : colorHex))
                 .frame(width: 16, height: 16)
@@ -438,7 +439,7 @@ private struct WalkRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if let away = state.stopsAway, state.hasVehicle, !state.routeShortName.isEmpty {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex)
+                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
                 Text(away == 0 ? "\(state.routeShortName) arriving" : "\(state.routeShortName) \(away == 1 ? "1 stop" : "\(away) stops") away")
                     .font(.geist(12, .semibold).monospacedDigit())
                     .foregroundStyle(Tokens.foreground)
@@ -699,15 +700,33 @@ private struct CompactHeadline: View {
 }
 
 /// A ring counting down to the moment that matters, round the phase glyph.
+/// It drains across the current segment - the walk, the wait at the stop,
+/// or the ride - then the next one starts full. Never from `updatedDate`:
+/// every content update moves that to now, which restarted the ring from
+/// full each time the island was expanded.
 private struct MinimalRing: View {
     let state: JourneyState
+
+    /// With no segment (e.g. "Leave by"): full until this long before the
+    /// countdown target, empty at it.
+    private static let fallbackWindow: TimeInterval = 10 * 60
+
+    private var ringInterval: ClosedRange<Date> {
+        let start = state.segmentStartUnix, end = state.segmentEndUnix
+        if start > 0, end > start {
+            return Date(timeIntervalSince1970: start)...Date(timeIntervalSince1970: end)
+        }
+        return state.targetDate.addingTimeInterval(-Self.fallbackWindow)...state.targetDate
+    }
 
     var body: some View {
         let tint = state.routeColorHex.isEmpty ? Color.white : Color(hex: state.routeColorHex)
         if state.phase == "arrived" {
             Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Tokens.success)
-        } else if state.targetDate > state.updatedDate {
-            ProgressView(timerInterval: state.updatedDate...state.targetDate, countsDown: true) {
+        } else if state.segmentEndUnix > 0 || state.targetDate > state.updatedDate {
+            // A segment that's run over stays an empty ring until the next
+            // update moves on to the next segment.
+            ProgressView(timerInterval: ringInterval, countsDown: true) {
                 EmptyView()
             } currentValueLabel: {
                 Image(systemName: phaseSymbol(state)).font(.system(size: 9, weight: .bold))
@@ -758,7 +777,16 @@ private func phaseSymbol(_ state: JourneyState) -> String {
     case "walking": return "figure.walk"
     case "waiting": return "clock"
     case "boarding": return "bell.fill"
-    default: return "tram.fill"
+    default: return vehicleSymbol(state)
+    }
+}
+
+/// The ride's vehicle - matches `TravelMode.systemImage` in the app.
+private func vehicleSymbol(_ state: JourneyState) -> String {
+    switch state.vehicleMode {
+    case "train": return "tram.fill"
+    case "ferry": return "ferry.fill"
+    default: return "bus.fill"
     }
 }
 

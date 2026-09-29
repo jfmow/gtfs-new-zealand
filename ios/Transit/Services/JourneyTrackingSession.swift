@@ -1,3 +1,4 @@
+import AVFoundation
 import SwiftData
 import SwiftUI
 import TransitCore
@@ -86,7 +87,7 @@ final class JourneyTrackingSession {
     @ObservationIgnored private var backgroundLocationOn = false
     @ObservationIgnored private var lastPackSave = Date.distantPast
     @ObservationIgnored private var lastSentActivity: (state: JourneyActivityAttributes.ContentState, at: Date)?
-    @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, at: Date)?
+    @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, headphones: Bool, at: Date)?
     @ObservationIgnored private var savedAlightedThroughLeg = -1
     @ObservationIgnored private var activityUpdateInFlight = false
 
@@ -119,12 +120,15 @@ final class JourneyTrackingSession {
         }
         // Offline in the background the server can't announce moments, so
         // the app does: as the Live Activity's alert (the Dynamic Island
-        // expands) when there is one, else a notification.
+        // expands) when there is one and no headphones are in, else a
+        // notification.
         alertCenter.onFire = { [weak self] alert in
             guard let self, !self.isAppActive, self.isOffline, let url = self.notificationURL else { return }
             Task {
                 guard await self.notifications.takeOver(key: alert.id) else { return }
-                if await self.liveActivity.alert(title: alert.title, body: alert.body ?? "") { return }
+                // With headphones in, a notification Siri can read out;
+                // otherwise the Live Activity's alert.
+                if !Self.headphonesConnected, await self.liveActivity.alert(title: alert.title, body: alert.body ?? "") { return }
                 await self.notifications.deliverNow(key: alert.id, title: alert.title, body: alert.body, url: url)
             }
         }
@@ -436,12 +440,22 @@ final class JourneyTrackingSession {
     private func reportLegIfNeeded() {
         guard !isOffline, let snapshot, let activityID = liveActivity.activity?.id else { return }
         let phase = snapshot.phase?.rawValue ?? "onboard"
+        let headphones = Self.headphonesConnected
         if let last = lastReportedLeg, last.index == snapshot.progressLegIndex, last.phase == phase,
-           Date().timeIntervalSince(last.at) < 25 { return }
-        lastReportedLeg = (snapshot.progressLegIndex, phase, Date())
+           last.headphones == headphones, Date().timeIntervalSince(last.at) < 25 { return }
+        lastReportedLeg = (snapshot.progressLegIndex, phase, headphones, Date())
         let api = self.api
         let legIndex = snapshot.progressLegIndex
-        Task { try? await api.reportLiveActivityLeg(activityID: activityID, legIndex: legIndex, phase: phase) }
+        Task { try? await api.reportLiveActivityLeg(activityID: activityID, legIndex: legIndex, phase: phase, headphones: headphones) }
+    }
+
+    /// AirPods (or any headphones) are what the rider is listening through.
+    /// Siri only reads out real notifications there - not a Live Activity's
+    /// alert - so with headphones in, journey moments are sent as Time
+    /// Sensitive notifications instead (here offline, by the server online).
+    nonisolated static var headphonesConnected: Bool {
+        let ports: Set<AVAudioSession.Port> = [.bluetoothA2DP, .bluetoothHFP, .bluetoothLE, .headphones]
+        return AVAudioSession.sharedInstance().currentRoute.outputs.contains { ports.contains($0.portType) }
     }
 
     private func updateOfflineState() {
@@ -503,13 +517,19 @@ final class JourneyTrackingSession {
             }
         }
 
-        // The feed wins while it's fresh; past that, the rider's GPS.
+        // The feed wins while it's fresh - except where the rider's GPS puts
+        // the ride further along (the feed lags a stop or getting off by up
+        // to minutes). Past fresh, the rider's GPS.
         let liveAge = lastLiveFetch.map { now.timeIntervalSince($0) } ?? .infinity
         var vehicles = liveAge <= Self.liveDataMaxAge ? liveVehicles : [:]
         var estimatedIDs = Set<String>()
-        for (tripID, vehicle) in estimated where vehicles[tripID] == nil || liveAge > Self.liveFreshAge {
-            vehicles[tripID] = vehicle
-            estimatedIDs.insert(tripID)
+        for (tripID, vehicle) in estimated {
+            if let live = vehicles[tripID], liveAge <= Self.liveFreshAge {
+                vehicles[tripID] = OfflineRideEstimator.advancing(live, to: vehicle)
+            } else {
+                vehicles[tripID] = vehicle
+                estimatedIDs.insert(tripID)
+            }
         }
 
         var times = fetchedStopTimes
