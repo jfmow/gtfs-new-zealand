@@ -50,6 +50,12 @@ public final class JourneyProgressModel {
     // stop, so they use a tighter one.
     private static let nearAlightMeters: Double = 220
     private static let nearBoardBusMeters: Double = 350
+    // With the vehicle at the rider's alight stop, the rider this far from
+    // it has got off - don't wait for the feed to report it leaving, which
+    // lagged minutes behind (trains dwell, and AtStop can stick). Over the
+    // GPS-antenna-to-far-door distance of most vehicles; a 6-car train can
+    // exceed it, but then the rider is at their stop anyway.
+    private static let leftVehicleMeters: Double = 100
 
     public enum Phase: String, Sendable { case walking, waiting, boarding, onboard }
     /// `estimated`: the tracked "vehicle" is really the rider's own GPS
@@ -181,7 +187,8 @@ public final class JourneyProgressModel {
         // Ratchet: once the tracked vehicle has carried the rider past their
         // alight stop, latch it - never runs backwards.
         if journeyStarted, let idx = trackedLegIndex, let alightSeq = trackedAlightSeq,
-           JourneyTracking.hasDepartedStop(trackedVehicle, stopSeq: alightSeq) {
+           JourneyTracking.hasDepartedStop(trackedVehicle, stopSeq: alightSeq)
+            || Self.riderLeftVehicleAtStop(trackedVehicle, alightSeq: alightSeq, userLocation: userLocation) {
             alightedThroughLeg = max(alightedThroughLeg, idx)
         }
 
@@ -314,6 +321,16 @@ public final class JourneyProgressModel {
     /// else always stops, so uses the tighter alight-proximity distance.
     public static func boardProximityThreshold(for vehicleType: String) -> Double {
         vehicleType == "bus" || vehicleType == "school bus" ? nearBoardBusMeters : nearAlightMeters
+    }
+
+    /// The rider's own GPS says they've got off: the vehicle is at (or past)
+    /// their alight stop and they've walked away from it. Only at the stop -
+    /// while it's moving, the feed's position can lag far enough behind a
+    /// rider still on board to look like this.
+    static func riderLeftVehicleAtStop(_ vehicle: Vehicle?, alightSeq: Int, userLocation: Coordinate?) -> Bool {
+        guard let vehicle, vehicle.state != "Unknown", let userLocation,
+              let current = vehicle.trip?.currentStop?.sequence, current >= alightSeq else { return false }
+        return Geo.haversineDistanceMeters(userLocation, vehicle.position.coordinate) >= leftVehicleMeters
     }
 
     private func updateAtBoardStopHysteresis(journeyStarted: Bool, boardStop: Stop?, userLocation: Coordinate?) {
