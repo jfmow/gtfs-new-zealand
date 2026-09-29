@@ -50,11 +50,17 @@ public enum JourneyPlanLiveAdjuster {
         for i in legs.indices where legs[i].mode == "walk" {
             let durationSeconds = originalLegs[i].duration.timeInterval
             if i + 1 < legs.count, legs[i + 1].mode == "transit", let nextDeparture = legs[i + 1].departureTime.date {
-                // Leading walk: land ~2 min before the train (matches the
-                // backend's deferOriginWalk), not the instant it leaves. A
-                // transfer walk stays tight so the buffer can't overlap the
-                // previous leg.
-                let buffer: TimeInterval = i == 0 ? 120 : 0
+                // Leading walk: keep the plan's own slack before the ride
+                // (~2 min from the backend's deferOriginWalk) - the server's
+                // Live Activity and reminders shift the walk by the ride's
+                // delay the same way, so a hand-off between phone and server
+                // never moves the leave time. A transfer walk stays tight so
+                // the buffer can't overlap the previous leg.
+                var buffer: TimeInterval = 0
+                if i == 0, let plannedBoard = originalLegs[i + 1].departureTime.date,
+                   let plannedArrive = originalLegs[i].arrivalTime.date {
+                    buffer = max(0, plannedBoard.timeIntervalSince(plannedArrive))
+                }
                 let arrive = nextDeparture.addingTimeInterval(-buffer)
                 legs[i].arrivalTime = GoTime(date: arrive)
                 legs[i].departureTime = GoTime(date: arrive.addingTimeInterval(-durationSeconds))

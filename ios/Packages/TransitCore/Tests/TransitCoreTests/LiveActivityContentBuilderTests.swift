@@ -57,6 +57,15 @@ final class LiveActivityContentBuilderTests: XCTestCase {
         XCTAssertNil(c.urgent)
     }
 
+    /// A late ride moves the leave-by time, rounded down to the minute, and
+    /// the card says why. Mirrors TestActivity_LateRideMovesLeaveByAndSaysWhy.
+    func testLateRideMovesLeaveByAndSaysWhy() {
+        let c = LiveActivityContentBuilder.build(legs: testLegs(delay: 150), progress: progress(0, "walking"), now: base.addingTimeInterval(-600))
+        XCTAssertEqual(c.primaryText, "Leave by 9:02am")
+        XCTAssertEqual(c.targetUnix, base.addingTimeInterval(120).timeIntervalSince1970)
+        XCTAssertEqual(c.secondaryText, "Walk to Britomart for the 70 · running 3 min late")
+    }
+
     func testGetReadyInTheLastFiveMinutes() {
         let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(-240))
         XCTAssertEqual(c.primaryText, "Get ready to leave")

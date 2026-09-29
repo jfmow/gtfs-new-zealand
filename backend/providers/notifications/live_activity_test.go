@@ -441,3 +441,27 @@ func TestActivity_OnboardEarlyMatchesApp(t *testing.T) {
 		t.Errorf("occupancy = %v", state.Occupancy)
 	}
 }
+
+// A late ride moves the leave-by time, rounded down to the minute, and the
+// card says why. Mirrors testLateRideMovesLeaveByAndSaysWhy on iOS.
+func TestActivity_LateRideMovesLeaveByAndSaysWhy(t *testing.T) {
+	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, DepartureDelay: 150, ArrivalDelay: 150}})
+	state := computeJourneyActivityState(testPlan(base), base.Add(-10*time.Minute), live, noHint)
+	if state.PrimaryText != "Leave by 9:02am" {
+		t.Errorf("primary = %q, want the leave time 2.5 min later rounded down", state.PrimaryText)
+	}
+	if int64(state.TargetUnix) != base.Add(2*time.Minute).Unix() {
+		t.Errorf("target = %v, want 9:02:00", time.Unix(int64(state.TargetUnix), 0).UTC())
+	}
+	if state.SecondaryText != "Walk to Britomart for the 70 · running 3 min late" {
+		t.Errorf("secondary = %q", state.SecondaryText)
+	}
+}
+
+func TestLeaveByTimeRoundsDown(t *testing.T) {
+	for _, tc := range []struct{ in, want time.Duration }{{0, 0}, {59 * time.Second, 0}, {60 * time.Second, time.Minute}, {-1 * time.Second, -time.Minute}} {
+		if got := leaveByTime(base.Add(tc.in)); !got.Equal(base.Add(tc.want)) {
+			t.Errorf("leaveByTime(+%v) = %v, want +%v", tc.in, got.Sub(base), tc.want)
+		}
+	}
+}

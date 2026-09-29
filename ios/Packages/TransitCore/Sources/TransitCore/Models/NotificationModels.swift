@@ -103,10 +103,10 @@ public enum SubscriptionDetail {
         return parts.joined(separator: " · ")
     }
 
-    /// `journeyReminderDetail` on the web.
+    /// `journeyReminderDetail` on the web: when to leave and when you'll
+    /// arrive, never the ride's departure.
     public static func text(for reminder: JourneyReminderDTO) -> String {
         var parts = [JourneyReminderMath.weekdayMaskLabel(reminder.recurrence)]
-        parts.append("\(reminder.timeType == "arriveat" ? "arrive by" : "depart") \(reminder.targetHHMM)")
         if reminder.status == "pending_resolve" {
             parts.append("finding your trip…")
         } else if reminder.status == "scheduled" {
@@ -115,8 +115,14 @@ public enum SubscriptionDetail {
             } else {
                 parts.append("next \(reminder.serviceDate)")
             }
-        } else if let local = reminder.nextLeaveLocal, !local.isEmpty {
-            parts.append("leave ~\(local)")
+        }
+        let leave = reminder.nextLeaveLocal.flatMap { $0.isEmpty ? nil : $0 }
+        if let leave { parts.append("leave ~\(leave)") }
+        if reminder.timeType == "arriveat" {
+            parts.append("arrive by \(reminder.targetHHMM)")
+        } else if leave == nil {
+            // Not planned yet: a depart-at target is the picked ride's time.
+            parts.append("catch the \(reminder.targetHHMM)")
         }
         if !reminder.recurrence.isEmpty, let until = reminder.recurrenceUntil, !until.isEmpty {
             parts.append("until \(until)")

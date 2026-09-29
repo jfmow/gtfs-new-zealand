@@ -174,21 +174,23 @@ public struct JourneyReminderRequest: Equatable, Sendable {
 }
 
 public enum JourneyReminderMath {
-    /// Seconds from the plan's start to boarding its first ride (scheduled)
-    /// - the walk/wait the reminder counts back from.
+    /// Seconds from the plan's start to boarding its first ride - the
+    /// walk/wait the reminder counts back from. Live to live: the plan's
+    /// start carries the same realtime shift as the ride's departure, so the
+    /// scheduled time would count the delay into the walk.
     public static func leadingAccessSeconds(_ plan: JourneyPlan) -> Int {
         guard let transit = plan.legs.first(where: { $0.mode == "transit" }),
-              let board = transit.scheduledDepartureTime.date ?? transit.departureTime.date,
+              let board = transit.departureTime.date ?? transit.scheduledDepartureTime.date,
               let start = plan.legs.first?.departureTime.date
         else { return 0 }
         return max(0, Int(board.timeIntervalSince(start).rounded()))
     }
 
-    /// When the rider needs to leave for `plan` (scheduled boarding minus
-    /// the access walk).
+    /// When the rider needs to leave for `plan` (boarding minus the access
+    /// walk, both live).
     public static func leaveTime(_ plan: JourneyPlan) -> Date? {
         guard let transit = plan.legs.first(where: { $0.mode == "transit" }),
-              let board = transit.scheduledDepartureTime.date ?? transit.departureTime.date
+              let board = transit.departureTime.date ?? transit.scheduledDepartureTime.date
         else { return nil }
         return board.addingTimeInterval(-Double(leadingAccessSeconds(plan)))
     }

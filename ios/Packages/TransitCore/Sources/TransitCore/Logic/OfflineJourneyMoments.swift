@@ -57,7 +57,7 @@ public enum OfflineJourneyMoments {
     /// the first walk to the first ride.
     static func settingOff(legs: [JourneyLeg], progressLegIndex: Int) -> [Moment] {
         guard progressLegIndex == 0, legs.count > 1, legs[0].mode == "walk", legs[1].mode == "transit",
-              let leaveBy = legs[0].departureTime.date else { return [] }
+              let leaveBy = LiveActivityContentBuilder.leaveBy(legs[0]) else { return [] }
         let ride = legs[1]
         let name = routeName(ride)
         let boardAt = ride.fromStop?.stopName ?? "your stop"

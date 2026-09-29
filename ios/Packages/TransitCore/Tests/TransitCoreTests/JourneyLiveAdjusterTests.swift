@@ -95,9 +95,10 @@ final class JourneyLiveAdjusterTests: XCTestCase {
         XCTAssertEqual(run(delaySeconds: -61), "early")
     }
 
-    func testReanchorsLeadingWalkWithTwoMinuteBuffer() {
+    func testReanchorsLeadingWalkKeepingPlannedSlack() {
         let toStop = makeStop(id: "B")
-        let walkLeg = makeLeg(mode: "walk", tripID: "", from: nil, to: nil, departure: base, arrival: base.addingTimeInterval(300), durationSeconds: 300)
+        // Planned: arrive at the stop 2 min before the ride.
+        let walkLeg = makeLeg(mode: "walk", tripID: "", from: nil, to: nil, departure: base.addingTimeInterval(-120), arrival: base.addingTimeInterval(180), durationSeconds: 300)
         let transitLeg = makeLeg(mode: "transit", tripID: "t1", from: makeStop(id: "A"), to: toStop, departure: base.addingTimeInterval(300), arrival: base.addingTimeInterval(900), durationSeconds: 600)
         let plan = makePlan(legs: [walkLeg, transitLeg])
 
@@ -113,7 +114,7 @@ final class JourneyLiveAdjusterTests: XCTestCase {
         let resultWalk = result.legs[0]
         let resultTransit = result.legs[1]
 
-        // Walk leg should now arrive 120s before the (shifted) transit departure.
+        // Walk leg keeps its planned 120s slack before the (shifted) departure.
         XCTAssertEqual(resultWalk.arrivalTime.date!.timeIntervalSince1970, resultTransit.departureTime.date!.timeIntervalSince1970 - 120, accuracy: 0.001)
         // Its own duration (300s) is preserved.
         XCTAssertEqual(resultWalk.departureTime.date!.timeIntervalSince1970, resultWalk.arrivalTime.date!.timeIntervalSince1970 - 300, accuracy: 0.001)

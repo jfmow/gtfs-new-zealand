@@ -59,6 +59,7 @@ func runJourneyRemindersCron(
 
 	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, planPut, now)
 	jrCronNotify(db, updates, tz, region, planLookup, now)
+	jrCronReroute(db, gtfsData, &rt, updates, tz, region, osrmURL, planLookup, planPut, now)
 }
 
 // ── PASS 0 — rollover & expiry ────────────────────────────────────────────────
@@ -151,7 +152,10 @@ func jrCronResolve(
 		// Leading walk/wait from the rider's start to the boarding stop. The
 		// leave anchor is schedUnix - access (the real walk-out time); the
 		// offset ladder is the only lead, no prep padding.
-		access := int(boardDeparture.Sub(plan.DepartureTime).Seconds())
+		// Measured live to live: plan.DepartureTime already carries any
+		// realtime shift the planner applied, so the scheduled departure
+		// would count the delay into the walk.
+		access := int(bt.DepartureTime.Sub(plan.DepartureTime).Seconds())
 		if access < 0 {
 			access = 0
 		}
@@ -241,7 +245,9 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 
 		delay = clampJRDelay(delay)
 		departUnix := sched + int64(delay)
-		leaveUnix := departUnix - access
+		// Rounded down to the minute like the Live Activity's leave-by, so
+		// the push and the card give the same time.
+		leaveUnix := leaveByTime(time.Unix(departUnix-access, 0)).Unix()
 		leaveTime := time.Unix(leaveUnix, 0).In(tz)
 		departTime := time.Unix(departUnix, 0).In(tz)
 		minsUntilLeave := int(math.Round(time.Until(leaveTime).Minutes()))
@@ -253,13 +259,23 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, tz *time.Locati
 		baseline := r.BaselineLeaveUnix.Int64
 		changed := false
 
+		// Before the first rung, just track the live leave time silently -
+		// the list/next_leave_local and the first "leave in" push then use
+		// it rather than the timetable's.
+		if !ladderStarted && leaveUnix != baseline {
+			baseline = leaveUnix
+			changed = true
+		}
+
 		// (a) re-notify on a meaningful shift once the ladder has started
 		if ladderStarted && baseline > 0 && absInt64(leaveUnix-baseline) >= jrReNotifyThresholdSeconds && leaveTime.After(now) {
 			dir := "later"
 			if leaveUnix < baseline {
 				dir = "earlier"
 			}
-			notifyJourneyReminderClient(db, r, fmt.Sprintf("shift-%d", now.Unix()/60), "Leave time updated",
+			// Through the Live Activity when one's running, so the card and
+			// the push change together (one buzz).
+			notifyJourneyReminderLeave(db, r, fmt.Sprintf("shift-%d", now.Unix()/60), "Leave time updated",
 				fmt.Sprintf("The %s is running %s. New leave time %s (in %d min).",
 					orLabel(r.RouteShortName, "your service"), dir, leaveTime.Format("3:04pm"), maxInt(0, minsUntilLeave)))
 
@@ -455,6 +471,12 @@ func notifyJourneyReminderLeave(db *Database, r JourneyReminder, eventKey, title
 func reminderURL(r JourneyReminder) string {
 	if r.Deeplink == "" {
 		return "/plan"
+	}
+	// A one-off switched to a faster journey (PASS 3) opens that one.
+	if r.PlanID != "" && deeplinkPlanIDPattern.MatchString(r.Deeplink) {
+		return deeplinkPlanIDPattern.ReplaceAllStringFunc(r.Deeplink, func(m string) string {
+			return m[:4] + url.QueryEscape(r.PlanID)
+		})
 	}
 	return r.Deeplink
 }

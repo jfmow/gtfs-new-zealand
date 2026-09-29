@@ -328,16 +328,17 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	boardAt := stopLabel(next.FromStop)
 
 	// Before the first ride: count down to when to set off.
-	leaveBy := t.dep
+	leaveBy := leaveByTime(t.dep)
 	firstWalk := prevTransit(plan, idx) < 0
+	note := runningNote(nt)
 	if firstWalk && now.Before(leaveBy.Add(-30*time.Second)) {
 		state.PrimaryText = "Leave by " + clock(leaveBy)
-		state.SecondaryText = fmt.Sprintf("Walk to %s for the %s", boardAt, routeLabel(next.Route))
+		state.SecondaryText = fmt.Sprintf("Walk to %s for the %s%s", boardAt, routeLabel(next.Route), note)
 		state.CountdownLabel = "Leave in"
 		state.TargetUnix = float64(leaveBy.Unix())
 		if !now.Before(leaveBy.Add(-getReadyLead)) {
 			state.PrimaryText = "Get ready to leave"
-			state.SecondaryText = fmt.Sprintf("Leave by %s · walk to %s for the %s", clock(leaveBy), boardAt, routeLabel(next.Route))
+			state.SecondaryText = fmt.Sprintf("Leave by %s · walk to %s for the %s%s", clock(leaveBy), boardAt, routeLabel(next.Route), note)
 			state.Urgent = true
 			if now.Before(leaveBy.Add(-90 * time.Second)) {
 				mins := int(math.Ceil(leaveBy.Sub(now).Minutes()))
@@ -587,6 +588,29 @@ func statusFor(leg gtfs.JourneyLeg, t legTiming, phase string) string {
 	default:
 		return "onTime"
 	}
+}
+
+// leaveByTime rounds a leave time down to the minute - mirrors
+// LiveActivityContentBuilder.leaveBy on iOS. Earlier is the safe side, and a
+// feed that wobbles by seconds no longer moves the countdown.
+func leaveByTime(t time.Time) time.Time {
+	return time.Unix(t.Unix()-((t.Unix()%60)+60)%60, 0).In(t.Location())
+}
+
+// runningNote is " · running 3 min late" when the next ride's departure has
+// moved, so a leave countdown that jumps says why. Mirrors runningNote on iOS.
+func runningNote(t legTiming) string {
+	if !t.hasLive || !t.live.HasTripUpdate {
+		return ""
+	}
+	m := delayMinutes(t.live.DepartureDelay, true)
+	switch {
+	case m > 0:
+		return fmt.Sprintf(" · running %d min late", m)
+	case m < 0:
+		return fmt.Sprintf(" · running %d min early", -m)
+	}
+	return ""
 }
 
 func delayMinutes(seconds int, known bool) int {

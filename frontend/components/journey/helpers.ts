@@ -72,7 +72,10 @@ export function getFirstTransitLeg(route: JourneyType): Leg | null {
 export function leadingAccessSeconds(route: JourneyType): number {
     const transit = route.Legs.find(l => l.Mode === 'transit')
     if (!transit) return 0
-    const boardDepMs = new Date(transit.scheduled_departure_time ?? transit.DepartureTime).getTime()
+    // Live to live: Legs[0].DepartureTime carries the same realtime shift as
+    // the ride's DepartureTime, so the scheduled time would count the delay
+    // into the walk (the server adds the live delay back on the day).
+    const boardDepMs = new Date(transit.DepartureTime).getTime()
     const planStartMs = new Date(route.Legs[0].DepartureTime).getTime()
     return Math.max(0, Math.round((boardDepMs - planStartMs) / 1000))
 }
@@ -248,10 +251,14 @@ export function buildLiveJourney(
         const next = legs[i + 1]
         const prev = legs[i - 1]
         if (next?.Mode === "transit") {
-            // Leading walk: match the backend's deferOriginWalk (arrive ~2 min
-            // before the train, not the instant it leaves). A transfer walk
+            // Leading walk: keep the plan's own slack before the ride (~2 min
+            // from the backend's deferOriginWalk) - the server's Live Activity
+            // and reminders shift the walk by the ride's delay the same way,
+            // so every surface agrees on the leave time. A transfer walk
             // stays tight so the buffer can't overlap the previous leg.
-            const buffer = i === 0 ? 120_000 : 0
+            const buffer = i === 0
+                ? Math.max(0, new Date(route.Legs[i + 1].DepartureTime).getTime() - new Date(route.Legs[i].ArrivalTime).getTime())
+                : 0
             const arrive = new Date(new Date(next.DepartureTime).getTime() - buffer)
             legs[i].ArrivalTime = arrive
             legs[i].DepartureTime = new Date(arrive.getTime() - durMs)

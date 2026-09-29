@@ -167,18 +167,18 @@ public enum LiveActivityContentBuilder {
         fillRide(&c, next, progress: progress)
         if progress.hasVehicle, let away = progress.stopsAway, away >= 0 { c.stopsAway = away }
         c.status = status(next, phase: "waiting")
-        c.delayMinutes = delayMinutes(next)
+        c.delayMinutes = delayMinutes(next, phase: "waiting")
         let boardAt = stopLabel(next.fromStop)
         let isFirstWalk = previousTransit(legs, before: idx) == nil
 
-        if isFirstWalk, let leaveBy = leg.departureTime.date, now < leaveBy.addingTimeInterval(-30) {
+        if isFirstWalk, let leaveBy = Self.leaveBy(leg), now < leaveBy.addingTimeInterval(-30) {
             c.primaryText = "Leave by \(clock(leaveBy))"
-            c.secondaryText = "Walk to \(boardAt) for the \(routeLabel(next))"
+            c.secondaryText = "Walk to \(boardAt) for the \(routeLabel(next))\(runningNote(next))"
             c.countdownLabel = "Leave in"
             c.targetUnix = unix(leaveBy) ?? 0
             if now >= leaveBy.addingTimeInterval(-getReadyLead) {
                 c.primaryText = "Get ready to leave"
-                c.secondaryText = "Leave by \(clock(leaveBy)) · walk to \(boardAt) for the \(routeLabel(next))"
+                c.secondaryText = "Leave by \(clock(leaveBy)) · walk to \(boardAt) for the \(routeLabel(next))\(runningNote(next))"
                 c.urgent = true
             }
             return
@@ -192,7 +192,7 @@ public enum LiveActivityContentBuilder {
 
         // Around the leave time the card says so, loudly, for long enough
         // that a rider who glances at the phone late still sees it.
-        if isFirstWalk, let leaveBy = leg.departureTime.date, now < leaveBy.addingTimeInterval(leaveNowShownFor) {
+        if isFirstWalk, let leaveBy = Self.leaveBy(leg), now < leaveBy.addingTimeInterval(leaveNowShownFor) {
             c.primaryText = "Leave now"
             c.secondaryText = "Walk to \(boardAt) · \(routeLabel(next)) departs \(clock(next.departureTime.date))\(platformSuffix(c.platform))"
             c.urgent = true
@@ -219,7 +219,7 @@ public enum LiveActivityContentBuilder {
             c.countdownLabel = "Departs in"
             c.targetUnix = unix(leg.departureTime.date) ?? 0
             if idx > 0 { setSegment(&c, legs[idx - 1].arrivalTime.date, leg.departureTime.date) }
-            c.delayMinutes = delayMinutes(leg)
+            c.delayMinutes = delayMinutes(leg, phase: "waiting")
             c.status = status(leg, phase: "waiting")
             c.primaryText = c.phase == "boarding" ? "Your \(route) is arriving" : "Board the \(route)"
             var secondary = "at \(stopLabel(leg.fromStop))\(platformSuffix(c.platform))"
@@ -233,7 +233,7 @@ public enum LiveActivityContentBuilder {
             c.countdownLabel = "Arrives in"
             c.targetUnix = unix(leg.arrivalTime.date) ?? 0
             setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
-            c.delayMinutes = delayMinutes(leg)
+            c.delayMinutes = delayMinutes(leg, phase: "onboard")
             c.status = status(leg, phase: "onboard")
             let alight = stopLabel(leg.toStop)
 
@@ -311,14 +311,39 @@ public enum LiveActivityContentBuilder {
         if !leg.tripUsable || rt == "canceled" || rt == "cancelled" || (phase == "waiting" && rt == "skipped") {
             return "cancelled"
         }
-        let delay = leg.delaySeconds ?? 0
+        let delay = delaySeconds(leg, phase: phase)
         if delay >= 120 { return "delayed" }
         if delay <= -120 { return "early" }
         return "onTime"
     }
 
-    private static func delayMinutes(_ leg: JourneyLeg) -> Int {
-        Int((Double(leg.delaySeconds ?? 0) / 60).rounded())
+    private static func delayMinutes(_ leg: JourneyLeg, phase: String) -> Int {
+        Int((Double(delaySeconds(leg, phase: phase)) / 60).rounded())
+    }
+
+    /// Like the Go builder's statusFor: the departure delay at the boarding
+    /// stop until on board, then the arrival delay at the alighting stop
+    /// (the adjuster's `delaySeconds`).
+    private static func delaySeconds(_ leg: JourneyLeg, phase: String) -> Int {
+        if phase != "onboard", let dep = leg.departureTime.date, let sched = leg.scheduledDepartureTime.date {
+            return Int(dep.timeIntervalSince(sched).rounded())
+        }
+        return leg.delaySeconds ?? 0
+    }
+
+    /// The leave-by time, rounded down to the minute - mirrors `leaveByTime`
+    /// in live_activity_state.go. Earlier is the safe side, and a feed that
+    /// wobbles by seconds no longer moves the countdown.
+    static func leaveBy(_ walk: JourneyLeg) -> Date? {
+        walk.departureTime.date.map { Date(timeIntervalSince1970: ($0.timeIntervalSince1970 / 60).rounded(.down) * 60) }
+    }
+
+    /// " · running 3 min late" when the ride's departure has moved - so a
+    /// leave countdown that jumps says why. Mirrors `runningNote` in Go.
+    static func runningNote(_ leg: JourneyLeg) -> String {
+        let minutes = delayMinutes(leg, phase: "waiting")
+        if minutes == 0 { return "" }
+        return " · running \(abs(minutes)) min \(minutes > 0 ? "late" : "early")"
     }
 
     private static func progressFraction(idx: Int, count: Int, leg: JourneyLeg, now: Date) -> Double {

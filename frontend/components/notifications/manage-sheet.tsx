@@ -82,15 +82,20 @@ function subscriptionDetail(causes: string[] | null, minSeverity: string, notify
     return parts.join(" · ")
 }
 
+// When to leave and when you'll arrive - never the ride's departure.
 function journeyReminderDetail(r: JourneyReminder): string {
     const parts: string[] = [weekdayMaskLabel(r.recurrence)]
-    parts.push(`${r.time_type === "arriveat" ? "arrive by" : "depart"} ${r.target_hhmm}`)
     if (r.status === "pending_resolve") {
         parts.push("finding your trip…")
     } else if (r.status === "scheduled") {
         parts.push(`next ${r.service_date}`)
-    } else if (r.next_leave_local) {
-        parts.push(`leave ~${formatTime(`1970-01-01T${r.next_leave_local}:00`)}`)
+    }
+    if (r.next_leave_local) parts.push(`leave ~${formatTime(`1970-01-01T${r.next_leave_local}:00`)}`)
+    if (r.time_type === "arriveat") {
+        parts.push(`arrive by ${r.target_hhmm}`)
+    } else if (!r.next_leave_local) {
+        // Not planned yet: a depart-at target is the picked ride's time.
+        parts.push(`catch the ${r.target_hhmm}`)
     }
     if (r.recurrence && r.recurrence_until) parts.push(`until ${r.recurrence_until}`)
     return parts.join(" · ")
