@@ -66,6 +66,7 @@ struct JourneyLiveActivity: Widget {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(state.primaryText)
                             .font(.geist(15, .semibold))
+                            .foregroundStyle(state.urgent ? Tokens.warning : Color.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.85)
                         if let subtitle = subtitle(state) {
@@ -88,7 +89,7 @@ struct JourneyLiveActivity: Widget {
                 HStack(spacing: 4) {
                     Image(systemName: phaseSymbol(state))
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(state.phase == "arrived" ? Tokens.success : .white)
+                        .foregroundStyle(state.phase == "arrived" ? Tokens.success : state.urgent ? Tokens.warning : .white)
                     if state.phase != "arrived", !state.routeShortName.isEmpty {
                         RouteChip(name: state.routeShortName, hex: state.routeColorHex, size: 11)
                     }
@@ -101,7 +102,7 @@ struct JourneyLiveActivity: Widget {
                 MinimalRing(state: state)
             }
             .widgetURL(context.attributes.journeyURL)
-            .keylineTint(state.routeColorHex.isEmpty ? Color.white : Color(hex: state.routeColorHex))
+            .keylineTint(state.urgent ? Tokens.warning : state.routeColorHex.isEmpty ? Color.white : Color(hex: state.routeColorHex))
         }
     }
 }
@@ -119,7 +120,7 @@ private struct LockScreenView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(state.primaryText)
                         .font(.geist(17, .semibold))
-                        .foregroundStyle(Tokens.foreground)
+                        .foregroundStyle(state.urgent ? Tokens.warning : Tokens.foreground)
                         .lineLimit(2)
                         .minimumScaleFactor(0.85)
                         .fixedSize(horizontal: false, vertical: true)
@@ -217,7 +218,7 @@ private struct CountdownBlock: View {
         case "arrived": return Tokens.success
         default:
             // Amber when it's close, like the drawer's urgent countdown.
-            return state.targetDate.timeIntervalSinceNow < 120 ? Tokens.warning : Tokens.foreground
+            return state.urgent || state.targetDate.timeIntervalSinceNow < 120 ? Tokens.warning : Tokens.foreground
         }
     }
 
@@ -682,6 +683,8 @@ private struct CompactHeadline: View {
         Group {
             if state.phase == "arrived" {
                 Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Tokens.success)
+            } else if isLeaveNow(state) {
+                Text("Leave").font(.geist(13, .bold)).foregroundStyle(Tokens.warning)
             } else if state.phase == "onboard", let away = state.stopsAway, state.hasVehicle {
                 Text(away == 0 ? "Next" : "\(away + 1) stops")
                     .font(.geist(13, .bold).monospacedDigit())
@@ -694,7 +697,7 @@ private struct CompactHeadline: View {
                 Text("Now").font(.geist(13, .bold))
             }
         }
-        .foregroundStyle(statusColor(state.status) ?? .white)
+        .foregroundStyle(statusColor(state.status) ?? (state.urgent ? Tokens.warning : .white))
         .opacity(isStale ? 0.6 : 1)
     }
 }
@@ -774,7 +777,7 @@ private func clock(_ date: Date) -> String {
 private func phaseSymbol(_ state: JourneyState) -> String {
     switch state.phase {
     case "arrived": return "checkmark"
-    case "walking": return "figure.walk"
+    case "walking": return state.urgent ? "figure.walk.departure" : "figure.walk"
     case "waiting": return "clock"
     case "boarding": return "bell.fill"
     default: return vehicleSymbol(state)
@@ -788,6 +791,12 @@ private func vehicleSymbol(_ state: JourneyState) -> String {
     case "ferry": return "ferry.fill"
     default: return "bus.fill"
     }
+}
+
+/// The "Leave now" window: urgent, and already counting down to the ride
+/// rather than to the leave time.
+private func isLeaveNow(_ state: JourneyState) -> Bool {
+    state.urgent && state.phase == "walking" && state.countdownLabel == "Departs in"
 }
 
 /// Colour only where it means something - nil keeps the neutral default.

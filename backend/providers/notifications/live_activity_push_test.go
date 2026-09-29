@@ -21,6 +21,11 @@ func TestLiveActivityAlertSoundIsInsideAlert(t *testing.T) {
 		t.Fatalf("alert.sound = %q, want default", alert["sound"])
 	}
 
+	aps, _ = liveActivityUpdateAPS(map[string]any{}, &activityAlert{Key: "leave-0", Title: "Time to leave", Silent: true}, nil, nil, now)
+	if alert, _ := aps["alert"].(map[string]string); alert["title"] != "Time to leave" || alert["sound"] != "" {
+		t.Fatalf("silent alert = %v, want a title and no sound", alert)
+	}
+
 	aps, priority = liveActivityUpdateAPS(map[string]any{}, nil, nil, nil, now)
 	if _, ok := aps["alert"]; ok || priority != apns2.PriorityLow {
 		t.Fatal("routine updates are silent and low priority")

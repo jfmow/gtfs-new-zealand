@@ -298,6 +298,24 @@ final class OfflineJourneyMomentsTests: XCTestCase {
         XCTAssertNil(OfflineJourneyMoments.dueBoarding(legs: legs, progressLegIndex: 0, onboard: true, now: base.addingTimeInterval(425)))
     }
 
+    func testSettingOffMomentsBeforeTheFirstWalk() {
+        let walk = JourneyLeg(
+            mode: "walk", fromStop: nil, toStop: nil, tripID: "", routeID: "", route: nil,
+            departureTime: GoTime(date: base.addingTimeInterval(900)), arrivalTime: GoTime(date: base.addingTimeInterval(1200)),
+            duration: GoDuration(nanoseconds: 0), distanceKm: 0, stopSequenceID: 0,
+            scheduledDepartureTime: GoTime(date: nil), scheduledArrivalTime: GoTime(date: nil),
+            realtimeStatus: nil, delaySeconds: nil, tripUsable: true
+        )
+        let legs = [walk, leg("A", departs: 1500, arrives: 2100)]
+        let moments = OfflineJourneyMoments.upcoming(legs: legs, progressLegIndex: 0, onboard: false, now: base)
+        XCTAssertEqual(moments.map(\.key), ["leave:ready", "leave:now", "A:board-soon", "A:alight-soon"])
+        XCTAssertEqual(moments[0].date, base.addingTimeInterval(600))
+        XCTAssertEqual(moments[1].date, base.addingTimeInterval(870))
+
+        // Once walking (or later), they're gone.
+        XCTAssertFalse(OfflineJourneyMoments.upcoming(legs: legs, progressLegIndex: 1, onboard: false, now: base).contains { $0.key.hasPrefix("leave:") })
+    }
+
     func testOnBoardSkipsBoardingAndPastMoments() {
         let legs = [leg("A", departs: 600, arrives: 1200), leg("B", departs: 1500, arrives: 2100)]
         let moments = OfflineJourneyMoments.upcoming(legs: legs, progressLegIndex: 0, onboard: true, now: base.addingTimeInterval(700))

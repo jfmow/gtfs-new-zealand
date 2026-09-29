@@ -71,6 +71,9 @@ public struct JourneyActivityAttributes: ActivityAttributes {
         /// on reaching the stop). 0 when there's no segment (e.g. "Leave by").
         public var segmentStartUnix: Double
         public var segmentEndUnix: Double
+        /// Getting ready to leave, or time to leave - highlighted so it
+        /// stands out at a glance.
+        public var urgent: Bool
 
         public var targetDate: Date { Date(timeIntervalSince1970: targetUnix) }
         public var arrivalDate: Date { Date(timeIntervalSince1970: arrivalUnix) }
@@ -80,7 +83,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             case version, legIndex, phase, routeShortName, routeColorHex, headsign, primaryText, secondaryText
             case countdownLabel, targetUnix, delayMinutes, status, stopsAway, arrivalUnix, progressFraction
             case totalLegs, platform, nextLeg, legChain, updatedUnix, isRealtime
-            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline, vehicleMode, segmentStartUnix, segmentEndUnix
+            case boardStopName, alightStopName, nextStopName, rideStops, walkMinutes, walkMeters, hasVehicle, occupancy, offline, vehicleMode, segmentStartUnix, segmentEndUnix, urgent
         }
 
         public init(from decoder: Decoder) throws {
@@ -118,6 +121,7 @@ public struct JourneyActivityAttributes: ActivityAttributes {
             vehicleMode = (try? c.decodeIfPresent(String.self, forKey: .vehicleMode)) ?? ""
             segmentStartUnix = (try? c.decodeIfPresent(Double.self, forKey: .segmentStartUnix)) ?? 0
             segmentEndUnix = (try? c.decodeIfPresent(Double.self, forKey: .segmentEndUnix)) ?? 0
+            urgent = (try? c.decodeIfPresent(Bool.self, forKey: .urgent)) ?? false
         }
     }
 

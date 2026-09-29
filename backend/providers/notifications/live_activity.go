@@ -294,18 +294,33 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		// activity can't be pushed to - and instead of the activity's alert
 		// while the rider has headphones in, since Siri only announces
 		// notifications.
+		//
+		// Setting-off alerts get both (2026-09-30): a rider missed "Time to
+		// leave" with the phone out of reach - the activity's alert is one
+		// chime that leaves nothing behind once the screen goes dark. The
+		// notification stays on the Lock Screen, gets through a Focus and
+		// reaches a paired watch; the activity's alert then goes without
+		// sound so the phone only buzzes once.
 		announce := alert != nil && activity.announcesAlerts(now)
 		laAlert := alert
+		bannerSent := false
 		if announce {
 			laAlert = nil
+		} else if alert != nil && alert.isSettingOff() {
+			bannerSent = sendJourneyMomentNotification(db, activity, *alert)
+			if bannerSent {
+				a := *alert
+				a.Silent = true
+				laAlert = &a
+			}
 		}
 		stale := now.Add(activityStaleAfter)
 		err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, laAlert, &stale, nil)
-		alertDelivered := laAlert != nil && err == nil
+		alertDelivered := bannerSent || (laAlert != nil && err == nil)
 		if err != nil {
 			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
 		}
-		if alert != nil && (announce || err != nil) {
+		if alert != nil && !bannerSent && (announce || err != nil) {
 			alertDelivered = sendJourneyMomentNotification(db, activity, *alert)
 		}
 

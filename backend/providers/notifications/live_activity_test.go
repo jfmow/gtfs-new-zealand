@@ -68,7 +68,7 @@ func liveFor(byTrip map[string]legLive) liveLegLookup {
 }
 
 func TestActivity_BeforeLeavingCountsDownToLeaveBy(t *testing.T) {
-	state := computeJourneyActivityState(testPlan(base), base.Add(-3*time.Minute), nil, noHint)
+	state := computeJourneyActivityState(testPlan(base), base.Add(-10*time.Minute), nil, noHint)
 	if state.Phase != "walking" || state.LegIndex != 0 {
 		t.Fatalf("want leg 0 walking, got leg %d %s", state.LegIndex, state.Phase)
 	}
@@ -82,7 +82,59 @@ func TestActivity_BeforeLeavingCountsDownToLeaveBy(t *testing.T) {
 		t.Errorf("walking to a ride should show that ride's route, got %q", state.RouteShortName)
 	}
 	if state.alert != nil {
-		t.Errorf("no alert 3 min before leaving, got %+v", state.alert)
+		t.Errorf("no alert 10 min before leaving, got %+v", state.alert)
+	}
+	if state.Urgent {
+		t.Errorf("not urgent 10 min before leaving")
+	}
+}
+
+func TestActivity_GetReadyFiveMinutesBeforeLeaving(t *testing.T) {
+	state := computeJourneyActivityState(testPlan(base), base.Add(-4*time.Minute), nil, noHint)
+	if state.PrimaryText != "Get ready to leave" || !state.Urgent || state.CountdownLabel != "Leave in" {
+		t.Errorf("primary=%q urgent=%t label=%q", state.PrimaryText, state.Urgent, state.CountdownLabel)
+	}
+	if !strings.Contains(state.SecondaryText, "Leave by 9:00am") {
+		t.Errorf("secondary should still say when, got %q", state.SecondaryText)
+	}
+	if state.alert == nil || state.alert.Key != "ready-0" || !strings.Contains(state.alert.Body, "Leave in 4 min") {
+		t.Errorf("want a get-ready alert, got %+v", state.alert)
+	}
+	if !state.alert.isSettingOff() {
+		t.Errorf("get-ready should also go out as a notification")
+	}
+
+	// Too close to the leave time for a separate heads-up - "Time to
+	// leave" is about to fire.
+	late := computeJourneyActivityState(testPlan(base), base.Add(-80*time.Second), nil, noHint)
+	if late.alert != nil {
+		t.Errorf("no get-ready 80s before leaving, got %+v", late.alert)
+	}
+}
+
+func TestActivity_LeaveNowNudgesOnceIfStillCatchable(t *testing.T) {
+	// testPlan: 5 min walk from 9:00, the 70 leaves 9:08.
+	nudge := computeJourneyActivityState(testPlan(base), base.Add(150*time.Second), nil, noHint)
+	if nudge.alert == nil || nudge.alert.Key != "leave-late-0" || nudge.alert.Title != "Leave now to make the 70" {
+		t.Fatalf("want the follow-up nudge, got %+v", nudge.alert)
+	}
+	if nudge.PrimaryText != "Leave now" || !nudge.Urgent {
+		t.Errorf("primary=%q urgent=%t", nudge.PrimaryText, nudge.Urgent)
+	}
+
+	// 9:04: a 5 min walk no longer makes 9:08 - no point nagging.
+	gone := computeJourneyActivityState(testPlan(base), base.Add(4*time.Minute), nil, noHint)
+	if gone.alert != nil {
+		t.Errorf("no nudge once the ride can't be made, got %+v", gone.alert)
+	}
+	if gone.PrimaryText != "Walk to Britomart" || gone.Urgent {
+		t.Errorf("after the leave window: primary=%q urgent=%t", gone.PrimaryText, gone.Urgent)
+	}
+
+	// Walked to the stop already (the phone says leg 1): nothing.
+	there := computeJourneyActivityState(testPlan(base), base.Add(150*time.Second), nil, activityHint{LegIndex: 1, Phase: "waiting"})
+	if there.alert != nil && there.alert.Key == "leave-late-0" {
+		t.Errorf("no nudge once at the stop")
 	}
 }
 
@@ -91,8 +143,11 @@ func TestActivity_TimeToLeaveAlertsOnce(t *testing.T) {
 	if state.alert == nil || state.alert.Key != "leave-0" || state.alert.Title != "Time to leave" {
 		t.Fatalf("want a leave alert, got %+v", state.alert)
 	}
-	if state.PrimaryText != "Walk to Britomart" || state.CountdownLabel != "Departs in" {
-		t.Errorf("primary=%q label=%q", state.PrimaryText, state.CountdownLabel)
+	if state.PrimaryText != "Leave now" || !state.Urgent || state.CountdownLabel != "Departs in" {
+		t.Errorf("primary=%q urgent=%t label=%q", state.PrimaryText, state.Urgent, state.CountdownLabel)
+	}
+	if !strings.HasPrefix(state.SecondaryText, "Walk to Britomart") {
+		t.Errorf("secondary=%q", state.SecondaryText)
 	}
 	if int64(state.TargetUnix) != base.Add(8*time.Minute).Unix() {
 		t.Errorf("walking countdown should target the ride's departure")
@@ -142,7 +197,7 @@ func TestActivity_RealtimeDelayShiftsEverything(t *testing.T) {
 	}
 
 	// The leave-by time moves later with it.
-	before := computeJourneyActivityState(testPlan(base), base.Add(2*time.Minute), live, noHint)
+	before := computeJourneyActivityState(testPlan(base), base.Add(-2*time.Minute), live, noHint)
 	if before.PrimaryText != "Leave by 9:05am" {
 		t.Errorf("leave-by should shift with the delay, got %q", before.PrimaryText)
 	}

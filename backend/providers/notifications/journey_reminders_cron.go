@@ -439,8 +439,9 @@ func notifyJourneyReminderClient(db *Database, r JourneyReminder, eventKey, titl
 }
 
 // notifyJourneyReminderLeave sends a "leave in ..." reminder. With the
-// journey's Live Activity already running it becomes that activity's alert
-// instead - the Dynamic Island expands rather than a banner showing.
+// journey's Live Activity already running it's queued for the activity's
+// cron, which sends it as the activity's alert (the Dynamic Island expands)
+// plus a notification - see isSettingOff.
 func notifyJourneyReminderLeave(db *Database, r JourneyReminder, eventKey, title, body string) {
 	if !db.QueueLiveActivityAlert(r.ClientId, reminderPlanID(r), activityAlert{Key: "reminder-" + eventKey, Title: title, Body: body}) {
 		notifyJourneyReminderClient(db, r, eventKey, title, body)

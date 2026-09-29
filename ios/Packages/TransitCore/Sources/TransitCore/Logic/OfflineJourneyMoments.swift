@@ -19,12 +19,13 @@ public enum OfflineJourneyMoments {
 
     static let boardLeadSeconds: TimeInterval = 3 * 60
     static let alightLeadSeconds: TimeInterval = 2 * 60
+    static let getReadyLeadSeconds: TimeInterval = 5 * 60
 
     /// Moments still ahead of `now`, from the leg the rider is on.
     /// - Parameter onboard: The rider is already on the leg at
     ///   `progressLegIndex` - its boarding moment has passed.
     public static func upcoming(legs: [JourneyLeg], progressLegIndex: Int, onboard: Bool, now: Date) -> [Moment] {
-        var moments: [Moment] = []
+        var moments = settingOff(legs: legs, progressLegIndex: progressLegIndex)
         for index in legs.indices where index >= max(0, progressLegIndex) && legs[index].mode == "transit" {
             let leg = legs[index]
             let name = routeName(leg)
@@ -49,6 +50,30 @@ public enum OfflineJourneyMoments {
             }
         }
         return moments.filter { $0.date > now }
+    }
+
+    /// Before the journey starts: "get ready" and "time to leave", like the
+    /// server's (live_activity_state.go) - only while the rider is still on
+    /// the first walk to the first ride.
+    static func settingOff(legs: [JourneyLeg], progressLegIndex: Int) -> [Moment] {
+        guard progressLegIndex == 0, legs.count > 1, legs[0].mode == "walk", legs[1].mode == "transit",
+              let leaveBy = legs[0].departureTime.date else { return [] }
+        let ride = legs[1]
+        let name = routeName(ride)
+        let boardAt = ride.fromStop?.stopName ?? "your stop"
+        let departs = ride.departureTime.date.map { " at \(LiveActivityContentBuilder.clock($0))" } ?? ""
+        return [
+            Moment(
+                key: "leave:ready", date: leaveBy.addingTimeInterval(-getReadyLeadSeconds),
+                title: "Get ready to leave",
+                body: "Leave in 5 min to walk to \(boardAt) for the \(name)\(departs)."
+            ),
+            Moment(
+                key: "leave:now", date: leaveBy.addingTimeInterval(-30),
+                title: "Time to leave",
+                body: "Walk to \(boardAt) for the \(name)\(departs)."
+            ),
+        ]
     }
 
     /// The boarding heads-up that's due right now (reached within the last

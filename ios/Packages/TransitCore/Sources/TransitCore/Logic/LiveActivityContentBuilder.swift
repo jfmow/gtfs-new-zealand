@@ -61,6 +61,8 @@ public struct LiveActivityContent: Codable, Equatable, Sendable {
     /// The walk, wait or ride the widget's ring drains across.
     public var segmentStartUnix: Double?
     public var segmentEndUnix: Double?
+    /// Getting ready to leave, or time to leave - the widget highlights it.
+    public var urgent: Bool?
 
     public init() {}
 }
@@ -134,6 +136,10 @@ public enum LiveActivityContentBuilder {
 
     // MARK: - Phases
 
+    /// Mirrors `getReadyLead` / `leaveNowShownFor` in live_activity_state.go.
+    static let getReadyLead: TimeInterval = 5 * 60
+    static let leaveNowShownFor: TimeInterval = 3 * 60
+
     private static func fillWalking(_ c: inout LiveActivityContent, legs: [JourneyLeg], idx: Int, progress: LiveActivityProgress, now: Date) {
         let leg = legs[idx]
         c.phase = "walking"
@@ -170,6 +176,11 @@ public enum LiveActivityContentBuilder {
             c.secondaryText = "Walk to \(boardAt) for the \(routeLabel(next))"
             c.countdownLabel = "Leave in"
             c.targetUnix = unix(leaveBy) ?? 0
+            if now >= leaveBy.addingTimeInterval(-getReadyLead) {
+                c.primaryText = "Get ready to leave"
+                c.secondaryText = "Leave by \(clock(leaveBy)) · walk to \(boardAt) for the \(routeLabel(next))"
+                c.urgent = true
+            }
             return
         }
 
@@ -178,6 +189,14 @@ public enum LiveActivityContentBuilder {
         c.countdownLabel = "Departs in"
         c.targetUnix = unix(next.departureTime.date) ?? 0
         setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
+
+        // Around the leave time the card says so, loudly, for long enough
+        // that a rider who glances at the phone late still sees it.
+        if isFirstWalk, let leaveBy = leg.departureTime.date, now < leaveBy.addingTimeInterval(leaveNowShownFor) {
+            c.primaryText = "Leave now"
+            c.secondaryText = "Walk to \(boardAt) · \(routeLabel(next)) departs \(clock(next.departureTime.date))\(platformSuffix(c.platform))"
+            c.urgent = true
+        }
 
         if let p = previousTransit(legs, before: idx) {
             applyConnection(&c, legs: legs, from: p, to: f)

@@ -49,19 +49,35 @@ final class LiveActivityContentBuilderTests: XCTestCase {
     }
 
     func testBeforeLeavingCountsDownToLeaveBy() {
-        let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(-180))
+        let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(-600))
         XCTAssertEqual(c.primaryText, "Leave by 9:00am")
         XCTAssertEqual(c.countdownLabel, "Leave in")
         XCTAssertEqual(c.targetUnix, base.timeIntervalSince1970)
         XCTAssertEqual(c.routeShortName, "70")
+        XCTAssertNil(c.urgent)
+    }
+
+    func testGetReadyInTheLastFiveMinutes() {
+        let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(-240))
+        XCTAssertEqual(c.primaryText, "Get ready to leave")
+        XCTAssertEqual(c.secondaryText, "Leave by 9:00am · walk to Britomart for the 70")
+        XCTAssertEqual(c.countdownLabel, "Leave in")
+        XCTAssertEqual(c.urgent, true)
     }
 
     func testAfterLeaveByCountsDownToDeparture() {
         let c = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(10))
-        XCTAssertEqual(c.primaryText, "Walk to Britomart")
-        XCTAssertEqual(c.secondaryText, "70 departs 9:08am · Platform 3")
+        XCTAssertEqual(c.primaryText, "Leave now")
+        XCTAssertEqual(c.secondaryText, "Walk to Britomart · 70 departs 9:08am · Platform 3")
         XCTAssertEqual(c.countdownLabel, "Departs in")
         XCTAssertEqual(c.targetUnix, base.addingTimeInterval(480).timeIntervalSince1970)
+        XCTAssertEqual(c.urgent, true)
+
+        // Past the leave-now window it's a plain walk.
+        let later = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(200))
+        XCTAssertEqual(later.primaryText, "Walk to Britomart")
+        XCTAssertEqual(later.secondaryText, "70 departs 9:08am · Platform 3")
+        XCTAssertNil(later.urgent)
     }
 
     /// The old on-device builder targeted the leg's arrival while waiting.

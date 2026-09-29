@@ -74,12 +74,23 @@ type journeyActivityState struct {
 	// there's no segment (e.g. "Leave by").
 	SegmentStartUnix float64 `json:"segmentStartUnix,omitempty"`
 	SegmentEndUnix   float64 `json:"segmentEndUnix,omitempty"`
+	// Urgent is a moment the rider must act on now or soon - getting ready
+	// to leave, and leaving - which the widget highlights.
+	Urgent bool `json:"urgent,omitempty"`
 
 	// alert is a one-off "tell the rider now" moment, sent as the push's
 	// alert (sound + banner) rather than a silent update. Not part of the
 	// widget's content-state.
 	alert *activityAlert
 }
+
+// Timings for the first walk (setting off): the get-ready heads-up, how
+// long "Leave now" stays on the card, and when the follow-up nudge goes.
+const (
+	getReadyLead     = 5 * time.Minute
+	leaveNowShownFor = 3 * time.Minute
+	leaveNudgeAfter  = 2 * time.Minute
+)
 
 type activityNextLeg struct {
 	RouteShortName string  `json:"routeShortName"`
@@ -98,6 +109,22 @@ type activityAlert struct {
 	Key   string // dedupe key, stored in live_activities.alerted_keys
 	Title string
 	Body  string
+	// Silent drops the alert's sound - when a notification for the same
+	// moment has just played one.
+	Silent bool `json:"-"`
+}
+
+// isSettingOff is true for the alerts about leaving for the journey - the
+// get-ready heads-up, "Time to leave", its follow-up and queued leave-by
+// reminders. These can't wait for the rider to look at the phone, so they
+// go out as a notification too (see runLiveActivitiesCron).
+func (a activityAlert) isSettingOff() bool {
+	for _, prefix := range []string{"ready-", "leave-", "reminder-"} {
+		if strings.HasPrefix(a.Key, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 // legLive is the realtime picture for one transit leg's trip.
@@ -302,11 +329,25 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 
 	// Before the first ride: count down to when to set off.
 	leaveBy := t.dep
-	if prevTransit(plan, idx) < 0 && now.Before(leaveBy.Add(-30*time.Second)) {
+	firstWalk := prevTransit(plan, idx) < 0
+	if firstWalk && now.Before(leaveBy.Add(-30*time.Second)) {
 		state.PrimaryText = "Leave by " + clock(leaveBy)
 		state.SecondaryText = fmt.Sprintf("Walk to %s for the %s", boardAt, routeLabel(next.Route))
 		state.CountdownLabel = "Leave in"
 		state.TargetUnix = float64(leaveBy.Unix())
+		if !now.Before(leaveBy.Add(-getReadyLead)) {
+			state.PrimaryText = "Get ready to leave"
+			state.SecondaryText = fmt.Sprintf("Leave by %s · walk to %s for the %s", clock(leaveBy), boardAt, routeLabel(next.Route))
+			state.Urgent = true
+			if now.Before(leaveBy.Add(-90 * time.Second)) {
+				mins := int(math.Ceil(leaveBy.Sub(now).Minutes()))
+				state.alert = &activityAlert{
+					Key:   fmt.Sprintf("ready-%d", idx),
+					Title: "Get ready to leave",
+					Body:  fmt.Sprintf("Leave in %d min to walk to %s for the %s at %s.", mins, boardAt, routeLabel(next.Route), clock(nt.dep)),
+				}
+			}
+		}
 		return
 	}
 
@@ -316,11 +357,34 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.TargetUnix = float64(nt.dep.Unix())
 	setSegment(state, t.dep, t.arr)
 
-	if prevTransit(plan, idx) < 0 && !now.Before(leaveBy.Add(-60*time.Second)) {
-		state.alert = &activityAlert{
-			Key:   fmt.Sprintf("leave-%d", idx),
-			Title: "Time to leave",
-			Body:  fmt.Sprintf("Walk to %s for the %s at %s.", boardAt, routeLabel(next.Route), clock(nt.dep)),
+	if firstWalk {
+		// Around the leave time the card itself says so, loudly, for long
+		// enough that a rider who glances at the phone late still sees it.
+		if now.Before(leaveBy.Add(leaveNowShownFor)) {
+			state.PrimaryText = "Leave now"
+			state.SecondaryText = fmt.Sprintf("Walk to %s · %s departs %s%s", boardAt, routeLabel(next.Route), clock(nt.dep), platformSuffix(state.Platform))
+			state.Urgent = true
+		}
+		walk := t.arr.Sub(t.dep)
+		switch {
+		case now.Before(leaveBy.Add(leaveNudgeAfter)):
+			if !now.Before(leaveBy.Add(-60 * time.Second)) {
+				state.alert = &activityAlert{
+					Key:   fmt.Sprintf("leave-%d", idx),
+					Title: "Time to leave",
+					Body:  fmt.Sprintf("Walk to %s for the %s at %s.", boardAt, routeLabel(next.Route), clock(nt.dep)),
+				}
+			}
+		case !now.Add(walk).After(nt.dep):
+			// A couple of minutes past the leave time and still at the
+			// start as far as we know: one more nudge while the ride can
+			// still be made - the first is easy to miss with the phone in
+			// a bag or across the room.
+			state.alert = &activityAlert{
+				Key:   fmt.Sprintf("leave-late-%d", idx),
+				Title: "Leave now to make the " + routeLabel(next.Route),
+				Body:  fmt.Sprintf("It departs %s from %s - a %d min walk.", clock(nt.dep), boardAt, int(math.Max(1, math.Round(walk.Minutes())))),
+			}
 		}
 	}
 
