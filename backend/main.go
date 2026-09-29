@@ -190,6 +190,9 @@ func main() {
 			// heavy synchronous step and, like gtfs.New, only touches this
 			// region's own SQLite file.
 			r.caches = caches.CreateCaches(data)
+			// Keep the journey planner's day schedule built in the background
+			// so no plan request pays the ~2 s build.
+			data.EnableJourneyPlannerWarmup()
 		}(r)
 	}
 	wg.Wait()
