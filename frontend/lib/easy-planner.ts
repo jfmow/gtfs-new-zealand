@@ -16,11 +16,11 @@ export interface EasyPlannerOptions {
 }
 
 /** A slower pace, a short walk, at most one change, two spare minutes at it. */
-export const GENTLE: EasyPlannerOptions = { maxWalkKm: 0.6, walkSpeed: 3.6, maxTransfers: 1, minTransferSec: 120 }
+export const GENTLE: EasyPlannerOptions = { maxWalkKm: 0.6, walkSpeed: 3.2, maxTransfers: 1, minTransferSec: 120 }
 /** Still a slower pace with spare change time, but the planner's usual reach - the fallback when `GENTLE` finds nothing. */
-export const RELAXED: EasyPlannerOptions = { maxWalkKm: 1.0, walkSpeed: 3.6, maxTransfers: 3, minTransferSec: 60 }
+export const RELAXED: EasyPlannerOptions = { maxWalkKm: 1.0, walkSpeed: 3.2, maxTransfers: 3, minTransferSec: 60 }
 /** The full planner's defaults. */
-export const STANDARD: EasyPlannerOptions = { maxWalkKm: 1.0, walkSpeed: 4.8, maxTransfers: 5, minTransferSec: 0 }
+export const STANDARD: EasyPlannerOptions = { maxWalkKm: 1.0, walkSpeed: 4, maxTransfers: 5, minTransferSec: 0 }
 
 const MODE_LABELS: Record<EasyTravelMode, string> = { bus: "bus", train: "train", ferry: "ferry" }
 

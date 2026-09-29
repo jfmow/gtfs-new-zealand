@@ -11,6 +11,7 @@ import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { cn, useIsMobile } from "@/lib/utils"
 import { RouteMultiSelect, type RouteOption } from "./route-filter"
+import { DEFAULT_WALK_SPEED, WALK_SPEED_OPTIONS, walkSpeedLabel } from "@/lib/walk-speed"
 
 export type TravelMode = "bus" | "train" | "ferry"
 export type TimeType = "now" | "leaveat" | "arriveat"
@@ -20,8 +21,6 @@ export const TRAVEL_MODES: { value: TravelMode; label: string; icon: typeof Bus 
     { value: "train", label: "Train", icon: TrainFront },
     { value: "ferry", label: "Ferry", icon: Ship },
 ]
-
-const WALK_SPEEDS: Record<string, string> = { "3": "Slow", "4.8": "Normal", "5.5": "Brisk" }
 
 export interface PlannerOptions {
     timeType: TimeType
@@ -51,7 +50,7 @@ export function optionsSummary(o: PlannerOptions): string {
     const when = format(o.selectedDate, "EEE h:mma").replace("AM", "am").replace("PM", "pm")
     parts.push(o.timeType === "now" ? "Leave now" : o.timeType === "leaveat" ? `Leave ${when}` : `Arrive by ${when}`)
     parts.push(`${o.maxWalkKm} km walk`)
-    parts.push(WALK_SPEEDS[o.walkSpeed] ?? `${o.walkSpeed} km/h`)
+    parts.push(walkSpeedLabel(o.walkSpeed))
     parts.push(o.maxTransfers === "0" ? "Direct only" : `up to ${o.maxTransfers} transfer${o.maxTransfers === "1" ? "" : "s"}`)
     if (o.onlyRoutes.length > 0) parts.push(`${o.onlyRoutes.length} route${o.onlyRoutes.length === 1 ? "" : "s"} only`)
     if (o.modes.length > 0) parts.push(TRAVEL_MODES.filter((m) => o.modes.includes(m.value)).map((m) => m.label).join("/") + " only")
@@ -89,7 +88,7 @@ function PlannerOptionsDialog({ open, onOpenChange, ...o }: PlannerOptions & Pla
         o.onTimeTypeChange("now")
         o.onDateChange(new Date())
         o.onMaxWalkKmChange("1")
-        o.onWalkSpeedChange("4.8")
+        o.onWalkSpeedChange(DEFAULT_WALK_SPEED)
         o.onMaxTransfersChange("5")
         o.onMinResultsChange("3")
         o.onOnlyRoutesChange([])
@@ -123,7 +122,7 @@ function PlannerOptionsDialog({ open, onOpenChange, ...o }: PlannerOptions & Pla
                 <Segmented
                     value={o.walkSpeed}
                     onChange={o.onWalkSpeedChange}
-                    options={Object.entries(WALK_SPEEDS).map(([value, label]) => ({ value, label }))}
+                    options={WALK_SPEED_OPTIONS.map(({ value, label }) => ({ value, label }))}
                 />
             </Section>
 

@@ -11,6 +11,7 @@ import { RouteDetailSheet } from "@/components/journey/route-detail-sheet"
 import { JourneyErrorBoundary } from "@/components/journey/journey-error-boundary"
 import { LeaveReminderDialog } from "@/components/journey/leave-reminder-dialog"
 import type { JourneyType, Location } from "@/components/journey/types"
+import { DEFAULT_WALK_SPEED } from "@/lib/walk-speed"
 
 /**
  * Dedicated full-screen view for one journey, opened by a share link or a
@@ -115,7 +116,7 @@ export default function JourneyPage() {
         startLocation,
         endLocation,
         maxWalkKm: "1",
-        walkSpeed: "4.8",
+        walkSpeed: DEFAULT_WALK_SPEED,
         maxTransfers: "5",
         onlyRoutes: [],
         timeType: "leaveat" as const,

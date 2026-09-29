@@ -19,6 +19,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-filter"
+import { DEFAULT_WALK_SPEED, WALK_SPEED_OPTIONS } from "@/lib/walk-speed"
 
 interface GlobalTripSettingsDialogProps {
   open: boolean
@@ -41,7 +42,7 @@ export function GlobalTripSettingsDialog({
   onApply,
 }: GlobalTripSettingsDialogProps) {
   const [maxWalkKm, setMaxWalkKm] = useState("1")
-  const [walkSpeed, setWalkSpeed] = useState("4.8")
+  const [walkSpeed, setWalkSpeed] = useState(DEFAULT_WALK_SPEED)
   const [maxTransfers, setMaxTransfers] = useState("5")
   const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
 
@@ -99,9 +100,7 @@ export function GlobalTripSettingsDialog({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="3">Slow</SelectItem>
-            <SelectItem value="4.8">Normal</SelectItem>
-            <SelectItem value="5.5">Brisk</SelectItem>
+            {WALK_SPEED_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
           </SelectContent>
         </Select>
       ),

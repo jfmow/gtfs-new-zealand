@@ -1053,9 +1053,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			maxWalkKm = 1.0
 		}
 		walkSpeed, _ := strconv.ParseFloat(c.FormValue("walkSpeed"), 64)
-		if walkSpeed <= 0 {
-			walkSpeed = 4.8
-		}
+		walkSpeed = NormalizeWalkSpeed(walkSpeed)
 		maxTransfers, mtErr := strconv.Atoi(c.FormValue("maxTransfers"))
 		if mtErr != nil || maxTransfers < 0 {
 			maxTransfers = 5

@@ -55,3 +55,26 @@ func ClampMinTransferSec(v int) int {
 	}
 	return v
 }
+
+// DefaultWalkSpeed is the "Normal" walking pace in km/h.
+const DefaultWalkSpeed = 4.0
+
+// NormalizeWalkSpeed maps a requested walking pace (km/h) onto the current
+// Slow/Normal/Brisk scale. The apps used to offer 3 / 4.8 / 5.5, which proved
+// too quick; those exact values still arrive from saved trips, reminders and
+// old links, so they're moved to the new 2.8 / 4.0 / 5.0. Zero or negative
+// means "use the default".
+func NormalizeWalkSpeed(v float64) float64 {
+	switch v {
+	case 3:
+		return 2.8
+	case 4.8:
+		return 4.0
+	case 5.5:
+		return 5.0
+	}
+	if v <= 0 {
+		return DefaultWalkSpeed
+	}
+	return v
+}

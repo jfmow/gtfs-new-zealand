@@ -2,13 +2,14 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-let walkSpeedChoices: [(value: Double, title: String)] = [(3, "Slow"), (4.8, "Normal"), (5.5, "Brisk")]
+let walkSpeedChoices: [(value: Double, title: String)] = [(WalkSpeed.slow, "Slow"), (WalkSpeed.normal, "Normal"), (WalkSpeed.brisk, "Brisk")]
 let maxWalkChoices: [(value: Double, title: String)] = [(0.5, "0.5 km"), (1, "1 km"), (2, "2 km"), (5, "5 km")]
 let transferChoices: [(value: Int, title: String)] = [(0, "Direct only"), (1, "Up to 1"), (2, "Up to 2"), (3, "Up to 3"), (4, "Up to 4"), (5, "Up to 5")]
 let resultCountChoices: [(value: Int, title: String)] = [(3, "3 journeys"), (5, "5 journeys"), (8, "8 journeys")]
 
 func walkSpeedLabel(_ speed: Double) -> String {
-    walkSpeedChoices.first { $0.value == speed }?.title ?? "Normal"
+    let speed = WalkSpeed.normalized(speed)
+    return walkSpeedChoices.first { $0.value == speed }?.title ?? "\(speed.formatted()) km/h"
 }
 
 extension SavedTrip {
@@ -329,7 +330,7 @@ private struct EditTripSheet: View {
     @State private var name = ""
     @State private var colorHex = ""
     @State private var maxWalkKm: Double = 1
-    @State private var walkSpeed: Double = 4.8
+    @State private var walkSpeed: Double = WalkSpeed.normal
     @State private var maxTransfers = 5
     @State private var onlyRoutes: [RouteSearchResult] = []
 
@@ -374,7 +375,7 @@ private struct EditTripSheet: View {
                 name = trip.name
                 colorHex = trip.colorHex
                 maxWalkKm = maxWalkChoices.contains { $0.value == trip.maxWalkKm } ? trip.maxWalkKm : 1
-                walkSpeed = walkSpeedChoices.contains { $0.value == trip.walkSpeed } ? trip.walkSpeed : 4.8
+                walkSpeed = walkSpeedChoices.contains { $0.value == WalkSpeed.normalized(trip.walkSpeed) } ? WalkSpeed.normalized(trip.walkSpeed) : WalkSpeed.normal
                 maxTransfers = trip.maxTransfers
                 onlyRoutes = trip.onlyRoutes
             }
@@ -394,7 +395,7 @@ struct GlobalTripSettingsSheet: View {
     @State private var applyTransfers = false
     @State private var applyRoutes = false
     @State private var maxWalkKm: Double = 1
-    @State private var walkSpeed: Double = 4.8
+    @State private var walkSpeed: Double = WalkSpeed.normal
     @State private var maxTransfers = 5
     @State private var onlyRoutes: [RouteSearchResult] = []
 

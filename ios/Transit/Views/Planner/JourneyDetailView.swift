@@ -154,7 +154,7 @@ struct JourneyDetailView: View {
     }
 
     private var defaultContext: PlannerSearchContext {
-        PlannerSearchContext(start: nil, end: nil, arriveBy: false, maxWalkKm: 1, walkSpeed: 4.8, maxTransfers: 5, onlyRoutes: [])
+        PlannerSearchContext(start: nil, end: nil, arriveBy: false, maxWalkKm: 1, walkSpeed: WalkSpeed.normal, maxTransfers: 5, onlyRoutes: [])
     }
 
     /// `/journey?id=` on the web - opens (and can track) this exact plan.

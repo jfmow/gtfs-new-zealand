@@ -28,7 +28,7 @@ struct PlannerView: View {
     @State private var timeType: JourneyPlanRequest.TimeType = .now
     @State private var date = Date()
     @State private var maxWalkKm: Double = 1.0
-    @State private var walkSpeed: Double = 4.8
+    @State private var walkSpeed: Double = WalkSpeed.normal
     @State private var maxTransfers: Int = 5
     @State private var minResults: Int = 3
     @State private var onlyRoutes: [RouteSearchResult] = []
@@ -603,7 +603,7 @@ struct PlannerView: View {
         timeType = .now
         date = Date()
         maxWalkKm = trip.maxWalkKm
-        walkSpeed = trip.walkSpeed
+        walkSpeed = WalkSpeed.normalized(trip.walkSpeed)
         maxTransfers = trip.maxTransfers
         minResults = trip.minResults
         onlyRoutes = trip.onlyRoutes
@@ -636,7 +636,7 @@ struct PlannerView: View {
         start = PlannerLocation(label: prefill.startLabel, coordinate: Coordinate(latitude: prefill.startLat, longitude: prefill.startLon))
         end = PlannerLocation(label: prefill.endLabel, coordinate: Coordinate(latitude: prefill.endLat, longitude: prefill.endLon))
         if let value = prefill.maxWalkKm { maxWalkKm = value }
-        if let value = prefill.walkSpeed { walkSpeed = value }
+        if let value = prefill.walkSpeed { walkSpeed = WalkSpeed.normalized(value) }
         if let value = prefill.maxTransfers { maxTransfers = value }
         if let value = prefill.minResults { minResults = value }
         if !prefill.onlyRoutes.isEmpty {
@@ -802,7 +802,7 @@ struct PlannerOptionsSheet: View {
                         timeType = .now
                         date = Date()
                         maxWalkKm = 1
-                        walkSpeed = 4.8
+                        walkSpeed = WalkSpeed.normal
                         maxTransfers = 5
                         minResults = 3
                         onlyRoutes = []

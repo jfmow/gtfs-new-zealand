@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import notification, { addJourneyReminder } from "@/lib/notifications"
 import { nzHHMM, nzServiceDate, formatTime } from "@/components/journey/helpers"
 import { cn } from "@/lib/utils"
+import { DEFAULT_WALK_SPEED } from "@/lib/walk-speed"
 
 type ReminderKind = "get_off" | "arrival" | "n_stops_away" | "leave"
 
@@ -116,7 +117,7 @@ export function StopReminderDialog({
             accessSeconds: 0,
             offsets: usable,
             maxWalkKm: "1",
-            walkSpeed: "4.8",
+            walkSpeed: DEFAULT_WALK_SPEED,
             maxTransfers: "5",
             deeplink: `/vehicles?tripId=${encodeURIComponent(target.tripId)}`,
         })
