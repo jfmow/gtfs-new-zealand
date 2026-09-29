@@ -145,6 +145,9 @@ public struct PlanPrefill: Equatable, Hashable, Sendable {
     public var timeType: String?
     public var onlyRoutes: [String]
     public var region: String?
+    /// When to plan for (`date=` ISO 8601) - an upcoming reminder's
+    /// occurrence. Nil plans for now.
+    public var date: Date?
 
     init?(query: [String: String]) {
         guard let startLat = query["startLat"].flatMap(Double.init),
@@ -165,5 +168,6 @@ public struct PlanPrefill: Equatable, Hashable, Sendable {
         self.timeType = query["timeType"]
         self.onlyRoutes = (query["onlyRoutes"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
         self.region = query["region"]
+        self.date = query["date"].flatMap { ISO8601DateFormatter().date(from: $0) }
     }
 }

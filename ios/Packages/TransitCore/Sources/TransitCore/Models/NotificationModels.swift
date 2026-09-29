@@ -110,7 +110,11 @@ public enum SubscriptionDetail {
         if reminder.status == "pending_resolve" {
             parts.append("finding your trip…")
         } else if reminder.status == "scheduled" {
-            parts.append("next \(reminder.serviceDate)")
+            if let date = reminder.targetDate {
+                parts.append("next \(JourneyReminderMath.relativeDay(date))")
+            } else {
+                parts.append("next \(reminder.serviceDate)")
+            }
         } else if let local = reminder.nextLeaveLocal, !local.isEmpty {
             parts.append("leave ~\(local)")
         }
@@ -170,6 +174,14 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
     public let recurrenceUntil: String?
     public let nextLeaveUnix: Int64?
     public let nextLeaveLocal: String?
+    /// The upcoming occurrence's depart-at / arrive-by time.
+    public let targetUnix: Int64?
+    /// The journey this occurrence resolved to - always for a one-off
+    /// reminder, and for a repeat once the server has planned today's.
+    public let planID: String?
+    /// What the reminder's notification opens (a journey or the prefilled
+    /// planner).
+    public let deeplink: String?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, status, recurrence, offsets
@@ -183,7 +195,28 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
         case recurrenceUntil = "recurrence_until"
         case nextLeaveUnix = "next_leave_unix"
         case nextLeaveLocal = "next_leave_local"
+        case targetUnix = "target_unix"
+        case planID = "plan_id"
+        case deeplink
     }
+
+    public var isRepeating: Bool { recurrence.contains("1") }
+    public var targetDate: Date? { targetUnix.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil } }
+
+    /// What tapping the reminder opens: its journey if one's been planned,
+    /// otherwise the planner filled in for the next occurrence (a repeat
+    /// that hasn't been planned for the day yet).
+    public var target: JourneyReminderTarget? {
+        if let planID, !planID.isEmpty { return .journey(planID: planID) }
+        guard let deeplink, !deeplink.isEmpty, case .plan(var prefill)? = DeepLink(string: deeplink) else { return nil }
+        if let targetDate, targetDate > Date() { prefill.date = targetDate }
+        return .planner(prefill)
+    }
+}
+
+public enum JourneyReminderTarget: Equatable, Sendable {
+    case journey(planID: String)
+    case planner(PlanPrefill)
 }
 
 /// `POST .../devices/register` / `.../update-token` response.

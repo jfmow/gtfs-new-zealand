@@ -160,6 +160,7 @@ final class NotificationFeed {
 
 private struct AppToolbar: ViewModifier {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var appRouter
     @State private var sheet: AppSheet?
 
     enum AppSheet: String, Identifiable {
@@ -216,6 +217,7 @@ private struct AppToolbar: ViewModifier {
                 }
                 .shadSheet(detents: sheet == .notifications ? [.medium, .large] : [.large])
             }
+            .onChange(of: appRouter.closeSheetsRequest) { sheet = nil }
     }
 }
 

@@ -705,6 +705,13 @@ func journeyReminderDTO(r JourneyReminder, tz *time.Location) map[string]any {
 		"offsets":          r.Offsets,
 		"route_short_name": r.RouteShortName,
 		"board_stop_name":  r.BoardStopName,
+		// The upcoming occurrence's depart/arrive time, and what a tap in
+		// the app should open: the resolved journey when there is one (a
+		// fixed trip always; a repeat once the cron has planned today's),
+		// else the prefilled planner link.
+		"target_unix": r.TargetUnix,
+		"plan_id":     reminderPlanID(r),
+		"deeplink":    reminderURL(r),
 	}
 	if r.RecurrenceUntil != "" {
 		dto["recurrence_until"] = r.RecurrenceUntil

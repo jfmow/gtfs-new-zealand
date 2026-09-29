@@ -98,6 +98,21 @@ final class DeepLinkRouter {
         selectedTab = .planner
     }
 
+    /// Bumped to close the app toolbar's sheets (bell, reminders,
+    /// settings) - so a reminder opened from one of them isn't stuck
+    /// behind it.
+    var closeSheetsRequest = 0
+
+    /// A leave-by reminder tapped in a list: its journey, or the planner
+    /// filled in for its next occurrence.
+    func open(_ target: JourneyReminderTarget) {
+        closeSheetsRequest += 1
+        switch target {
+        case .journey(let planID): route(.journey(id: planID, region: nil))
+        case .planner(let prefill): route(.plan(prefill))
+        }
+    }
+
     func resume(planID: String, regionSlug: String) {
         route(.trackJourney(id: planID, region: regionSlug))
     }

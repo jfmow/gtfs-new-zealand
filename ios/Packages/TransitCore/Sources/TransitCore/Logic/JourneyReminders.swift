@@ -207,6 +207,16 @@ public enum JourneyReminderMath {
         }
     }
 
+    /// "today", "tomorrow", or "Wed 1 Oct" - when a reminder's next
+    /// occurrence is.
+    public static func relativeDay(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if calendar.isDate(date, inSameDayAs: now) { return "today" }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now), calendar.isDate(date, inSameDayAs: tomorrow) {
+            return "tomorrow"
+        }
+        return date.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated))
+    }
+
     /// For an arrive-by search: the option that lets the rider leave latest.
     public static func latestDeparture(_ plans: [JourneyPlan]) -> JourneyPlan? {
         plans.max { ($0.departureTime.date ?? .distantPast) < ($1.departureTime.date ?? .distantPast) }

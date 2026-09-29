@@ -75,6 +75,7 @@
 		C0BA2FD60A0931063831BACC /* EasyPlannerFlow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 467744BD0407453793CAD450 /* EasyPlannerFlow.swift */; };
 		C1E319D36E99BA2F791C14CB /* SavedPlacesViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F82856DF144B212A703AE82 /* SavedPlacesViews.swift */; };
 		C444B7D3E128C9D9DD09B40D /* JourneyLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7F02CE6F5F1D0DAC8990B34D /* JourneyLiveActivity.swift */; };
+		C50F90D57BAA33E93695CD64 /* UpcomingRemindersList.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16ABEF06271F4F62D04CFCF1 /* UpcomingRemindersList.swift */; };
 		C6C17DBA86A6DE5319D7DDA3 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7D8AC61ACC94225604566A3 /* SettingsView.swift */; };
 		C824CB35FAD796C528E40D82 /* SavedTripsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */; };
 		CBBB26C921CCFDDFB0485022 /* LeaveReminderSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8970B9FE17B2C7AC8F0ED82 /* LeaveReminderSheet.swift */; };
@@ -134,6 +135,7 @@
 		0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMultiSelect.swift; sourceTree = "<group>"; };
 		0D8DD2B378093B7EA96B6677 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		10669ADE8953C77DE21D95C3 /* ComingSoonView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComingSoonView.swift; sourceTree = "<group>"; };
+		16ABEF06271F4F62D04CFCF1 /* UpcomingRemindersList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpcomingRemindersList.swift; sourceTree = "<group>"; };
 		1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeCards.swift; sourceTree = "<group>"; };
 		281471C4D890085F107B3476 /* SiriIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriIntents.swift; sourceTree = "<group>"; };
 		288949DB4B8429132B54B591 /* OFL-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-LICENSE.txt"; sourceTree = "<group>"; };
@@ -445,6 +447,7 @@
 				DC603ED48D2D68656FFD4A94 /* PlannerView.swift */,
 				0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */,
 				3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */,
+				16ABEF06271F4F62D04CFCF1 /* UpcomingRemindersList.swift */,
 				3853B299D7AC11449C950277 /* EasyPlanner */,
 			);
 			path = Planner;
@@ -724,6 +727,7 @@
 				DFFF4669C80F59B5DB27ADFC /* TransitApp.swift in Sources */,
 				0D0C649EC23DC2606757D770 /* TransitMapView.swift in Sources */,
 				6BD460B54033B3B80A54519A /* TripReminders.swift in Sources */,
+				C50F90D57BAA33E93695CD64 /* UpcomingRemindersList.swift in Sources */,
 				9EF1F7F1111BCE512A59D5F9 /* VehicleQuickLookView.swift in Sources */,
 				5B0D4B4D4291E266D5352BDA /* VehiclesMapView.swift in Sources */,
 			);

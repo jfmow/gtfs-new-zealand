@@ -75,6 +75,8 @@ struct PlannerView: View {
     }
 
     @State private var path = NavigationPath()
+    /// Leave-by reminders still to come, soonest first.
+    @State private var upcomingReminders: [JourneyReminderDTO] = []
 
     private var canPlan: Bool { start != nil && end != nil }
 
@@ -148,9 +150,15 @@ struct PlannerView: View {
             }
         }
         .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await loadUpcomingReminders() } }
             guard phase == .active, lastRequest?.timeType == .now, !isPlanning,
                   let plannedAt = resultsPlannedAt, Date().timeIntervalSince(plannedAt) > 120 else { return }
             Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
+        }
+        .task { await loadUpcomingReminders() }
+        // Back from a journey - a reminder may have just been set or removed.
+        .onChange(of: path.count) { _, count in
+            if count == 0 { Task { await loadUpcomingReminders() } }
         }
         .onChange(of: router.pendingReplan, initial: true) { _, request in
             guard let request else { return }
@@ -187,6 +195,11 @@ struct PlannerView: View {
                 // behind them.
                 form.zIndex(1)
                 // Saved trips fill the page until there are results.
+                if !upcomingReminders.isEmpty, results.isEmpty, !isPlanning {
+                    UpcomingRemindersList(reminders: upcomingReminders) { target in
+                        Task { await open(target) }
+                    }
+                }
                 if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
                     SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
                 }
@@ -629,9 +642,31 @@ struct PlannerView: View {
         }
     }
 
+    private func loadUpcomingReminders() async {
+        guard let reminders = try? await environment.api.journeyReminders() else { return }
+        upcomingReminders = reminders
+    }
+
+    /// An upcoming reminder tapped: its journey, opened here, or the form
+    /// filled in for its next occurrence.
+    private func open(_ target: JourneyReminderTarget) async {
+        switch target {
+        case .planner(let prefill):
+            apply(prefill)
+        case .journey(let planID):
+            do {
+                guard let plan = try await environment.api.plan(id: planID).first else { throw URLError(.fileDoesNotExist) }
+                path.append(plan)
+            } catch {
+                environment.toasts.show("Couldn't open that journey", .error)
+            }
+        }
+    }
+
     /// A `/plan?...` link - a recurring leave-by reminder's notification
-    /// tap. Fills the form the way the web's shared-link effect does, then
-    /// plans for now (the link carries no target time).
+    /// tap, or one picked from Upcoming reminders. Fills the form the way
+    /// the web's shared-link effect does, then plans for the reminder's
+    /// next occurrence when the link carries one, else for now.
     private func apply(_ prefill: PlanPrefill) {
         start = PlannerLocation(label: prefill.startLabel, coordinate: Coordinate(latitude: prefill.startLat, longitude: prefill.startLon))
         end = PlannerLocation(label: prefill.endLabel, coordinate: Coordinate(latitude: prefill.endLat, longitude: prefill.endLon))
@@ -642,8 +677,13 @@ struct PlannerView: View {
         if !prefill.onlyRoutes.isEmpty {
             onlyRoutes = prefill.onlyRoutes.map { RouteSearchResult(name: $0, routeID: $0) }
         }
-        timeType = .now
-        date = Date()
+        if let when = prefill.date, when > Date() {
+            timeType = prefill.timeType == "arriveat" ? .arriveat : .departat
+            date = when
+        } else {
+            timeType = .now
+            date = Date()
+        }
         Task { await plan() }
     }
 }

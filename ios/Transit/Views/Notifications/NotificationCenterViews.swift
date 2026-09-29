@@ -101,6 +101,7 @@ struct NotificationsBellSheet: View {
 /// names (the subscriptions only store ids).
 struct ManageNotificationsView: View {
     @Environment(AppEnvironment.self) private var environment
+    @Environment(DeepLinkRouter.self) private var router
 
     @State private var subscriptions: MySubscriptions?
     @State private var reminders: [JourneyReminderDTO] = []
@@ -117,12 +118,21 @@ struct ManageNotificationsView: View {
             if !reminders.isEmpty {
                 Section("Leave-by reminders") {
                     ForEach(reminders) { reminder in
-                        detailRow(
-                            title: "\(reminder.startLabel.isEmpty ? "Start" : reminder.startLabel) → \(reminder.endLabel.isEmpty ? "destination" : reminder.endLabel)",
-                            detail: SubscriptionDetail.text(for: reminder)
-                        ) {
-                            Image(systemName: "alarm").foregroundStyle(Theme.mutedForeground)
+                        // Opens the journey (or, for a repeat not yet planned
+                        // for the day, the planner filled in for it).
+                        Button {
+                            if let target = reminder.target { router.open(target) }
+                        } label: {
+                            detailRow(
+                                title: "\(reminder.startLabel.isEmpty ? "Start" : reminder.startLabel) → \(reminder.endLabel.isEmpty ? "destination" : reminder.endLabel)",
+                                detail: SubscriptionDetail.text(for: reminder)
+                            ) {
+                                Image(systemName: "alarm").foregroundStyle(Theme.mutedForeground)
+                            }
                         }
+                        .buttonStyle(.plain)
+                        .disabled(reminder.target == nil)
+                        .accessibilityHint(reminder.target == nil ? "" : "Opens the journey. Swipe to delete.")
                         .swipeActions { Button("Delete", role: .destructive) { Task { await removeReminder(reminder) } } }
                     }
                 }
