@@ -700,15 +700,22 @@ private struct CompactHeadline: View {
 }
 
 /// A ring counting down to the moment that matters, round the phase glyph.
+/// It drains over a fixed window before the target rather than from
+/// `updatedDate`: every content update (the app sends one whenever it
+/// refreshes, e.g. as the island is expanded) moves `updatedDate` to now,
+/// which restarted the ring from full each time.
 private struct MinimalRing: View {
     let state: JourneyState
+
+    /// Full until this long before the target, empty at it.
+    private static let window: TimeInterval = 10 * 60
 
     var body: some View {
         let tint = state.routeColorHex.isEmpty ? Color.white : Color(hex: state.routeColorHex)
         if state.phase == "arrived" {
             Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Tokens.success)
         } else if state.targetDate > state.updatedDate {
-            ProgressView(timerInterval: state.updatedDate...state.targetDate, countsDown: true) {
+            ProgressView(timerInterval: state.targetDate.addingTimeInterval(-Self.window)...state.targetDate, countsDown: true) {
                 EmptyView()
             } currentValueLabel: {
                 Image(systemName: phaseSymbol(state)).font(.system(size: 9, weight: .bold))
