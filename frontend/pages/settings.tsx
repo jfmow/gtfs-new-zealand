@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { usePlannerStyle, type PlannerStyle } from "@/lib/planner-style";
 import { ensureSubscription } from "@/lib/notifications";
 import { toast } from "sonner";
+import Link from "next/link";
 
 export default function Settings() {
     const { urlOptions, setCurrentUrl, currentUrl } = useUrl()
@@ -169,7 +170,9 @@ export default function Settings() {
                         </Select>
                     </div>
                 </div>
-                <p className="mt-4 max-w-lg text-center text-xs text-muted-foreground">Version {process.env.NEXT_PUBLIC_APP_VERSION}</p>
+                <p className="mt-4 max-w-lg text-center text-xs text-muted-foreground">
+                    Version {process.env.NEXT_PUBLIC_APP_VERSION} · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link>
+                </p>
             </div>
 
             <ManageNotificationsSheet open={remindersOpen} onOpenChange={setRemindersOpen} />
