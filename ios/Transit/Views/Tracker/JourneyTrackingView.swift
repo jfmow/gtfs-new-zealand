@@ -526,32 +526,36 @@ struct JourneyTrackingView: View {
                         .modifier(StatusChipStyle())
                 }
 
-                switch snapshot.trackingLevel {
-                case .live:
-                    HStack(spacing: 5) {
-                        if isLiveDataStale(now: now) {
-                            ProgressView().controlSize(.mini)
-                            Text("Updating")
-                        } else {
-                            LiveDot(color: Theme.success)
-                            Text("Live")
+                // Where the times come from is about a ride - there's none
+                // left on the walk to the destination.
+                if currentOrNextTransitLeg != nil {
+                    switch snapshot.trackingLevel {
+                    case .live:
+                        HStack(spacing: 5) {
+                            if isLiveDataStale(now: now) {
+                                ProgressView().controlSize(.mini)
+                                Text("Updating")
+                            } else {
+                                LiveDot(color: Theme.success)
+                                Text("Live")
+                            }
                         }
-                    }
-                    .modifier(StatusChipStyle())
-                case .estimated:
-                    Label("On board · from GPS", systemImage: "location.fill")
                         .modifier(StatusChipStyle())
-                case .predicted:
-                    if let asOf = predictionsAsOf(now: now) {
-                        Label("Times as of \(clock(asOf))", systemImage: "clock.arrow.circlepath")
+                    case .estimated:
+                        Label("On board · from GPS", systemImage: "location.fill")
                             .modifier(StatusChipStyle())
-                    } else {
-                        Label("Predicted", systemImage: "waveform.path.ecg")
+                    case .predicted:
+                        if let asOf = predictionsAsOf(now: now) {
+                            Label("Times as of \(clock(asOf))", systemImage: "clock.arrow.circlepath")
+                                .modifier(StatusChipStyle())
+                        } else {
+                            Label("Predicted", systemImage: "waveform.path.ecg")
+                                .modifier(StatusChipStyle())
+                        }
+                    case .scheduled:
+                        Label("Timetable only", systemImage: "calendar")
                             .modifier(StatusChipStyle())
                     }
-                case .scheduled:
-                    Label("Timetable only", systemImage: "calendar")
-                        .modifier(StatusChipStyle())
                 }
 
                 if let away = snapshot.trackedStopsAway, let toGo = snapshot.trackedStopsToGo {
@@ -647,12 +651,14 @@ struct JourneyTrackingView: View {
         }
     }
 
+    /// The ride the rider is on or heading for - nil on the walk after the
+    /// last ride. (It used to fall back to the first ride, so the final walk
+    /// read "Then the 22R at 11:14 · Now to departure · 9 min early" for a
+    /// bus taken half an hour earlier.)
     private var currentOrNextTransitLeg: JourneyLeg? {
-        let legIndex = snapshot?.progressLegIndex ?? 0
-        if displayPlan.legs.indices.contains(legIndex), displayPlan.legs[legIndex].mode == "transit" {
-            return displayPlan.legs[legIndex]
-        }
-        return displayPlan.legs[max(0, legIndex)...].first { $0.mode == "transit" } ?? displayPlan.legs.first { $0.mode == "transit" }
+        let legIndex = max(0, snapshot?.progressLegIndex ?? 0)
+        guard legIndex < displayPlan.legs.count else { return nil }
+        return displayPlan.legs[legIndex...].first { $0.mode == "transit" }
     }
 
     // MARK: - Per-leg tracker helpers
