@@ -67,7 +67,10 @@ struct UpcomingRemindersList: View {
         if let date = reminder.targetDate {
             let day = JourneyReminderMath.relativeDay(date)
             parts.append(day.prefix(1).uppercased() + day.dropFirst())
-            parts.append("\(verb) \(date.formatted(date: .omitted, time: .shortened))")
+            // target_unix is the boarding time on a one-off reminder, not the
+            // arrive-by time - target_hhmm is always what the rider asked for.
+            let time = localTime(reminder.targetHHMM) ?? date.formatted(date: .omitted, time: .shortened)
+            parts.append("\(verb) \(time)")
         } else {
             parts.append("\(verb) \(reminder.targetHHMM)")
         }
@@ -78,5 +81,16 @@ struct UpcomingRemindersList: View {
             parts.append(JourneyReminderMath.weekdayMaskLabel(reminder.recurrence))
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// "HH:MM" (NZ local, from the server) -> "8:05 am".
+    private static func localTime(_ hhmm: String) -> String? {
+        let parts = hhmm.split(separator: ":").compactMap { Int($0) }
+        guard parts.count >= 2 else { return nil }
+        var c = DateComponents()
+        c.hour = parts[0]
+        c.minute = parts[1]
+        guard let date = Calendar.current.date(from: c) else { return nil }
+        return date.formatted(date: .omitted, time: .shortened)
     }
 }
