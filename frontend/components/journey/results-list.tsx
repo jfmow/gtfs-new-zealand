@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { AlarmClock, AlertTriangle, ArrowLeftRight, ArrowRight, Bus, ChevronRight, Flag, Footprints, Loader2, RefreshCw, Ship, TrainFront, Wifi, WifiOff } from "lucide-react"
+import { AlarmClock, AlertTriangle, ArrowLeftRight, ArrowRight, Bus, ChevronRight, Flag, Footprints, Loader2, RefreshCw, Ship, TrainFront } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { JourneyType, Leg } from "./types"
 import { formatDuration, formatTime, getFirstTransitLeg } from "./helpers"
@@ -183,11 +183,7 @@ export function LegChain({ legs }: { legs: Leg[] }) {
         .map((item) => {
             switch (item.kind) {
                 case "walk": return `walk ${item.minutes} minutes`
-                case "ride": {
-                    const tracking = trackingOf(item.leg)
-                    const suffix = tracking === "live" ? ", live tracking" : tracking === "none" ? ", no live tracking" : ""
-                    return `${modeOf(item.leg)} ${item.leg.Route?.route_short_name || item.leg.RouteID}${suffix}`
-                }
+                case "ride": return `${modeOf(item.leg)} ${item.leg.Route?.route_short_name || item.leg.RouteID}`
                 case "transfer": return item.waitMinutes ? `transfer, ${item.waitMinutes} minute wait` : "transfer"
                 case "end": return "arrive"
                 default: return null
@@ -206,15 +202,6 @@ export function LegChain({ legs }: { legs: Leg[] }) {
             ))}
         </div>
     )
-}
-
-// A trip with a realtime prediction is being tracked; a missing or "scheduled"
-// status means we only have the timetable. Canceled/skipped are neither.
-function trackingOf(leg: Leg): "live" | "none" | null {
-    const status = leg.realtime_status
-    if (status === RealtimeStatus.OnTime || status === RealtimeStatus.Delayed || status === RealtimeStatus.Early) return "live"
-    if (!status || status === RealtimeStatus.Scheduled) return "none"
-    return null
 }
 
 function ChainPiece({ item }: { item: ChainItem }) {
@@ -241,7 +228,6 @@ function ChainPiece({ item }: { item: ChainItem }) {
             const Icon = { bus: Bus, train: TrainFront, ferry: Ship }[modeOf(leg)]
             const status = leg.realtime_status
             const live = status === RealtimeStatus.Delayed || status === RealtimeStatus.Early
-            const tracking = trackingOf(leg)
             return (
                 <span className="inline-flex items-center gap-1">
                     <Icon className="h-3 w-3 text-foreground" />
@@ -260,12 +246,6 @@ function ChainPiece({ item }: { item: ChainItem }) {
                             <span className={cn("absolute -right-1 -top-1 h-2 w-2 rounded-full", status === RealtimeStatus.Delayed ? "bg-amber-500" : "bg-green-500")} />
                         )}
                     </span>
-                    {tracking === "live" && (
-                        <Wifi className="h-3 w-3 text-green-600 dark:text-green-500" />
-                    )}
-                    {tracking === "none" && (
-                        <WifiOff className="h-3 w-3 text-red-600 dark:text-red-500" />
-                    )}
                 </span>
             )
         }

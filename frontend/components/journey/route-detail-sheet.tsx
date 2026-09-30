@@ -28,6 +28,7 @@ import {
     Smartphone,
     TrainFront,
     TramFront,
+    Wifi,
     WifiOff,
     X,
 } from "lucide-react"
@@ -1181,6 +1182,10 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
         : leg.Duration
     const showEarlyLateBadge = (isDelayed || isEarly) && !inverted
     const showOnTimeBadge = leg.realtime_status === RealtimeStatus.OnTime && !inverted
+    // A realtime prediction means the vehicle is being tracked; a missing or
+    // "scheduled" status means we only have the timetable.
+    const tracked = isDelayed || isEarly || leg.realtime_status === RealtimeStatus.OnTime
+    const untracked = !leg.realtime_status || leg.realtime_status === RealtimeStatus.Scheduled
 
     return (
         <div
@@ -1241,9 +1246,16 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                             On time
                         </span>
                     )}
-                    {leg.realtime_status === RealtimeStatus.Scheduled && (
-                        <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-                            Scheduled
+                    {tracked && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
+                            <Wifi className="h-3.5 w-3.5" />
+                            Live
+                        </span>
+                    )}
+                    {untracked && (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-500">
+                            <WifiOff className="h-3.5 w-3.5" />
+                            No tracking
                         </span>
                     )}
                     <span className="text-xs text-muted-foreground">

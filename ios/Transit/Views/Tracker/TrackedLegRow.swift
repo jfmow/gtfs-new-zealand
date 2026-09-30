@@ -115,6 +115,24 @@ struct TrackedLegRow: View {
         return "Ride \(minutes) min"
     }
 
+    /// Whether this vehicle is reporting its position - a green antenna when
+    /// it is, a red crossed-out one when all we have is the timetable.
+    @ViewBuilder
+    private var trackingBadge: some View {
+        switch leg.trackingState {
+        case .live:
+            Label("Live", systemImage: "antenna.radiowaves.left.and.right")
+                .font(.metaMedium).foregroundStyle(Theme.success)
+                .accessibilityLabel("Live tracking")
+        case .untracked:
+            Label("No tracking", systemImage: "antenna.radiowaves.left.and.right.slash")
+                .font(.metaMedium).foregroundStyle(Theme.danger)
+                .accessibilityLabel("No live tracking")
+        case nil:
+            EmptyView()
+        }
+    }
+
     private var ride: some View {
         VStack(spacing: 0) {
             // Board
@@ -129,7 +147,10 @@ struct TrackedLegRow: View {
                             ShadBadge(text: "Plat. \(platform)", variant: .outline)
                         }
                     }
-                    Text(rideSummary).font(.meta).foregroundStyle(Theme.mutedForeground)
+                    HStack(spacing: 8) {
+                        Text(rideSummary).font(.meta).foregroundStyle(Theme.mutedForeground)
+                        trackingBadge
+                    }
                     if !leg.tripUsable {
                         Label("Not running - check alternative routes", systemImage: "exclamationmark.triangle")
                             .font(.metaMedium).foregroundStyle(Theme.danger)
@@ -153,6 +174,21 @@ struct TrackedLegRow: View {
                 }
                 .padding(.vertical, 10)
             }
+        }
+    }
+}
+
+extension JourneyLeg {
+    enum TrackingState { case live, untracked }
+
+    /// A trip with a realtime prediction is being tracked; a missing or
+    /// "scheduled" status means we only have the timetable. Canceled/skipped
+    /// are neither.
+    var trackingState: TrackingState? {
+        switch realtimeStatus {
+        case "on_time", "delayed", "early": .live
+        case nil, "scheduled": .untracked
+        default: nil
         }
     }
 }

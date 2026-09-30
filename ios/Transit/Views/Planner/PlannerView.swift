@@ -975,18 +975,6 @@ struct LegChain: View {
                             .offset(x: 3, y: -3)
                     }
                 }
-                switch leg.trackingState {
-                case .live:
-                    Image(systemName: "antenna.radiowaves.left.and.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Theme.success)
-                case .untracked:
-                    Image(systemName: "antenna.radiowaves.left.and.right.slash")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(Color(light: 0xDC2626, dark: 0xF87171))
-                case nil:
-                    EmptyView()
-                }
             }
         case .transfer(let wait, _):
             HStack(spacing: 2) {
@@ -1009,11 +997,7 @@ struct LegChain: View {
             case .walk(let minutes, _): return "walk \(minutes) minutes"
             case .ride(let leg, _):
                 let name = leg.route?.routeShortName.isEmpty == false ? leg.route!.routeShortName : leg.routeID
-                switch leg.trackingState {
-                case .live: return "\(leg.modeName) \(name), live tracking"
-                case .untracked: return "\(leg.modeName) \(name), no live tracking"
-                case nil: return "\(leg.modeName) \(name)"
-                }
+                return "\(leg.modeName) \(name)"
             case .transfer(let wait, _): return wait.map { "transfer, \($0) minute wait" } ?? "transfer"
             }
         }
@@ -1022,19 +1006,6 @@ struct LegChain: View {
 }
 
 extension JourneyLeg {
-    enum TrackingState { case live, untracked }
-
-    /// A trip with a realtime prediction is being tracked; a missing or
-    /// "scheduled" status means we only have the timetable. Canceled/skipped
-    /// are neither.
-    var trackingState: TrackingState? {
-        switch realtimeStatus {
-        case "on_time", "delayed", "early": .live
-        case nil, "scheduled": .untracked
-        default: nil
-        }
-    }
-
     /// bus / train / ferry, from the route's vehicle type (or GTFS route
     /// type as a fallback).
     var modeName: String {
