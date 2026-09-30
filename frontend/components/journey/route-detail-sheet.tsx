@@ -1248,14 +1248,12 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                     )}
                     {tracked && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-500">
-                            <Wifi className="h-3.5 w-3.5" />
-                            Live
+                            <Wifi className="h-3.5 w-3.5" aria-label="Live tracking" />
                         </span>
                     )}
                     {untracked && (
                         <span className="inline-flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-500">
-                            <WifiOff className="h-3.5 w-3.5" />
-                            No tracking
+                            <WifiOff className="h-3.5 w-3.5" aria-label="No live tracking" />
                         </span>
                     )}
                     <span className="text-xs text-muted-foreground">

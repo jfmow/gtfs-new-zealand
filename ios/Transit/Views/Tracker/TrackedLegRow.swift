@@ -121,11 +121,11 @@ struct TrackedLegRow: View {
     private var trackingBadge: some View {
         switch leg.trackingState {
         case .live:
-            Label("Live", systemImage: "antenna.radiowaves.left.and.right")
+            Image(systemName: "antenna.radiowaves.left.and.right")
                 .font(.metaMedium).foregroundStyle(Theme.success)
                 .accessibilityLabel("Live tracking")
         case .untracked:
-            Label("No tracking", systemImage: "antenna.radiowaves.left.and.right.slash")
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
                 .font(.metaMedium).foregroundStyle(Theme.danger)
                 .accessibilityLabel("No live tracking")
         case nil:
