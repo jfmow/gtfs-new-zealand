@@ -109,6 +109,17 @@ final class PushRegistrationService {
         }
     }
 
+    /// Removes banners left in Notification Center for over 72 hours - iOS
+    /// has no expiry for delivered notifications, so this runs whenever the
+    /// app comes to the foreground.
+    func clearStaleDeliveredNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let cutoff = Date().addingTimeInterval(-72 * 60 * 60)
+        let stale = await center.deliveredNotifications().filter { $0.date < cutoff }
+        guard !stale.isEmpty else { return }
+        center.removeDeliveredNotifications(withIdentifiers: stale.map(\.request.identifier))
+    }
+
     /// ActivityKit's push-to-start token - lets the server start the journey
     /// Live Activity from a leave-by reminder with the app closed. Held
     /// until the device is registered, like the alert token.
