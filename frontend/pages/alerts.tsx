@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
-import { BellDot, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Loader2, LocateFixed, MessageCircleWarning, Star, X } from "lucide-react"
+import { BellDot, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, History, Loader2, LocateFixed, MessageCircleWarning, Star, X } from "lucide-react"
 import { useFavorites } from "@/components/stops/favourites"
 import type { Stop } from "@/components/map/stops-map"
 import { getUserLocation } from "@/lib/userLocation"
@@ -251,22 +251,62 @@ export function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
                             className="flex items-center gap-1.5 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-full px-3 py-1.5 text-xs font-medium bg-muted text-muted-foreground"
                         >
                             {shortRouteName(route)}
-                            <span className="text-[10px] opacity-70">{alerts[route].length}</span>
+                            <span className="text-[10px] opacity-70">{currentAlerts(alerts[route]).length}</span>
                         </TabsTrigger>
                     ))}
                 </TabsList>
 
-                {routes.map((route) => (
-                    <TabsContent key={route} value={route}>
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                            {alerts[route].map((alert, i) => (
-                                <AlertCard key={i} alert={alert} />
-                            ))}
-                        </div>
-                    </TabsContent>
-                ))}
+                {routes.map((route) => {
+                    const current = currentAlerts(alerts[route])
+                    return (
+                        <TabsContent key={route} value={route} className="space-y-4">
+                            {current.length === 0 ? (
+                                <p className="py-8 text-center text-sm text-muted-foreground">No current alerts for this route.</p>
+                            ) : (
+                                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                    {current.map((alert, i) => (
+                                        <AlertCard key={i} alert={alert} />
+                                    ))}
+                                </div>
+                            )}
+                            <PastAlerts alerts={pastAlerts(alerts[route])} />
+                        </TabsContent>
+                    )
+                })}
             </Tabs>
         </div>
+    )
+}
+
+function currentAlerts(alerts: AlertType[]) {
+    return alerts.filter((a) => !hasAlertEnded(a))
+}
+
+/** Most recently ended first. */
+function pastAlerts(alerts: AlertType[]) {
+    return alerts.filter((a) => hasAlertEnded(a)).sort((a, b) => b.end_date - a.end_date)
+}
+
+/** Ended alerts the feed still carries, tucked behind "Load past alerts" below the current ones. */
+function PastAlerts({ alerts }: { alerts: AlertType[] }) {
+    const [shown, setShown] = useState(false)
+    if (alerts.length === 0) return null
+    if (!shown) {
+        return (
+            <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={() => setShown(true)}>
+                <History className="h-3.5 w-3.5" /> Load past alerts ({alerts.length})
+            </Button>
+        )
+    }
+    return (
+        <section className="space-y-2.5">
+            <h3 className="font-display text-xs uppercase tracking-wide text-muted-foreground">Past alerts</h3>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {alerts.map((alert, i) => (
+                    <AlertCard key={i} alert={alert} />
+                ))}
+            </div>
+        </section>
     )
 }
 
@@ -285,6 +325,12 @@ export function getAlertStatus(alert: AlertType): { status: "active" | "soon" | 
         return { status: "inactive", label: "Upcoming" }
     }
     return { status: "inactive", label: "Ended" }
+}
+
+/** Over and done with - the "Ended" status above. Mirrors iOS `AlertStatusCalculator.hasEnded`. */
+export function hasAlertEnded(alert: AlertType) {
+    const now = Date.now() / 1000
+    return alert.start_date <= now && alert.end_date > 0 && alert.end_date < now
 }
 
 /** Route ids carry a feed version suffix ("INN-202") that means nothing to a rider. */

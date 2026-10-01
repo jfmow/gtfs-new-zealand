@@ -35,4 +35,12 @@ public enum AlertStatusCalculator {
         }
         return AlertStatus(kind: .inactive, label: "Ended")
     }
+
+    /// Over and done with - the "Ended" status. The feed keeps an alert a
+    /// while after it ends; these sit behind "Load past alerts" rather than
+    /// mixed in with what's happening now (`pages/alerts.tsx`'s `hasAlertEnded`).
+    public static func hasEnded(_ alert: TransitAlert, now: Date = Date()) -> Bool {
+        let nowSeconds = now.timeIntervalSince1970
+        return Double(alert.startDate) <= nowSeconds && alert.endDate > 0 && Double(alert.endDate) < nowSeconds
+    }
 }

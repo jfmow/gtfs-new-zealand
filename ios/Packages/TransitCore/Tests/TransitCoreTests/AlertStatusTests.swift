@@ -40,4 +40,12 @@ final class AlertStatusTests: XCTestCase {
         let alert = makeAlert(start: nowUnix - 200_000, end: nowUnix - 100_000)
         XCTAssertEqual(AlertStatusCalculator.status(for: alert, now: now).label, "Ended")
     }
+
+    func testHasEndedOnlyForEndedAlerts() {
+        let nowUnix = Int(now.timeIntervalSince1970)
+        XCTAssertTrue(AlertStatusCalculator.hasEnded(makeAlert(start: nowUnix - 200_000, end: nowUnix - 100_000), now: now))
+        XCTAssertFalse(AlertStatusCalculator.hasEnded(makeAlert(start: nowUnix - 100, end: nowUnix + 100), now: now))
+        XCTAssertFalse(AlertStatusCalculator.hasEnded(makeAlert(start: nowUnix - 90_000, end: 0), now: now))
+        XCTAssertFalse(AlertStatusCalculator.hasEnded(makeAlert(start: nowUnix + 86400 * 10, end: 0), now: now))
+    }
 }
