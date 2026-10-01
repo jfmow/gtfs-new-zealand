@@ -308,7 +308,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 			}
 		case jumpedPast:
 			if !(laExists && laWatching) { // else the Live Activity says it
-				jrNotifyLeaveTimePassed(db, r, plan, havePlan, departTime, access, region, tz, now, findNext)
+				jrNotifyLeaveTimePassed(db, r, plan, havePlan, laExists, departTime, access, region, tz, now, findNext)
 			}
 			// Every rung is due now - this push stands in for them.
 			for _, o := range offsets {
@@ -323,11 +323,25 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 			if leaveUnix < baseline {
 				dir = "earlier"
 			}
-			// Through the Live Activity when one's running, so the card and
-			// the push change together (one buzz).
-			notifyJourneyReminderLeave(db, r, fmt.Sprintf("shift-%d", now.Unix()/60), "Leave time updated",
-				fmt.Sprintf("The %s is running %s. New leave time %s (in %d min).",
-					orLabel(r.RouteShortName, "your service"), dir, leaveTime.Format("3:04pm"), maxInt(0, minsUntilLeave)))
+			shiftKey := fmt.Sprintf("shift-%d", now.Unix()/60)
+			shiftBody := fmt.Sprintf("The %s is running %s. New leave time %s (in %d min).",
+				orLabel(r.RouteShortName, "your service"), dir, leaveTime.Format("3:04pm"), maxInt(0, minsUntilLeave))
+			// Earlier than planned: the rider may not be able to go
+			// sooner - offer a way that still leaves when they planned to
+			// and arrives about when they planned.
+			var alt gtfs.JourneyPlan
+			haveAlt := false
+			if leaveUnix < baseline && havePlan && findNext != nil && plannedLeave(plan).Sub(leaveTime) >= keepTimeMinShift {
+				alt, haveAlt = findKeepingLeaveTime(findNext, plan, now, r.BoardTripID.String)
+			}
+			if haveAlt {
+				notifyJourneyReminderClientURL(db, r, shiftKey, "Leave time updated",
+					shiftBody+" "+keepTimeSummary(alt, plan.ArrivalTime, tz)+" Tap to switch to it.", journeyTrackURL(alt.ID, region))
+			} else {
+				// Through the Live Activity when one's running, so the card
+				// and the push change together (one buzz).
+				notifyJourneyReminderLeave(db, r, shiftKey, "Leave time updated", shiftBody)
+			}
 
 			// Slipped >10 min later: replay any ladder rung whose new fire time
 			// is still in the future, so "leave in 15" isn't skipped.
@@ -616,10 +630,15 @@ func planLiveLeave(plan gtfs.JourneyPlan, live liveLegLookup, boardTripID string
 const jrCatchSlack = 2 * time.Minute
 
 // jrNotifyLeaveTimePassed tells a rider whose leave time has just moved
-// into the past (the ride is running early) what to do: leave now if the
-// ride can still be made, else that it can't - with the next way to go,
-// which the notification opens.
-func jrNotifyLeaveTimePassed(db *Database, r JourneyReminder, plan gtfs.JourneyPlan, havePlan bool, departTime time.Time, access int64, region string, tz *time.Location, now time.Time, findNext nextJourneyFinder) {
+// into the past (the ride is running early) what to do, aiming to get them
+// there close to the time they planned: leave now if the ride can still be
+// made - or leave when they planned to on another way that arrives about
+// then - else that it can't, with the way that arrives soonest. Tapping it
+// opens the journey offered.
+//
+// With the journey's Live Activity running, its own "Time to leave" (and
+// its offer) covers the leave-now case.
+func jrNotifyLeaveTimePassed(db *Database, r JourneyReminder, plan gtfs.JourneyPlan, havePlan, laExists bool, departTime time.Time, access int64, region string, tz *time.Location, now time.Time, findNext nextJourneyFinder) {
 	route := orLabel(r.RouteShortName, "your service")
 	from := orLabel(r.BoardStopName, "your stop")
 	early := ""
@@ -632,8 +651,18 @@ func jrNotifyLeaveTimePassed(db *Database, r JourneyReminder, plan gtfs.JourneyP
 	key := fmt.Sprintf("early-%d", now.Unix()/60)
 
 	if !now.Add(time.Duration(access) * time.Second).After(departTime.Add(jrCatchSlack)) {
-		notifyJourneyReminderLeave(db, r, key, "Leave now for the "+route,
-			fmt.Sprintf("%sIt now departs %s from %s - leave now to make it.", early, at, from))
+		if laExists {
+			return
+		}
+		title := "Leave now for the " + route
+		body := fmt.Sprintf("%sIt now departs %s from %s - leave now to make it.", early, at, from)
+		if havePlan && findNext != nil {
+			if alt, ok := findKeepingLeaveTime(findNext, plan, now, r.BoardTripID.String); ok {
+				notifyJourneyReminderClientURL(db, r, key, title, body+" "+keepTimeSummary(alt, plan.ArrivalTime, tz)+" Tap to switch to it.", journeyTrackURL(alt.ID, region))
+				return
+			}
+		}
+		notifyJourneyReminderLeave(db, r, key, title, body)
 		return
 	}
 
@@ -641,8 +670,7 @@ func jrNotifyLeaveTimePassed(db *Database, r JourneyReminder, plan gtfs.JourneyP
 	body := fmt.Sprintf("%sIt now leaves %s at %s - too soon to get there.", early, from, at)
 	if havePlan && findNext != nil {
 		if next, ok := findNext(plan, plan.StartLat, plan.StartLon, now.Add(time.Minute), r.BoardTripID.String); ok {
-			link := "/journey?id=" + url.QueryEscape(next.ID) + "&region=" + url.QueryEscape(region) + "&track=1"
-			notifyJourneyReminderClientURL(db, r, key, title, body+" "+nextJourneySummary(next, tz)+" Tap to switch to it.", link)
+			notifyJourneyReminderClientURL(db, r, key, title, body+" "+nextJourneySummary(next, plan.ArrivalTime, tz)+" Tap to switch to it.", journeyTrackURL(next.ID, region))
 			return
 		}
 	}

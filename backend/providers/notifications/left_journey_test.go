@@ -139,20 +139,20 @@ func TestOfferNextJourney(t *testing.T) {
 
 	// Still at home: from the start, a minute from now.
 	alert := &activityAlert{Key: "missed-first-1", Title: "You'll miss the 70", Body: "It leaves at 9:03."}
-	offerNextJourney(alert, "a:1", plan, activityHint{Watching: true}, "auckland", time.UTC, base, find)
+	offerNextJourney(alert, "a:1", plan, activityHint{Watching: true}, false, "auckland", time.UTC, base, find)
 	if gotLat != plan.StartLat || !gotAt.Equal(base.Add(time.Minute)) || gotMissed != "trip-70" {
 		t.Errorf("planned from %v at %v avoiding %q", gotLat, gotAt, gotMissed)
 	}
 	if alert.URL != "/journey?id=next+plan&region=auckland&track=1" {
 		t.Errorf("url = %q - tapping it should open the new journey", alert.URL)
 	}
-	if !strings.Contains(alert.Body, "Next: the 70 at 9:06am from Britomart, arriving 9:26am.") || alert.TapHint != "Tap to switch to it." {
+	if !strings.Contains(alert.Body, "Next: the 70 at 9:06am from Britomart, arriving 9:26am (4 min earlier than planned).") || alert.TapHint != "Tap to switch to it." {
 		t.Errorf("body=%q tap=%q", alert.Body, alert.TapHint)
 	}
 
 	// On the way: from the stop, once they'll be there (left 8:58 + 5 min).
 	alert = &activityAlert{Key: "missed-first-1", Body: "x"}
-	offerNextJourney(alert, "b:1", plan, activityHint{LeftUnix: base.Add(-2 * time.Minute).Unix()}, "auckland", time.UTC, base, find)
+	offerNextJourney(alert, "b:1", plan, activityHint{LeftUnix: base.Add(-2 * time.Minute).Unix()}, false, "auckland", time.UTC, base, find)
 	if gotLat != -36.8 || !gotAt.Equal(base.Add(3*time.Minute)) {
 		t.Errorf("on the way: planned from %v at %v, want the stop at 9:03", gotLat, gotAt)
 	}
@@ -164,18 +164,75 @@ func TestOfferNextJourney(t *testing.T) {
 		return find(p, lat, lon, at, missed)
 	}
 	again := &activityAlert{Key: "missed-first-1", Body: "x"}
-	offerNextJourney(again, "b:1", plan, activityHint{}, "auckland", time.UTC, base.Add(20*time.Second), counting)
+	offerNextJourney(again, "b:1", plan, activityHint{}, false, "auckland", time.UTC, base.Add(20*time.Second), counting)
 	if calls != 0 || again.URL == "" {
 		t.Errorf("retry re-planned (%d calls) or lost the offer (%q)", calls, again.URL)
 	}
 
 	// Nothing found: just say so.
 	none := &activityAlert{Key: "missed-first-1", Body: "x"}
-	offerNextJourney(none, "c:1", plan, activityHint{}, "auckland", time.UTC, base, func(gtfs.JourneyPlan, float64, float64, time.Time, string) (gtfs.JourneyPlan, bool) {
+	offerNextJourney(none, "c:1", plan, activityHint{}, false, "auckland", time.UTC, base, func(gtfs.JourneyPlan, float64, float64, time.Time, string) (gtfs.JourneyPlan, bool) {
 		return gtfs.JourneyPlan{}, false
 	})
 	if none.URL != "" || none.TapHint != "Tap to find another way." {
 		t.Errorf("url=%q tap=%q", none.URL, none.TapHint)
+	}
+}
+
+// The ride running early moved the leave time earlier: "Time to leave" also
+// offers a way that leaves when the rider planned to, arriving about then.
+func TestOfferKeepsThePlannedLeaveTime(t *testing.T) {
+	plan := testPlan(base) // leave 9:00, arrive 9:30
+	var gotAt time.Time
+	find := func(_ gtfs.JourneyPlan, _, _ float64, at time.Time, _ string) (gtfs.JourneyPlan, bool) {
+		gotAt = at
+		alt := nextPlan(at) // leaves at `at`, arrives 25 min later
+		alt.Legs[0].Route = &gtfs.Route{RouteShortName: "22"}
+		return alt, true
+	}
+	now := base.Add(-4 * time.Minute) // new leave time 8:56, it's 8:56
+	alert := &activityAlert{Key: "leave-0", Title: "Time to leave", Body: "The 70 is running 4 min early. Walk to Britomart for the 70 at 9:04am."}
+	offerNextJourney(alert, "k:1", plan, activityHint{}, true, "auckland", time.UTC, now, find)
+	if !gotAt.Equal(base) {
+		t.Errorf("searched from %v, want the planned leave time 9:00", gotAt)
+	}
+	if !strings.Contains(alert.Body, "Or leave at 9:00am: the 22 at 9:05am from Britomart, arriving 9:25am (5 min earlier than planned).") {
+		t.Errorf("body = %q", alert.Body)
+	}
+	if alert.URL != "/journey?id=next+plan&region=auckland&track=1" || alert.TapHint != "Tap to switch to it." {
+		t.Errorf("url=%q tap=%q", alert.URL, alert.TapHint)
+	}
+
+	// Not moved earlier: a plain "Time to leave", no planning.
+	plain := &activityAlert{Key: "leave-0", Body: "Walk."}
+	offerNextJourney(plain, "k:2", plan, activityHint{}, false, "auckland", time.UTC, now, func(gtfs.JourneyPlan, float64, float64, time.Time, string) (gtfs.JourneyPlan, bool) {
+		t.Error("planned for an alert that didn't need it")
+		return gtfs.JourneyPlan{}, false
+	})
+	if plain.Body != "Walk." || plain.URL != "" || plain.TapHint != "" {
+		t.Errorf("plain alert changed: %+v", plain)
+	}
+
+	// Arriving far later than planned isn't worth offering.
+	late := func(_ gtfs.JourneyPlan, _, _ float64, at time.Time, _ string) (gtfs.JourneyPlan, bool) {
+		alt := nextPlan(at.Add(30 * time.Minute))
+		return alt, true
+	}
+	if _, ok := findKeepingLeaveTime(late, plan, now, "trip-70"); ok {
+		t.Error("offered a way arriving 25+ min after the planned time")
+	}
+}
+
+func TestLeaveMovedEarlier(t *testing.T) {
+	plan := testPlan(base)
+	if !leaveMovedEarlier(plan, earlyBy(240)) {
+		t.Error("4 min early moves the leave time 4 min earlier")
+	}
+	if leaveMovedEarlier(plan, earlyBy(60)) {
+		t.Error("1 min early isn't worth another way")
+	}
+	if leaveMovedEarlier(plan, liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, DepartureDelay: 300, ArrivalDelay: 300}})) {
+		t.Error("running late isn't earlier")
 	}
 }
 
@@ -312,6 +369,52 @@ func TestReminder_LeaveTimeJumpsIntoThePast_LeaveNow(t *testing.T) {
 	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now.Add(30*time.Second), nil)
 	if more := testNotifier.take(); len(more) != 0 {
 		t.Errorf("repeated: %+v", more)
+	}
+}
+
+func TestReminder_LeaveTimeJumpsIntoThePast_OffersThePlannedLeaveTime(t *testing.T) {
+	now := time.Now().In(mustNZ(t)).Truncate(time.Minute)
+	start := now.Add(2 * time.Minute)
+	db, _, _, plan := reminderFixture(t, start)
+	lookup := func(string) (gtfs.JourneyPlan, bool) { return plan, true }
+	testNotifier.take()
+
+	var gotAt time.Time
+	find := func(_ gtfs.JourneyPlan, _, _ float64, at time.Time, _ string) (gtfs.JourneyPlan, bool) {
+		gotAt = at
+		return nextPlan(at), true
+	}
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find)
+	sent := testNotifier.take()
+	if len(sent) != 1 || sent[0].Title != "Leave now for the 70" {
+		t.Fatalf("want one leave-now push, got %+v", sent)
+	}
+	if !gotAt.Equal(start) {
+		t.Errorf("searched from %v, want the planned leave time %v", gotAt, start)
+	}
+	if !strings.Contains(sent[0].Body, "Or leave at ") || !strings.Contains(sent[0].Body, "than planned") || sent[0].URL != "/journey?id=next+plan&region=at&track=1" {
+		t.Errorf("body=%q url=%q", sent[0].Body, sent[0].URL)
+	}
+}
+
+func TestReminder_LeaveTimeMovesEarlier_OffersThePlannedLeaveTime(t *testing.T) {
+	now := time.Now().In(mustNZ(t)).Truncate(time.Minute)
+	start := now.Add(10 * time.Minute)
+	db, _, _, plan := reminderFixture(t, start)
+	lookup := func(string) (gtfs.JourneyPlan, bool) { return plan, true }
+	testNotifier.take()
+
+	find := func(_ gtfs.JourneyPlan, _, _ float64, at time.Time, _ string) (gtfs.JourneyPlan, bool) {
+		return nextPlan(at), true
+	}
+	// 3 min early: leave time 7 min from now instead of 10.
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find)
+	sent := testNotifier.take()
+	if len(sent) != 1 || sent[0].Title != "Leave time updated" {
+		t.Fatalf("want one shift push, got %+v", sent)
+	}
+	if !strings.Contains(sent[0].Body, "Or leave at ") || sent[0].URL != "/journey?id=next+plan&region=at&track=1" {
+		t.Errorf("body=%q url=%q", sent[0].Body, sent[0].URL)
 	}
 }
 

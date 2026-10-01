@@ -310,7 +310,8 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		if state.alert != nil && !containsString(activity.AlertedKeys, state.alert.Key) {
 			a := *state.alert
 			alert = &a
-			offerNextJourney(alert, fmt.Sprintf("%d:%s", activity.Id, a.Key), plan, hint, region, tz, now, findNext)
+			moved := strings.HasPrefix(a.Key, "leave-") && leaveMovedEarlier(plan, live)
+			offerNextJourney(alert, fmt.Sprintf("%d:%s", activity.Id, a.Key), plan, hint, moved, region, tz, now, findNext)
 		}
 		// A queued leave-by reminder goes out when the journey has no moment
 		// of its own to announce - if it does (the "leave now" reminder

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"net/url"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -118,11 +117,43 @@ type nextJourneyOffer struct {
 
 const nextJourneyOfferTTL = 5 * time.Minute
 
-// offerNextJourney adds the next way to go to a "you'll miss the first ride"
-// alert: from where the rider is heading (the stop, once they've set off)
-// or where they're starting from. Its notification then opens that journey.
-func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPlan, hint activityHint, region string, tz *time.Location, now time.Time, find nextJourneyFinder) {
-	if alert == nil || !strings.HasPrefix(alert.Key, missedFirstPrefix) {
+// keepTimeMaxLater: a journey leaving when the rider planned to is only
+// offered if it gets them there within this of their planned arrival.
+const keepTimeMaxLater = 15 * time.Minute
+
+// keepTimeMinShift: how far the leave time has to have moved earlier than
+// planned before it's worth looking for a way that keeps the rider's own.
+const keepTimeMinShift = 2 * time.Minute
+
+// leaveMovedEarlier: the first ride now running early has moved the leave
+// time keepTimeMinShift or more before the one the rider planned around.
+func leaveMovedEarlier(plan gtfs.JourneyPlan, live liveLegLookup) bool {
+	first := firstTransitLeg(plan)
+	if first == nil || live == nil {
+		return false
+	}
+	_, leave, ok := planLiveLeave(plan, live, first.TripID)
+	return ok && plannedLeave(plan).Sub(leave) >= keepTimeMinShift
+}
+
+// offerNextJourney adds another way to go to a setting-off alert, aiming to
+// get the rider there as close to their planned arrival as it can:
+//   - "you'll miss the first ride": whatever arrives soonest, from where
+//     the rider is heading (the stop, once they've set off) or where
+//     they're starting from;
+//   - "leave now" when a ride running early has moved the leave time
+//     earlier than planned (movedEarlier): a way that still leaves when they
+//     planned to, if it arrives close to the planned time - they may not be
+//     able to leave early.
+//
+// Its notification then opens that journey.
+func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPlan, hint activityHint, movedEarlier bool, region string, tz *time.Location, now time.Time, find nextJourneyFinder) {
+	if alert == nil {
+		return
+	}
+	missed := strings.HasPrefix(alert.Key, missedFirstPrefix)
+	keepTime := strings.HasPrefix(alert.Key, "leave-") && movedEarlier
+	if !missed && !keepTime {
 		return
 	}
 	nextJourneyOffersMu.Lock()
@@ -138,15 +169,19 @@ func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPl
 		return
 	}
 
-	offer := nextJourneyOffer{body: alert.Body, tapHint: "Tap to find another way.", at: now}
-	f, err := strconv.Atoi(strings.TrimPrefix(alert.Key, missedFirstPrefix))
-	if find != nil && err == nil && f >= 0 && f < len(plan.Legs) {
-		missed := plan.Legs[f]
+	offer := nextJourneyOffer{body: alert.Body, at: now}
+	if missed {
+		offer.tapHint = "Tap to find another way."
+	}
+	first := firstTransitLeg(plan)
+	switch {
+	case find == nil || first == nil:
+	case missed:
 		fromLat, fromLon, at := plan.StartLat, plan.StartLon, now.Add(time.Minute)
-		if hint.LeftUnix > 0 && missed.FromStop != nil {
+		if hint.LeftUnix > 0 && first.FromStop != nil {
 			// On the way to the stop: the next way from there, once
 			// they've reached it.
-			fromLat, fromLon = missed.FromStop.StopLat, missed.FromStop.StopLon
+			fromLat, fromLon = first.FromStop.StopLat, first.FromStop.StopLon
 			if len(plan.Legs) > 0 && plan.Legs[0].Mode == "walk" {
 				reach := time.Unix(hint.LeftUnix, 0).Add(plan.Legs[0].ArrivalTime.Sub(plan.Legs[0].DepartureTime))
 				if reach.After(at) {
@@ -154,10 +189,16 @@ func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPl
 				}
 			}
 		}
-		if next, found := find(plan, fromLat, fromLon, at, missed.TripID); found {
-			offer.body = alert.Body + " " + nextJourneySummary(next, tz)
+		if next, found := find(plan, fromLat, fromLon, at, first.TripID); found {
+			offer.body = alert.Body + " " + nextJourneySummary(next, plan.ArrivalTime, tz)
 			offer.tapHint = "Tap to switch to it."
-			offer.url = "/journey?id=" + url.QueryEscape(next.ID) + "&region=" + url.QueryEscape(region) + "&track=1"
+			offer.url = journeyTrackURL(next.ID, region)
+		}
+	case keepTime:
+		if alt, found := findKeepingLeaveTime(find, plan, now, first.TripID); found {
+			offer.body = alert.Body + " " + keepTimeSummary(alt, plan.ArrivalTime, tz)
+			offer.tapHint = "Tap to switch to it."
+			offer.url = journeyTrackURL(alt.ID, region)
 		}
 	}
 
@@ -167,19 +208,72 @@ func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPl
 	alert.Body, alert.TapHint, alert.URL = offer.body, offer.tapHint, offer.url
 }
 
+func journeyTrackURL(planID, region string) string {
+	return "/journey?id=" + url.QueryEscape(planID) + "&region=" + url.QueryEscape(region) + "&track=1"
+}
+
+// plannedLeave is when the rider planned to set off on plan - its first
+// walk's start, as the card's leave-by shows it.
+func plannedLeave(plan gtfs.JourneyPlan) time.Time {
+	if len(plan.Legs) > 0 && plan.Legs[0].Mode == "walk" {
+		return leaveByTime(plan.Legs[0].DepartureTime)
+	}
+	return plan.DepartureTime
+}
+
+// findKeepingLeaveTime is a way that leaves no earlier than the rider
+// planned to (or now, if that's gone) without the ride that's moved
+// earlier, and gets them there within keepTimeMaxLater of plan's arrival.
+func findKeepingLeaveTime(find nextJourneyFinder, plan gtfs.JourneyPlan, now time.Time, earlyTripID string) (gtfs.JourneyPlan, bool) {
+	at := plannedLeave(plan)
+	if soonest := now.Add(time.Minute); at.Before(soonest) {
+		at = soonest
+	}
+	alt, ok := find(plan, plan.StartLat, plan.StartLon, at, earlyTripID)
+	if !ok || alt.ArrivalTime.Sub(plan.ArrivalTime) > keepTimeMaxLater {
+		return gtfs.JourneyPlan{}, false
+	}
+	return alt, true
+}
+
+// versusPlanned - "4 min later than planned", "as planned".
+func versusPlanned(arrive, planned time.Time) string {
+	switch m := int(math.Round(arrive.Sub(planned).Minutes())); {
+	case m >= 1:
+		return fmt.Sprintf("%d min later than planned", m)
+	case m <= -1:
+		return fmt.Sprintf("%d min earlier than planned", -m)
+	}
+	return "as planned"
+}
+
+func inTZ(t time.Time, tz *time.Location) time.Time {
+	if tz != nil {
+		return t.In(tz)
+	}
+	return t
+}
+
 // nextJourneySummary - "Next: the E-W at 9:36am from Baldwin Ave, arriving
-// 10:02am."
-func nextJourneySummary(next gtfs.JourneyPlan, tz *time.Location) string {
+// 10:02am (15 min later than planned)."
+func nextJourneySummary(next gtfs.JourneyPlan, plannedArrival time.Time, tz *time.Location) string {
 	bt := firstTransitLeg(next)
 	if bt == nil {
 		return ""
 	}
-	in := func(t time.Time) time.Time {
-		if tz != nil {
-			return t.In(tz)
-		}
-		return t
+	return fmt.Sprintf("Next: the %s at %s from %s, arriving %s (%s).",
+		planRouteLabel(next), clock(inTZ(bt.DepartureTime, tz)), stopLabel(bt.FromStop),
+		clock(inTZ(next.ArrivalTime, tz)), versusPlanned(next.ArrivalTime, plannedArrival))
+}
+
+// keepTimeSummary - "Or leave at 9:10am: the 22 at 9:19am from Mt Albert
+// Rd, arriving 9:49am (2 min later than planned)."
+func keepTimeSummary(alt gtfs.JourneyPlan, plannedArrival time.Time, tz *time.Location) string {
+	bt := firstTransitLeg(alt)
+	if bt == nil {
+		return ""
 	}
-	return fmt.Sprintf("Next: the %s at %s from %s, arriving %s.",
-		planRouteLabel(next), clock(in(bt.DepartureTime)), stopLabel(bt.FromStop), clock(in(next.ArrivalTime)))
+	return fmt.Sprintf("Or leave at %s: the %s at %s from %s, arriving %s (%s).",
+		clock(inTZ(leaveByTime(alt.DepartureTime), tz)), planRouteLabel(alt), clock(inTZ(bt.DepartureTime, tz)),
+		stopLabel(bt.FromStop), clock(inTZ(alt.ArrivalTime, tz)), versusPlanned(alt.ArrivalTime, plannedArrival))
 }
