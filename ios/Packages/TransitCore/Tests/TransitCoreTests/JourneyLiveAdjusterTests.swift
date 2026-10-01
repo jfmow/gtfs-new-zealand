@@ -119,4 +119,36 @@ final class JourneyLiveAdjusterTests: XCTestCase {
         // Its own duration (300s) is preserved.
         XCTAssertEqual(resultWalk.departureTime.date!.timeIntervalSince1970, resultWalk.arrivalTime.date!.timeIntervalSince1970 - 300, accuracy: 0.001)
     }
+
+    // MARK: - Set off
+
+    /// Once the rider has left, a ride that moves earlier no longer moves
+    /// the walk - it starts when they left (2026-10-02).
+    func testSetOffAnchorsTheFirstWalk() {
+        let board = makeStop(id: "A")
+        let walk = makeLeg(mode: "walk", tripID: "", from: nil, to: board, departure: base, arrival: base.addingTimeInterval(300), durationSeconds: 300)
+        let ride = makeLeg(mode: "transit", tripID: "t1", from: board, to: makeStop(id: "B"),
+                           departure: base.addingTimeInterval(480), arrival: base.addingTimeInterval(1080), durationSeconds: 600)
+        let plan = makePlan(legs: [walk, ride])
+        let scheduledMs = Int64(base.addingTimeInterval(480).timeIntervalSince1970 * 1000)
+        // Running 4 min early.
+        let early = [
+            stopTime(childID: "A", parentID: "PA", arrivalMs: scheduledMs - 240_000, departureMs: scheduledMs - 240_000, scheduledMs: scheduledMs),
+            stopTime(childID: "B", parentID: "PB", arrivalMs: scheduledMs + 360_000, departureMs: scheduledMs + 360_000, scheduledMs: scheduledMs + 600_000),
+        ]
+
+        let tracking = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: ["t1": early])
+        XCTAssertEqual(tracking.legs[0].departureTime.date, base.addingTimeInterval(-240), "before setting off, the walk follows the ride")
+
+        let left = base.addingTimeInterval(-60)
+        let onTheWay = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: ["t1": early], setOffAt: left)
+        XCTAssertEqual(onTheWay.legs[0].departureTime.date, left)
+        XCTAssertEqual(onTheWay.legs[0].arrivalTime.date, left.addingTimeInterval(300))
+        XCTAssertEqual(onTheWay.departureTime.date, left)
+        XCTAssertEqual(onTheWay.legs[1].departureTime.date, base.addingTimeInterval(240), "the ride still moves")
+
+        // No realtime at all still anchors.
+        let offline = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: [:], setOffAt: left)
+        XCTAssertEqual(offline.legs[0].departureTime.date, left)
+    }
 }

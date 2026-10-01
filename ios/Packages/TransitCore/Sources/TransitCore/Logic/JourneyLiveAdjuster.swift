@@ -8,7 +8,18 @@ public enum JourneyPlanLiveAdjuster {
     /// where available. Walk legs are re-anchored to their adjacent transit
     /// leg (their own duration is fixed); waits fall out of the shifted
     /// times. Returns `plan` unchanged if nothing usable is available.
-    public static func buildLiveJourney(_ plan: JourneyPlan, stopTimesByTripID: [String: [StopTimeUpdate]]) -> JourneyPlan {
+    ///
+    /// - Parameter setOffAt: When the rider set off on the first walk
+    ///   (`DepartureDetector`). That walk then runs from then, not back
+    ///   from the first ride - a ride that moves no longer moves when they
+    ///   "left".
+    public static func buildLiveJourney(_ plan: JourneyPlan, stopTimesByTripID: [String: [StopTimeUpdate]], setOffAt: Date? = nil) -> JourneyPlan {
+        let live = shiftedToRealtime(plan, stopTimesByTripID: stopTimesByTripID)
+        guard let setOffAt else { return live }
+        return anchoringFirstWalk(live, original: plan, at: setOffAt)
+    }
+
+    private static func shiftedToRealtime(_ plan: JourneyPlan, stopTimesByTripID: [String: [StopTimeUpdate]]) -> JourneyPlan {
         guard !stopTimesByTripID.isEmpty else { return plan }
 
         var legs = plan.legs
@@ -79,6 +90,20 @@ public enum JourneyPlanLiveAdjuster {
         updated.departureTime = GoTime(date: firstDeparture)
         updated.arrivalTime = GoTime(date: lastArrival)
         updated.totalDuration = GoDuration(nanoseconds: Int64((lastArrival.timeIntervalSince1970 - firstDeparture.timeIntervalSince1970) * 1_000_000_000))
+        return updated
+    }
+
+    /// The first walk from when the rider actually left, its planned length.
+    private static func anchoringFirstWalk(_ plan: JourneyPlan, original: JourneyPlan, at setOffAt: Date) -> JourneyPlan {
+        guard let first = plan.legs.first, first.mode == "walk", original.legs.first?.mode == "walk" else { return plan }
+        let duration = original.legs[0].duration.timeInterval
+        var updated = plan
+        updated.legs[0].departureTime = GoTime(date: setOffAt)
+        updated.legs[0].arrivalTime = GoTime(date: setOffAt.addingTimeInterval(duration))
+        updated.departureTime = GoTime(date: setOffAt)
+        if let lastArrival = updated.legs.last?.arrivalTime.date {
+            updated.totalDuration = GoDuration(nanoseconds: Int64((lastArrival.timeIntervalSince1970 - setOffAt.timeIntervalSince1970) * 1_000_000_000))
+        }
         return updated
     }
 

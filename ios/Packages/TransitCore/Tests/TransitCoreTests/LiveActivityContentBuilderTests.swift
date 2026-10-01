@@ -188,4 +188,56 @@ final class LiveActivityContentBuilderTests: XCTestCase {
         XCTAssertNil(c.nextLeg)
         XCTAssertTrue(c.isRealtime)
     }
+
+    // MARK: - Setting off (mirrors left_journey_test.go)
+
+    /// testLegs with the first walk running from `left` - what
+    /// JourneyPlanLiveAdjuster does with `setOffAt`.
+    private func legs(leftAt left: TimeInterval, delay: Int? = nil) -> [JourneyLeg] {
+        var legs = testLegs(delay: delay)
+        legs[0].departureTime = GoTime(date: base.addingTimeInterval(left))
+        legs[0].arrivalTime = GoTime(date: base.addingTimeInterval(left + 300))
+        return legs
+    }
+
+    private func onTheWay(_ left: TimeInterval) -> LiveActivityProgress {
+        LiveActivityProgress(legIndex: 0, phase: "walking", arrived: false, setOffAt: base.addingTimeInterval(left))
+    }
+
+    private var atStart: LiveActivityProgress {
+        LiveActivityProgress(legIndex: 0, phase: "walking", arrived: false, stillAtStart: true)
+    }
+
+    func testOnTheWayShowsSpareTimeNotALeaveTime() {
+        let c = LiveActivityContentBuilder.build(legs: legs(leftAt: -120), progress: onTheWay(-120), now: base.addingTimeInterval(60))
+        XCTAssertEqual(c.primaryText, "Walk to Britomart")
+        XCTAssertEqual(c.secondaryText, "70 departs 9:08am · Platform 3 · 5 min spare")
+        XCTAssertNil(c.urgent)
+        XCTAssertEqual(c.segmentStartUnix, base.addingTimeInterval(-120).timeIntervalSince1970)
+    }
+
+    func testOnTheWayRideRunningEarly() {
+        // Left 9:00, at the stop 9:05; the 70 now leaves 9:02.
+        let c = LiveActivityContentBuilder.build(legs: legs(leftAt: 0, delay: -360), progress: onTheWay(0), now: base.addingTimeInterval(60))
+        XCTAssertEqual(c.status, "missedConnection")
+        XCTAssertEqual(c.secondaryText, "You'll likely miss the 70 at 9:02am")
+        XCTAssertFalse(c.primaryText.contains("Leave"))
+    }
+
+    func testStillAtStartKeepsLeaveNowWhileCatchable() {
+        let held = LiveActivityContentBuilder.build(legs: testLegs(), progress: atStart, now: base.addingTimeInterval(180))
+        XCTAssertEqual(held.primaryText, "Leave now")
+        XCTAssertEqual(held.urgent, true)
+        let unknown = LiveActivityContentBuilder.build(legs: testLegs(), progress: progress(0, "walking"), now: base.addingTimeInterval(190))
+        XCTAssertEqual(unknown.primaryText, "Walk to Britomart")
+    }
+
+    func testStillAtStartRideGoneEarlySaysTooLate() {
+        // Running 5 min early: the 70 leaves 9:03, 5 min walk away, 8:59:30 now.
+        let c = LiveActivityContentBuilder.build(legs: testLegs(delay: -300), progress: atStart, now: base.addingTimeInterval(-30))
+        XCTAssertEqual(c.primaryText, "Too late for the 70")
+        XCTAssertEqual(c.secondaryText, "It departs 9:03am · running 5 min early · 5 min walk away")
+        XCTAssertEqual(c.status, "missedConnection")
+        XCTAssertNil(c.urgent)
+    }
 }

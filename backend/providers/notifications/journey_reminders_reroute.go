@@ -102,6 +102,11 @@ func jrCronReroute(
 		if !ok {
 			continue
 		}
+		// On the way already: a faster journey from the start is no use,
+		// and "we'll keep your leave time up to date" no longer applies.
+		if _, leftUnix, _ := db.LiveActivityDeparture(r.ClientId, plan.ID, now); leftUnix > 0 {
+			continue
+		}
 
 		boardDelay := 0
 		if tu := tripUpdateFor(updates, r.BoardTripID.String, r.ServiceDate); tu != nil {

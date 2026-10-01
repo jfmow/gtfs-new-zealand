@@ -342,6 +342,10 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// The app last reported the rider listening through headphones - see
 		// LiveActivity.announcesAlerts.
 		{"headphones", `ALTER TABLE live_activities ADD COLUMN headphones INTEGER NOT NULL DEFAULT 0;`},
+		// When the app saw the rider set off on the first walk (Unix
+		// seconds): 0 = still at the start, -1 = the app doesn't say (an
+		// older version, or no location) - see LiveActivity.LeftUnix.
+		{"left_unix", `ALTER TABLE live_activities ADD COLUMN left_unix INTEGER NOT NULL DEFAULT -1;`},
 	}
 	for _, m := range laMigrations {
 		if laExistingColumns[m.column] {

@@ -406,6 +406,10 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 	})
 
+	// The next way to go when a journey's first ride can't be made - for the
+	// Live Activity's and the reminders' "you'll miss it" alerts.
+	findNext := newNextJourneyFinder(gtfsData, &realtime, osrmURL, planPut)
+
 	// Planned journey "leave-by" reminders - resolve boarding trips, watch
 	// their realtime delay, push "leave in 30/15/5 min" then "leave now",
 	// re-notify on a shift, roll recurring rows to their next occurrence.
@@ -421,7 +425,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		// The Live Activity's own realtime lookup, so a reminder's leave time
 		// is the one on the Lock Screen card.
 		live := newLiveLegLookup(realtime, stopsForTripCache, parentStopsCache, localTimeZone)
-		runJourneyRemindersCron(notificationDB, gtfsData, realtime, live, localTimeZone, region, osrmURL, planLookup, planPut, now)
+		runJourneyRemindersCron(notificationDB, gtfsData, realtime, live, localTimeZone, region, osrmURL, planLookup, planPut, now, findNext)
 	})
 
 	// Live Activity progress - background safety net for when the app isn't
@@ -434,7 +438,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return
 		}
 		defer liveActivitiesCronMutex.Unlock()
-		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, parentStopsCache, localTimeZone, time.Now())
+		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, parentStopsCache, localTimeZone, time.Now(), findNext)
 	})
 
 	c.Start()
@@ -1339,7 +1343,15 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		legIndex, _ := strconv.Atoi(c.FormValue("legIndex"))
 		phase := c.FormValue("phase")
 		headphones := c.FormValue("headphones") == "1"
-		if err := notificationDB.UpdateLiveActivityLeg(client.Id, activityId, legIndex, phase, headphones); err != nil {
+		// leftAt: when the app saw the rider set off (Unix seconds), "0"
+		// while they're still at the start, absent when it can't tell.
+		leftUnix := int64(-1)
+		if v := c.FormValue("leftAt"); v != "" {
+			if n, err := strconv.ParseInt(v, 10, 64); err == nil && n >= 0 {
+				leftUnix = n
+			}
+		}
+		if err := notificationDB.UpdateLiveActivityLeg(client.Id, activityId, legIndex, phase, headphones, leftUnix); err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to update leg"})
 		}
 		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})

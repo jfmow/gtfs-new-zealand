@@ -24,8 +24,10 @@ public enum OfflineJourneyMoments {
     /// Moments still ahead of `now`, from the leg the rider is on.
     /// - Parameter onboard: The rider is already on the leg at
     ///   `progressLegIndex` - its boarding moment has passed.
-    public static func upcoming(legs: [JourneyLeg], progressLegIndex: Int, onboard: Bool, now: Date) -> [Moment] {
-        var moments = settingOff(legs: legs, progressLegIndex: progressLegIndex)
+    /// - Parameter setOff: The rider has already left (`DepartureDetector`)
+    ///   - no "time to leave".
+    public static func upcoming(legs: [JourneyLeg], progressLegIndex: Int, onboard: Bool, now: Date, setOff: Bool = false) -> [Moment] {
+        var moments = setOff ? [] : settingOff(legs: legs, progressLegIndex: progressLegIndex)
         for index in legs.indices where index >= max(0, progressLegIndex) && legs[index].mode == "transit" {
             let leg = legs[index]
             let name = routeName(leg)

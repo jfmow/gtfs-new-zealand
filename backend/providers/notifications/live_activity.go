@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/url"
 	"sort"
@@ -42,6 +43,23 @@ type LiveActivity struct {
 	// Headphones: the app last reported the rider listening through
 	// headphones (AirPods) - see announcesAlerts.
 	Headphones bool
+	// LeftUnix is when the app saw the rider set off on the journey's
+	// first walk, from their GPS: 0 while they're still at the start, -1
+	// when the app doesn't say (an older version, or location off).
+	LeftUnix int64
+}
+
+// departureWatchWindow: an app that reported "still at the start" this
+// recently is watching for the rider leaving - past it, the app's been
+// suspended and the rider may have gone without it noticing.
+const departureWatchWindow = 2 * time.Minute
+
+// departure is what's known about the rider setting off - see activityHint.
+func (a LiveActivity) departure(now time.Time) (leftUnix int64, watching bool) {
+	if a.LeftUnix > 0 {
+		return a.LeftUnix, false
+	}
+	return 0, a.LeftUnix == 0 && now.Sub(time.Unix(a.ClientReported, 0)) < departureWatchWindow
 }
 
 // headphonesFreshFor is how long a "headphones in" report is trusted - the
@@ -84,12 +102,34 @@ func (d *Database) UpdateLiveActivityToken(clientId int, activityId, pushToken s
 	return err
 }
 
-func (d *Database) UpdateLiveActivityLeg(clientId int, activityId string, legIndex int, phase string, headphones bool) error {
+// UpdateLiveActivityLeg stores the app's report. leftUnix is when the rider
+// set off (0 = not yet, -1 = the app doesn't say); once set it's kept, so a
+// report that arrives out of order can't put them back at the start.
+func (d *Database) UpdateLiveActivityLeg(clientId int, activityId string, legIndex int, phase string, headphones bool, leftUnix int64) error {
 	_, err := d.execContext(
-		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, headphones = ?, updated = ?, client_reported = ? WHERE clientId = ? AND activity_id = ?`,
-		legIndex, phase, headphones, time.Now().Unix(), time.Now().Unix(), clientId, activityId,
+		`UPDATE live_activities SET leg_hint = ?, phase_hint = ?, headphones = ?, updated = ?, client_reported = ?,
+            left_unix = CASE WHEN left_unix > 0 THEN left_unix ELSE ? END
+         WHERE clientId = ? AND activity_id = ?`,
+		legIndex, phase, headphones, time.Now().Unix(), time.Now().Unix(), leftUnix, clientId, activityId,
 	)
 	return err
+}
+
+// LiveActivityDeparture is what the client's Live Activity for the plan
+// knows about the rider setting off (see LiveActivity.departure) - exists
+// false when there's no activity for it.
+func (d *Database) LiveActivityDeparture(clientId int, planId string, now time.Time) (exists bool, leftUnix int64, watching bool) {
+	if planId == "" {
+		return false, 0, false
+	}
+	row, cancel := d.queryRowContext(`SELECT left_unix, client_reported FROM live_activities WHERE clientId = ? AND plan_id = ? LIMIT 1`, clientId, planId)
+	defer cancel()
+	var a LiveActivity
+	if row.Scan(&a.LeftUnix, &a.ClientReported) != nil {
+		return false, 0, false
+	}
+	leftUnix, watching = a.departure(now)
+	return true, leftUnix, watching
 }
 
 func (d *Database) DeleteLiveActivity(clientId int, activityId string) error {
@@ -172,7 +212,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 	rows, err := d.db.Query(`
         SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, la.push_token,
                COALESCE(NULLIF(la.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
-               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert, la.headphones
+               la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert, la.headphones, la.left_unix
         FROM live_activities la
         JOIN notifications n ON n.id = la.clientId
         WHERE la.region = ?`, region)
@@ -186,7 +226,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 		var a LiveActivity
 		var alerted string
 		if err := rows.Scan(&a.Id, &a.ClientId, &a.Region, &a.PlanId, &a.ActivityId, &a.PushToken,
-			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported, &a.PendingAlert, &a.Headphones); err != nil {
+			&a.ApnsEnv, &a.LegHint, &a.PhaseHint, &a.LastStateHash, &alerted, &a.LastPushed, &a.ClientReported, &a.PendingAlert, &a.Headphones, &a.LeftUnix); err != nil {
 			continue
 		}
 		if alerted != "" {
@@ -225,7 +265,10 @@ const clientActiveWindow = 75 * time.Second
 // has changed (or the heartbeat is due) - with an alert (Dynamic Island
 // expansion + sound) only for the one-off moments in
 // journeyActivityState.alert and queued leave-by reminders.
-func runLiveActivitiesCron(db *Database, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, parentStopsCache caches.ParentStopsByChildCache, tz *time.Location, now time.Time) {
+//
+// findNext re-plans a journey whose first ride can no longer be made, for
+// its "you'll miss it" alert (nil: the alert just says so).
+func runLiveActivitiesCron(db *Database, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), rt realtime.Realtime, stopsForTripCache caches.StopsForTripCache, parentStopsCache caches.ParentStopsByChildCache, tz *time.Location, now time.Time, findNext nextJourneyFinder) {
 	if db == nil {
 		return
 	}
@@ -255,6 +298,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		}
 
 		hint := activityHint{LegIndex: activity.LegHint, Phase: activity.PhaseHint}
+		hint.LeftUnix, hint.Watching = activity.departure(now)
 		state := computeJourneyActivityState(plan, now, live, hint)
 
 		if state.Phase == "arrived" && now.After(time.Unix(int64(state.ArrivalUnix), 0).Add(endGraceAfterArrival)) {
@@ -266,6 +310,8 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		if state.alert != nil && !containsString(activity.AlertedKeys, state.alert.Key) {
 			a := *state.alert
 			alert = &a
+			moved := strings.HasPrefix(a.Key, "leave-") && leaveMovedEarlier(plan, live)
+			offerNextJourney(alert, fmt.Sprintf("%d:%s", activity.Id, a.Key), plan, hint, moved, region, tz, now, findNext)
 		}
 		// A queued leave-by reminder goes out when the journey has no moment
 		// of its own to announce - if it does (the "leave now" reminder
@@ -353,13 +399,22 @@ func sendJourneyMomentNotification(db *Database, activity LiveActivity, alert ac
 	if err != nil || client.ApnsToken == "" {
 		return false
 	}
-	err = sharedNotifier().Send(*client, Payload{
+	payload := Payload{
 		Title:   alert.Title,
 		Body:    alert.Body,
 		URL:     "/journey?id=" + url.QueryEscape(activity.PlanId) + "&region=" + url.QueryEscape(activity.Region) + "&track=1",
 		Urgency: "high",
 		Kind:    "journey",
-	})
+	}
+	if alert.TapHint != "" {
+		payload.Body += " " + alert.TapHint
+	}
+	if alert.URL != "" {
+		// Another journey to switch to: shown even with the tracker on
+		// screen, which has no in-app version of the offer.
+		payload.URL, payload.Kind = alert.URL, ""
+	}
+	err = sharedNotifier().Send(*client, payload)
 	if err != nil {
 		log.Printf("notifications: journey moment push for activity %d: %v", activity.Id, err)
 		return false

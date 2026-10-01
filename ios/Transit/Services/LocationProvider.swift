@@ -15,6 +15,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// measure one.
     private(set) var speed: Double?
     private(set) var fixDate: Date?
+    /// The latest fix's horizontal accuracy in metres - nil when invalid.
+    private(set) var accuracy: Double?
     private(set) var authorizationStatus: CLAuthorizationStatus
     /// Called on the main actor after every new fix - the journey tracker
     /// uses it to advance while the app is in the background.
@@ -73,11 +75,13 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         guard let location = locations.last else { return }
         let coordinate = Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude)
         let speed = location.speed >= 0 ? location.speed : nil
+        let accuracy = location.horizontalAccuracy >= 0 ? location.horizontalAccuracy : nil
         let timestamp = location.timestamp
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.coordinate = coordinate
             self.speed = speed
+            self.accuracy = accuracy
             self.fixDate = timestamp
             self.onUpdate?()
         }

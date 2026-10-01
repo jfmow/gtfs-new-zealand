@@ -383,4 +383,29 @@ final class JourneyProgressModelTests: XCTestCase {
         XCTAssertTrue(snapshot.journeyArrived)
         XCTAssertEqual(snapshot.progressLegIndex, 1, "arrived means the progress index runs one past the last leg")
     }
+
+    // MARK: - Still at the start
+
+    /// The walk's planned arrival has passed but the rider's GPS shows them
+    /// still at home: they're not "waiting at the stop" - until the ride goes.
+    func testHoldAtStartKeepsTheWalkUntilTheRideLeaves() {
+        let board = makeStop(id: "board")
+        let alight = makeStop(id: "alight")
+        // Walk 0-300s, ride leaves at 480s.
+        let plan = makePlan(legs: [
+            makeLeg(mode: "walk", to: board, departure: base, arrival: base.addingTimeInterval(300), durationSeconds: 300),
+            makeLeg(mode: "transit", tripID: "T1", from: board, to: alight, departure: base.addingTimeInterval(480), arrival: base.addingTimeInterval(1200), durationSeconds: 720),
+            makeLeg(mode: "walk", from: alight, departure: base.addingTimeInterval(1200), arrival: base.addingTimeInterval(1500), durationSeconds: 300),
+        ])
+        func snapshot(_ seconds: TimeInterval, hold: Bool) -> JourneyProgressModel.Snapshot {
+            JourneyProgressModel().update(
+                plan: plan, displayPlan: plan, now: base.addingTimeInterval(seconds), vehiclesByTripID: [:],
+                stopTimesByTripID: [:], journeyStarted: true, trackedStops: [], userLocation: nil, holdAtStart: hold
+            )
+        }
+        XCTAssertEqual(snapshot(360, hold: false).progressLegIndex, 1, "by the clock, at the stop")
+        XCTAssertEqual(snapshot(360, hold: true).progressLegIndex, 0, "held on the walk")
+        XCTAssertEqual(snapshot(360, hold: true).phase, .walking)
+        XCTAssertEqual(snapshot(500, hold: true).progressLegIndex, 1, "released once the ride has gone")
+    }
 }
