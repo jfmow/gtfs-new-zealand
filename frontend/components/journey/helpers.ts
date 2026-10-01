@@ -202,16 +202,6 @@ function stopTimeFor(stopTimes: StopTimes[], legStop: Stop | null, targetMs: num
     return matches.reduce((best, s) => (Math.abs(t(s) - targetMs) < Math.abs(t(best) - targetMs) ? s : best))
 }
 
-// Server's jrMinTrustedDelaySeconds / jrMaxTrustedDelaySeconds.
-const MIN_UNSTARTED_DELAY_MS = -3 * 60 * 1000
-const MAX_UNSTARTED_DELAY_MS = 2 * 60 * 60 * 1000
-
-/** `predicted` held within the trusted delay bounds of `scheduled` - or left alone with no schedule to bound it by. */
-function clampUnstarted(predicted: number, scheduled?: number): number {
-    if (!scheduled) return predicted
-    return Math.min(Math.max(predicted, scheduled + MIN_UNSTARTED_DELAY_MS), scheduled + MAX_UNSTARTED_DELAY_MS)
-}
-
 /**
  * Returns a copy of `route` with each leg's Departure/Arrival/Duration - and the
  * journey-level totals - shifted to realtime predictions where available.
@@ -219,17 +209,10 @@ function clampUnstarted(predicted: number, scheduled?: number): number {
  * `realtime/stop-times`; walk legs are re-anchored to the adjacent transit leg
  * (their duration is fixed); waits fall out of the shifted times. Returns the
  * original `route` unchanged if nothing usable is available.
- *
- * `runningTripIds`: trips with a vehicle running on them. Any other trip's
- * predictions are bounded like the server's (`clampUnstartedDelays`): at most
- * 3 min early, 2 h late - a big early prediction before the bus is out is
- * usually a stale pre-trip one, and trusting it pulled a rider's leave time
- * 6 min into the past (2026-10-01). Omitted trusts every prediction.
  */
 export function buildLiveJourney(
     route: JourneyType,
-    stopTimesByTripId: Record<string, StopTimes[]>,
-    runningTripIds?: Record<string, unknown>
+    stopTimesByTripId: Record<string, StopTimes[]>
 ): JourneyType {
     if (Object.keys(stopTimesByTripId).length === 0) return route
 
@@ -244,17 +227,14 @@ export function buildLiveJourney(
         const alight = stopTimeFor(st, leg.ToStop, new Date(leg.ArrivalTime).getTime())
         if (!board?.departure_time || !alight?.arrival_time) return
 
-        const trusted = !runningTripIds || !!runningTripIds[leg.TripID]
-        const departMs = trusted ? board.departure_time : clampUnstarted(board.departure_time, board.scheduled_time)
-        const alightMs = trusted ? alight.arrival_time : clampUnstarted(alight.arrival_time, alight.scheduled_time)
-        const depart = new Date(departMs)
-        const arrive = new Date(Math.max(alightMs, departMs))
+        const depart = new Date(board.departure_time)
+        const arrive = new Date(Math.max(alight.arrival_time, board.departure_time))
         legs[i].DepartureTime = depart
         legs[i].ArrivalTime = arrive
         legs[i].Duration = (arrive.getTime() - depart.getTime()) * 1_000_000
 
         if (alight.scheduled_time) {
-            const delay = Math.round((alightMs - alight.scheduled_time) / 1000)
+            const delay = Math.round((alight.arrival_time - alight.scheduled_time) / 1000)
             legs[i].delay_seconds = delay
             legs[i].realtime_status =
                 delay > 60 ? RealtimeStatus.Delayed : delay < -60 ? RealtimeStatus.Early : RealtimeStatus.OnTime

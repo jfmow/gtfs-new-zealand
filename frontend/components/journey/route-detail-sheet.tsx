@@ -298,10 +298,8 @@ export function RouteDetailSheet({
     // tracking) - used for everything the rider reads: the itinerary rows, the
     // waits, the summary header, and which leg they're on.
     const displayRoute = useMemo(
-        // A trip with no vehicle out gets the server's bounds on its
-        // predictions - same leave time as the Live Activity and reminders.
-        () => (route ? buildLiveJourney(route, stopTimesByTripId, vehiclesByTripId) : route),
-        [route, stopTimesByTripId, vehiclesByTripId]
+        () => (route ? buildLiveJourney(route, stopTimesByTripId) : route),
+        [route, stopTimesByTripId]
     )
 
     // Which leg the rider is on right now: the first leg whose (live) arrival is

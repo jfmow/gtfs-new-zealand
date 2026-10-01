@@ -8,14 +8,7 @@ public enum JourneyPlanLiveAdjuster {
     /// where available. Walk legs are re-anchored to their adjacent transit
     /// leg (their own duration is fixed); waits fall out of the shifted
     /// times. Returns `plan` unchanged if nothing usable is available.
-    ///
-    /// `runningTripIDs`: the trips with a vehicle running on them. Any other
-    /// trip's predictions are bounded like the server's
-    /// (`clampUnstartedDelays`): at most 3 min early, 2 h late - a big early
-    /// prediction before the bus is out is usually a stale pre-trip one, and
-    /// trusting it pulled a rider's leave time 6 min into the past
-    /// (2026-10-01). Nil trusts every prediction.
-    public static func buildLiveJourney(_ plan: JourneyPlan, stopTimesByTripID: [String: [StopTimeUpdate]], runningTripIDs: Set<String>? = nil) -> JourneyPlan {
+    public static func buildLiveJourney(_ plan: JourneyPlan, stopTimesByTripID: [String: [StopTimeUpdate]]) -> JourneyPlan {
         guard !stopTimesByTripID.isEmpty else { return plan }
 
         var legs = plan.legs
@@ -34,11 +27,8 @@ public enum JourneyPlanLiveAdjuster {
                   board.departureTime.milliseconds != 0, alight.arrivalTime.milliseconds != 0
             else { continue }
 
-            let trusted = runningTripIDs?.contains(leg.tripID) ?? true
-            let departMillis = trusted ? board.departureTime.milliseconds : clampUnstarted(board.departureTime.milliseconds, scheduled: board.scheduledTime.milliseconds)
-            let alightMillis = trusted ? alight.arrivalTime.milliseconds : clampUnstarted(alight.arrivalTime.milliseconds, scheduled: alight.scheduledTime.milliseconds)
-            let departDate = Date(timeIntervalSince1970: Double(departMillis) / 1000)
-            let arriveMillis = max(alightMillis, departMillis)
+            let departDate = board.departureTime.date
+            let arriveMillis = max(alight.arrivalTime.milliseconds, board.departureTime.milliseconds)
             let arriveDate = Date(timeIntervalSince1970: Double(arriveMillis) / 1000)
 
             legs[i].departureTime = GoTime(date: departDate)
@@ -46,7 +36,7 @@ public enum JourneyPlanLiveAdjuster {
             legs[i].duration = GoDuration(nanoseconds: Int64((arriveDate.timeIntervalSince1970 - departDate.timeIntervalSince1970) * 1_000_000_000))
 
             if alight.scheduledTime.milliseconds != 0 {
-                let delaySeconds = Int(((Double(alightMillis) - Double(alight.scheduledTime.milliseconds)) / 1000).rounded())
+                let delaySeconds = Int(((Double(alight.arrivalTime.milliseconds) - Double(alight.scheduledTime.milliseconds)) / 1000).rounded())
                 legs[i].delaySeconds = delaySeconds
                 legs[i].realtimeStatus = delaySeconds > 60 ? "delayed" : (delaySeconds < -60 ? "early" : "on_time")
             }
@@ -90,17 +80,6 @@ public enum JourneyPlanLiveAdjuster {
         updated.arrivalTime = GoTime(date: lastArrival)
         updated.totalDuration = GoDuration(nanoseconds: Int64((lastArrival.timeIntervalSince1970 - firstDeparture.timeIntervalSince1970) * 1_000_000_000))
         return updated
-    }
-
-    /// Server's `jrMinTrustedDelaySeconds` / `jrMaxTrustedDelaySeconds`.
-    static let minUnstartedDelayMs: Int64 = -3 * 60 * 1000
-    static let maxUnstartedDelayMs: Int64 = 2 * 60 * 60 * 1000
-
-    /// `predicted` held within the trusted delay bounds of `scheduled` - or
-    /// left alone when there's no schedule to bound it by.
-    static func clampUnstarted(_ predicted: Int64, scheduled: Int64) -> Int64 {
-        guard scheduled != 0 else { return predicted }
-        return min(max(predicted, scheduled + minUnstartedDelayMs), scheduled + maxUnstartedDelayMs)
     }
 
     /// A trip can visit the same stop/station twice (line reversals) - picks
