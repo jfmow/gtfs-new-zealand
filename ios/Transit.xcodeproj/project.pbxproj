@@ -82,7 +82,6 @@
 		CBC8B058C3B764BA3D72932B /* RouteMultiSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */; };
 		D06BEB7CCEE30EA079F1BBAF /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EED87D07EBAC42A622A9029 /* FlowLayout.swift */; };
 		D1B2D1C33EF981B4E2C381B9 /* TrackedLegRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED9263CC89B1BCDDEDBEA9F /* TrackedLegRow.swift */; };
-		D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9734DB8F92D662AE92B8F808 /* PushStatusCard.swift */; };
 		D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */; };
 		D4031F8CBDBB692F8CF08AE4 /* JourneyOfflineNotifications.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DED62768A883ACFC3DE3773 /* JourneyOfflineNotifications.swift */; };
 		D79FCAFA0204273B56A8E423 /* Geist-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 4B999CF18305B715D1B381F6 /* Geist-SemiBold.ttf */; };
@@ -179,7 +178,6 @@
 		920010E42EE6E8E07D82BC5C /* DeparturesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturesWidget.swift; sourceTree = "<group>"; };
 		9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingView.swift; sourceTree = "<group>"; };
 		96FD1A1253E838170449E63B /* EasyPlannerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyPlannerModel.swift; sourceTree = "<group>"; };
-		9734DB8F92D662AE92B8F808 /* PushStatusCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushStatusCard.swift; sourceTree = "<group>"; };
 		97361DD773747781B3551E93 /* TransitMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitMapView.swift; sourceTree = "<group>"; };
 		A1DB9370F1097CD45FA9C713 /* TransitUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TransitUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		A91FBB0731CCD2E6BC0FC95B /* Geist-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Geist-Medium.ttf"; sourceTree = "<group>"; };
@@ -334,7 +332,6 @@
 		56626E08A153B4D11D500E84 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
-				9734DB8F92D662AE92B8F808 /* PushStatusCard.swift */,
 				B7D8AC61ACC94225604566A3 /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -708,7 +705,6 @@
 				AA5EDFBA811D9810ACAAECF9 /* PlannerTab.swift in Sources */,
 				05FAF2EAC0B659D7FD0D0E8B /* PlannerView.swift in Sources */,
 				36FCE3C823BE4FD31FD5D529 /* PushRegistrationService.swift in Sources */,
-				D29C1582F93883859C4D88CA /* PushStatusCard.swift in Sources */,
 				3596C6F552B2C4043C67ACC8 /* QuickAction.swift in Sources */,
 				E0E5CDE6F132D48125F93EE2 /* RootView.swift in Sources */,
 				09E1349894230E6DF7716258 /* RouteColors.swift in Sources */,

@@ -68,7 +68,10 @@ struct TransitApp: App {
         .onChange(of: scenePhase) { _, phase in
             environment.journey.setAppActive(phase != .background)
             if phase == .active {
-                Task { await environment.push.refreshAuthorizationStatus() }
+                Task {
+                    await environment.push.refreshAuthorizationStatus()
+                    await environment.push.clearStaleDeliveredNotifications()
+                }
                 environment.cloudSync.appBecameActive()
             }
         }
