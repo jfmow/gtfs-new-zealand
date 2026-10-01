@@ -40,6 +40,7 @@ func runJourneyRemindersCron(
 	planLookup func(id string) (gtfs.JourneyPlan, bool),
 	planPut func(gtfs.JourneyPlan),
 	now time.Time,
+	findNext nextJourneyFinder,
 ) {
 	if db == nil {
 		return
@@ -59,7 +60,7 @@ func runJourneyRemindersCron(
 	updates, _ := rt.GetTripUpdates() // nil / partial tolerated per row
 
 	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, planPut, now)
-	jrCronNotify(db, updates, live, tz, region, planLookup, now)
+	jrCronNotify(db, updates, live, tz, region, planLookup, now, findNext)
 	jrCronReroute(db, gtfsData, &rt, updates, tz, region, osrmURL, planLookup, planPut, now)
 }
 
@@ -209,7 +210,7 @@ func jrHandleResolveFailure(db *Database, tz *time.Location, r JourneyReminder, 
 
 // ── PASS 2 — arm / notify ────────────────────────────────────────────────────
 
-func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLookup, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time) {
+func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLookup, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time, findNext nextJourneyFinder) {
 	rows, err := db.GetArmedJourneyReminders(region)
 	if err != nil {
 		return
@@ -274,6 +275,14 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 		baseline := r.BaselineLeaveUnix.Int64
 		changed := false
 
+		// What the journey's Live Activity has seen of the rider setting
+		// off. Once they're on the way, leave times are history: nothing
+		// more about leaving is sent (the card says whether they'll make it).
+		laExists, leftUnix, laWatching := db.LiveActivityDeparture(r.ClientId, reminderPlanID(r), now)
+		left := leftUnix > 0
+
+		prevLeave := baseline
+
 		// Before the first rung, just track the live leave time silently -
 		// the list/next_leave_local and the first "leave in" push then use
 		// it rather than the timetable's.
@@ -282,8 +291,34 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 			changed = true
 		}
 
-		// (a) re-notify on a meaningful shift once the ladder has started
-		if ladderStarted && baseline > 0 && absInt64(leaveUnix-baseline) >= jrReNotifyThresholdSeconds && leaveTime.After(now) {
+		// (a) re-notify on a meaningful shift once the ladder has started -
+		// or, ladder or not, one that's moved the leave time earlier and
+		// straight into the past before the time the rider was going by
+		// came round: they're most likely still at the start. That used to
+		// go unsaid - the shift push only covered a new time still ahead,
+		// and a rung due with it said "leave in 5" (2026-10-02).
+		shifted := ladderStarted && prevLeave > 0 && absInt64(leaveUnix-prevLeave) >= jrReNotifyThresholdSeconds
+		jumpedPast := prevLeave > 0 && prevLeave-leaveUnix >= jrReNotifyThresholdSeconds &&
+			!leaveTime.After(now) && time.Unix(prevLeave, 0).After(now)
+		switch {
+		case left:
+			if shifted {
+				baseline = leaveUnix
+				changed = true
+			}
+		case jumpedPast:
+			if !(laExists && laWatching) { // else the Live Activity says it
+				jrNotifyLeaveTimePassed(db, r, plan, havePlan, departTime, access, region, tz, now, findNext)
+			}
+			// Every rung is due now - this push stands in for them.
+			for _, o := range offsets {
+				if !containsInt(sent, o) {
+					sent = append(sent, o)
+				}
+			}
+			baseline = leaveUnix
+			changed = true
+		case shifted && leaveTime.After(now):
 			dir := "later"
 			if leaveUnix < baseline {
 				dir = "earlier"
@@ -323,7 +358,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 			if now.Unix() >= leaveUnix-int64(o)*60 {
 				sent = append(sent, o)
 				changed = true
-				if activityAlerts && o*60 <= int(getReadyLead.Seconds()) {
+				if left || (activityAlerts && o*60 <= int(getReadyLead.Seconds())) {
 					continue
 				}
 				fireMins = o // offsets are sorted desc, so the last write is the smallest rung
@@ -573,4 +608,43 @@ func planLiveLeave(plan gtfs.JourneyPlan, live liveLegLookup, boardTripID string
 		leave = timings[0].dep
 	}
 	return timings[f].dep, leaveByTime(leave), true
+}
+
+// jrCatchSlack is the slack the planner leaves before the first ride (the
+// backend's deferOriginWalk buffer) - set off within it of the leave time
+// and the ride can still be made.
+const jrCatchSlack = 2 * time.Minute
+
+// jrNotifyLeaveTimePassed tells a rider whose leave time has just moved
+// into the past (the ride is running early) what to do: leave now if the
+// ride can still be made, else that it can't - with the next way to go,
+// which the notification opens.
+func jrNotifyLeaveTimePassed(db *Database, r JourneyReminder, plan gtfs.JourneyPlan, havePlan bool, departTime time.Time, access int64, region string, tz *time.Location, now time.Time, findNext nextJourneyFinder) {
+	route := orLabel(r.RouteShortName, "your service")
+	from := orLabel(r.BoardStopName, "your stop")
+	early := ""
+	if r.ScheduledDepartureUnix.Valid {
+		if m := int(math.Round(float64(departTime.Unix()-r.ScheduledDepartureUnix.Int64) / 60)); m < 0 {
+			early = fmt.Sprintf("The %s is running %d min early. ", route, -m)
+		}
+	}
+	at := departTime.In(tz).Format("3:04pm")
+	key := fmt.Sprintf("early-%d", now.Unix()/60)
+
+	if !now.Add(time.Duration(access) * time.Second).After(departTime.Add(jrCatchSlack)) {
+		notifyJourneyReminderLeave(db, r, key, "Leave now for the "+route,
+			fmt.Sprintf("%sIt now departs %s from %s - leave now to make it.", early, at, from))
+		return
+	}
+
+	title := "You'll miss the " + route
+	body := fmt.Sprintf("%sIt now leaves %s at %s - too soon to get there.", early, from, at)
+	if havePlan && findNext != nil {
+		if next, ok := findNext(plan, plan.StartLat, plan.StartLon, now.Add(time.Minute), r.BoardTripID.String); ok {
+			link := "/journey?id=" + url.QueryEscape(next.ID) + "&region=" + url.QueryEscape(region) + "&track=1"
+			notifyJourneyReminderClientURL(db, r, key, title, body+" "+nextJourneySummary(next, tz)+" Tap to switch to it.", link)
+			return
+		}
+	}
+	notifyJourneyReminderClient(db, r, key, title, body+" Tap to find another way.")
 }

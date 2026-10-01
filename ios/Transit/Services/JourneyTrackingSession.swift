@@ -37,6 +37,7 @@ final class JourneyTrackingSession {
     private let walkTracker = WalkNavigationTracker()
     @ObservationIgnored private var progressModel = JourneyProgressModel()
     @ObservationIgnored private var estimator = OfflineRideEstimator()
+    @ObservationIgnored private var departure = DepartureDetector()
     /// Holds each vehicle at the furthest stop it has reached through the
     /// feed's brief step-backs, so stops-away doesn't flick 2 -> 3 -> 2.
     @ObservationIgnored private var ratchet = VehicleProgressRatchet()
@@ -62,6 +63,10 @@ final class JourneyTrackingSession {
     private(set) var walkLegIndex: Int?
     private(set) var walkStep: WalkNavigationTracker.Snapshot?
     private(set) var alertStack: [JourneyAlert] = []
+    /// When the rider set off on the first walk, from their GPS - nil until
+    /// then. From then on the walk runs from it: a ride that moves changes
+    /// their spare time, not their leave time.
+    private(set) var setOffAt: Date?
     /// When live vehicle positions last loaded.
     private(set) var lastLiveFetch: Date?
     /// When predictions last loaded.
@@ -87,7 +92,7 @@ final class JourneyTrackingSession {
     @ObservationIgnored private var backgroundLocationOn = false
     @ObservationIgnored private var lastPackSave = Date.distantPast
     @ObservationIgnored private var lastSentActivity: (state: JourneyActivityAttributes.ContentState, at: Date)?
-    @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, headphones: Bool, at: Date)?
+    @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, headphones: Bool, leftAt: Int64?, at: Date)?
     @ObservationIgnored private var savedAlightedThroughLeg = -1
     @ObservationIgnored private var activityUpdateInFlight = false
 
@@ -165,6 +170,8 @@ final class JourneyTrackingSession {
         if let saved = activeJourney(planID: plan.id) {
             progressModel.restore(alightedThroughLeg: saved.alightedThroughLeg)
             savedAlightedThroughLeg = saved.alightedThroughLeg
+            setOffAt = saved.setOffAt
+            departure = DepartureDetector(setOffAt: saved.setOffAt)
         } else if let arrival = plan.arrivalTime.date {
             // Opened from a link, a Live Activity or a reminder rather than
             // the planner's "Start": record it as the tracked journey too,
@@ -257,6 +264,8 @@ final class JourneyTrackingSession {
         walkLegIndex = nil
         walkStep = nil
         alertStack = []
+        setOffAt = nil
+        departure = DepartureDetector()
         lastLiveFetch = nil
         lastStopTimesFetch = nil
         isOffline = false
@@ -441,12 +450,46 @@ final class JourneyTrackingSession {
         guard !isOffline, let snapshot, let activityID = liveActivity.activity?.id else { return }
         let phase = snapshot.phase?.rawValue ?? "onboard"
         let headphones = Self.headphonesConnected
+        // When they set off, 0 while still at the start, nil when the app
+        // can't tell - the server stops talking about leaving once they've
+        // gone, and says "too late" while they're still home.
+        let leftAt: Int64? = setOffAt.map { Int64($0.timeIntervalSince1970) } ?? (watchingDeparture ? 0 : nil)
         if let last = lastReportedLeg, last.index == snapshot.progressLegIndex, last.phase == phase,
-           last.headphones == headphones, Date().timeIntervalSince(last.at) < 25 { return }
-        lastReportedLeg = (snapshot.progressLegIndex, phase, headphones, Date())
+           last.headphones == headphones, last.leftAt == leftAt, Date().timeIntervalSince(last.at) < 25 { return }
+        lastReportedLeg = (snapshot.progressLegIndex, phase, headphones, leftAt, Date())
         let api = self.api
         let legIndex = snapshot.progressLegIndex
-        Task { try? await api.reportLiveActivityLeg(activityID: activityID, legIndex: legIndex, phase: phase, headphones: headphones) }
+        Task { try? await api.reportLiveActivityLeg(activityID: activityID, legIndex: legIndex, phase: phase, headphones: headphones, leftAt: leftAt) }
+    }
+
+    // MARK: - Setting off
+
+    /// How old the latest fix can be and still show where the rider is.
+    private static let departureFixMaxAge: TimeInterval = 120
+
+    /// The rider's GPS can see whether they've set off: the journey starts
+    /// with a walk and there's a recent fix.
+    private var watchingDeparture: Bool {
+        guard plan?.legs.first?.mode == "walk", location.isAuthorized, location.coordinate != nil,
+              let fixDate = location.fixDate else { return false }
+        return Date().timeIntervalSince(fixDate) <= Self.departureFixMaxAge
+    }
+
+    /// Their GPS shows they haven't set off yet.
+    private var stillAtStart: Bool { setOffAt == nil && watchingDeparture }
+
+    /// Watches for the rider setting off on the first walk. True when they
+    /// just have.
+    private func updateDeparture(plan: JourneyPlan, now: Date) -> Bool {
+        guard setOffAt == nil, plan.legs.first?.mode == "walk",
+              let boardStop = plan.legs.first(where: { $0.mode == "transit" })?.fromStop,
+              let left = departure.update(
+                  start: Coordinate(latitude: plan.startLat, longitude: plan.startLon), boardStop: boardStop.coordinate,
+                  location: location.coordinate, accuracy: location.accuracy, at: location.fixDate ?? now
+              ) else { return false }
+        setOffAt = left
+        activeJourney(planID: plan.id)?.setOffAt = left
+        return true
     }
 
     /// AirPods (or any headphones) are what the rider is listening through.
@@ -539,7 +582,8 @@ final class JourneyTrackingSession {
             }
         }
 
-        let display = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: times)
+        let justSetOff = updateDeparture(plan: plan, now: now)
+        let display = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: times, setOffAt: setOffAt)
         vehiclesByTripID = vehicles
         estimatedTripIDs = estimatedIDs
         stopTimesByTripID = times
@@ -549,7 +593,7 @@ final class JourneyTrackingSession {
             progressModel.update(
                 plan: plan, displayPlan: display, now: now, vehiclesByTripID: vehicles,
                 stopTimesByTripID: times, journeyStarted: true, trackedStops: trackedStops,
-                userLocation: location.coordinate, estimatedTripIDs: estimatedIDs
+                userLocation: location.coordinate, estimatedTripIDs: estimatedIDs, holdAtStart: stillAtStart
             )
         }
         var newSnapshot = compute()
@@ -574,6 +618,8 @@ final class JourneyTrackingSession {
         evaluateAlerts(newSnapshot, now: now)
         updateLiveActivity(newSnapshot)
         updateNotifications(newSnapshot, now: now)
+        // Tell the server straight away, so it stops talking about leaving.
+        if justSetOff { reportLegIfNeeded() }
 
         let wantsBackgroundLocation = !newSnapshot.journeyArrived && location.isAuthorized
         if wantsBackgroundLocation != backgroundLocationOn { setBackgroundLocation(wantsBackgroundLocation) }
@@ -664,7 +710,7 @@ final class JourneyTrackingSession {
         }
         let moments = OfflineJourneyMoments.upcoming(
             legs: displayPlan.legs, progressLegIndex: snapshot.progressLegIndex,
-            onboard: snapshot.phase == .onboard, now: now
+            onboard: snapshot.phase == .onboard, now: now, setOff: setOffAt != nil
         )
         notifications.schedule(moments, url: url)
     }
@@ -745,7 +791,9 @@ final class JourneyTrackingSession {
             hasVehicle: trackedVehicle != nil && trackedVehicle?.state != "Unknown",
             rideStops: rideStopCount(tripID: snapshot.trackedTripID),
             occupancy: trackedVehicle.flatMap { $0.occupancy >= 0 ? $0.occupancy : nil },
-            offline: isOffline
+            offline: isOffline,
+            setOffAt: setOffAt,
+            stillAtStart: stillAtStart
         )
         let content = LiveActivityContentBuilder.build(legs: legs, progress: progress)
         return JourneyActivityAttributes.ContentState(content)

@@ -84,9 +84,18 @@ public struct LiveActivityProgress: Sendable {
     public var rideStops: Int?
     public var occupancy: Int?
     public var offline: Bool
+    /// When the rider set off on the first walk (`DepartureDetector`) - the
+    /// card then says whether they'll make the ride, not when to leave.
+    /// The legs' first walk should already run from it.
+    public var setOffAt: Date?
+    /// The rider's GPS shows they haven't set off yet - "Leave now" stays
+    /// up while the ride can still be made, and one that can't (running
+    /// early) is said straight away.
+    public var stillAtStart: Bool
 
     public init(legIndex: Int, phase: String?, arrived: Bool, stopsAway: Int? = nil, nextStopName: String? = nil, isRealtime: Bool = false,
-                hasVehicle: Bool = false, rideStops: Int? = nil, occupancy: Int? = nil, offline: Bool = false) {
+                hasVehicle: Bool = false, rideStops: Int? = nil, occupancy: Int? = nil, offline: Bool = false,
+                setOffAt: Date? = nil, stillAtStart: Bool = false) {
         self.legIndex = legIndex
         self.phase = phase
         self.arrived = arrived
@@ -97,6 +106,8 @@ public struct LiveActivityProgress: Sendable {
         self.rideStops = rideStops
         self.occupancy = occupancy
         self.offline = offline
+        self.setOffAt = setOffAt
+        self.stillAtStart = stillAtStart
     }
 }
 
@@ -136,9 +147,11 @@ public enum LiveActivityContentBuilder {
 
     // MARK: - Phases
 
-    /// Mirrors `getReadyLead` / `leaveNowShownFor` in live_activity_state.go.
+    /// Mirrors `getReadyLead` / `leaveNowShownFor` / `missTolerance` in
+    /// live_activity_state.go.
     static let getReadyLead: TimeInterval = 5 * 60
     static let leaveNowShownFor: TimeInterval = 3 * 60
+    static let missTolerance: TimeInterval = 60
 
     private static func fillWalking(_ c: inout LiveActivityContent, legs: [JourneyLeg], idx: Int, progress: LiveActivityProgress, now: Date) {
         let leg = legs[idx]
@@ -171,6 +184,13 @@ public enum LiveActivityContentBuilder {
         let boardAt = stopLabel(next.fromStop)
         let isFirstWalk = previousTransit(legs, before: idx) == nil
 
+        // Already on the way: when they left is fixed, so a ride that moves
+        // changes how much time they have spare, never the leave time.
+        if isFirstWalk, progress.setOffAt != nil {
+            fillOnTheWay(&c, walk: leg, next: next, boardAt: boardAt, now: now)
+            return
+        }
+
         if isFirstWalk, let leaveBy = Self.leaveBy(leg), now < leaveBy.addingTimeInterval(-30) {
             c.primaryText = "Leave by \(clock(leaveBy))"
             c.secondaryText = "Walk to \(boardAt) for the \(routeLabel(next))\(runningNote(next))"
@@ -191,16 +211,58 @@ public enum LiveActivityContentBuilder {
         setSegment(&c, leg.departureTime.date, leg.arrivalTime.date)
 
         // Around the leave time the card says so, loudly, for long enough
-        // that a rider who glances at the phone late still sees it.
-        if isFirstWalk, let leaveBy = Self.leaveBy(leg), now < leaveBy.addingTimeInterval(leaveNowShownFor) {
-            c.primaryText = "Leave now"
-            c.secondaryText = "Walk to \(boardAt) · \(routeLabel(next)) departs \(clock(next.departureTime.date))\(platformSuffix(c.platform))"
-            c.urgent = true
+        // that a rider who glances at the phone late still sees it - and
+        // for as long as the ride can still be made while the rider's GPS
+        // shows they're still at the start. If it can't (a ride running
+        // early), it says so now rather than at the stop.
+        if isFirstWalk, let leaveBy = Self.leaveBy(leg), let start = leg.departureTime.date, let end = leg.arrivalTime.date,
+           let depart = next.departureTime.date {
+            let walk = end.timeIntervalSince(start)
+            if progress.stillAtStart, now.addingTimeInterval(walk) > depart.addingTimeInterval(missTolerance) {
+                if c.status != "cancelled" { c.status = "missedConnection" }
+                c.primaryText = "Too late for the \(routeLabel(next))"
+                c.secondaryText = "It departs \(clock(depart))\(runningNote(next)) · \(max(1, Int((walk / 60).rounded()))) min walk away"
+            } else if now < leaveBy.addingTimeInterval(leaveNowShownFor) || (progress.stillAtStart && now.addingTimeInterval(walk) <= depart) {
+                c.primaryText = "Leave now"
+                c.secondaryText = "Walk to \(boardAt) · \(routeLabel(next)) departs \(clock(depart))\(platformSuffix(c.platform))"
+                c.urgent = true
+            }
         }
 
         if let p = previousTransit(legs, before: idx) {
             applyConnection(&c, legs: legs, from: p, to: f)
         }
+    }
+
+    /// The walk to the first ride once the rider has set off - mirrors
+    /// `fillOnTheWay` in live_activity_state.go. `walk` runs from when they
+    /// left (JourneyPlanLiveAdjuster's `setOffAt`).
+    private static func fillOnTheWay(_ c: inout LiveActivityContent, walk: JourneyLeg, next: JourneyLeg, boardAt: String, now: Date) {
+        let route = routeLabel(next)
+        c.primaryText = "Walk to \(boardAt)"
+        c.countdownLabel = "Departs in"
+        guard let left = walk.departureTime.date, let planned = walk.arrivalTime.date, let depart = next.departureTime.date else {
+            c.secondaryText = "\(route) departs \(clock(next.departureTime.date))\(platformSuffix(c.platform))"
+            return
+        }
+        // Slower than planned and not there yet.
+        let reach = max(planned, now)
+        c.targetUnix = unix(depart) ?? 0
+        setSegment(&c, left, reach)
+
+        let spare = depart.timeIntervalSince(reach)
+        if spare < -missTolerance {
+            if c.status != "cancelled" { c.status = "missedConnection" }
+            c.secondaryText = "You'll likely miss the \(route) at \(clock(depart))"
+            return
+        }
+        c.secondaryText = "\(route) departs \(clock(depart))\(platformSuffix(c.platform)) · \(spareNote(spare))"
+    }
+
+    /// "3 min spare" - mirrors `spareNote` in Go.
+    static func spareNote(_ spare: TimeInterval) -> String {
+        let minutes = Int((spare / 60).rounded(.towardZero))
+        return minutes >= 1 ? "\(minutes) min spare" : "just in time"
     }
 
     private static func fillTransit(_ c: inout LiveActivityContent, legs: [JourneyLeg], idx: Int, progress: LiveActivityProgress, now: Date) {

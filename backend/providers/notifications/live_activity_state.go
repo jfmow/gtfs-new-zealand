@@ -112,14 +112,22 @@ type activityAlert struct {
 	// Silent drops the alert's sound - when a notification for the same
 	// moment has just played one.
 	Silent bool `json:"-"`
+	// URL is where the alert's notification opens, when it isn't the
+	// journey itself (another journey offered instead).
+	URL string `json:"-"`
+	// TapHint ends the notification's body ("Tap to switch to it.") - not
+	// the Live Activity's own alert, which a tap can only open the journey
+	// from.
+	TapHint string `json:"-"`
 }
 
 // isSettingOff is true for the alerts about leaving for the journey - the
-// get-ready heads-up, "Time to leave", its follow-up and queued leave-by
-// reminders. These can't wait for the rider to look at the phone, so they
-// go out as a notification too (see runLiveActivitiesCron).
+// get-ready heads-up, "Time to leave", its follow-up, queued leave-by
+// reminders, and the first ride going before the rider can reach it. These
+// can't wait for the rider to look at the phone, so they go out as a
+// notification too (see runLiveActivitiesCron).
 func (a activityAlert) isSettingOff() bool {
-	for _, prefix := range []string{"ready-", "leave-", "reminder-"} {
+	for _, prefix := range []string{"ready-", "leave-", "reminder-", missedFirstPrefix} {
 		if strings.HasPrefix(a.Key, prefix) {
 			return true
 		}
@@ -159,6 +167,14 @@ type liveLegLookup func(i int, leg gtfs.JourneyLeg) (legLive, bool)
 type activityHint struct {
 	LegIndex int
 	Phase    string
+	// LeftUnix is when the phone saw the rider set off on the first walk
+	// (0 = not seen). From then on the leave time is history: the card
+	// says whether they'll make the ride instead of when to leave.
+	LeftUnix int64
+	// Watching: the phone is following the rider's GPS and they haven't
+	// set off - "Leave now" stays up while the ride can still be made,
+	// and a ride that can't (one running early) is said straight away.
+	Watching bool
 }
 
 var noHint = activityHint{LegIndex: -1}
@@ -184,6 +200,11 @@ func computeJourneyActivityState(plan gtfs.JourneyPlan, now time.Time, live live
 	}
 
 	timings := effectiveTimings(plan, live)
+	// Set off already: the first walk runs from when they actually left.
+	if hint.LeftUnix > 0 && plan.Legs[0].Mode == "walk" {
+		left := time.Unix(hint.LeftUnix, 0).In(timings[0].dep.Location())
+		timings[0].dep, timings[0].arr = left, left.Add(plan.Legs[0].ArrivalTime.Sub(plan.Legs[0].DepartureTime))
+	}
 	state.ArrivalUnix = float64(timings[n-1].arr.Unix())
 	for _, t := range timings {
 		if t.hasLive && t.live.HasTripUpdate {
@@ -203,6 +224,15 @@ func computeJourneyActivityState(plan gtfs.JourneyPlan, now time.Time, live live
 	if hint.LegIndex > idx && hint.LegIndex < n {
 		idx = hint.LegIndex
 	}
+	// The phone can see they're still at the start: they're not at the
+	// stop just because the walk's planned arrival has passed. Held only
+	// until the ride goes, so a GPS that never notices them leaving can't
+	// keep the card on the walk for the whole journey.
+	if hint.Watching && hint.LegIndex <= 0 && plan.Legs[0].Mode == "walk" {
+		if f := nextTransit(plan, 0); idx > 0 && f >= 0 && idx <= f && now.Before(timings[f].dep) {
+			idx = 0
+		}
+	}
 
 	if idx >= n {
 		state.LegIndex = n - 1
@@ -216,7 +246,7 @@ func computeJourneyActivityState(plan gtfs.JourneyPlan, now time.Time, live live
 	leg, t := plan.Legs[idx], timings[idx]
 
 	if leg.Mode == "walk" {
-		fillWalking(&state, plan, timings, idx, now)
+		fillWalking(&state, plan, timings, idx, now, hint)
 	} else {
 		fillTransit(&state, plan, timings, idx, now, hint)
 	}
@@ -287,7 +317,7 @@ func legFinished(leg gtfs.JourneyLeg, t legTiming, now time.Time) bool {
 	return !now.Before(t.arr)
 }
 
-func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []legTiming, idx int, now time.Time) {
+func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []legTiming, idx int, now time.Time, hint activityHint) {
 	leg, t := plan.Legs[idx], timings[idx]
 	state.Phase = "walking"
 	state.Headsign = stopLabel(leg.ToStop)
@@ -327,9 +357,19 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	state.DelayMinutes = delayMinutes(nt.live.DepartureDelay, nt.hasLive && nt.live.HasTripUpdate)
 	boardAt := stopLabel(next.FromStop)
 
+	route := routeLabel(next.Route)
+	walk := leg.ArrivalTime.Sub(leg.DepartureTime)
+	firstWalk := prevTransit(plan, idx) < 0
+
+	// Already on the way: when they left is fixed, so a ride that moves
+	// changes how much time they have spare, never the leave time.
+	if firstWalk && hint.LeftUnix > 0 {
+		fillOnTheWay(state, f, next, t, nt, boardAt, now)
+		return
+	}
+
 	// Before the first ride: count down to when to set off.
 	leaveBy := leaveByTime(t.dep)
-	firstWalk := prevTransit(plan, idx) < 0
 	note := runningNote(nt)
 	if firstWalk && now.Before(leaveBy.Add(-30*time.Second)) {
 		state.PrimaryText = "Leave by " + clock(leaveBy)
@@ -359,32 +399,53 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	setSegment(state, t.dep, t.arr)
 
 	if firstWalk {
+		catchable := !now.Add(walk).After(nt.dep)
+		walkMin := int(math.Max(1, math.Round(walk.Minutes())))
+		early := earlyNote(route, nt)
+
 		// Around the leave time the card itself says so, loudly, for long
-		// enough that a rider who glances at the phone late still sees it.
-		if now.Before(leaveBy.Add(leaveNowShownFor)) {
+		// enough that a rider who glances at the phone late still sees it -
+		// and for as long as the ride can still be made while the phone can
+		// see they're still at the start (a ride running early can move the
+		// leave time minutes into the past).
+		if now.Before(leaveBy.Add(leaveNowShownFor)) || (hint.Watching && catchable) {
 			state.PrimaryText = "Leave now"
-			state.SecondaryText = fmt.Sprintf("Walk to %s · %s departs %s%s", boardAt, routeLabel(next.Route), clock(nt.dep), platformSuffix(state.Platform))
+			state.SecondaryText = fmt.Sprintf("Walk to %s · %s departs %s%s", boardAt, route, clock(nt.dep), platformSuffix(state.Platform))
 			state.Urgent = true
 		}
-		walk := t.arr.Sub(t.dep)
 		switch {
+		case hint.Watching && now.Add(walk).After(nt.dep.Add(missTolerance)):
+			// Still at the start and the ride goes before they could walk
+			// there - usually because it's running early. Say so now, not
+			// at the stop; the cron offers the next way to go.
+			if state.Status != "cancelled" {
+				state.Status = "missedConnection"
+			}
+			state.PrimaryText = "Too late for the " + route
+			state.SecondaryText = fmt.Sprintf("It departs %s%s · %d min walk away", clock(nt.dep), note, walkMin)
+			state.Urgent = false
+			state.alert = &activityAlert{
+				Key:   fmt.Sprintf("%s%d", missedFirstPrefix, f),
+				Title: "You'll miss the " + route,
+				Body:  fmt.Sprintf("%sIt leaves %s at %s - too soon to walk there.", early, boardAt, clock(nt.dep)),
+			}
 		case now.Before(leaveBy.Add(leaveNudgeAfter)):
 			if !now.Before(leaveBy.Add(-60 * time.Second)) {
 				state.alert = &activityAlert{
 					Key:   fmt.Sprintf("leave-%d", idx),
 					Title: "Time to leave",
-					Body:  fmt.Sprintf("Walk to %s for the %s at %s.", boardAt, routeLabel(next.Route), clock(nt.dep)),
+					Body:  fmt.Sprintf("%sWalk to %s for the %s at %s.", early, boardAt, route, clock(nt.dep)),
 				}
 			}
-		case !now.Add(walk).After(nt.dep):
+		case catchable:
 			// A couple of minutes past the leave time and still at the
 			// start as far as we know: one more nudge while the ride can
 			// still be made - the first is easy to miss with the phone in
 			// a bag or across the room.
 			state.alert = &activityAlert{
 				Key:   fmt.Sprintf("leave-late-%d", idx),
-				Title: "Leave now to make the " + routeLabel(next.Route),
-				Body:  fmt.Sprintf("It departs %s from %s - a %d min walk.", clock(nt.dep), boardAt, int(math.Max(1, math.Round(walk.Minutes())))),
+				Title: "Leave now to make the " + route,
+				Body:  fmt.Sprintf("%sIt departs %s from %s - a %d min walk.", early, clock(nt.dep), boardAt, walkMin),
 			}
 		}
 	}
@@ -393,6 +454,67 @@ func fillWalking(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 	if p := prevTransit(plan, idx); p >= 0 {
 		applyConnection(state, plan, timings, p, f)
 	}
+}
+
+// missTolerance is how far past the ride's departure the rider's predicted
+// arrival at the stop has to be before they're told they'll miss it - a
+// walk is often quicker than planned, and rides wait a moment at stops.
+const missTolerance = time.Minute
+
+// missedFirstPrefix keys the "you'll miss the first ride" alert - the cron
+// adds the next way to go to it (see offerNextJourney).
+const missedFirstPrefix = "missed-first-"
+
+// fillOnTheWay is the walk to the first ride once the rider has set off:
+// whether they'll make it, by when they left plus the walk - not a leave
+// time that's already been and gone.
+//
+// t is the walk from when they left (see computeJourneyActivityState).
+func fillOnTheWay(state *journeyActivityState, f int, next gtfs.JourneyLeg, t, nt legTiming, boardAt string, now time.Time) {
+	route := routeLabel(next.Route)
+	reach := t.arr
+	if reach.Before(now) {
+		reach = now // slower than planned and not there yet
+	}
+	state.PrimaryText = "Walk to " + boardAt
+	state.CountdownLabel = "Departs in"
+	state.TargetUnix = float64(nt.dep.Unix())
+	setSegment(state, t.dep, reach)
+
+	spare := nt.dep.Sub(reach)
+	if spare < -missTolerance {
+		if state.Status != "cancelled" {
+			state.Status = "missedConnection"
+		}
+		state.SecondaryText = fmt.Sprintf("You'll likely miss the %s at %s", route, clock(nt.dep))
+		state.alert = &activityAlert{
+			Key:   fmt.Sprintf("%s%d", missedFirstPrefix, f),
+			Title: "You'll likely miss the " + route,
+			Body:  fmt.Sprintf("%sIt leaves %s at %s, before you'll get there.", earlyNote(route, nt), boardAt, clock(nt.dep)),
+		}
+		return
+	}
+	state.SecondaryText = fmt.Sprintf("%s departs %s%s · %s", route, clock(nt.dep), platformSuffix(state.Platform), spareNote(spare))
+}
+
+// spareNote is how long the rider will wait at the stop - "3 min spare".
+func spareNote(spare time.Duration) string {
+	if m := int(spare.Minutes()); m >= 1 {
+		return fmt.Sprintf("%d min spare", m)
+	}
+	return "just in time"
+}
+
+// earlyNote opens an alert with why the ride's time moved earlier - "The
+// 70 is running 4 min early. " - or is "" when it isn't early.
+func earlyNote(route string, t legTiming) string {
+	if !t.hasLive || !t.live.HasTripUpdate {
+		return ""
+	}
+	if m := delayMinutes(t.live.DepartureDelay, true); m < 0 {
+		return fmt.Sprintf("The %s is running %d min early. ", route, -m)
+	}
+	return ""
 }
 
 func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []legTiming, idx int, now time.Time, hint activityHint) {

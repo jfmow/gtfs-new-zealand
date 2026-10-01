@@ -139,6 +139,12 @@ public final class JourneyProgressModel {
     /// re-render catches up. It settles on the next call - harmless for a
     /// value polled every ~10s, imperceptible to the rider - so callers
     /// should not read this as a bug to "fix" by reordering.
+    ///
+    /// - Parameter holdAtStart: The rider's GPS shows they haven't set off
+    ///   (`DepartureDetector`): keep them on the first walk rather than at
+    ///   the stop just because the walk's planned arrival has passed - until
+    ///   the first ride leaves, so a GPS that never notices them going
+    ///   can't hold the whole journey back.
     public func update(
         plan: JourneyPlan,
         displayPlan: JourneyPlan,
@@ -148,7 +154,8 @@ public final class JourneyProgressModel {
         journeyStarted: Bool,
         trackedStops: [TripStopRef],
         userLocation: Coordinate?,
-        estimatedTripIDs: Set<String> = []
+        estimatedTripIDs: Set<String> = [],
+        holdAtStart: Bool = false
     ) -> Snapshot {
         let legs = plan.legs
         let displayLegs = displayPlan.legs
@@ -158,7 +165,12 @@ public final class JourneyProgressModel {
             legs: legs, displayLegs: displayLegs, alightedThroughLeg: alightedThroughLeg,
             vehiclesByTripID: vehiclesByTripID, now: now
         )
-        let guardedLegIndex = min(max(currentLegIndex, alightedThroughLeg + 1), transitFloor)
+        var guardedLegIndex = min(max(currentLegIndex, alightedThroughLeg + 1), transitFloor)
+        if holdAtStart, alightedThroughLeg < 0, displayLegs.first?.mode == "walk",
+           let ride = displayLegs.firstIndex(where: { $0.mode == "transit" }), guardedLegIndex <= ride,
+           let departure = displayLegs[ride].departureTime.date, now < departure {
+            guardedLegIndex = 0
+        }
         let activeTransitLegIndex = Self.computeActiveTransitLegIndex(
             legs: legs, currentLegIndex: currentLegIndex, transitFloor: transitFloor,
             vehiclesByTripID: vehiclesByTripID, now: now

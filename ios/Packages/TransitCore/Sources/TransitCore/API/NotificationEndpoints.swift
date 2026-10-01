@@ -183,10 +183,15 @@ extension APIClient {
     /// disagreeing right after a foreground update. `headphones`: the rider
     /// is listening through headphones, so the server sends journey moments
     /// as notifications Siri can announce, not just the activity's alert.
-    public func reportLiveActivityLeg(activityID: String, legIndex: Int, phase: String, headphones: Bool = false) async throws {
-        try await postFormExpectingNoData("live-activities/leg", form: [
+    /// - Parameter leftAt: When the rider set off on the first walk (Unix
+    ///   seconds), 0 while their GPS shows them still at the start, nil
+    ///   when the app can't tell (no location) - see `DepartureDetector`.
+    public func reportLiveActivityLeg(activityID: String, legIndex: Int, phase: String, headphones: Bool = false, leftAt: Int64? = nil) async throws {
+        var form = [
             "activityId": activityID, "legIndex": String(legIndex), "phase": phase, "headphones": headphones ? "1" : "0",
-        ])
+        ]
+        if let leftAt { form["leftAt"] = String(leftAt) }
+        try await postFormExpectingNoData("live-activities/leg", form: form)
     }
 
     public func endLiveActivity(activityID: String) async throws {

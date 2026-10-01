@@ -166,6 +166,10 @@ public final class ActiveJourney {
     /// `JourneyProgressModel.alightedThroughLeg`, saved as it advances so a
     /// relaunched tracker resumes on the right leg (-1 = none yet).
     public var alightedThroughLeg: Int = -1
+    /// When the rider set off on the first walk (`DepartureDetector`),
+    /// saved so a relaunched tracker doesn't go back to moving the leave
+    /// time - nil until then.
+    public var setOffAt: Date?
 
     public init(planID: String, regionSlug: String, startedAt: Date = Date(), endLabel: String, arrivalTime: Date, liveActivityID: String? = nil) {
         self.planID = planID
