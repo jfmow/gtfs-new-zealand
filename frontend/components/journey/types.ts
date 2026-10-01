@@ -55,6 +55,8 @@ export interface Leg {
     trip_usable: boolean
     realtime_status?: RealtimeStatus
     delay_seconds?: number
+    /** A vehicle was reporting on this trip when the plan was made - realtime_status can read "on_time" long before one is. Absent on older plans. */
+    vehicle_tracked?: boolean
 }
 
 export interface JourneyType {

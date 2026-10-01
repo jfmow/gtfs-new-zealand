@@ -73,6 +73,10 @@ public struct JourneyLeg: Codable, Hashable, Sendable {
     /// data disappeared from the realtime feed) - the web app flags the
     /// whole journey as "service disruption" when any leg has this false.
     public let tripUsable: Bool
+    /// True when a vehicle was reporting its position on this leg's trip
+    /// when the plan was made - `realtimeStatus` can read "on_time" hours
+    /// before any bus is assigned. Nil on a plan from an older server.
+    public var vehicleTracked: Bool? = nil
 
     enum CodingKeys: String, CodingKey {
         case mode = "Mode"
@@ -91,5 +95,6 @@ public struct JourneyLeg: Codable, Hashable, Sendable {
         case realtimeStatus = "realtime_status"
         case delaySeconds = "delay_seconds"
         case tripUsable = "trip_usable"
+        case vehicleTracked = "vehicle_tracked"
     }
 }

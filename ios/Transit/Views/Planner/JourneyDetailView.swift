@@ -24,6 +24,22 @@ struct JourneyDetailView: View {
     @State private var isTracking = false
     @State private var isShowingReminder = false
     @State private var isShowingMap = false
+    /// Trip ids with a vehicle in the live feed - nil until the first
+    /// fetch, when the timeline falls back to the plan's own answer.
+    @State private var liveTripIDs: Set<String>?
+
+    /// Keeps the tracking icons current while the preview is open - a bus
+    /// that wasn't out yet when you searched can start reporting since.
+    private func refreshLiveVehicles() async {
+        let tripIDs = plan.legs.filter { $0.mode == "transit" && !$0.tripID.isEmpty }.map(\.tripID)
+        guard !tripIDs.isEmpty else { return }
+        while !Task.isCancelled {
+            if let vehicles = try? await environment.api.liveVehicles(tripIDs: tripIDs) {
+                liveTripIDs = Set(vehicles.map(\.tripID))
+            }
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
 
     private var hasTransit: Bool { plan.legs.contains { $0.mode == "transit" } }
     private var hasDisruption: Bool { plan.legs.contains { $0.mode == "transit" && !$0.tripUsable } }
@@ -78,7 +94,14 @@ struct JourneyDetailView: View {
                         waitMinutes: waitMinutes(after:),
                         destinationName: context?.end?.label ?? plan.legs.last?.toStop?.stopName ?? "your destination",
                         accent: Theme.live,
-                        startName: context?.start?.label ?? plan.legs.first?.fromStop?.stopName
+                        startName: context?.start?.label ?? plan.legs.first?.fromStop?.stopName,
+                        tracked: { index in
+                            // A trip id can repeat on another day - a ride hours
+                            // off keeps the plan's answer rather than today's bus.
+                            guard let liveTripIDs, let leg = plan.legs[safe: index], leg.mode == "transit",
+                                  let depart = leg.departureTime.date, depart.timeIntervalSinceNow < 3 * 3600 else { return nil }
+                            return liveTripIDs.contains(leg.tripID)
+                        }
                     )
                 }
 
@@ -110,6 +133,7 @@ struct JourneyDetailView: View {
         .onDisappear {
             if router.visibleJourneyDetailPlanID == plan.id { router.visibleJourneyDetailPlanID = nil }
         }
+        .task(id: plan.id) { await refreshLiveVehicles() }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)
         }

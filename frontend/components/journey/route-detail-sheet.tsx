@@ -686,6 +686,7 @@ export function RouteDetailSheet({
             stopsAway={trackedStopsAway}
             occupancy={trackedOccupancy}
             platform={trackedPlatform}
+            liveVehicleTripIds={journeyStarted && !connectionLost ? vehiclesByTripId : undefined}
         />
     )
 
@@ -1094,6 +1095,7 @@ function RouteItinerary({
     stopsAway,
     occupancy,
     platform,
+    liveVehicleTripIds,
 }: {
     route: JourneyType
     /** -1 when not tracking. */
@@ -1106,6 +1108,8 @@ function RouteItinerary({
     stopsAway?: number
     occupancy?: number
     platform?: string
+    /** While tracking: the trips with a vehicle in the live feed. Otherwise each leg's own vehicle_tracked from planning. */
+    liveVehicleTripIds?: Record<string, unknown>
 }) {
     return (
         <div>
@@ -1141,6 +1145,7 @@ function RouteItinerary({
                         connectionRisk={risk}
                         progress={progress}
                         liveInfo={isLiveLeg && trackingLevel === "live" ? { stopsAway, occupancy, platform } : undefined}
+                        tracked={liveVehicleTripIds ? !!liveVehicleTripIds[leg.TripID] : leg.vehicle_tracked}
                     />
                 )
             })}
@@ -1150,7 +1155,7 @@ function RouteItinerary({
 
 type LegStatus = "done" | "current" | "upcoming"
 
-function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo }: {
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo, tracked: vehicleTracked }: {
     leg: Leg
     isLast: boolean
     nextLeg?: Leg
@@ -1160,6 +1165,8 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
     /** 0-1 progress through this leg's scheduled span - only set for the leg currently being ridden/waited for. */
     progress?: number
     liveInfo?: { stopsAway?: number; occupancy?: number; platform?: string }
+    /** Whether this ride's vehicle is reporting its position - undefined shows no icon. */
+    tracked?: boolean
 }) {
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
@@ -1182,10 +1189,10 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
         : leg.Duration
     const showEarlyLateBadge = (isDelayed || isEarly) && !inverted
     const showOnTimeBadge = leg.realtime_status === RealtimeStatus.OnTime && !inverted
-    // A realtime prediction means the vehicle is being tracked; a missing or
-    // "scheduled" status means we only have the timetable.
-    const tracked = isDelayed || isEarly || leg.realtime_status === RealtimeStatus.OnTime
-    const untracked = !leg.realtime_status || leg.realtime_status === RealtimeStatus.Scheduled
+    // No tracking icon on a ride that's over, or one that isn't running.
+    const showTracking = !isWalk && status !== "done" && leg.trip_usable !== false && vehicleTracked !== undefined
+    const tracked = showTracking && vehicleTracked
+    const untracked = showTracking && !vehicleTracked
 
     return (
         <div

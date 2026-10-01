@@ -16,6 +16,9 @@ struct JourneyTimeline: View {
     /// Where the journey starts - adds a "Leave from" row at the top (the
     /// journey preview; the tracker leaves it out).
     var startName: String?
+    /// Whether leg `i`'s vehicle is reporting its position right now - nil
+    /// shows no icon. Defaults to what the plan recorded when it was made.
+    var tracked: ((Int) -> Bool?)?
 
     /// A wait right before a ride that follows another ride is a transfer.
     private func isTransfer(before index: Int) -> Bool {
@@ -36,6 +39,7 @@ struct JourneyTimeline: View {
                     leg: leg,
                     status: status(index),
                     progress: progress(index),
+                    tracked: tracked?(index) ?? leg.vehicleTracked,
                     destinationName: index == legs.count - 1 ? destinationName : nil,
                     accent: accent
                 )
@@ -69,6 +73,9 @@ struct TrackedLegRow: View {
     let status: Status
     /// 0...1 through the leg - only for the leg being ridden right now.
     let progress: Double?
+    /// Whether this ride's vehicle is reporting its position - nil shows
+    /// no tracking icon either way.
+    let tracked: Bool?
     /// For the final leg: what to call where it ends when it isn't a stop.
     var destinationName: String?
     let accent: Color
@@ -119,7 +126,7 @@ struct TrackedLegRow: View {
     /// it is, a red crossed-out one when all we have is the timetable.
     @ViewBuilder
     private var trackingBadge: some View {
-        switch leg.trackingState {
+        switch trackingState {
         case .live:
             Image(systemName: "antenna.radiowaves.left.and.right")
                 .font(.metaMedium).foregroundStyle(Theme.success)
@@ -132,6 +139,14 @@ struct TrackedLegRow: View {
             EmptyView()
         }
     }
+
+    /// No icon on a ride that's over, or one cancelled / not stopping.
+    private var trackingState: TrackingState? {
+        guard let tracked, status != .done, leg.tripUsable else { return nil }
+        return tracked ? .live : .untracked
+    }
+
+    private enum TrackingState { case live, untracked }
 
     private var ride: some View {
         VStack(spacing: 0) {
@@ -174,21 +189,6 @@ struct TrackedLegRow: View {
                 }
                 .padding(.vertical, 10)
             }
-        }
-    }
-}
-
-extension JourneyLeg {
-    enum TrackingState { case live, untracked }
-
-    /// A trip with a realtime prediction is being tracked; a missing or
-    /// "scheduled" status means we only have the timetable. Canceled/skipped
-    /// are neither.
-    var trackingState: TrackingState? {
-        switch realtimeStatus {
-        case "on_time", "delayed", "early": .live
-        case nil, "scheduled": .untracked
-        default: nil
         }
     }
 }

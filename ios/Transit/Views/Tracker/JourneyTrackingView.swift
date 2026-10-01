@@ -344,7 +344,8 @@ struct JourneyTrackingView: View {
                         progress: legProgress,
                         waitMinutes: { waitMinutes(after: $0) },
                         destinationName: destinationName,
-                        accent: accent
+                        accent: accent,
+                        tracked: liveTracked(_:)
                     )
                 }
             }
@@ -844,6 +845,15 @@ struct JourneyTrackingView: View {
         let index = max(0, snapshot?.progressLegIndex ?? 0)
         guard displayPlan.legs.indices.contains(index) else { return nil }
         return displayPlan.legs[index...].first { $0.mode == "transit" }
+    }
+
+    /// Whether leg `index`'s vehicle is in the live feed right now (not the
+    /// rider's GPS standing in for it). Nil - the plan's own answer - until
+    /// the first fetch lands or while offline.
+    private func liveTracked(_ index: Int) -> Bool? {
+        guard isCurrent, session.lastLiveFetch != nil, !session.isOffline,
+              let leg = displayPlan.legs[safe: index], leg.mode == "transit" else { return nil }
+        return vehiclesByTripID[leg.tripID] != nil && !session.estimatedTripIDs.contains(leg.tripID)
     }
 
     /// That ride's vehicle, once it's sending a live position.
