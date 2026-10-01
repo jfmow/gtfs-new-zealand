@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
   env: { NEXT_PUBLIC_APP_VERSION: pkg.version },
   // /stops and /vehicles became the Map tab's two modes. Query strings pass
   // through, so push notifications' /vehicles?tripId=... still open the tracker.
+  // Universal links: iOS fetches this (no file extension) and expects JSON.
+  async headers() {
+    return [
+      {
+        source: "/.well-known/apple-app-site-association",
+        headers: [{ key: "Content-Type", value: "application/json" }],
+      },
+    ];
+  },
   async redirects() {
     return [
       { source: "/stops", destination: "/map?mode=stops", permanent: false },

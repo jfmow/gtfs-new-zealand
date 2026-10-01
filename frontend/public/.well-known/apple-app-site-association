@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["2A422A733W.dev.suddsy.transit"],
+        "components": [
+          { "/": "/trip", "?": { "tripId": "?*" }, "comment": "A live trip (service tracker)" },
+          { "/": "/journey", "?": { "id": "?*" }, "comment": "A planned journey / shared tracking link" },
+          { "/": "/map", "?": { "tripId": "?*" }, "comment": "The Map tab tracking a vehicle" },
+          { "/": "/vehicles", "?": { "tripId": "?*" }, "comment": "Old vehicles links (redirect to /map)" }
+        ]
+      }
+    ]
+  }
+}
