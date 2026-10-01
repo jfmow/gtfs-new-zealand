@@ -539,7 +539,10 @@ final class JourneyTrackingSession {
             }
         }
 
-        let display = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: times)
+        // A trip with no vehicle out (feed or the rider's GPS) gets the
+        // server's bounds on its predictions - same leave time as the Live
+        // Activity and reminders.
+        let display = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: times, runningTripIDs: Set(vehicles.keys))
         vehiclesByTripID = vehicles
         estimatedTripIDs = estimatedIDs
         stopTimesByTripID = times

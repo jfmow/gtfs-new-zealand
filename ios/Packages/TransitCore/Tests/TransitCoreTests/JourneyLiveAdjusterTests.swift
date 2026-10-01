@@ -119,4 +119,27 @@ final class JourneyLiveAdjusterTests: XCTestCase {
         // Its own duration (300s) is preserved.
         XCTAssertEqual(resultWalk.departureTime.date!.timeIntervalSince1970, resultWalk.arrivalTime.date!.timeIntervalSince1970 - 300, accuracy: 0.001)
     }
+
+    func testUnstartedTripsEarlyPredictionIsBounded() {
+        let fromStop = makeStop(id: "A")
+        let toStop = makeStop(id: "B")
+        let scheduledDepartMs = Int64(base.timeIntervalSince1970 * 1000)
+        let scheduledArriveMs = scheduledDepartMs + 600_000
+        // The feed says 6 min early, but no bus is out on the trip yet.
+        let stopTimes = [
+            stopTime(childID: "A", parentID: "PA", arrivalMs: scheduledDepartMs - 360_000, departureMs: scheduledDepartMs - 360_000, scheduledMs: scheduledDepartMs),
+            stopTime(childID: "B", parentID: "PB", arrivalMs: scheduledArriveMs - 360_000, departureMs: scheduledArriveMs - 360_000, scheduledMs: scheduledArriveMs),
+        ]
+        let leg = makeLeg(mode: "transit", tripID: "t1", from: fromStop, to: toStop, departure: base, arrival: base.addingTimeInterval(600), durationSeconds: 600)
+        let plan = makePlan(legs: [leg])
+
+        let unstarted = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: ["t1": stopTimes], runningTripIDs: [])
+        XCTAssertEqual(unstarted.legs[0].departureTime.date!.timeIntervalSince1970, Double(scheduledDepartMs - 180_000) / 1000, accuracy: 0.001)
+        XCTAssertEqual(unstarted.legs[0].delaySeconds, -180)
+
+        // Once the bus is running, its prediction is trusted as is.
+        let running = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: ["t1": stopTimes], runningTripIDs: ["t1"])
+        XCTAssertEqual(running.legs[0].departureTime.date!.timeIntervalSince1970, Double(scheduledDepartMs - 360_000) / 1000, accuracy: 0.001)
+        XCTAssertEqual(running.legs[0].delaySeconds, -360)
+    }
 }
