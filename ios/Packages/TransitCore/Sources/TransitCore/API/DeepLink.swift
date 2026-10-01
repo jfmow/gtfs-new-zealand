@@ -6,8 +6,8 @@ import Foundation
 ///
 /// Accepts three shapes:
 /// - the `transit://` custom scheme (`transit://journey?id=...&region=at`)
-/// - a universal link (`https://<domain>/journey?...`, once Associated
-///   Domains is set up)
+/// - a universal link (`https://trains.suddsy.dev/trip?...` - the paths
+///   in the web app's `.well-known/apple-app-site-association`)
 /// - a bare web path (`/?s=Britomart 11814`, `/vehicles?tripId=...`) - what
 ///   the backend puts in every push payload's `url`, since the same
 ///   notification rows serve the web app too.
