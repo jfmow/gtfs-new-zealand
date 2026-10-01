@@ -162,28 +162,28 @@ extension SettingsView {
         }
     }
 
-    /// One row saying whether notifications work here; the permission /
-    /// registration / token details and the test push live one level down.
+    /// The notifications switch. Apps can't grant or revoke the permission
+    /// themselves, so turning it on asks (or opens Settings once denied) and
+    /// turning it off opens Settings; it re-reads the status on return.
     var notificationsRow: some View {
         let push = environment.push
-        let ok = push.isAuthorized && push.isRegisteredWithBackend && push.hasUploadedToken
-        let detail = !push.isAuthorized ? "Off - turn on to get alerts and reminders"
-            : ok ? "On" : "Setting up - tap for details"
-        return NavigationLink {
-            ScrollView {
-                ShadCard { PushStatusCard() }.padding(16)
+        let toggle = Binding(
+            get: { push.isAuthorized },
+            set: { on in
+                Task {
+                    if on, push.authorizationStatus == .notDetermined {
+                        _ = await push.requestPermission()
+                    } else if let url = URL(string: UIApplication.openNotificationSettingsURLString) {
+                        await UIApplication.shared.open(url)
+                    }
+                }
             }
-            .pageBackground()
-            .navigationTitle("Notification diagnostics")
-            .navigationBarTitleDisplayMode(.inline)
-        } label: {
-            SettingsRow(icon: ok ? "bell" : "bell.slash", title: "Notifications", detail: detail) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Theme.mutedForeground)
-            }
+        )
+        return SettingsRow(icon: push.isAuthorized ? "bell" : "bell.slash", title: "Notifications", detail: "Alerts and leave-by reminders") {
+            Toggle("Notifications", isOn: toggle)
+                .labelsHidden()
+                .tint(Theme.primary)
         }
-        .buttonStyle(.plain)
     }
 }
 
