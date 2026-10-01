@@ -230,7 +230,10 @@ function StopAlertsSummaryRow({ query, title, saved, selected, onSelect }: { que
 
 export function GroupedAlertsByRoute({ alerts }: { alerts: AlertByRouteId }) {
     const routes = Object.keys(alerts)
-    const [openRoute, setOpenRoute] = useState<string>(routes[0] ?? "")
+    // Open on a route with something current, not one whose pill reads 0.
+    const [openRoute, setOpenRoute] = useState<string>(
+        () => routes.find((r) => currentAlerts(alerts[r]).length > 0) ?? routes.find((r) => alerts[r].length > 0) ?? routes[0] ?? ""
+    )
 
     if (routes.length === 0) {
         return (

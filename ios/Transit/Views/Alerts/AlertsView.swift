@@ -49,7 +49,7 @@ struct AlertsView: View {
         } else if routesToDisplay.isEmpty {
             EmptyState(systemImage: "checkmark.circle", title: "No travel alerts", message: "No travel alerts found for this stop.")
         } else {
-            let current = selectedRoute ?? routesToDisplay[0]
+            let current = selectedRoute ?? defaultRoute
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     FlowLayout(spacing: 6, lineSpacing: 6) {
@@ -102,6 +102,13 @@ struct AlertsView: View {
                 .padding(.top, 8)
             }
         }
+    }
+
+    /// Open on a route with something current, not one whose chip reads 0.
+    private var defaultRoute: String {
+        routesToDisplay.first { !currentAlerts($0).isEmpty }
+            ?? routesToDisplay.first { !(alertsByRoute[$0] ?? []).isEmpty }
+            ?? routesToDisplay[0]
     }
 
     private func currentAlerts(_ route: String) -> [TransitAlert] {
