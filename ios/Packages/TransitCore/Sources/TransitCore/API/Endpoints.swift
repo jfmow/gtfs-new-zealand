@@ -86,10 +86,7 @@ extension APIClient {
                 stopTimesByTripID[tripID] = times
             }
         }
-        // Couldn't reach the vehicles: treat none as running - the bounded,
-        // safer leave time.
-        let running = (try? await liveVehicles(tripIDs: Array(tripIDs))).map { Set($0.map(\.tripID)) } ?? []
-        return JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: stopTimesByTripID, runningTripIDs: running)
+        return JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: stopTimesByTripID)
     }
 
     // MARK: - Realtime
