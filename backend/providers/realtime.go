@@ -499,7 +499,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			))
 		}
 
-		_, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
+		orderedStops, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
 		if err != nil {
 			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
 		}
@@ -507,17 +507,6 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		line, err := NewTripShapeDistance(filterTripId, gtfsData)
 		if err != nil {
 			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
-		}
-
-		type StopTimes struct {
-			ParentStopId  string  `json:"parent_stop_id"`
-			ChildStopId   string  `json:"child_stop_id"`
-			ArrivalTime   int64   `json:"arrival_time"`
-			DepartureTime int64   `json:"departure_time"`
-			ScheduledTime int64   `json:"scheduled_time"`
-			Skipped       bool    `json:"skipped"`
-			Passed        bool    `json:"passed"`
-			DistanceAway  float64 `json:"dist"`
 		}
 
 		var result []StopTimes
@@ -528,24 +517,15 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		nextStopSequenceNumber := 0
 		var tripDelay int32 = 0
 		hasTripUpdate := false
+		var stopUpdates []*proto.TripUpdate_StopTimeUpdate
 
 		if tripUpdates, err := realtime.GetTripUpdates(); err == nil {
 			if updatesForTrip, err := tripUpdates.ByTripID(filterTripId); err == nil && updatesForTrip != nil {
 				hasTripUpdate = true
+				stopUpdates = updatesForTrip.GetStopTimeUpdate()
 				stopTimesForStops = getPredictedStopArrivalTimesForTrip(
-					updatesForTrip.GetStopTimeUpdate(),
+					stopUpdates,
 					localTimeZone,
-				)
-				// No live vehicle position is on hand at this point yet, so this
-				// falls back to trusting the prediction (see vehiclestate.IsNearStop).
-				nextStopSequenceNumber, _, _ = vehiclestate.GetNextStopSequence(
-					updatesForTrip.GetStopTimeUpdate(),
-					lowestSequence,
-					localTimeZone,
-					nil,
-					0,
-					0,
-					nil,
 				)
 				// Clamp a stale/garbage feed delay so it doesn't shift the whole
 				// tail of the trip by hours.
@@ -555,12 +535,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		// Vehicle positions are optional.
 		var (
-			vLat float32
-			vLon float32
+			vLat    float32
+			vLon    float32
+			vehicle *proto.VehiclePosition
 		)
 
 		if vehicles, err := realtime.GetVehicles(); err == nil {
 			if vehicleForTrip, err := vehicles.ByTripID(filterTripId); err == nil && vehicleForTrip != nil {
+				vehicle = vehicleForTrip
 				pos := vehicleForTrip.GetPosition()
 				if pos != nil {
 					vLat = pos.GetLatitude()
@@ -568,6 +550,28 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				}
 			}
 		}
+		hasVehiclePosition := vehicle != nil && !(vLat == 0 && vLon == 0)
+
+		// Where the vehicle is decides which stops are behind it - from its
+		// own position and status, not just the predictions: AT's predicted
+		// times can pass a stop while the bus is still well short of it
+		// (2026-10-02: "departed AUT 2:03" with the 22N still at Victoria
+		// Quarter at 2:05), and trusting them marked that stop passed.
+		nextStopState := "Unknown"
+		if hasTripUpdate {
+			nextStopSequenceNumber, _, nextStopState = vehiclestate.GetNextStopSequence(
+				stopUpdates,
+				lowestSequence,
+				localTimeZone,
+				orderedStops,
+				float64(vLat),
+				float64(vLon),
+				vehicle,
+			)
+		}
+		// Sitting at the first stop isn't started.
+		leftFirstStop := hasVehiclePosition && nextStopState != "Unknown" &&
+			(nextStopSequenceNumber > 1 || (nextStopSequenceNumber == 1 && nextStopState != "AtStop"))
 
 		// Fallback to first stop if no vehicle position is available.
 		if vLat == 0 && vLon == 0 {
@@ -593,6 +597,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				data.ParentStopId = stop.StopId
 			}
 			data.ChildStopId = stop.StopId
+			data.index = stop.Sequence - lowestSequence
 
 			if hasTripUpdate && nextStopSequenceNumber > (stop.Sequence-lowestSequence) {
 				data.Passed = true
@@ -613,6 +618,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			data.ScheduledTime = scheduledArrival.UnixMilli()
+			data.scheduledDeparture = scheduledDeparture.UnixMilli()
 
 			update, found := stopTimesForStops[stop.StopId]
 			if found {
@@ -649,6 +655,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 			result = append(result, data)
 		}
+
+		boundUnreachedStopTimes(result, hasVehiclePosition, leftFirstStop, now.UnixMilli())
 
 		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
@@ -749,6 +757,82 @@ func getVehicleRouteData(currentRouteId string, routeCache map[string]gtfs.Route
 	routeData.RouteId = currentRoute.RouteId
 	routeData.RouteShortName = currentRoute.RouteShortName
 	return &routeData, nil
+}
+
+// StopTimes is one stop of a trip as realtime/stop-times returns it.
+type StopTimes struct {
+	ParentStopId  string  `json:"parent_stop_id"`
+	ChildStopId   string  `json:"child_stop_id"`
+	ArrivalTime   int64   `json:"arrival_time"`
+	DepartureTime int64   `json:"departure_time"`
+	ScheduledTime int64   `json:"scheduled_time"`
+	Skipped       bool    `json:"skipped"`
+	Passed        bool    `json:"passed"`
+	DistanceAway  float64 `json:"dist"`
+
+	index              int   // position in the trip, 0 = first stop
+	scheduledDeparture int64 // unix ms
+}
+
+// boundUnreachedStopTimes keeps the predictions for stops the vehicle hasn't
+// reached yet to times it can still make (all unix ms):
+//
+//   - A trip that hasn't started can't be running early - it leaves on time
+//     at the earliest, and hasn't passed any stop. AT's pre-trip predictions
+//     are often minutes early, and the app read "5 min early" for a bus that
+//     hadn't set off (2026-10-02). With a vehicle's position, started means
+//     it has left the first stop; without one, it can only be told from the
+//     clock - not before the trip's scheduled start.
+//   - With a vehicle's position to go by, its next stop can't be in the past:
+//     when the predictions have run ahead of the bus, every stop still to
+//     come shifts by how far they're behind, keeping their spacing.
+func boundUnreachedStopTimes(stops []StopTimes, hasVehiclePosition, leftFirstStop bool, nowMs int64) {
+	started := leftFirstStop
+	if !hasVehiclePosition {
+		first := -1
+		for i := range stops {
+			if first < 0 || stops[i].index < stops[first].index {
+				first = i
+			}
+		}
+		started = first >= 0 && stops[first].scheduledDeparture != 0 && nowMs >= stops[first].scheduledDeparture
+	}
+
+	if !started {
+		for i := range stops {
+			s := &stops[i]
+			s.Passed = false
+			if s.ScheduledTime != 0 && s.ArrivalTime < s.ScheduledTime {
+				s.ArrivalTime = s.ScheduledTime
+			}
+			if s.scheduledDeparture != 0 && s.DepartureTime < s.scheduledDeparture {
+				s.DepartureTime = s.scheduledDeparture
+			}
+			if s.DepartureTime < s.ArrivalTime {
+				s.DepartureTime = s.ArrivalTime
+			}
+		}
+	}
+
+	if !hasVehiclePosition {
+		return
+	}
+	next := -1
+	for i := range stops {
+		if !stops[i].Passed && !stops[i].Skipped && (next < 0 || stops[i].index < stops[next].index) {
+			next = i
+		}
+	}
+	if next < 0 || stops[next].ArrivalTime == 0 || stops[next].ArrivalTime >= nowMs {
+		return
+	}
+	lag := nowMs - stops[next].ArrivalTime
+	for i := range stops {
+		if !stops[i].Passed {
+			stops[i].ArrivalTime += lag
+			stops[i].DepartureTime += lag
+		}
+	}
 }
 
 type DelayTimes struct {

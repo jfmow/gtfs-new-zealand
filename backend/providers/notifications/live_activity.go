@@ -517,17 +517,19 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 }
 
 // clampUnstartedDelays bounds the delays of a trip with no vehicle running
-// on it yet: a big early prediction then is usually a stale pre-trip one
-// (as for leave-time reminders). Once a vehicle is running its predictions
-// are real - and they're what the app shows, unclamped: clamping them made
-// an alert push while the app was open swap "12 min early" for "3 min
-// early" and move the arrival 9 min later (2026-09-29).
+// on it yet: it hasn't set off, so it can't be early - an early prediction
+// then is a stale pre-trip one (the app read "5 min early" for a 22N that
+// wasn't out, 2026-10-02; realtime/stop-times holds it to the timetable the
+// same way). Once a vehicle is running its predictions are real - and
+// they're what the app shows, unclamped: clamping them made an alert push
+// while the app was open swap "12 min early" for "3 min early" and move the
+// arrival 9 min later (2026-09-29).
 func (l *legLive) clampUnstartedDelays() {
 	if l.HasVehicle {
 		return
 	}
-	l.DepartureDelay = clampJRDelay(l.DepartureDelay)
-	l.ArrivalDelay = clampJRDelay(l.ArrivalDelay)
+	l.DepartureDelay = max(0, clampJRDelay(l.DepartureDelay))
+	l.ArrivalDelay = max(0, clampJRDelay(l.ArrivalDelay))
 }
 
 // findLegStop is the index in `stops` (sorted by sequence) of a plan leg's

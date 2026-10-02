@@ -421,8 +421,14 @@ func TestLegLive_EarlyDelayTrustedOnceVehicleRuns(t *testing.T) {
 
 	unstarted := legLive{HasTripUpdate: true, DepartureDelay: -12 * 60, ArrivalDelay: -12 * 60}
 	unstarted.clampUnstartedDelays()
-	if unstarted.DepartureDelay != jrMinTrustedDelaySeconds || unstarted.ArrivalDelay != jrMinTrustedDelaySeconds {
-		t.Errorf("pre-trip delays not clamped: %d/%d", unstarted.DepartureDelay, unstarted.ArrivalDelay)
+	if unstarted.DepartureDelay != 0 || unstarted.ArrivalDelay != 0 {
+		t.Errorf("a bus that isn't out can't be early: %d/%d", unstarted.DepartureDelay, unstarted.ArrivalDelay)
+	}
+
+	late := legLive{HasTripUpdate: true, DepartureDelay: 4 * 60, ArrivalDelay: 4 * 60}
+	late.clampUnstartedDelays()
+	if late.DepartureDelay != 4*60 || late.ArrivalDelay != 4*60 {
+		t.Errorf("pre-trip late delays changed: %d/%d", late.DepartureDelay, late.ArrivalDelay)
 	}
 }
 
