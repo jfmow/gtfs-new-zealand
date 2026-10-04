@@ -90,4 +90,13 @@ final class DeepLinkTests: XCTestCase {
         let url = try XCTUnwrap(URL(string: "transit://nonsense?id=abc"))
         XCTAssertNil(DeepLink(url: url))
     }
+
+    func testReplaceFlagMarksAJourneyReplacement() {
+        XCTAssertEqual(DeepLink(string: "/journey?id=abc&region=at&replace=1"), .journey(id: "abc", region: "at"))
+        XCTAssertTrue(DeepLink.replacesTrackedJourney("/journey?id=abc&region=at&replace=1"))
+        XCTAssertFalse(DeepLink.replacesTrackedJourney("/journey?id=abc&region=at"))
+        XCTAssertFalse(DeepLink.replacesTrackedJourney("/journey?id=abc&region=at&track=1"))
+        // Only a journey link can replace one.
+        XCTAssertFalse(DeepLink.replacesTrackedJourney("/vehicles?tripId=t1&replace=1"))
+    }
 }

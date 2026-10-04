@@ -45,6 +45,10 @@ struct TransitApp: App {
                     appDelegate.onAPNsRegistrationFailure = { [environment] error in
                         environment.push.didFailToRegister(error)
                     }
+                    router.endTrackedJourney = { [environment] keepingPlanID in
+                        let session = environment.journey
+                        if let plan = session.plan, plan.id != keepingPlanID { session.end() }
+                    }
                     appDelegate.onOpenNotificationURL = { [router] url in
                         router.handle(notificationURL: url)
                     }

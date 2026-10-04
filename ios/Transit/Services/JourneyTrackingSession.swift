@@ -759,7 +759,10 @@ final class JourneyTrackingSession {
             // Ended (or switched journey) while this was queued - don't
             // bring the activity back.
             guard self.plan?.id == plan.id else { return }
-            if liveActivity.isActive {
+            // Only this journey's activity - switching journeys used to keep
+            // feeding the old one (wrong plan, so the server's pushes for
+            // the new journey never reached it). `start` ends the other.
+            if liveActivity.activePlanID == plan.id {
                 await liveActivity.update(state, staleDate: staleDate)
             } else if !snapshot.journeyArrived {
                 let destination = plan.legs.last?.toStop?.stopName ?? "Destination"

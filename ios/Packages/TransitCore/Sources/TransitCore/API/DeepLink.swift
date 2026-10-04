@@ -50,6 +50,26 @@ public enum DeepLink: Equatable, Sendable, Identifiable {
         }
     }
 
+    /// The plan id of a `/journey` link, tracked or not.
+    public var journeyID: String? {
+        switch self {
+        case .journey(let id, _), .trackJourney(let id, _): return id
+        default: return nil
+        }
+    }
+
+    /// A `/journey?...&replace=1` link - a better route for the trip the
+    /// rider is already on (the backend's reroute push). Opening it ends the
+    /// journey being tracked, so the new one gets the Live Activity and the
+    /// old tracker isn't left open behind it.
+    public static func replacesTrackedJourney(_ string: String) -> Bool {
+        guard let link = DeepLink(string: string), link.journeyID != nil else { return false }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        let url = URL(string: trimmed) ?? URL(string: trimmed.replacingOccurrences(of: " ", with: "%20"))
+        let items = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?.queryItems ?? []
+        return items.contains { $0.name == "replace" && ($0.value == "1" || $0.value == "true") }
+    }
+
     /// Parses a push payload's `url` - usually a bare web path whose query
     /// values may contain raw spaces (the backend doesn't always encode
     /// stop names), which `URL(string:)` rejects outright.

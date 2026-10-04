@@ -35,6 +35,13 @@ final class DeepLinkRouter {
     /// tracker on top.
     var openTracker: (planID: String, inLink: Bool)?
 
+    /// Ends the journey being tracked unless it's the given plan - set by
+    /// `TransitApp`, since the session lives in `AppEnvironment`.
+    var endTrackedJourney: ((_ keepingPlanID: String) -> Void)?
+    /// Bumped to make an open tracker close itself (sheet first, then pop -
+    /// see `JourneyTrackingView.leaveTracker`).
+    var closeTrackerRequest = 0
+
     /// Set by the tracker's "Find a better route from here"; consumed by
     /// `PlannerView`, which re-plans from `origin` and offers to go back.
     var pendingReplan: ReplanRequest?
@@ -125,7 +132,23 @@ final class DeepLinkRouter {
     /// A push notification's `url` payload - usually a bare web path.
     func handle(notificationURL: String) {
         guard let link = DeepLink(string: notificationURL) else { return }
+        if DeepLink.replacesTrackedJourney(notificationURL), let id = link.journeyID {
+            replaceTrackedJourney(with: id)
+        }
         route(link)
+    }
+
+    /// A reroute push for the trip being tracked: end the old journey (its
+    /// Live Activity and alerts with it) and close its tracker, so the new
+    /// route opens on its own and gets the Live Activity when started.
+    private func replaceTrackedJourney(with planID: String) {
+        endTrackedJourney?(planID)
+        guard let open = openTracker, open.planID != planID else { return }
+        openTracker = nil
+        // One in a link's full-screen cover is swapped out by the new link
+        // itself (`activeLink`) - its own `dismiss()` there could close the
+        // new cover instead. Only one pushed in the Planner tab needs telling.
+        if !open.inLink { closeTrackerRequest += 1 }
     }
 
     private func route(_ link: DeepLink) {

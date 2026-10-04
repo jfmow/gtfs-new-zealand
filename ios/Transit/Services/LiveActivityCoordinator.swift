@@ -37,6 +37,8 @@ final class LiveActivityCoordinator {
     }
 
     var isActive: Bool { activity != nil }
+    /// The plan the tracked activity belongs to.
+    var activePlanID: String? { activity?.attributes.planID }
 
     var areActivitiesEnabled: Bool {
         ActivityAuthorizationInfo().areActivitiesEnabled

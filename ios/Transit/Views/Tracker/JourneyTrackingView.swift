@@ -159,6 +159,10 @@ struct JourneyTrackingView: View {
             // other than `endJourney()` - see `isTrackerSheetPresented`.
             isTrackerSheetPresented = false
         }
+        // A reroute push replaced this journey (`DeepLinkRouter.
+        // replaceTrackedJourney`) - it's already ended, so just get out of
+        // the way of the new one.
+        .onChange(of: router.closeTrackerRequest) { leaveTracker() }
         .background(DisablesSwipeBack())
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)

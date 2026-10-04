@@ -164,7 +164,9 @@ func jrCronReroute(
 		summary := fmt.Sprintf("the %s: leave %s, arrive %s", altRoute,
 			alt.DepartureTime.In(tz).Format("3:04pm"), alt.ArrivalTime.In(tz).Format("3:04pm"))
 
-		link := "/journey?id=" + alt.ID + "&region=" + region
+		// replace=1: the app ends whatever journey it's tracking (and closes
+		// its tracker) before opening this one - it's the rider's same trip.
+		link := "/journey?id=" + alt.ID + "&region=" + region + "&replace=1"
 		if !r.LAStarted && jrSwitchReminder(db, gtfsData, r, alt, now) {
 			r.PlanID = alt.ID
 			notifyJourneyReminderClientURL(db, r, fmt.Sprintf("reroute-%d", now.Unix()/60), title,
