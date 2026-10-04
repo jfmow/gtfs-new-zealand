@@ -902,7 +902,7 @@ struct LegChain: View {
     }
 
     private var items: [Item] {
-        var out: [Item] = [.start]
+        var out: [Item] = [] //used to be [.start] to include a start dot, but its usless for the ui so it's removed
         var lastRideArrival: Date?
         for (index, leg) in legs.enumerated() {
             if leg.mode == "walk" {
@@ -917,7 +917,7 @@ struct LegChain: View {
                 lastRideArrival = leg.arrivalTime.date
             }
         }
-        out.append(.end)
+        //out.append(.end) //also not really needed in the ui for the same reason above
         return out
     }
 

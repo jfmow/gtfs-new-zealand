@@ -161,7 +161,7 @@ function modeOf(leg: Leg): "bus" | "train" | "ferry" {
  * with its mode and route badge, a transfer marker with the wait, the end.
  */
 export function LegChain({ legs }: { legs: Leg[] }) {
-    const items: ChainItem[] = [{ kind: "start" }]
+    const items: ChainItem[] = [] //removed [{ kind: "start" }], because the start is implied by the first walk or ride
     let lastRideArrival: number | null = null
     legs.forEach((leg, index) => {
         if (leg.Mode === "walk") {
@@ -177,7 +177,7 @@ export function LegChain({ legs }: { legs: Leg[] }) {
         items.push({ kind: "ride", leg })
         lastRideArrival = new Date(leg.ArrivalTime).getTime()
     })
-    items.push({ kind: "end" })
+    //items.push({ kind: "end" }) // removed because the end is implied by the last walk or ride
 
     const spoken = items
         .map((item) => {
