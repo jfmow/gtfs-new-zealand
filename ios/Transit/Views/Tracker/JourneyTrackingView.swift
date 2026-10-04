@@ -51,6 +51,17 @@ struct JourneyTrackingView: View {
     /// web's own map-first bottom sheet.
     @State private var sheetDetent: PresentationDetent = .height(JourneyTrackingView.compactDrawerHeight)
     static let compactDrawerHeight: CGFloat = 320
+    /// The lowest detent: just the grab handle and the hero row (what
+    /// you're doing now + the countdown), so the map gets nearly the whole
+    /// screen. Sized from the hero row's measured height - it's one or two
+    /// lines depending on the phase and Dynamic Type - plus the content's
+    /// top padding and a little breathing room below.
+    @State private var peekDrawerHeight: CGFloat = JourneyTrackingView.peekHeight(forHero: 72)
+    /// Capped under the compact detent so the two never collide at huge
+    /// Dynamic Type sizes.
+    private static func peekHeight(forHero hero: CGFloat) -> CGFloat {
+        min((28 + hero + 16).rounded(.up), compactDrawerHeight - 60)
+    }
     /// Real, dismissible state - NOT `.constant(true)`. A constant binding
     /// can never tell the sheet it's going away, so when this whole view
     /// gets popped (back button or `endJourney()`'s `dismiss()`), SwiftUI's
@@ -130,7 +141,7 @@ struct JourneyTrackingView: View {
             set: { if !usesSidePanel { isTrackerSheetPresented = $0 } }
         )) {
             endConfirmation(itinerarySheetContent)
-                .presentationDetents([.height(Self.compactDrawerHeight), .medium, .large], selection: $sheetDetent)
+                .presentationDetents([.height(peekDrawerHeight), .height(Self.compactDrawerHeight), .medium, .large], selection: $sheetDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationBackground(Theme.background)
@@ -321,12 +332,14 @@ struct JourneyTrackingView: View {
     /// The tracker's bottom drawer: what you're doing now (hero), live
     /// facts (chips), what you can do about it (actions), then the whole
     /// trip as a timeline. The compact detent shows everything down to the
-    /// actions; drag up for the timeline. A real sheet with detents so it
-    /// gets native drag-to-resize and gesture ownership over the map.
+    /// actions; drag up for the timeline, or down to the peek detent for
+    /// just the hero row. A real sheet with detents so it gets native
+    /// drag-to-resize and gesture ownership over the map.
     private var itinerarySheetContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 heroHeader
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { updatePeekHeight(hero: $0) }
                 statusChips
                 actionsRow
 
@@ -355,6 +368,18 @@ struct JourneyTrackingView: View {
             .padding(.bottom, 24)
         }
         .scrollContentBackground(.hidden)
+    }
+
+    /// Keeps the peek detent hugging the hero row as it changes size. When
+    /// the sheet is sitting at the peek, the selection moves with it in the
+    /// same update - otherwise it would point at a detent that no longer
+    /// exists and the sheet would jump elsewhere.
+    private func updatePeekHeight(hero: CGFloat) {
+        let height = Self.peekHeight(forHero: hero)
+        guard height > 0, abs(height - peekDrawerHeight) >= 1 else { return }
+        let wasPeeking = sheetDetent == .height(peekDrawerHeight)
+        peekDrawerHeight = height
+        if wasPeeking { sheetDetent = .height(height) }
     }
 
     /// Mode tile, the one-line status ("Waiting for the 70"), a detail line
@@ -835,7 +860,9 @@ struct JourneyTrackingView: View {
             return UIEdgeInsets(top: top, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
                                 bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
         }
-        let drawer: CGFloat = sheetDetent == .height(Self.compactDrawerHeight) ? Self.compactDrawerHeight : fullHeight / 2
+        let drawer: CGFloat = sheetDetent == .height(peekDrawerHeight) ? peekDrawerHeight
+            : sheetDetent == .height(Self.compactDrawerHeight) ? Self.compactDrawerHeight
+            : fullHeight / 2
         return UIEdgeInsets(top: top, left: 0, bottom: min(drawer, fullHeight - top - 120), right: 0)
     }
 
