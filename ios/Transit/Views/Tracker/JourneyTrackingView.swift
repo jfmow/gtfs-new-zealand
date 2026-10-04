@@ -163,6 +163,13 @@ struct JourneyTrackingView: View {
         // replaceTrackedJourney`) - it's already ended, so just get out of
         // the way of the new one.
         .onChange(of: router.closeTrackerRequest) { leaveTracker() }
+        // The session ended itself (`arrivedCloseDelay` after arriving)
+        // with this tracker still open - close it too. `endJourney` clears
+        // `openTracker` first, so an End tap doesn't dismiss twice.
+        .onChange(of: session.plan?.id) { oldID, newID in
+            guard oldID == plan.id, newID == nil, router.openTracker?.planID == plan.id else { return }
+            leaveTracker()
+        }
         .background(DisablesSwipeBack())
         .navigationBarBackButtonHidden()
         .toolbar(.hidden, for: .navigationBar)
@@ -227,8 +234,14 @@ struct JourneyTrackingView: View {
         }
     }
 
-    /// Leaves the screen but keeps the journey running.
+    /// Leaves the screen but keeps the journey running - unless it's
+    /// already arrived, when there's nothing left to resume: end it, so
+    /// the resume pill doesn't hang around.
     private func leaveTracker() {
+        if snapshot?.journeyArrived == true {
+            endJourney()
+            return
+        }
         router.openTracker = nil
         isTrackerSheetPresented = false
         DispatchQueue.main.async { dismiss() }

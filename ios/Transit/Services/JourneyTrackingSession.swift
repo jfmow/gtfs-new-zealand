@@ -95,6 +95,9 @@ final class JourneyTrackingSession {
     @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, headphones: Bool, leftAt: Int64?, at: Date)?
     @ObservationIgnored private var savedAlightedThroughLeg = -1
     @ObservationIgnored private var activityUpdateInFlight = false
+    /// When this session first saw the rider arrive - it ends itself
+    /// `arrivedCloseDelay` after, taking the tracker and resume pill with it.
+    @ObservationIgnored private var arrivedAt: Date?
 
     /// Positions older than this are dropped - it's no longer where the
     /// vehicle is.
@@ -105,6 +108,8 @@ final class JourneyTrackingSession {
     /// flicked between the two.
     private static let liveFreshAge: TimeInterval = 75
     private static let resumeGrace: TimeInterval = 45 * 60
+    /// How long "You've arrived" stays up before the journey ends itself.
+    static let arrivedCloseDelay: TimeInterval = 5 * 60
 
     init(api: APIClient, location: LocationProvider, network: NetworkMonitor, liveActivity: LiveActivityCoordinator, push: PushRegistrationService) {
         self.api = api
@@ -278,6 +283,7 @@ final class JourneyTrackingSession {
         lastSentActivity = nil
         lastReportedLeg = nil
         savedAlightedThroughLeg = -1
+        arrivedAt = nil
         progressModel = JourneyProgressModel()
         estimator = OfflineRideEstimator()
         ratchet = VehicleProgressRatchet()
@@ -623,6 +629,16 @@ final class JourneyTrackingSession {
 
         let wantsBackgroundLocation = !newSnapshot.journeyArrived && location.isAuthorized
         if wantsBackgroundLocation != backgroundLocationOn { setBackgroundLocation(wantsBackgroundLocation) }
+
+        // Arrived a while ago: done. The loops stop in the background once
+        // arrived, so in that case this lands on the next foreground tick.
+        // Seen arriving only now (a relaunch, or back from the background):
+        // count from the live arrival time if that's earlier.
+        if newSnapshot.journeyArrived {
+            let arrived = arrivedAt ?? min(now, display.arrivalTime.date ?? now)
+            arrivedAt = arrived
+            if now.timeIntervalSince(arrived) >= Self.arrivedCloseDelay { end() }
+        }
     }
 
     private func setBackgroundLocation(_ on: Bool) {
