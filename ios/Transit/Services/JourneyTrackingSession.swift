@@ -20,9 +20,11 @@ import TransitCore
 ///   the trip's stops from their GPS - stops away, "your stop is next" and
 ///   getting off all keep working.
 /// - While a journey is on, location runs in the background, so the app
-///   keeps tracking with the screen off; get-on/get-off moments become
-///   local notifications while offline (the server can't push them), and
-///   timetable-based ones are scheduled ahead in case iOS suspends the app.
+///   keeps tracking with the screen off - coarse only on a ride the live
+///   feed is following, precise again near the stop (`JourneyGPSPolicy`);
+///   get-on/get-off moments become local notifications while offline (the
+///   server can't push them), and timetable-based ones are scheduled ahead
+///   in case iOS suspends the app.
 @MainActor
 @Observable
 final class JourneyTrackingSession {
@@ -338,7 +340,7 @@ final class JourneyTrackingSession {
 
     private func locationDidUpdate() {
         guard plan != nil else { return }
-        if let steps = walkDirections?.steps, let coordinate = location.coordinate {
+        if let steps = walkDirections?.steps, let coordinate = location.preciseCoordinate {
             walkStep = walkTracker.update(steps: steps, location: coordinate)
         }
         if Date().timeIntervalSince(lastTick) >= 2 { tick() }
@@ -476,7 +478,7 @@ final class JourneyTrackingSession {
     /// The rider's GPS can see whether they've set off: the journey starts
     /// with a walk and there's a recent fix.
     private var watchingDeparture: Bool {
-        guard plan?.legs.first?.mode == "walk", location.isAuthorized, location.coordinate != nil,
+        guard plan?.legs.first?.mode == "walk", location.isAuthorized, location.preciseCoordinate != nil,
               let fixDate = location.fixDate else { return false }
         return Date().timeIntervalSince(fixDate) <= Self.departureFixMaxAge
     }
@@ -491,7 +493,7 @@ final class JourneyTrackingSession {
               let boardStop = plan.legs.first(where: { $0.mode == "transit" })?.fromStop,
               let left = departure.update(
                   start: Coordinate(latitude: plan.startLat, longitude: plan.startLon), boardStop: boardStop.coordinate,
-                  location: location.coordinate, accuracy: location.accuracy, at: location.fixDate ?? now
+                  location: location.preciseCoordinate, accuracy: location.accuracy, at: location.fixDate ?? now
               ) else { return false }
         setOffAt = left
         activeJourney(planID: plan.id)?.setOffAt = left
@@ -550,7 +552,7 @@ final class JourneyTrackingSession {
         lastTick = now
 
         // The rider's GPS, placed on the ride they're on (or about to be).
-        let fix = location.coordinate.map {
+        let fix = location.preciseCoordinate.map {
             OfflineRideEstimator.Fix(coordinate: $0, speed: location.speed, timestamp: location.fixDate ?? now)
         }
         var estimated: [String: Vehicle] = [:]
@@ -599,7 +601,7 @@ final class JourneyTrackingSession {
             progressModel.update(
                 plan: plan, displayPlan: display, now: now, vehiclesByTripID: vehicles,
                 stopTimesByTripID: times, journeyStarted: true, trackedStops: trackedStops,
-                userLocation: location.coordinate, estimatedTripIDs: estimatedIDs, holdAtStart: stillAtStart
+                userLocation: location.preciseCoordinate, estimatedTripIDs: estimatedIDs, holdAtStart: stillAtStart
             )
         }
         var newSnapshot = compute()
@@ -629,6 +631,14 @@ final class JourneyTrackingSession {
 
         let wantsBackgroundLocation = !newSnapshot.journeyArrived && location.isAuthorized
         if wantsBackgroundLocation != backgroundLocationOn { setBackgroundLocation(wantsBackgroundLocation) }
+        // On a ride the live feed is following well, GPS can rest until the
+        // rider's stop is near - see `JourneyGPSPolicy`.
+        let alightAt = newSnapshot.trackedTripID.flatMap { id in display.legs.first { $0.tripID == id } }?.arrivalTime.date
+        location.setResting(wantsBackgroundLocation && JourneyGPSPolicy.canRest(
+            appActive: isAppActive, offline: isOffline, phase: newSnapshot.phase, boarded: newSnapshot.boarded,
+            trackingLevel: newSnapshot.trackingLevel, liveFresh: liveAge <= Self.liveFreshAge,
+            stopsAway: newSnapshot.trackedStopsAway, alightAt: alightAt, now: now
+        ))
 
         // Arrived a while ago: done. The loops stop in the background once
         // arrived, so in that case this lands on the next foreground tick.
@@ -679,7 +689,7 @@ final class JourneyTrackingSession {
         walkTracker.reset()
         walkDirections = directions
         walkLegIndex = legIndex
-        walkStep = location.coordinate.map { walkTracker.update(steps: directions.steps, location: $0) }
+        walkStep = location.preciseCoordinate.map { walkTracker.update(steps: directions.steps, location: $0) }
     }
 
     // MARK: - Alerts

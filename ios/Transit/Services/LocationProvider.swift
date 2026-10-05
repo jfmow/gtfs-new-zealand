@@ -21,12 +21,25 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// Called on the main actor after every new fix - the journey tracker
     /// uses it to advance while the app is in the background.
     @ObservationIgnored var onUpdate: (() -> Void)?
+    /// GPS is resting: coarse cell/wifi fixes only, on a ride the live feed
+    /// is following (`JourneyGPSPolicy`). Updates keep running, so the app
+    /// stays awake in the background to turn it back on near the stop.
+    private(set) var isResting = false
+    /// When precise GPS last came back - fixes before it are coarse.
+    @ObservationIgnored private var preciseSince = Date.distantPast
 
     override init() {
         authorizationStatus = manager.authorizationStatus
         super.init()
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyBest
+    }
+
+    /// The latest fix, when it's precise enough to place the rider - not
+    /// while GPS is resting, nor a coarse one left over from it.
+    var preciseCoordinate: Coordinate? {
+        guard !isResting, let fixDate, fixDate >= preciseSince else { return nil }
+        return coordinate
     }
 
     var isAuthorized: Bool {
@@ -58,7 +71,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.showsBackgroundLocationIndicator = enabled
         manager.pausesLocationUpdatesAutomatically = !enabled
         manager.activityType = enabled ? .otherNavigation : .other
-        if enabled { manager.startUpdatingLocation() }
+        if enabled { manager.startUpdatingLocation() } else { setResting(false) }
+    }
+
+    /// Swaps GPS for coarse cell/wifi fixes (far cheaper) and back.
+    func setResting(_ resting: Bool) {
+        guard resting != isResting else { return }
+        isResting = resting
+        manager.desiredAccuracy = resting ? kCLLocationAccuracyThreeKilometers : kCLLocationAccuracyBest
+        manager.distanceFilter = resting ? 500 : kCLDistanceFilterNone
+        if !resting { preciseSince = Date() }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
