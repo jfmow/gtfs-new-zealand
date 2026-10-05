@@ -207,13 +207,13 @@ public struct EasyJourneyStep: Equatable, Sendable {
         return " Stop \(stop.stopCode)."
     }
 
-    /// "10:01 am" in New Zealand time.
+    /// "10:01 am" on the region's clock.
     public static func clock(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "h:mm a"
         formatter.amSymbol = "am"
         formatter.pmSymbol = "pm"
-        formatter.timeZone = TimeFormatting.nzTimeZone
+        formatter.timeZone = TimeFormatting.timeZone
         formatter.locale = Locale(identifier: "en_NZ")
         return formatter.string(from: date)
     }

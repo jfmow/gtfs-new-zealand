@@ -228,12 +228,25 @@ struct ShadSelect<Value: Hashable>: View {
     @Binding var selection: Value
     let options: [(value: Value, title: String)]
     var fullWidth = false
+    /// Optional headed groups of `options` (e.g. regions by country); when
+    /// nil the menu is one flat list.
+    var sections: [(title: String, values: [Value])]? = nil
 
     var body: some View {
         Menu {
             Picker(label ?? "", selection: $selection) {
-                ForEach(options, id: \.value) { option in
-                    Text(option.title).tag(option.value)
+                if let sections {
+                    ForEach(sections, id: \.title) { section in
+                        Section(section.title) {
+                            ForEach(section.values, id: \.self) { value in
+                                Text(title(of: value)).tag(value)
+                            }
+                        }
+                    }
+                } else {
+                    ForEach(options, id: \.value) { option in
+                        Text(option.title).tag(option.value)
+                    }
                 }
             }
         } label: {
@@ -256,6 +269,10 @@ struct ShadSelect<Value: Hashable>: View {
             .contentShape(Rectangle())
         }
         .menuOrder(.fixed)
+    }
+
+    private func title(of value: Value) -> String {
+        options.first { $0.value == value }?.title ?? ""
     }
 }
 

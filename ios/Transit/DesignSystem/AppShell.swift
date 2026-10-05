@@ -194,7 +194,9 @@ private struct AppToolbar: ViewModifier {
 
                     Menu {
                         Button { sheet = .reminders } label: { Label("My reminders", systemImage: "bell.badge") }
-                        Button { sheet = .findVehicle } label: { Label("Find my vehicle", systemImage: "location.viewfinder") }
+                        if environment.region.hasRealtime {
+                            Button { sheet = .findVehicle } label: { Label("Find my vehicle", systemImage: "location.viewfinder") }
+                        }
                         Button { sheet = .settings } label: { Label("Settings", systemImage: "gearshape") }
                     } label: {
                         Image(systemName: "line.3.horizontal")
@@ -431,10 +433,12 @@ private struct ResumeJourneyRow: View {
 /// destination, so the two can't share one stack.
 struct MapTabView: View {
     @Environment(DeepLinkRouter.self) private var router
+    @Environment(AppEnvironment.self) private var environment
 
     var body: some View {
         @Bindable var router = router
-        switch router.mapMode {
+        // No vehicles to show for a timetable-only region.
+        switch environment.region.hasRealtime ? router.mapMode : .stops {
         case .stops: StopsTabView(mode: $router.mapMode)
         case .vehicles: VehiclesTabView(mode: $router.mapMode)
         }
@@ -444,18 +448,22 @@ struct MapTabView: View {
 /// The Stops / Vehicles segmented control at the top of the Map tab.
 private struct MapModePicker: ToolbarContent {
     @Binding var mode: DeepLinkRouter.MapMode
+    @Environment(AppEnvironment.self) private var environment
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            // Plain buttons, not a segmented Picker: in the glass nav bar
-            // the Picker's first tap after the tab appears was dropped.
-            HStack(spacing: 2) {
-                segment("Stops", .stops)
-                segment("Vehicles", .vehicles)
+            // Hidden for a timetable-only region - nothing to switch to.
+            if environment.region.hasRealtime {
+                // Plain buttons, not a segmented Picker: in the glass nav bar
+                // the Picker's first tap after the tab appears was dropped.
+                HStack(spacing: 2) {
+                    segment("Stops", .stops)
+                    segment("Vehicles", .vehicles)
+                }
+                .padding(3)
+                .background(Theme.muted, in: Capsule())
+                .accessibilityElement(children: .contain)
             }
-            .padding(3)
-            .background(Theme.muted, in: Capsule())
-            .accessibilityElement(children: .contain)
         }
     }
 

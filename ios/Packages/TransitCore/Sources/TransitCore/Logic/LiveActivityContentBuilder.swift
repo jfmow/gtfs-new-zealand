@@ -471,17 +471,13 @@ public enum LiveActivityContentBuilder {
         date.map { $0.timeIntervalSince1970.rounded(.down) }
     }
 
-    private static let clockFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "Pacific/Auckland")
-        f.dateFormat = "h:mma"
-        return f
-    }()
-
-    /// "9:05am" - same as the Go builder's `clock`.
+    /// "9:05am" on the region's clock - same as the Go builder's `clock`.
     static func clock(_ date: Date?) -> String {
         guard let date else { return "" }
-        return clockFormatter.string(from: date).lowercased()
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeFormatting.timeZone
+        f.dateFormat = "h:mma"
+        return f.string(from: date).lowercased()
     }
 }

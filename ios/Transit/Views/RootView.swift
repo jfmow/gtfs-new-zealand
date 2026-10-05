@@ -36,10 +36,20 @@ struct RootView: View {
                 .tabItem { Label("Map", systemImage: "map") }
                 .tag(DeepLinkRouter.Tab.map)
 
-            AlertsTabView()
-                .resumeJourneyInset()
-                .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
-                .tag(DeepLinkRouter.Tab.alerts)
+            // Alerts come from the realtime feed - a timetable-only region
+            // (Otago) has none.
+            if environment.region.hasRealtime {
+                AlertsTabView()
+                    .resumeJourneyInset()
+                    .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
+                    .tag(DeepLinkRouter.Tab.alerts)
+            }
+        }
+        .onChange(of: environment.region, initial: true) { _, region in
+            if !region.hasRealtime {
+                if router.selectedTab == .alerts { router.selectedTab = .schedule }
+                router.mapMode = .stops
+            }
         }
         .resumeJourneyAccessory()
         .tint(Theme.primary)

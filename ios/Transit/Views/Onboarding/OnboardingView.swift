@@ -64,10 +64,21 @@ struct OnboardingView: View {
         case .region:
             header(icon: "tram.fill", title: "Welcome to Transit",
                    message: "Live departures, journey planning and alerts. Where do you travel?")
-            VStack(spacing: 8) {
-                ForEach(Region.all) { region in
-                    choiceRow(title: region.displayName, detail: nil, isSelected: environment.region == region) {
-                        environment.choose(region: region)
+            VStack(alignment: .leading, spacing: 16) {
+                ForEach(Region.byCountry, id: \.country) { group in
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(group.country.displayName)
+                            .font(.metaMedium)
+                            .foregroundStyle(Theme.mutedForeground)
+                        ForEach(group.regions) { region in
+                            choiceRow(
+                                title: region.displayName, detail: nil,
+                                logo: Theme.providerLogoImageName(for: region),
+                                isSelected: environment.region == region
+                            ) {
+                                environment.choose(region: region)
+                            }
+                        }
                     }
                 }
             }
@@ -212,9 +223,16 @@ struct OnboardingView: View {
         }
     }
 
-    private func choiceRow(title: String, detail: String?, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func choiceRow(title: String, detail: String?, logo: String? = nil, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 12) {
+                if let logo {
+                    Image(logo)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 28, height: 28)
+                        .accessibilityHidden(true)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.bodyMedium).foregroundStyle(Theme.foreground)
                     if let detail {

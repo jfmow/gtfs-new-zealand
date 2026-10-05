@@ -22,6 +22,7 @@ final class AppEnvironment {
             guard region != oldValue else { return }
             let api = self.api
             let region = self.region
+            TimeFormatting.timeZone = region.timeZone
             Task { await api.setRegion(region) }
         }
     }
@@ -35,6 +36,7 @@ final class AppEnvironment {
 
     init(region: Region = SharedStore.regionSlug.flatMap(Region.bySlug) ?? .auckland) {
         self.region = region
+        TimeFormatting.timeZone = region.timeZone
         let api = APIClient(region: region)
         self.api = api
         let push = PushRegistrationService(api: api)

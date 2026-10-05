@@ -81,7 +81,8 @@ struct SettingsView: View {
                     SettingsRow(title: "Region", detail: "Your transit provider") {
                         ShadSelect(
                             selection: Binding(get: { environment.region }, set: { environment.choose(region: $0) }),
-                            options: Region.all.map { ($0, $0.displayName) }
+                            options: Region.all.map { ($0, $0.displayName) },
+                            sections: Region.byCountry.map { ($0.country.displayName, $0.regions) }
                         )
                     }
 

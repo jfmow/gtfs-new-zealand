@@ -68,6 +68,8 @@ enum Theme {
         case "at": return "ProviderLogoAT"
         case "wel": return "ProviderLogoMetlink"
         case "christ": return "ProviderLogoMetro"
+        case "otago": return "ProviderLogoORC"
+        case "seq": return "ProviderLogoTranslink"
         default: return "ProviderLogoAT"
         }
     }

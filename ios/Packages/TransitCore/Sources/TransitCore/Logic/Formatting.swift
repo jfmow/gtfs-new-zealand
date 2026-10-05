@@ -1,11 +1,22 @@
 import Foundation
+import os
 
 /// Time/duration/distance formatting - ported from the web app's
-/// `lib/formating.ts`. All wall-clock formatting is pinned to
-/// Pacific/Auckland regardless of the device's local time zone, same as the
-/// backend (`localTimeZone` in `main.go`) and the web app.
+/// `lib/formating.ts`. Service dates and clock times sent to the backend are
+/// pinned to the selected region's time zone (`timeZone`), regardless of the
+/// device's, same as the backend (`region.timeZone()` in `main.go`) and the
+/// web app (`regionTimeZone()`).
 public enum TimeFormatting {
     public static let nzTimeZone = TimeZone(identifier: "Pacific/Auckland")!
+
+    private static let zone = OSAllocatedUnfairLock(initialState: nzTimeZone)
+
+    /// The selected region's time zone. The app sets it whenever the region
+    /// changes (`AppEnvironment.choose(region:)`); defaults to NZ.
+    public static var timeZone: TimeZone {
+        get { zone.withLock { $0 } }
+        set { zone.withLock { $0 = newValue } }
+    }
 
     /// "HH:MM:SS" (can be ">= 24:00:00" for a service past midnight on the
     /// same GTFS service day) to a 12-hour label like "4:15pm" - matches the
@@ -58,13 +69,13 @@ public enum TimeFormatting {
         return String(format: "%.2f km", meters / 1000)
     }
 
-    /// "YYYYMMDD" in Pacific/Auckland - mirrors `nzServiceDate`. This is the
+    /// "YYYYMMDD" in the region's time zone - mirrors `serviceDate`. This is the
     /// GTFS service-date convention, not necessarily the device's local date.
     public static func nzServiceDate(_ date: Date) -> String {
         dateFormatter(pattern: "yyyyMMdd").string(from: date)
     }
 
-    /// "HH:mm" in Pacific/Auckland - mirrors `nzHHMM`.
+    /// "HH:mm" in the region's time zone - mirrors `regionHHMM`.
     public static func nzHHMM(_ date: Date) -> String {
         dateFormatter(pattern: "HH:mm").string(from: date)
     }
@@ -72,7 +83,7 @@ public enum TimeFormatting {
     private static func dateFormatter(pattern: String) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.dateFormat = pattern
-        formatter.timeZone = nzTimeZone
+        formatter.timeZone = timeZone
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter
     }
