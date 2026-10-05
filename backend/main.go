@@ -51,6 +51,8 @@ type region struct {
 	gtfsURL string
 	gtfsKey gtfs.ApiKey
 	dbName  string
+	// tz is the timezone the feed's schedule is written in; nil = NZ.
+	tz *time.Location
 
 	rtKey      string
 	rtHeader   string
@@ -69,7 +71,14 @@ type region struct {
 	caches caches.Caches
 }
 
-//var aestZone, _ = time.LoadLocation("Australia/Brisbane")
+func (r *region) timeZone() *time.Location {
+	if r.tz != nil {
+		return r.tz
+	}
+	return localTimeZone
+}
+
+var aestZone, _ = time.LoadLocation("Australia/Brisbane")
 
 func main() {
 	//Loads a .env file in the current dir
@@ -122,7 +131,7 @@ func main() {
 	atApi := e.Group("/at")
 	atApi.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 	mlApi := e.Group("/wel")
-	//seqAPI := e.Group("/seq")
+	seqAPI := e.Group("/seq")
 	christchurchApi := e.Group("/christ")
 
 	atApiKey, found := os.LookupEnv("AT_APIKEY")
@@ -165,12 +174,23 @@ func main() {
 			rtTrips:    "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/trip-updates.pb",
 			rtAlerts:   "https://apis.metroinfo.co.nz/rti/gtfsrt/v1/service-alerts.pb",
 		},
+		{
+			name: "seq", group: seqAPI,
+			gtfsURL: "https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", dbName: "seqGTFS", tz: aestZone,
+			gtfsKey: gtfs.ApiKey{Header: "", Value: ""}, rtKey: "", rtHeader: "", rtInterval: 15 * time.Second,
+			rtVehicles: "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", rtTrips: "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", rtAlerts: "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts",
+		},
+		{
+			name: "otago", group: e.Group("/otago"),
+			gtfsURL: "https://www.orc.govt.nz/transit/google_transit.zip", dbName: "otagoGTFS",
+			// No realtime feeds - leaving the rt URLs empty runs it timetable-only.
+		},
 	}
 
-	// The three regions are independent (separate DB files, separate route
+	// The regions are independent (separate DB files, separate route
 	// groups) - build each region's GTFS DB + realtime client in parallel, so
 	// startup is bounded by the slowest single region rather than their sum.
-	// Concurrency is capped at 2 so that a cold start where all three DBs need
+	// Concurrency is capped at 2 so that a cold start where every DB needs
 	// a full rebuild (each buffering a GTFS zip) stays within the memory limit.
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 2)
@@ -180,16 +200,20 @@ func main() {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			data, err := gtfs.New(r.gtfsURL, r.gtfsKey, r.dbName, localTimeZone, "hi@suddsy.dev")
+			data, err := gtfs.New(r.gtfsURL, r.gtfsKey, r.dbName, r.timeZone(), "hi@suddsy.dev")
 			if err != nil {
 				fmt.Printf("Error loading %s gtfs db: %v\n", r.name, err)
 			}
 			r.gtfs = data
 			var client rt.Realtime
-			if r.rtCombined != "" {
-				client, err = rt.NewCombinedClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtCombined, *localTimeZone)
-			} else {
-				client, err = rt.NewClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtVehicles, r.rtTrips, r.rtAlerts, *localTimeZone)
+			switch {
+			case r.rtCombined != "":
+				client, err = rt.NewCombinedClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtCombined, *r.timeZone())
+			case r.rtVehicles == "" && r.rtTrips == "" && r.rtAlerts == "":
+				// No GTFS-RT published (e.g. Otago) - timetable only.
+				client = rt.NewDisabledClient(*r.timeZone())
+			default:
+				client, err = rt.NewClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtVehicles, r.rtTrips, r.rtAlerts, *r.timeZone())
 			}
 			if err != nil {
 				r.rtErr = err
@@ -213,21 +237,8 @@ func main() {
 		if r.rtErr != nil {
 			panic(r.rtErr)
 		}
-		providers.SetupProvider(r.group, r.gtfs, r.rt, r.name, localTimeZone, r.caches)
+		providers.SetupProvider(r.group, r.gtfs, r.rt, r.name, r.timeZone(), r.caches)
 	}
-	/*
-		SEQGTFSData, err := gtfs.New("https://gtfsrt.api.translink.com.au/GTFS/SEQ_GTFS.zip", gtfs.ApiKey{Header: "", Value: ""}, "seqGTFS", aestZone, "hi@suddsy.dev")
-		if err != nil {
-			fmt.Println("Error loading at gtfs db")
-		}
-
-		SEQRealtimeData, err := rt.NewClient("", "", 15*time.Second, "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/VehiclePositions", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/TripUpdates", "https://gtfsrt.api.translink.com.au/api/realtime/SEQ/alerts")
-		if err != nil {
-			panic(err)
-		}
-
-		providers.SetupProvider(seqAPI, SEQGTFSData, SEQRealtimeData, aestZone)
-	*/
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")
 
