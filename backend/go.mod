@@ -7,7 +7,7 @@ toolchain go1.23.4
 require (
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/google/uuid v1.6.0
-	github.com/jfmow/gtfs v1.3.27
+	github.com/jfmow/gtfs v1.3.28-0.20261005010748-0cd06fcd842d
 	github.com/joho/godotenv v1.5.1
 	github.com/labstack/echo/v5 v5.0.0-20230722203903-ec5b858dab61
 	github.com/mattn/go-sqlite3 v1.14.24

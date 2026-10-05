@@ -50,6 +50,31 @@ func parseGTFSClock(clock string, date time.Time, loc *time.Location) (time.Time
 	return dayStart.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second), true
 }
 
+// How long past its scheduled start a trip with no vehicle on it still counts
+// as not started. Later than that a missing vehicle is more likely a GPS
+// dropout mid-trip, so the feed's predictions are trusted again.
+const tripNotStartedGrace = 10 * time.Minute
+
+// tripUpdatesPastFirstStop reports whether any fresh stop time update is for
+// a stop after the trip's first one - the feed has seen the trip under way.
+func tripUpdatesPastFirstStop(updates []*proto.TripUpdate_StopTimeUpdate, lowestSequence int, stopsForTrip map[string]gtfs.StopTime) bool {
+	for _, update := range updates {
+		if update == nil || update.GetStopTimeProperties().GetHistoric() {
+			continue
+		}
+		if seq := int(update.GetStopSequence()); seq > 0 {
+			if seq > lowestSequence {
+				return true
+			}
+			continue
+		}
+		if stop, ok := stopsForTrip[update.GetStopId()]; ok && stop.Sequence > lowestSequence {
+			return true
+		}
+	}
+	return false
+}
+
 func clampInt32Seconds(v int32, lo, hi int32) int32 {
 	if v < lo {
 		return lo
@@ -528,10 +553,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		nextStopSequenceNumber := 0
 		var tripDelay int32 = 0
 		hasTripUpdate := false
+		var tripStopUpdates []*proto.TripUpdate_StopTimeUpdate
 
 		if tripUpdates, err := realtime.GetTripUpdates(); err == nil {
 			if updatesForTrip, err := tripUpdates.ByTripID(filterTripId); err == nil && updatesForTrip != nil {
 				hasTripUpdate = true
+				tripStopUpdates = updatesForTrip.GetStopTimeUpdate()
 				stopTimesForStops = getPredictedStopArrivalTimesForTrip(
 					updatesForTrip.GetStopTimeUpdate(),
 					localTimeZone,
@@ -555,12 +582,14 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		// Vehicle positions are optional.
 		var (
-			vLat float32
-			vLon float32
+			vLat       float32
+			vLon       float32
+			hasVehicle bool
 		)
 
 		if vehicles, err := realtime.GetVehicles(); err == nil {
 			if vehicleForTrip, err := vehicles.ByTripID(filterTripId); err == nil && vehicleForTrip != nil {
+				hasVehicle = true
 				pos := vehicleForTrip.GetPosition()
 				if pos != nil {
 					vLat = pos.GetLatitude()
@@ -583,6 +612,25 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// stop was the main reason this endpoint got slow well into a long
 		// trip's shape.
 		vehicleDistAlong, vehicleDistErr := line.DistanceAlongShape(float64(vLat), float64(vLon))
+
+		// No vehicle on the trip, no trip update past its first stop, and its
+		// scheduled start still ahead (or only just passed): it hasn't left
+		// its first stop, so it can't be running early. AT's feed carries the
+		// previous trip's running over to these, which read "4 min early" for
+		// a bus still not on the map. A bus without GPS still reports its
+		// progress through the trip updates, so it counts as started.
+		notStarted := false
+		if !hasVehicle && !tripUpdatesPastFirstStop(tripStopUpdates, lowestSequence, stopsForTrip) {
+			for _, stop := range stopsForTrip {
+				if stop.Sequence != lowestSequence {
+					continue
+				}
+				if firstDeparture, ok := parseGTFSClock(stop.DepartureTime, now, localTimeZone); ok {
+					notStarted = now.Before(firstDeparture.Add(tripNotStartedGrace))
+				}
+				break
+			}
+		}
 
 		for _, stop := range stopsForTrip {
 			var data StopTimes
@@ -635,6 +683,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				data.DepartureTime = scheduledDeparture.UnixMilli() + int64(tripDelay)*1000
 			default:
 				data.DepartureTime = scheduledDeparture.UnixMilli()
+			}
+
+			if notStarted {
+				data.ArrivalTime = max(data.ArrivalTime, scheduledArrival.UnixMilli())
+				data.DepartureTime = max(data.DepartureTime, scheduledDeparture.UnixMilli())
 			}
 
 			if vehicleDistErr == nil {
