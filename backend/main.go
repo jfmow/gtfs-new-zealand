@@ -142,10 +142,10 @@ func main() {
 		{
 			name: "at", group: atApi,
 			gtfsURL: "https://gtfs.at.govt.nz/gtfs.zip", dbName: "atfgtfs",
-			// AT's key is capped at 35,000 requests a week (~1 per 17.3 s).
-			// One combined request every 20 s is at most 30,240 a week even if
-			// something keeps it polling around the clock.
-			rtKey: atApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 20 * time.Second,
+			// AT's key is capped at 35,000 requests a week. One combined
+			// request every 17.78 s is at most 34,016 a week even if something
+			// keeps it polling around the clock - ~1,000 spare for retries.
+			rtKey: atApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 17780 * time.Millisecond,
 			rtCombined: "https://api.at.govt.nz/realtime/legacy",
 		},
 		{
