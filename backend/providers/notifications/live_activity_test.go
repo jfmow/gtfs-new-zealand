@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jfmow/gtfs"
+	"github.com/jfmow/gtfs/realtime/proto"
 )
 
 // testPlan: walk 5 min to Britomart, wait, ride the 70 from 9:08 to 9:25,
@@ -421,8 +422,29 @@ func TestLegLive_EarlyDelayTrustedOnceVehicleRuns(t *testing.T) {
 
 	unstarted := legLive{HasTripUpdate: true, DepartureDelay: -12 * 60, ArrivalDelay: -12 * 60}
 	unstarted.clampUnstartedDelays()
-	if unstarted.DepartureDelay != jrMinTrustedDelaySeconds || unstarted.ArrivalDelay != jrMinTrustedDelaySeconds {
+	if unstarted.DepartureDelay != 0 || unstarted.ArrivalDelay != 0 {
 		t.Errorf("pre-trip delays not clamped: %d/%d", unstarted.DepartureDelay, unstarted.ArrivalDelay)
+	}
+
+	// A vehicle already on the trip before its start time (finishing the
+	// previous one) doesn't make it early.
+	assigned := legLive{HasTripUpdate: true, HasVehicle: true, BeforeStart: true, DepartureDelay: -4 * 60, ArrivalDelay: -4 * 60}
+	assigned.clampUnstartedDelays()
+	if assigned.DepartureDelay != 0 || assigned.ArrivalDelay != 0 {
+		t.Errorf("early applied before the start time: %d/%d", assigned.DepartureDelay, assigned.ArrivalDelay)
+	}
+}
+
+func TestTripStartTime(t *testing.T) {
+	tz := mustNZ(t)
+	start := "08:15:00"
+	date := "20261005"
+	got, ok := tripStartTime(&proto.TripDescriptor{StartTime: &start, StartDate: &date}, tz)
+	if want := time.Date(2026, 10, 5, 8, 15, 0, 0, tz); !ok || !got.Equal(want) {
+		t.Fatalf("got %v %v, want %v", got, ok, want)
+	}
+	if _, ok := tripStartTime(&proto.TripDescriptor{StartDate: &date}, tz); ok {
+		t.Fatal("start date alone parsed")
 	}
 }
 

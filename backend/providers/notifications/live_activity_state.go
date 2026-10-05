@@ -146,7 +146,10 @@ type legLive struct {
 	// HasVehicle is true only when a running vehicle's position could be
 	// placed on the trip - AT publishes trip updates for trips that haven't
 	// started, so stop-count logic is gated on this, not on HasTripUpdate.
-	HasVehicle    bool
+	HasVehicle bool
+	// BeforeStart is true while the trip's start time (from its trip
+	// update) is still ahead - it can't be running early yet, vehicle or not.
+	BeforeStart   bool
 	StopsToBoard  int // stops before the boarding stop (0 = it's next, <0 = passed)
 	StopsToAlight int // stops before the alighting stop (0 = it's next, <0 = passed)
 	NextStopName  string

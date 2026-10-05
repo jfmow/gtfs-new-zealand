@@ -37,10 +37,12 @@ Status lifecycle:
 const (
 	// Bounds on a GTFS-realtime delay we're willing to trust for the leave-time
 	// maths. A late service can push the leave time out a long way, but a
-	// service reporting more than a few minutes *early* is almost always a
-	// stale pre-trip prediction - trusting it drags every "leave" alert that
-	// many minutes too soon, so the early side is clamped tight.
-	jrMinTrustedDelaySeconds = -3 * 60
+	// trip that hasn't started can't be early - an early prediction then is
+	// the feed carrying over the previous trip's running, and trusting it
+	// drags every "leave" alert that many minutes too soon. An early bus
+	// that's actually under way is taken from the Live Activity lookup
+	// (planLiveLeave), which doesn't clamp a started trip.
+	jrMinTrustedDelaySeconds = 0
 	jrMaxTrustedDelaySeconds = 2 * 60 * 60
 
 	// A leave-time shift this many seconds past what the user was last told

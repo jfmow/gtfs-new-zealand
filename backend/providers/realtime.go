@@ -554,11 +554,13 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		var tripDelay int32 = 0
 		hasTripUpdate := false
 		var tripStopUpdates []*proto.TripUpdate_StopTimeUpdate
+		var tripDescriptor *proto.TripDescriptor
 
 		if tripUpdates, err := realtime.GetTripUpdates(); err == nil {
 			if updatesForTrip, err := tripUpdates.ByTripID(filterTripId); err == nil && updatesForTrip != nil {
 				hasTripUpdate = true
 				tripStopUpdates = updatesForTrip.GetStopTimeUpdate()
+				tripDescriptor = updatesForTrip.GetTrip()
 				stopTimesForStops = getPredictedStopArrivalTimesForTrip(
 					updatesForTrip.GetStopTimeUpdate(),
 					localTimeZone,
@@ -613,23 +615,33 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// trip's shape.
 		vehicleDistAlong, vehicleDistErr := line.DistanceAlongShape(float64(vLat), float64(vLon))
 
-		// No vehicle on the trip, no trip update past its first stop, and its
-		// scheduled start still ahead (or only just passed): it hasn't left
-		// its first stop, so it can't be running early. AT's feed carries the
-		// previous trip's running over to these, which read "4 min early" for
-		// a bus still not on the map. A bus without GPS still reports its
-		// progress through the trip updates, so it counts as started.
-		notStarted := false
-		if !hasVehicle && !tripUpdatesPastFirstStop(tripStopUpdates, lowestSequence, stopsForTrip) {
+		// A trip that hasn't left its first stop can't be running early. AT's
+		// feed carries the previous trip's running over to these, which read
+		// "4 min early" for a bus still not on the map. Before the trip's
+		// start time (its trip update's start_time, else the timetabled first
+		// departure) that's always so - AT assigns a vehicle and predicts
+		// every later stop well ahead of the trip. For a short grace after,
+		// it still counts as not started while there's no vehicle on it and
+		// no trip update past its first stop (a bus without GPS still reports
+		// its progress through those).
+		var tripStart time.Time
+		haveStart := false
+		if tripDescriptor != nil && tripDescriptor.GetStartTime() != "" {
+			tripStart, haveStart = parseGTFSClock(tripDescriptor.GetStartTime(), now, localTimeZone)
+		}
+		if !haveStart {
 			for _, stop := range stopsForTrip {
-				if stop.Sequence != lowestSequence {
-					continue
+				if stop.Sequence == lowestSequence {
+					tripStart, haveStart = parseGTFSClock(stop.DepartureTime, now, localTimeZone)
+					break
 				}
-				if firstDeparture, ok := parseGTFSClock(stop.DepartureTime, now, localTimeZone); ok {
-					notStarted = now.Before(firstDeparture.Add(tripNotStartedGrace))
-				}
-				break
 			}
+		}
+		notStarted := false
+		if haveStart {
+			notStarted = now.Before(tripStart) ||
+				(!hasVehicle && !tripUpdatesPastFirstStop(tripStopUpdates, lowestSequence, stopsForTrip) &&
+					now.Before(tripStart.Add(tripNotStartedGrace)))
 		}
 
 		for _, stop := range stopsForTrip {

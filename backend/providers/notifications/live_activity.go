@@ -456,6 +456,9 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 
 		var l legLive
 		l.HasTripUpdate = true
+		if start, ok := tripStartTime(tu.GetTrip(), tz); ok {
+			l.BeforeStart = time.Now().Before(start)
+		}
 		if tu.GetTrip().GetScheduleRelationship() == proto.TripDescriptor_CANCELED {
 			l.Cancelled = true
 			return l, true
@@ -516,18 +519,36 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 	}
 }
 
-// clampUnstartedDelays bounds the delays of a trip with no vehicle running
-// on it yet: a big early prediction then is usually a stale pre-trip one
-// (as for leave-time reminders). Once a vehicle is running its predictions
-// are real - and they're what the app shows, unclamped: clamping them made
-// an alert push while the app was open swap "12 min early" for "3 min
-// early" and move the arrival 9 min later (2026-09-29).
+// clampUnstartedDelays stops a trip that hasn't started from reading early:
+// no vehicle running on it yet, or its start time still ahead (AT puts a
+// vehicle on the next trip while it finishes the previous one). An early
+// prediction then is the feed carrying over the previous trip's running.
+// Once a vehicle is running the trip its predictions are real - and they're
+// what the app shows, unclamped: clamping them made an alert push while the
+// app was open swap "12 min early" for "3 min early" and move the arrival
+// 9 min later (2026-09-29).
 func (l *legLive) clampUnstartedDelays() {
-	if l.HasVehicle {
+	if l.HasVehicle && !l.BeforeStart {
 		return
 	}
 	l.DepartureDelay = clampJRDelay(l.DepartureDelay)
 	l.ArrivalDelay = clampJRDelay(l.ArrivalDelay)
+}
+
+// tripStartTime is when a trip update's trip starts, from its descriptor's
+// start_date and start_time. GTFS times count from noon minus 12h on the
+// service day (so a DST day isn't an hour out) and can run past 24:00.
+func tripStartTime(trip *proto.TripDescriptor, tz *time.Location) (time.Time, bool) {
+	day, err := time.ParseInLocation("20060102", trip.GetStartDate(), tz)
+	if err != nil {
+		return time.Time{}, false
+	}
+	var h, m, s int
+	if n, err := fmt.Sscanf(trip.GetStartTime(), "%d:%d:%d", &h, &m, &s); err != nil || n != 3 {
+		return time.Time{}, false
+	}
+	dayStart := time.Date(day.Year(), day.Month(), day.Day(), 12, 0, 0, 0, tz).Add(-12 * time.Hour)
+	return dayStart.Add(time.Duration(h)*time.Hour + time.Duration(m)*time.Minute + time.Duration(s)*time.Second), true
 }
 
 // findLegStop is the index in `stops` (sorted by sequence) of a plan leg's
