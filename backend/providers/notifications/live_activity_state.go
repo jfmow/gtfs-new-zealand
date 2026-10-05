@@ -152,6 +152,9 @@ type legLive struct {
 	BeforeStart   bool
 	StopsToBoard  int // stops before the boarding stop (0 = it's next, <0 = passed)
 	StopsToAlight int // stops before the alighting stop (0 = it's next, <0 = passed)
+	// MetresToBoard is the running vehicle's straight-line distance to the
+	// boarding stop - nil without a placed vehicle.
+	MetresToBoard *float64
 	NextStopName  string
 	// RideStops is how many stops the rider travels (board -> alight), from
 	// the trip's stop list - 0 when it isn't known.
@@ -500,6 +503,17 @@ func fillOnTheWay(state *journeyActivityState, f int, next gtfs.JourneyLeg, t, n
 	state.SecondaryText = fmt.Sprintf("%s departs %s%s · %s", route, clock(nt.dep), platformSuffix(state.Platform), spareNote(spare))
 }
 
+// boardProximityMeters is how close the vehicle has to be to the boarding
+// stop for "get on now" - matches the app's own threshold
+// (JourneyProgressModel.boardProximityThreshold). Buses get more lead: the
+// rider may need to flag it down.
+func boardProximityMeters(mode string) float64 {
+	if mode == "train" || mode == "ferry" {
+		return 220
+	}
+	return 350
+}
+
 // spareNote is how long the rider will wait at the stop - "3 min spare".
 func spareNote(spare time.Duration) string {
 	if m := int(spare.Minutes()); m >= 1 {
@@ -571,6 +585,17 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 					title = fmt.Sprintf("Your %s is arriving", route)
 				}
 				state.alert = &activityAlert{Key: fmt.Sprintf("approach-%d", idx), Title: title, Body: "Board at " + stopLabel(leg.FromStop) + platformSuffix(state.Platform) + "."}
+			}
+			// The moment to get on - its own key, so it still goes out
+			// after the "stops away" heads-up has. Siri reads it out
+			// through AirPods (sent as a notification while they're in),
+			// same as the app's in-app "Get on the 70 now".
+			if away == 0 && t.live.MetresToBoard != nil && *t.live.MetresToBoard <= boardProximityMeters(state.VehicleMode) {
+				body := "It's arriving at " + stopLabel(leg.FromStop) + platformSuffix(state.Platform) + "."
+				if state.VehicleMode == "bus" || state.VehicleMode == "" {
+					body += " Flag it down if needed."
+				}
+				state.alert = &activityAlert{Key: fmt.Sprintf("board-%d", idx), Title: fmt.Sprintf("Get on the %s now", route), Body: body}
 			}
 		}
 		state.SecondaryText = secondary

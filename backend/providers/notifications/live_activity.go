@@ -508,6 +508,10 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 					}
 					l.StopsToBoard = boardIdx - nextIdx
 					l.StopsToAlight = alightIdx - nextIdx
+					if b := stops[boardIdx]; b.StopLat != 0 || b.StopLon != 0 {
+						m := vehiclestate.Haversine(lat, lon, b.StopLat, b.StopLon)
+						l.MetresToBoard = &m
+					}
 					if nextIdx < len(stops) {
 						l.NextStopName = stopDisplayName(stops[nextIdx], parentStops)
 					}

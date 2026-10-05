@@ -218,6 +218,27 @@ func TestActivity_VehicleStopsAwayAndApproachAlert(t *testing.T) {
 	}
 }
 
+func TestActivity_BoardNowAlert(t *testing.T) {
+	far, near := 900.0, 120.0
+	// Next stop is the rider's, but still a way off: the heads-up only.
+	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: 0, StopsToAlight: 7, MetresToBoard: &far}})
+	state := computeJourneyActivityState(testPlan(base), base.Add(7*time.Minute), live, noHint)
+	if state.alert == nil || state.alert.Key != "approach-1" {
+		t.Fatalf("far: alert = %+v", state.alert)
+	}
+
+	// Pulling in: its own "get on" moment, with a key of its own so it goes
+	// out after the heads-up has.
+	live = liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: 0, StopsToAlight: 7, MetresToBoard: &near}})
+	state = computeJourneyActivityState(testPlan(base), base.Add(8*time.Minute), live, noHint)
+	if state.alert == nil || state.alert.Key != "board-1" || state.alert.Title != "Get on the 70 now" {
+		t.Fatalf("near: alert = %+v", state.alert)
+	}
+	if !strings.Contains(state.alert.Body, "It's arriving at") {
+		t.Errorf("body = %q", state.alert.Body)
+	}
+}
+
 func TestActivity_LateVehicleKeepsRiderWaitingPastScheduledDeparture(t *testing.T) {
 	// Clock says the ride left at 9:08, but the bus hasn't reached the stop.
 	live := liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: 1, StopsToAlight: 8}})

@@ -396,7 +396,18 @@ struct JourneyTrackingView: View {
         guard height > 0, abs(height - peekDrawerHeight) >= 1 else { return }
         let wasPeeking = sheetDetent == .height(peekDrawerHeight)
         peekDrawerHeight = height
-        if wasPeeking { sheetDetent = .height(height) }
+        guard wasPeeking else { return }
+        sheetDetent = .height(height)
+        // Swapping the detent set and the selection in one update isn't
+        // always honoured by a presented sheet - it can stay at the old
+        // peek height, showing the top of the chips under a two-line hero
+        // (long stop names). Re-assert once the new set has landed.
+        Task { @MainActor in
+            if peekDrawerHeight == height, sheetDetent != .height(height),
+               sheetDetent != .height(Self.compactDrawerHeight), sheetDetent != .medium, sheetDetent != .large {
+                sheetDetent = .height(height)
+            }
+        }
     }
 
     /// Mode tile, the one-line status ("Waiting for the 70"), a detail line
@@ -415,8 +426,7 @@ struct JourneyTrackingView: View {
                     Text(heroDetail)
                         .font(.meta)
                         .foregroundStyle(Theme.mutedForeground)
-                        .lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -424,9 +434,17 @@ struct JourneyTrackingView: View {
             if let countdown = heroCountdown {
                 TimelineView(.periodic(from: .now, by: 15)) { context in
                     VStack(alignment: .trailing, spacing: 0) {
-                        Text(Self.minutesText(until: countdown.target, now: context.date))
-                            .font(.number(26))
-                            .foregroundStyle(countdown.urgent ? Theme.warning : Theme.foreground)
+                        // Width reserved for the widest usual value, so the
+                        // title beside it doesn't rewrap (and the hero - and
+                        // with it the peek detent - change height) as the
+                        // minutes tick from "10 min" to "9 min".
+                        ZStack(alignment: .trailing) {
+                            Text("88 min")
+                                .hidden()
+                            Text(Self.minutesText(until: countdown.target, now: context.date))
+                                .foregroundStyle(countdown.urgent ? Theme.warning : Theme.foreground)
+                        }
+                        .font(.number(26))
                         Text(countdown.caption)
                             .font(.geist(12, relativeTo: .caption))
                             .foregroundStyle(Theme.mutedForeground)
