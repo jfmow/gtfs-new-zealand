@@ -58,6 +58,10 @@ type region struct {
 	rtVehicles string
 	rtTrips    string
 	rtAlerts   string
+	// rtCombined, when set, is one feed carrying vehicles, trip updates and
+	// alerts together - used instead of the three URLs above, so each refresh
+	// costs one request rather than three.
+	rtCombined string
 
 	gtfs   gtfs.Database
 	rt     rt.Realtime
@@ -138,10 +142,11 @@ func main() {
 		{
 			name: "at", group: atApi,
 			gtfsURL: "https://gtfs.at.govt.nz/gtfs.zip", dbName: "atfgtfs",
-			rtKey: atApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 17 * time.Second,
-			rtVehicles: "https://api.at.govt.nz/realtime/legacy/vehiclelocations",
-			rtTrips:    "https://api.at.govt.nz/realtime/legacy/tripupdates",
-			rtAlerts:   "https://api.at.govt.nz/realtime/legacy/servicealerts",
+			// AT's key is capped at 35,000 requests a week (~1 per 17.3 s).
+			// One combined request every 20 s is at most 30,240 a week even if
+			// something keeps it polling around the clock.
+			rtKey: atApiKey, rtHeader: "Ocp-Apim-Subscription-Key", rtInterval: 20 * time.Second,
+			rtCombined: "https://api.at.govt.nz/realtime/legacy",
 		},
 		{
 			name: "wel", group: mlApi,
@@ -180,7 +185,12 @@ func main() {
 				fmt.Printf("Error loading %s gtfs db: %v\n", r.name, err)
 			}
 			r.gtfs = data
-			client, err := rt.NewClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtVehicles, r.rtTrips, r.rtAlerts, *localTimeZone)
+			var client rt.Realtime
+			if r.rtCombined != "" {
+				client, err = rt.NewCombinedClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtCombined, *localTimeZone)
+			} else {
+				client, err = rt.NewClient(r.rtKey, r.rtHeader, r.rtInterval, r.rtVehicles, r.rtTrips, r.rtAlerts, *localTimeZone)
+			}
 			if err != nil {
 				r.rtErr = err
 				return

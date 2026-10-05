@@ -228,6 +228,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if tripUpdatesCronMutex.TryLock() {
 				defer tripUpdatesCronMutex.Unlock()
+				if has, err := notificationDB.HasAnySubscriptions(); err != nil || !has {
+					return
+				}
 				updates, err := realtime.GetTripUpdates()
 				if err == nil {
 					notificationDB.NotifyTripUpdates(updates, gtfsData, parentStopsCache, stopsForTripCache)
@@ -242,6 +245,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if now.Hour() >= 4 && now.Hour() < 24 { // Runs only between 4:00 AM and 11:59 PM
 			if alertsCronMutex.TryLock() {
 				defer alertsCronMutex.Unlock()
+				if has, err := notificationDB.HasAnySubscriptions(); err != nil || !has {
+					return
+				}
 				alerts, err := realtime.GetAlerts()
 				if err == nil {
 					notificationDB.NotifyAlerts(alerts, gtfsData, parentStopsCache)

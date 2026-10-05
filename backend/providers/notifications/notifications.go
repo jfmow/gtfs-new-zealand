@@ -1045,6 +1045,24 @@ func (v *Database) SendNotificationToAllClients(body string, title string, url s
 	return nil
 }
 
+// HasAnySubscriptions reports whether any device follows a stop or route -
+// the cheap gate for the alerts/cancellations crons, so with nobody to notify
+// they don't pull realtime from the upstream API (which has a weekly quota).
+func (v *Database) HasAnySubscriptions() (bool, error) {
+	row, cancel := v.queryRowContext(`SELECT 1 FROM stops UNION ALL SELECT 1 FROM route_subscriptions LIMIT 1`)
+	defer cancel()
+
+	var exists int
+	if err := row.Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("failed to check subscriptions: %w", err)
+	}
+
+	return true, nil
+}
+
 func (v *Database) HasAnyReminders() (bool, error) {
 	row, cancel := v.queryRowContext(`SELECT 1 FROM reminders LIMIT 1`)
 	defer cancel()
