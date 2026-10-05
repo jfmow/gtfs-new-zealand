@@ -25,7 +25,7 @@ export function addSecondsToTime(timeStr: string, secondsToAdd: number): string 
 export const formatUnixTime = (unixTime: number | null | undefined) => {
     if (!unixTime) return "00:00 AM";
 
-    const timeString = new Date(unixTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', ':') + ':00';
+    const timeString = new Date(unixTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: regionTimeZone() }).replace(':', ':') + ':00';
     const arrivalTime = convert24hTo12h(timeString);
 
     const minutesTillArrival = timeTillArrival(timeString);
@@ -52,35 +52,36 @@ export function convert24hTo12h(time24: string): string {
 }
 
 import moment from 'moment-timezone';
+import { regionTimeZone } from './url-store';
 
 export function timeTillArrival(arrivalTime: string): number {
-    // Get current time in NZ time
-    const nowInNZ = moment().tz('Pacific/Auckland');
+    // Now on the region's clock - GTFS times are in its timezone
+    const nowInRegion = moment().tz(regionTimeZone());
 
-    // Parse the arrival time string into a moment object in NZ time
+    // Parse the arrival time string on that same clock
     const [hours, minutes, seconds] = arrivalTime.split(':').map(Number);
-    const target = moment.tz(nowInNZ.format('YYYY-MM-DD'), 'Pacific/Auckland')
+    const target = moment.tz(nowInRegion.format('YYYY-MM-DD'), regionTimeZone())
         .set({ hour: hours, minute: minutes, second: seconds });
 
     // Calculate the difference in minutes
-    const diffInMinutes = target.diff(nowInNZ, 'minutes');
+    const diffInMinutes = target.diff(nowInRegion, 'minutes');
 
     return diffInMinutes;
 }
 
 export function timeTillArrivalString(arrivalTime: string): string {
-    // Get current time in NZ time
-    const nowInNZ = moment().tz('Pacific/Auckland');
+    // Now on the region's clock - GTFS times are in its timezone
+    const nowInRegion = moment().tz(regionTimeZone());
 
-    // Parse the arrival time string into a moment object in NZ time
+    // Parse the arrival time string on that same clock
     const [hours, minutes, seconds] = arrivalTime.split(':').map(Number);
-    const target = moment.tz(nowInNZ.format('YYYY-MM-DD'), 'Pacific/Auckland')
+    const target = moment.tz(nowInRegion.format('YYYY-MM-DD'), regionTimeZone())
         .set({ hour: hours, minute: minutes, second: seconds });
 
     // Calculate the difference
-    const diffInMinutes = target.diff(nowInNZ, 'minutes');
-    const diffInHours = target.diff(nowInNZ, 'hours');
-    const diffInDays = target.diff(nowInNZ, 'days');
+    const diffInMinutes = target.diff(nowInRegion, 'minutes');
+    const diffInHours = target.diff(nowInRegion, 'hours');
+    const diffInDays = target.diff(nowInRegion, 'days');
 
     if (diffInMinutes < 0) {
         return "Departed"; // Handles past times
@@ -104,12 +105,12 @@ export function timeTillArrivalString(arrivalTime: string): string {
 
 /** Like `timeTillArrivalString`, but for an arrival time already expressed as epoch ms. */
 export function timeTillArrivalMsString(arrivalMs: number): string {
-    const nowInNZ = moment().tz('Pacific/Auckland');
-    const target = moment.tz(arrivalMs, 'Pacific/Auckland');
+    const nowInRegion = moment().tz(regionTimeZone());
+    const target = moment.tz(arrivalMs, regionTimeZone());
 
-    const diffInMinutes = target.diff(nowInNZ, 'minutes');
-    const diffInHours = target.diff(nowInNZ, 'hours');
-    const diffInDays = target.diff(nowInNZ, 'days');
+    const diffInMinutes = target.diff(nowInRegion, 'minutes');
+    const diffInHours = target.diff(nowInRegion, 'hours');
+    const diffInDays = target.diff(nowInRegion, 'days');
 
     if (diffInMinutes < 0) {
         return "Departed";

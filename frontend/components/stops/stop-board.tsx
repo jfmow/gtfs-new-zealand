@@ -1,5 +1,6 @@
 import { lazy, Suspense, useState } from "react"
 import { isSameDay } from "date-fns"
+import { regionDayAsLocal } from "@/lib/region-time"
 import { Bell, CalendarDays, ChevronLeft, MessageCircleWarning, MoreHorizontal, Navigation, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -169,7 +170,7 @@ function StopBoardActions({ stopQuery, title, onPickDate }: { stopQuery: string;
                         mode="single"
                         className="mx-auto"
                         onSelect={(picked) => {
-                            onPickDate(picked && !isSameDay(picked, new Date()) ? picked : undefined)
+                            onPickDate(picked && !isSameDay(picked, regionDayAsLocal(new Date())) ? picked : undefined)
                             setDialog(null)
                         }}
                     />

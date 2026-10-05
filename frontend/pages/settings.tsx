@@ -1,5 +1,6 @@
 import { Header } from "@/components/nav";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { groupByCountry } from "@/lib/url-store";
 import { useUrl } from "@/lib/url-context";
 import { Bell, BellRing, ChevronRight, Map as MapIcon, Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes";
@@ -69,18 +70,23 @@ export default function Settings() {
                                 <SelectValue placeholder="Select a provider" />
                             </SelectTrigger>
                             <SelectContent>
-                                {urlOptions.map((item) => (
-                                    <SelectItem key={item.url} value={item.url}>
-                                        <div className="flex items-center gap-2">
-                                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                                            <img
-                                                alt="provider logo"
-                                                className="w-4 h-4 object-contain"
-                                                src={item.logoUrl}
-                                            />
-                                            <span>{item.displayName}</span>
-                                        </div>
-                                    </SelectItem>
+                                {groupByCountry(urlOptions).map((group) => (
+                                    <SelectGroup key={group.country}>
+                                        <SelectLabel>{group.name}</SelectLabel>
+                                        {group.options.map((item) => (
+                                            <SelectItem key={item.url} value={item.url}>
+                                                <div className="flex items-center gap-2">
+                                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                    <img
+                                                        alt="provider logo"
+                                                        className="w-4 h-4 object-contain"
+                                                        src={item.logoUrl}
+                                                    />
+                                                    <span>{item.displayName}</span>
+                                                </div>
+                                            </SelectItem>
+                                        ))}
+                                    </SelectGroup>
                                 ))}
                             </SelectContent>
                         </Select>

@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { cn, useIsMobile } from '@/lib/utils'
+import { useUrl } from '@/lib/url-context'
+import { hasRealtime } from '@/lib/url-store'
 import { useTheme } from 'next-themes'
 import { ReactNode, useEffect, useState } from 'react'
 import Head from 'next/head'
@@ -22,6 +24,8 @@ interface NavTab {
     icon: LucideIcon
     /** Path prefixes that count as this tab ("/" matches only itself). */
     match: string[]
+    /** Needs the region's realtime feed. */
+    realtime?: boolean
 }
 
 /**
@@ -34,8 +38,15 @@ const NAV_TABS: NavTab[] = [
     { href: '/', label: 'Schedule', icon: CalendarDays, match: ['/'] },
     { href: '/plan', label: 'Planner', icon: Route, match: ['/plan', '/journey'] },
     { href: '/map', label: 'Map', icon: Map, match: ['/map', '/stops', '/vehicles'] },
-    { href: '/alerts', label: 'Alerts', icon: TriangleAlert, match: ['/alerts'] },
+    { href: '/alerts', label: 'Alerts', icon: TriangleAlert, match: ['/alerts'], realtime: true },
 ]
+
+/** The tabs for the current region - Alerts only where the region has realtime. */
+function useNavTabs(): NavTab[] {
+    const { currentUrl } = useUrl()
+    const realtime = hasRealtime(currentUrl)
+    return NAV_TABS.filter((tab) => realtime || !tab.realtime)
+}
 
 /** Titles for pages that aren't a tab (reached from the menu). */
 const PAGE_TITLES: Record<string, string> = {
@@ -56,6 +67,7 @@ export default function NavBar() {
     const isMobile = useIsMobile()
     const router = useRouter()
     const activeTab = useActiveTab()
+    const tabs = useNavTabs()
 
     const logo = theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"
     const title = PAGE_TITLES[router.pathname] ?? activeTab?.label ?? ''
@@ -94,7 +106,7 @@ export default function NavBar() {
                         </Link>
 
                         <ul className="flex items-center gap-1 flex-1 h-full">
-                            {NAV_TABS.map((tab) => {
+                            {tabs.map((tab) => {
                                 const active = tab === activeTab
                                 return (
                                     <li key={tab.href} className="h-full">
@@ -125,21 +137,21 @@ export default function NavBar() {
                 )}
             </div>
 
-            {isMobile && <TabBar activeTab={activeTab} />}
+            {isMobile && <TabBar tabs={tabs} activeTab={activeTab} />}
         </>
     )
 }
 
 /** The iOS tab bar: fixed to the bottom on phones, above the home indicator. */
-function TabBar({ activeTab }: { activeTab: NavTab | undefined }) {
+function TabBar({ tabs, activeTab }: { tabs: NavTab[]; activeTab: NavTab | undefined }) {
     return (
         <nav
             data-hide-immersive
             aria-label="Main"
             className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-md pb-[env(safe-area-inset-bottom)]"
         >
-            <ul className="grid h-14 grid-cols-4">
-                {NAV_TABS.map((tab) => {
+            <ul className={cn("grid h-14", tabs.length === 4 ? "grid-cols-4" : "grid-cols-3")}>
+                {tabs.map((tab) => {
                     const active = tab === activeTab
                     return (
                         <li key={tab.href}>
@@ -167,6 +179,8 @@ function AppMenu() {
     const router = useRouter()
     const [remindersOpen, setRemindersOpen] = useState(false)
     const [findVehicleOpen, setFindVehicleOpen] = useState(false)
+    const { currentUrl } = useUrl()
+    const realtime = hasRealtime(currentUrl)
 
     return (
         <>
@@ -186,10 +200,12 @@ function AppMenu() {
                         <BellRing className="w-4 h-4" />
                         My reminders
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => setFindVehicleOpen(true)}>
-                        <Locate className="w-4 h-4" />
-                        Find my vehicle
-                    </DropdownMenuItem>
+                    {realtime && (
+                        <DropdownMenuItem onSelect={() => setFindVehicleOpen(true)}>
+                            <Locate className="w-4 h-4" />
+                            Find my vehicle
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => router.push('/settings')}>
                         <Settings2Icon className="w-4 h-4" />

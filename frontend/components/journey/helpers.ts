@@ -1,5 +1,6 @@
 import type { ServicesStop, StopTimes, VehiclesResponse } from "@/components/services/tracker"
 import { RealtimeStatus, type Leg, type JourneyType, type Stop } from "./types"
+import { regionTimeZone } from '@/lib/url-store'
 
 /**
  * Finds a journey leg's board/alight stop within a tracked trip's own stop list,
@@ -80,17 +81,17 @@ export function leadingAccessSeconds(route: JourneyType): number {
     return Math.max(0, Math.round((boardDepMs - planStartMs) / 1000))
 }
 
-/** YYYYMMDD for a date in the transit network's timezone (Pacific/Auckland). */
-export function nzServiceDate(d: Date | string): string {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Pacific/Auckland' })
+/** YYYYMMDD for a date in the transit network's timezone. */
+export function serviceDate(d: Date | string): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: regionTimeZone() })
         .format(new Date(d))
         .replace(/-/g, '')
 }
 
-/** "HH:MM" for a date in Pacific/Auckland. */
-export function nzHHMM(d: Date | string): string {
+/** "HH:MM" for a date on the region's clock. */
+export function regionHHMM(d: Date | string): string {
     return new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Pacific/Auckland',
+        timeZone: regionTimeZone(),
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
@@ -158,6 +159,7 @@ export function pruneDominatedPlans(routes: JourneyType[]): JourneyType[] {
 
 export function formatTime(dateString: string | Date) {
     return new Date(dateString).toLocaleTimeString('en-US', {
+        timeZone: regionTimeZone(),
         hour: 'numeric',
         minute: '2-digit',
         hour12: true,

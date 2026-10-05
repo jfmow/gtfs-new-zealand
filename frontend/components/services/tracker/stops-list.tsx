@@ -5,6 +5,7 @@ import { StopReminderDialog, type StopReminderTarget } from "../stop-reminder-di
 import { useServiceTrackerContext } from "./use-service-tracker"
 import { findRiderStop } from "./helpers"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
+import { inRegion } from "@/lib/region-time"
 
 interface StopsListProps {
     stops: ServicesStop[] | null
@@ -255,7 +256,7 @@ const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function Tim
         >
             {/* Time */}
             <span className="w-[4.5rem] shrink-0 self-center py-3 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                {arrival > 0 ? new Date(arrival).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" }) : ""}
+                {arrival > 0 ? new Date(arrival).toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" })) : ""}
             </span>
 
             {/* Rail + marker */}

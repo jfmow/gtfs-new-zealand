@@ -25,6 +25,7 @@ import ErrorScreen, { InfoScreen } from "../ui/error-screen"
 import { DisplayTodaysAlerts } from "@/pages/alerts"
 import ServicesLoadingSkeleton from "./loading-skeleton"
 import { motion, AnimatePresence } from "framer-motion"
+import { inRegion, regionMidnightOf } from "@/lib/region-time"
 
 interface ServicesProps {
     stopName: string
@@ -176,7 +177,7 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
         async function fetchServices(date?: Date) {
             const req = await ApiFetch<Service[]>(
                 encodeURI(
-                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(date.getTime() / 1000)}` : "?limit=200"}`,
+                    `/services/${fullyEncodeURIComponent(stopName)}${date ? `/schedule?date=${Math.floor(regionMidnightOf(date).getTime() / 1000)}` : "?limit=200"}`,
                 ),
             )
             if (cancelled) return
@@ -274,7 +275,7 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
                         <History className="h-3.5 w-3.5 shrink-0" />
                         <span className="flex-1">
                             {online ? "Couldn't refresh" : "You're offline"} · times as of{" "}
-                            {lastUpdated!.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                            {lastUpdated!.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}
                         </span>
                         {online && (
                             <button type="button" onClick={() => retryRef.current?.()} className="font-medium underline-offset-2 hover:underline">

@@ -1,6 +1,6 @@
 import type React from "react"
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
-import { UrlOption, urlOptions, urlStore } from "./url-store"
+import { hasRealtime, UrlOption, urlOptions, urlStore } from "./url-store"
 
 type UrlContextType = {
     currentUrl: UrlOption
@@ -66,6 +66,8 @@ function getOrCreateTraceId(): string {
     return traceId;
 }
 
+const REALTIME_ONLY_PATH = /^realtime\/(live|alerts|find-my-vehicle)\b/
+
 export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<ApiResult<T>> {
     const { url } = urlStore.currentUrl;
 
@@ -73,6 +75,13 @@ export async function ApiFetch<T>(path: string, options?: RequestInit): Promise<
     if (!path || path.trim() === "") throw new Error("No valid path provided");
 
     const normalizedPath = path.startsWith("/") ? path.substring(1) : path;
+
+    // Live vehicles and alerts don't exist for a region without GTFS-RT - fail
+    // like an outage without asking. (realtime/stop-times stays: it falls back
+    // to the timetable.)
+    if (!hasRealtime(urlStore.currentUrl) && REALTIME_ONLY_PATH.test(normalizedPath)) {
+        return { ok: false, error: "No realtime data for this region", status_code: 404, trace_id: "" } as ApiError
+    }
     const fullUrl = new URL(normalizedPath, `${url}/`).toString();
 
     const traceId = getOrCreateTraceId();

@@ -5,6 +5,7 @@ import type { Service } from "@/components/services"
 import { ApiFetch } from "@/lib/url-context"
 import { cn, fullyEncodeURIComponent } from "@/lib/utils"
 import { formatTextToNiceLookingWords, timeTillArrivalString } from "@/lib/formating"
+import { inRegion } from "@/lib/region-time"
 
 const REFRESH_MS = 30_000
 
@@ -139,7 +140,7 @@ export function HomeStopRow({
                             {isStale && lastUpdated && (
                                 <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
                                     <History className="h-3 w-3" />
-                                    Times as of {lastUpdated.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                                    Times as of {lastUpdated.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}
                                 </span>
                             )}
                         </div>

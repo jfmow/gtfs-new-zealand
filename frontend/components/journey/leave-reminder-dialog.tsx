@@ -19,8 +19,8 @@ import type { RouteOption } from "./route-filter"
 import {
     getFirstTransitLeg,
     leadingAccessSeconds,
-    nzServiceDate,
-    nzHHMM,
+    serviceDate,
+    regionHHMM,
     formatTime,
 } from "./helpers"
 
@@ -199,8 +199,8 @@ export function LeaveReminderDialog({
                 kind: "fixed_trip",
                 deeplink: deeplink ?? recurringDeeplink,
                 timeType: arriveAt ? "arriveat" : "departat",
-                targetHHMM: nzHHMM(targetSourceIso),
-                serviceDate: nzServiceDate(transit.scheduled_departure_time ?? transit.DepartureTime),
+                targetHHMM: regionHHMM(targetSourceIso),
+                serviceDate: serviceDate(transit.scheduled_departure_time ?? transit.DepartureTime),
                 boardTripId: transit.TripID,
                 boardStopId: transit.FromStop?.stop_id,
                 scheduledDepartureIso: boardIso,
@@ -215,7 +215,7 @@ export function LeaveReminderDialog({
                 kind: "journey_request",
                 deeplink: recurringDeeplink,
                 timeType: arriveAt ? "arriveat" : "departat",
-                targetHHMM: nzHHMM(targetSourceIso),
+                targetHHMM: regionHHMM(targetSourceIso),
                 recurrence: recurrenceMask,
                 recurrenceUntil: until ? until.replace(/-/g, "") : undefined,
             })

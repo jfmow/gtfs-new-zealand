@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react"
 import { Bell, Check, LocateFixed, MapPinned, Route as RouteIcon, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { groupByCountry } from "@/lib/url-store"
 import { useUrl } from "@/lib/url-context"
 import { getUserLocation } from "@/lib/userLocation"
 import { ensureSubscription } from "@/lib/notifications"
@@ -86,7 +87,12 @@ export function FirstVisitCard() {
                     >
                         <SelectTrigger className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                            {urlOptions.map((o) => <SelectItem key={o.url} value={o.url}>{o.displayName}</SelectItem>)}
+                            {groupByCountry(urlOptions).map((group) => (
+                                <SelectGroup key={group.country}>
+                                    <SelectLabel>{group.name}</SelectLabel>
+                                    {group.options.map((o) => <SelectItem key={o.url} value={o.url}>{o.displayName}</SelectItem>)}
+                                </SelectGroup>
+                            ))}
                         </SelectContent>
                     </Select>
                 </Row>

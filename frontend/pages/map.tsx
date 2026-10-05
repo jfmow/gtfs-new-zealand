@@ -19,6 +19,7 @@ import ServiceTrackerView from "@/components/services/tracker/panel"
 import { useRouteLine, useServiceTracker } from "@/components/services/tracker/use-service-tracker"
 import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-filter"
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context"
+import { hasRealtime } from "@/lib/url-store"
 import { useUserLocation } from "@/lib/userLocation"
 import { haversineDistance, useIsMobile } from "@/lib/utils"
 import { useUrlOverlay } from "@/lib/url-overlay"
@@ -48,7 +49,9 @@ const VEHICLES_MODE_STOP_LIMIT = 300
  */
 export default function MapPage() {
     const router = useRouter()
-    const mode: MapMode = router.query.mode === "vehicles" ? "vehicles" : "stops"
+    const { currentUrl } = useUrl()
+    // No vehicles to show without realtime - a vehicles link lands on stops.
+    const mode: MapMode = router.query.mode === "vehicles" && hasRealtime(currentUrl) ? "vehicles" : "stops"
 
     return (
         <>

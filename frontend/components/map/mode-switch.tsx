@@ -1,5 +1,7 @@
 import Link from "next/link"
 import { cn } from "@/lib/utils"
+import { useUrl } from "@/lib/url-context"
+import { hasRealtime } from "@/lib/url-store"
 
 export type MapMode = "stops" | "vehicles"
 
@@ -10,9 +12,12 @@ const MODES: { mode: MapMode; label: string }[] = [
 
 /**
  * The Map tab's Stops / Vehicles switch - the iOS Map tab's `MapModePicker`
- * (a capsule with the chosen segment raised on a card).
+ * (a capsule with the chosen segment raised on a card). Hidden for a region
+ * without realtime - there are no vehicles to switch to.
  */
 export function MapModeSwitch({ mode, className }: { mode: MapMode; className?: string }) {
+    const { currentUrl } = useUrl()
+    if (!hasRealtime(currentUrl)) return null
     return (
         <nav
             aria-label="Map mode"

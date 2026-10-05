@@ -1,4 +1,5 @@
 import type { JourneyType, Leg, Stop } from "@/components/journey/types"
+import { regionTimeZone } from "@/lib/url-store"
 
 /**
  * The step-by-step planner's logic - a port of the iOS app's
@@ -117,10 +118,10 @@ export interface EasyStep {
     detail?: string
 }
 
-/** "10:01 am" in New Zealand time. */
+/** "10:01 am" on the region's clock. */
 export function clock(date: Date | string): string {
     return new Date(date)
-        .toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", timeZone: "Pacific/Auckland" })
+        .toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit", timeZone: regionTimeZone() })
         .replace(/\s?(am|pm)$/i, (m) => ` ${m.trim().toLowerCase()}`)
 }
 

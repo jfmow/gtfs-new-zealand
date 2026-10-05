@@ -1,4 +1,6 @@
 import { ReactNode, useEffect, useRef, useState } from "react";
+import { useUrl } from "@/lib/url-context";
+import { hasRealtime } from "@/lib/url-store";
 import {
     Dialog,
     DialogClose,
@@ -40,6 +42,7 @@ export default function RouteNotifications({
     const [minSeverity, setMinSeverity] = useState<string>("");
     const [notifyCancellations, setNotifyCancellations] = useState(true);
     const [saving, setSaving] = useState(false);
+    const { currentUrl } = useUrl();
 
     const hasInteracted = useRef(false);
 
@@ -84,6 +87,9 @@ export default function RouteNotifications({
         return () => clearTimeout(timeout);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [causes, minSeverity, notifyCancellations]);
+
+    // Alerts and cancellations come from the realtime feed - nothing to subscribe to without one.
+    if (!hasRealtime(currentUrl)) return null;
 
     return (
         <Dialog>

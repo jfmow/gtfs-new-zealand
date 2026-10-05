@@ -20,6 +20,7 @@ import { ApiFetch, useUrl } from "@/lib/url-context"
 import { getRegionSlug } from "@/lib/url-store"
 import { getUserLocation } from "@/lib/userLocation"
 import { cn } from "@/lib/utils"
+import { inRegion, regionDayAsLocal, wallClock, withRegionDay, withRegionTime } from "@/lib/region-time"
 import {
     clock, defaultArriveBy, easyAttempts, easySteps, rankedPlans, STANDARD,
     type EasyAttempt, type EasyStep, type EasyTravelMode,
@@ -560,20 +561,20 @@ function PlaceSearch({
 
 /** Today / Tomorrow, a time, a sentence saying it back, and another day. */
 function ArriveByPicker({ value, onChange }: { value: Date; onChange: (d: Date) => void }) {
-    const today = new Date()
+    // Days and times are on the region's clock; `today`/`tomorrow`/`valueDay`
+    // are browser-local midnights standing in for those region days.
+    const today = regionDayAsLocal(new Date())
     const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1)
+    const valueDay = regionDayAsLocal(value)
+    const valueClock = wallClock(value)
     const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
-    const setDay = (day: Date) => {
-        const next = new Date(day)
-        next.setHours(value.getHours(), value.getMinutes(), 0, 0)
-        onChange(next)
-    }
+    const setDay = (day: Date) => onChange(withRegionDay(value, day))
     const pad = (n: number) => String(n).padStart(2, "0")
-    const dayWord = sameDay(value, today)
+    const dayWord = sameDay(valueDay, today)
         ? "today"
-        : sameDay(value, tomorrow)
+        : sameDay(valueDay, tomorrow)
             ? "tomorrow"
-            : "on " + value.toLocaleDateString("en-NZ", { weekday: "long", day: "numeric", month: "long" })
+            : "on " + value.toLocaleDateString("en-NZ", inRegion({ weekday: "long", day: "numeric", month: "long" }))
 
     return (
         <div className="space-y-4 rounded-2xl border border-border bg-card p-4">
@@ -582,11 +583,11 @@ function ArriveByPicker({ value, onChange }: { value: Date; onChange: (d: Date) 
                     <button
                         key={label}
                         type="button"
-                        aria-pressed={sameDay(value, day)}
+                        aria-pressed={sameDay(valueDay, day)}
                         onClick={() => setDay(day)}
                         className={cn(
                             "min-h-12 flex-1 rounded-xl text-[17px] font-semibold transition-colors",
-                            sameDay(value, day) ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-accent",
+                            sameDay(valueDay, day) ? "bg-primary text-primary-foreground" : "bg-muted text-foreground hover:bg-accent",
                         )}
                     >
                         {label}
@@ -597,13 +598,11 @@ function ArriveByPicker({ value, onChange }: { value: Date; onChange: (d: Date) 
                 <span className="sr-only">Arrive by</span>
                 <input
                     type="time"
-                    value={`${pad(value.getHours())}:${pad(value.getMinutes())}`}
+                    value={`${pad(valueClock.hour)}:${pad(valueClock.minute)}`}
                     onChange={(e) => {
                         const [h, m] = e.target.value.split(":").map(Number)
                         if (Number.isNaN(h) || Number.isNaN(m)) return
-                        const next = new Date(value)
-                        next.setHours(h, m, 0, 0)
-                        onChange(next)
+                        onChange(withRegionTime(value, h, m))
                     }}
                     className="h-14 w-full rounded-xl border border-input bg-background px-4 text-center text-2xl font-semibold tabular-nums"
                 />
@@ -614,7 +613,7 @@ function ArriveByPicker({ value, onChange }: { value: Date; onChange: (d: Date) 
                 Another day
                 <input
                     type="date"
-                    value={`${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`}
+                    value={`${valueDay.getFullYear()}-${pad(valueDay.getMonth() + 1)}-${pad(valueDay.getDate())}`}
                     min={`${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`}
                     onChange={(e) => {
                         const [y, mo, d] = e.target.value.split("-").map(Number)

@@ -4,7 +4,7 @@ import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import notification, { addJourneyReminder } from "@/lib/notifications"
-import { nzHHMM, nzServiceDate, formatTime } from "@/components/journey/helpers"
+import { regionHHMM, serviceDate, formatTime } from "@/components/journey/helpers"
 import { cn } from "@/lib/utils"
 import { DEFAULT_WALK_SPEED } from "@/lib/walk-speed"
 
@@ -107,8 +107,8 @@ export function StopReminderDialog({
             start: { lat: target.lat, lon: target.lon, label: target.stopName },
             end: { lat: target.lat, lon: target.lon, label: target.stopName },
             timeType: "departat",
-            targetHHMM: nzHHMM(sched),
-            serviceDate: nzServiceDate(sched),
+            targetHHMM: regionHHMM(sched),
+            serviceDate: serviceDate(sched),
             boardTripId: target.tripId,
             boardStopId: target.childStopId,
             scheduledDepartureIso: sched.toISOString(),

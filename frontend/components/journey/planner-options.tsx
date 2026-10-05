@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { cn, useIsMobile } from "@/lib/utils"
 import { RouteMultiSelect, type RouteOption } from "./route-filter"
 import { DEFAULT_WALK_SPEED, WALK_SPEED_OPTIONS, walkSpeedLabel } from "@/lib/walk-speed"
+import { regionDayAsLocal, withRegionDay, withRegionTime } from "@/lib/region-time"
+import { regionHHMM } from "@/components/journey/helpers"
 
 export type TravelMode = "bus" | "train" | "ferry"
 export type TimeType = "now" | "leaveat" | "arriveat"
@@ -262,9 +264,8 @@ function PlannerDatePicker({
     const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (disabled) return
         const [hours, minutes] = e.target.value.split(":").map(Number)
-        const updatedDate = new Date(date)
-        updatedDate.setHours(hours, minutes, 0)
-        onDateChange(updatedDate)
+        if (Number.isNaN(hours) || Number.isNaN(minutes)) return
+        onDateChange(withRegionTime(date, hours, minutes))
     }
 
     return (
@@ -276,21 +277,19 @@ function PlannerDatePicker({
                         className="h-9 text-sm font-normal px-3"
                         disabled={disabled}
                     >
-                        {date ? format(date, "d MMM") : "Date"}
+                        {date ? format(regionDayAsLocal(date), "d MMM") : "Date"}
                         <ChevronDownIcon className="h-3.5 w-3.5 ml-1" />
                     </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto overflow-hidden p-0" align="start">
                     <Calendar
                         mode="single"
-                        selected={date}
+                        selected={regionDayAsLocal(date)}
                         captionLayout="dropdown"
-                        defaultMonth={date}
+                        defaultMonth={regionDayAsLocal(date)}
                         onSelect={(selectedDate) => {
                             if (!selectedDate) return
-                            const updatedDate = new Date(selectedDate)
-                            updatedDate.setHours(date.getHours(), date.getMinutes(), date.getSeconds())
-                            onDateChange(updatedDate)
+                            onDateChange(withRegionDay(date, selectedDate))
                             setOpen(false)
                         }}
                     />
@@ -299,7 +298,7 @@ function PlannerDatePicker({
             <Input
                 type="time"
                 step="60"
-                value={date ? format(date, "HH:mm") : "00:00"}
+                value={date ? regionHHMM(date) : "00:00"}
                 onChange={handleTimeChange}
                 disabled={disabled}
                 className="h-9 w-[100px] text-sm bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"

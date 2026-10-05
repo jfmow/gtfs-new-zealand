@@ -18,6 +18,7 @@ import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { inRegion, regionDayAsLocal } from "@/lib/region-time"
 
 interface AlertResponse {
     alerts: AlertByRouteId;
@@ -301,10 +302,10 @@ function AlertCard({ alert, reducedContent }: { alert: AlertType, reducedContent
     const formatDuration = (start: number, end: number) => {
         const s = new Date(start * 1000)
         const e = new Date(end * 1000)
-        const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }
-        const sameDay = s.toDateString() === e.toDateString()
+        const opts = inRegion({ day: "numeric", month: "short", hour: "numeric", minute: "2-digit" })
+        const sameDay = regionDayAsLocal(s).getTime() === regionDayAsLocal(e).getTime()
         if (sameDay) {
-            return `${s.toLocaleDateString("en-NZ", { day: "numeric", month: "short" })} · ${s.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })} – ${e.toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}`
+            return `${s.toLocaleDateString("en-NZ", inRegion({ day: "numeric", month: "short" }))} · ${s.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))} – ${e.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}`
         }
         return `${s.toLocaleDateString("en-NZ", opts)} – ${e.toLocaleDateString("en-NZ", opts)}`
     }
