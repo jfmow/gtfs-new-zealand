@@ -120,6 +120,32 @@ final class JourneyLiveAdjusterTests: XCTestCase {
         XCTAssertEqual(resultWalk.departureTime.date!.timeIntervalSince1970, resultWalk.arrivalTime.date!.timeIntervalSince1970 - 300, accuracy: 0.001)
     }
 
+    /// A transfer walk starts when the first ride arrives, so the slack shows
+    /// as a wait after the walk (at the next platform), not before it.
+    func testTransferWalkStartsWhenPreviousRideArrives() {
+        let a = makeStop(id: "A"), b = makeStop(id: "B"), c = makeStop(id: "C"), d = makeStop(id: "D")
+        let ride1 = makeLeg(mode: "transit", tripID: "t1", from: a, to: b, departure: base, arrival: base.addingTimeInterval(660), durationSeconds: 660)
+        let walk = makeLeg(mode: "walk", tripID: "", from: b, to: c, departure: base.addingTimeInterval(660), arrival: base.addingTimeInterval(780), durationSeconds: 120)
+        let ride2 = makeLeg(mode: "transit", tripID: "t2", from: c, to: d, departure: base.addingTimeInterval(1020), arrival: base.addingTimeInterval(2040), durationSeconds: 1020)
+        let plan = makePlan(legs: [ride1, walk, ride2])
+
+        let baseMs = Int64(base.timeIntervalSince1970 * 1000)
+        let stopTimes: [String: [StopTimeUpdate]] = [
+            "t1": [
+                stopTime(childID: "A", parentID: "PA", arrivalMs: baseMs, departureMs: baseMs, scheduledMs: baseMs),
+                stopTime(childID: "B", parentID: "PB", arrivalMs: baseMs + 660_000, departureMs: baseMs + 660_000, scheduledMs: baseMs + 660_000),
+            ],
+            "t2": [
+                stopTime(childID: "C", parentID: "PC", arrivalMs: baseMs + 1_020_000, departureMs: baseMs + 1_020_000, scheduledMs: baseMs + 1_020_000),
+                stopTime(childID: "D", parentID: "PD", arrivalMs: baseMs + 2_040_000, departureMs: baseMs + 2_040_000, scheduledMs: baseMs + 2_040_000),
+            ],
+        ]
+
+        let result = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: stopTimes)
+        XCTAssertEqual(result.legs[1].departureTime.date, base.addingTimeInterval(660))
+        XCTAssertEqual(result.legs[1].arrivalTime.date, base.addingTimeInterval(780))
+    }
+
     // MARK: - Set off
 
     /// Once the rider has left, a ride that moves earlier no longer moves

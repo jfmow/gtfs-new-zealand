@@ -252,22 +252,24 @@ export function buildLiveJourney(
         const durMs = route.Legs[i].Duration / 1_000_000
         const next = legs[i + 1]
         const prev = legs[i - 1]
-        if (next?.Mode === "transit") {
+        if (prev?.Mode === "transit") {
+            // Transfer or final walk: start as soon as the previous ride
+            // arrives, so any slack shows up as a wait at the next stop (after
+            // the walk) rather than as dead time before leaving the platform.
+            const depart = new Date(prev.ArrivalTime)
+            legs[i].DepartureTime = depart
+            legs[i].ArrivalTime = new Date(depart.getTime() + durMs)
+        } else if (next?.Mode === "transit") {
             // Leading walk: keep the plan's own slack before the ride (~2 min
             // from the backend's deferOriginWalk) - the server's Live Activity
             // and reminders shift the walk by the ride's delay the same way,
-            // so every surface agrees on the leave time. A transfer walk
-            // stays tight so the buffer can't overlap the previous leg.
+            // so every surface agrees on the leave time.
             const buffer = i === 0
                 ? Math.max(0, new Date(route.Legs[i + 1].DepartureTime).getTime() - new Date(route.Legs[i].ArrivalTime).getTime())
                 : 0
             const arrive = new Date(new Date(next.DepartureTime).getTime() - buffer)
             legs[i].ArrivalTime = arrive
             legs[i].DepartureTime = new Date(arrive.getTime() - durMs)
-        } else if (prev?.Mode === "transit") {
-            const depart = new Date(prev.ArrivalTime)
-            legs[i].DepartureTime = depart
-            legs[i].ArrivalTime = new Date(depart.getTime() + durMs)
         }
     })
 

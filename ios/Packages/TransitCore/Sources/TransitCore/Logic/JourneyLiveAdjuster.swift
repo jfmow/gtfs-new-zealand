@@ -60,13 +60,18 @@ public enum JourneyPlanLiveAdjuster {
         let originalLegs = plan.legs
         for i in legs.indices where legs[i].mode == "walk" {
             let durationSeconds = originalLegs[i].duration.timeInterval
-            if i + 1 < legs.count, legs[i + 1].mode == "transit", let nextDeparture = legs[i + 1].departureTime.date {
+            if i - 1 >= 0, legs[i - 1].mode == "transit", let prevArrival = legs[i - 1].arrivalTime.date {
+                // Transfer or final walk: start as soon as the previous ride
+                // arrives, so any slack shows up as a wait at the next stop
+                // (after the walk) rather than before leaving the platform.
+                legs[i].departureTime = GoTime(date: prevArrival)
+                legs[i].arrivalTime = GoTime(date: prevArrival.addingTimeInterval(durationSeconds))
+            } else if i + 1 < legs.count, legs[i + 1].mode == "transit", let nextDeparture = legs[i + 1].departureTime.date {
                 // Leading walk: keep the plan's own slack before the ride
                 // (~2 min from the backend's deferOriginWalk) - the server's
                 // Live Activity and reminders shift the walk by the ride's
                 // delay the same way, so a hand-off between phone and server
-                // never moves the leave time. A transfer walk stays tight so
-                // the buffer can't overlap the previous leg.
+                // never moves the leave time.
                 var buffer: TimeInterval = 0
                 if i == 0, let plannedBoard = originalLegs[i + 1].departureTime.date,
                    let plannedArrive = originalLegs[i].arrivalTime.date {
@@ -75,9 +80,6 @@ public enum JourneyPlanLiveAdjuster {
                 let arrive = nextDeparture.addingTimeInterval(-buffer)
                 legs[i].arrivalTime = GoTime(date: arrive)
                 legs[i].departureTime = GoTime(date: arrive.addingTimeInterval(-durationSeconds))
-            } else if i - 1 >= 0, legs[i - 1].mode == "transit", let prevArrival = legs[i - 1].arrivalTime.date {
-                legs[i].departureTime = GoTime(date: prevArrival)
-                legs[i].arrivalTime = GoTime(date: prevArrival.addingTimeInterval(durationSeconds))
             }
         }
 
