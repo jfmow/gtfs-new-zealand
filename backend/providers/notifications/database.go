@@ -69,6 +69,11 @@ func newDatabaseAtPath(dbPath string, timeZone *time.Location, mailToEmail, mail
 		return nil, errors.New("time zone is required")
 	}
 
+	// sqlite won't create the parent dir (e.g. a fresh DATA_DIR volume).
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		return nil, fmt.Errorf("create notifications dir: %w", err)
+	}
+
 	sqlDB, err := sql.Open("sqlite3", dbPath+"?_foreign_keys=on&_busy_timeout=5000&_journal_mode=WAL&_txlock=immediate&_cache_size=-4000")
 	if err != nil {
 		return nil, fmt.Errorf("open notifications database: %w", err)

@@ -1,0 +1,29 @@
+# Local test stack: builds the image from this directory and runs it with the
+# bundled OSRM walking router.
+#
+#   docker compose up --build
+#
+# API keys come from .env. Everything the container writes lands in
+# ./docker-data (gtfs, notifications, plans, logs, osrm), so it never touches
+# the gtfs/ notifications/ etc. folders `go run` uses.
+#
+# The default map is BBBike's Auckland extract (~70 MB, builds in a few
+# minutes). For the full country:
+#   OSRM_PBF_URL=https://download.geofabrik.de/australia-oceania/new-zealand-latest.osm.pbf docker compose up
+# Changing the URL rebuilds the graph; OSRM_REBUILD=1 forces a rebuild (e.g. to
+# pick up a newer extract from the same URL).
+name: trains-local
+
+services:
+  trains:
+    build: .
+    image: trains:local
+    env_file: .env
+    environment:
+      port: 8085
+      OSRM_PBF_URL: ${OSRM_PBF_URL:-https://download.bbbike.org/osm/bbbike/Auckland/Auckland.osm.pbf}
+      OSRM_REBUILD: ${OSRM_REBUILD:-0}
+    ports:
+      - "8085:8085"
+    volumes:
+      - ./docker-data:/data

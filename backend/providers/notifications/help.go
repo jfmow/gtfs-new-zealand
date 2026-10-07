@@ -8,7 +8,12 @@ import (
 	"strings"
 )
 
+// getWorkDir is where logs/ and the notification DB live: DATA_DIR when set
+// (the Docker image points it at its one /data volume), else beside the binary.
 func getWorkDir() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
 	ex, err := os.Executable()
 	if err != nil {
 		panic(err)

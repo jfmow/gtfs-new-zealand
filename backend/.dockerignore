@@ -1,3 +1,7 @@
 # flyctl launch added from .gitignore
 **\build.md
 fly.toml
+
+# local compose data + secrets
+docker-data
+.env

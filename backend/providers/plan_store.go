@@ -28,6 +28,9 @@ const planStoreTTL = 6 * time.Hour
 // planStoreWorkDir mirrors main.go's package-private getWorkDir (also copied in
 // providers/notifications/help.go).
 func planStoreWorkDir() string {
+	if dir := os.Getenv("DATA_DIR"); dir != "" {
+		return dir
+	}
 	ex, err := os.Executable()
 	if err != nil {
 		return "."
