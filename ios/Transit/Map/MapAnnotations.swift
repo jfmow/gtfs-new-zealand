@@ -202,35 +202,36 @@ final class IdentifiedPolyline: MKPolyline {
     var lineWidth: CGFloat = 5
     var isWalk = false
     var isMuted = false
-    var role: Role = .line
+}
 
-    /// The line itself, or a wider copy drawn under it: a route's contrasting
-    /// outline ("casing" - the web map's line-casing layer, so it stands out
-    /// from roads on light and dark basemaps), or a 3D walk's halo.
-    /// Separate overlays rather than one hand-drawn renderer: MapKit draws a
-    /// plain `MKPolylineRenderer` as a vector line at a constant on-screen
-    /// width, but a custom `draw(_:zoomScale:in:)` as flat image tiles - in
-    /// 3D the tiles nearest the camera are magnified, so the line swelled
-    /// across part of the screen.
-    enum Role { case line, casing, walkHalo }
+/// A route line with a contrasting outline ("casing") drawn under it, so it
+/// stands out from roads on both light and dark basemaps - the web map's
+/// line-casing layer.
+final class CasedPolylineRenderer: MKPolylineRenderer {
+    var casingColor: UIColor = .clear
+    var casingWidth: CGFloat = 0
 
-    func companion(_ role: Role) -> IdentifiedPolyline {
-        let copy = IdentifiedPolyline(points: points(), count: pointCount)
-        copy.polylineID = polylineID
-        copy.colorHex = colorHex
-        copy.lineWidth = lineWidth
-        copy.isWalk = isWalk
-        copy.isMuted = isMuted
-        copy.role = role
-        return copy
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in context: CGContext) {
+        if casingWidth > 0 {
+            if path == nil { createPath() }
+            if let path {
+                context.saveGState()
+                context.addPath(path)
+                context.setStrokeColor(casingColor.cgColor)
+                context.setLineWidth((lineWidth + casingWidth * 2) / zoomScale)
+                context.setLineCap(.round)
+                context.setLineJoin(.round)
+                context.strokePath()
+                context.restoreGState()
+            }
+        }
+        super.draw(mapRect, zoomScale: zoomScale, in: context)
     }
 }
 
 /// A walking leg: haloed dots, with every few a chevron pointing the way
 /// you walk. Drawn by hand rather than with a dash pattern so the arrows
-/// can follow the path's direction - flat (2D) maps only, since hand-drawn
-/// overlays render as tiles that stretch when tilted (3D uses a thin solid
-/// vector line instead; see `IdentifiedPolyline.Role`).
+/// can follow the path's direction.
 final class WalkPolylineRenderer: MKPolylineRenderer {
     var dotColor: UIColor = .darkGray
     var haloColor: UIColor = .white

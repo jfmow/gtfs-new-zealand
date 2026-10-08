@@ -70,7 +70,6 @@ struct StopsMapView: View {
             // Not an overlay on the map: the map runs under the bottom safe
             // area (tab bar, resume pill), and these must sit above it.
             VStack(alignment: .trailing, spacing: 12) {
-                Map3DButton()
                 RecenterButton(isAuthorized: environment.location.isAuthorized) {
                     recenterTrigger += 1
                 }

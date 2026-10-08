@@ -308,53 +308,6 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "app died after pinch-zoom on VehiclesMapView")
     }
 
-    /// The map's 3D button tilts the camera and back.
-    func testMap3DToggle() throws {
-        app.launch()
-        dismissSystemAlertIfPresent(timeout: 6)
-        app.tabBars.buttons["Map"].tap()
-        dismissSystemAlertIfPresent(timeout: 2)
-        sleep(3)
-        // Start flat whatever the last run left it as.
-        if app.buttons["Show flat map"].exists {
-            app.buttons["Show flat map"].tap()
-            sleep(2)
-        }
-        attach("3d1-flat")
-
-        let toggle = app.buttons["Show 3D map"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "3D button not found")
-        toggle.tap()
-        sleep(4)
-        attach("3d2-tilted")
-        XCTAssertTrue(app.buttons["Show flat map"].exists)
-
-        app.otherElements.firstMatch.pinch(withScale: 3, velocity: 1)
-        sleep(3)
-        attach("3d3-tilted-zoomed")
-
-        app.buttons["Show flat map"].tap()
-        sleep(3)
-        attach("3d4-flat-again")
-        XCTAssertEqual(app.state, .runningForeground)
-    }
-
-    /// With 3D as the default view, the vehicle tracker chases the
-    /// vehicle from behind. Needs a live trip ID in `CHASE_TRIP_ID`.
-    func testChaseCam() throws {
-        let tripID = try XCTUnwrap(ProcessInfo.processInfo.environment["CHASE_TRIP_ID"])
-        app.launchArguments += ["-map3DDefault", "YES"]
-        app.launch()
-        dismissSystemAlertIfPresent(timeout: 6)
-        app.open(URL(string: "transit://trip?tripId=\(tripID)")!)
-        dismissSystemAlertIfPresent(timeout: 3)
-        sleep(6)
-        attach("chase1")
-        sleep(20)
-        attach("chase2")
-        XCTAssertEqual(app.state, .runningForeground)
-    }
-
     /// Tapping a cluster zooms in one layer: the group splits into smaller
     /// groups / single stops rather than jumping to street level.
     func testClusterTapExpands() throws {
@@ -751,74 +704,6 @@ final class TransitDebugUITests: XCTestCase {
                     XCTAssertFalse(app.staticTexts["Your journey"].exists, "tracker sheet content still on screen after End")
                 }
             }
-        }
-    }
-
-    /// Journey tracker camera: the waiting framing (you + the stop/bus),
-    /// a pan pausing it, recentre re-framing it, in 2D or 3D
-    /// (`JOURNEY_3D=1`). Location set beforehand with `simctl location`.
-    func testJourneyCamera() throws {
-        let use3D = ProcessInfo.processInfo.environment["JOURNEY_3D"] == "1"
-        app.launchArguments += ["-map3DDefault", use3D ? "YES" : "NO"]
-        let tag = use3D ? "3d" : "2d"
-        app.launch()
-        dismissSystemAlertIfPresent(timeout: 6)
-        dismissSystemAlertIfPresent(timeout: 2)
-        app.tabBars.buttons["Planner"].tap()
-        sleep(1)
-        let fromField = app.textFields.element(boundBy: 0)
-        if fromField.waitForExistence(timeout: 3) { fromField.tap() }
-        let myLocation = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch
-        XCTAssertTrue(myLocation.waitForExistence(timeout: 5))
-        myLocation.tap()
-        sleep(1)
-        let toField = app.textFields.element(boundBy: 1)
-        XCTAssertTrue(toField.waitForExistence(timeout: 3))
-        toField.tap()
-        toField.typeText("Newmarket")
-        sleep(2)
-        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
-        if result.waitForExistence(timeout: 5) { result.tap() }
-        let returnKey = app.keyboards.buttons["Return"]
-        if returnKey.waitForExistence(timeout: 2) { returnKey.tap() }
-        app.buttons["Plan journey"].tap()
-        sleep(5)
-        let direct = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Direct")).firstMatch
-        let anyResult = direct.exists ? direct
-            : app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label CONTAINS[c] %@", "transfer", "Max")).firstMatch
-        XCTAssertTrue(anyResult.waitForExistence(timeout: 5), "no journey results")
-        anyResult.tap()
-        sleep(2)
-        let start = app.buttons["Start this journey"]
-        XCTAssertTrue(start.waitForExistence(timeout: 3))
-        start.tap()
-        sleep(6)
-        attach("jc-\(tag)-1-start")
-        sleep(10)
-        attach("jc-\(tag)-2-settled")
-
-        // Pan away: the camera should stay where the finger left it.
-        let map = app.otherElements.firstMatch
-        map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
-            .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.15)))
-        sleep(6)
-        attach("jc-\(tag)-3-panned")
-
-        let recenter = app.buttons["Centre on my location"]
-        XCTAssertTrue(recenter.waitForExistence(timeout: 3))
-        recenter.tap()
-        sleep(5)
-        attach("jc-\(tag)-4-recentred")
-        recenter.tap()
-        sleep(4)
-        attach("jc-\(tag)-5-recentred-again")
-        XCTAssertEqual(app.state, .runningForeground)
-
-        let end = app.buttons["End"]
-        if end.waitForExistence(timeout: 3) {
-            end.tap()
-            let confirm = app.buttons["End journey"]
-            if confirm.waitForExistence(timeout: 3) { confirm.tap() }
         }
     }
 

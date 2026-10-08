@@ -27,49 +27,6 @@ struct RecenterButton: View {
     }
 }
 
-/// The maps' 3D mode - one setting shared by every `TransitMapView`.
-/// `storageKey` is the live mode the map button toggles; each launch resets
-/// it to `defaultKey` (Settings > Default map view).
-enum Map3D {
-    static let storageKey = "map3D"
-    static let defaultKey = "map3DDefault"
-    /// Camera tilt in 3D, in degrees - MapKit lowers it when zoomed out.
-    static let pitch: Double = 60
-    /// The chase camera's steeper tilt, looking along the vehicle's path.
-    static let followPitch: Double = 62
-    /// Framing several points (you and the bus) - tilted, but not so far
-    /// the far point is lost towards the horizon.
-    static let framePitch: Double = 45
-
-    static func resetToDefault() {
-        let defaults = UserDefaults.standard
-        defaults.set(defaults.bool(forKey: defaultKey), forKey: storageKey)
-    }
-}
-
-/// Toggles the maps between flat and 3D (tilted, with terrain and
-/// buildings). Labelled with the mode it switches to, like Apple Maps.
-struct Map3DButton: View {
-    @AppStorage(Map3D.storageKey) private var is3D = false
-
-    var body: some View {
-        Button {
-            is3D.toggle()
-        } label: {
-            Text(is3D ? "2D" : "3D")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(Theme.foreground)
-                .frame(width: 44, height: 44)
-                .background(.ultraThinMaterial, in: Circle())
-                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
-                .shadow(color: .black.opacity(0.12), radius: 6, x: 0, y: 2)
-                .contentShape(.hoverEffect, Circle())
-                .hoverEffect()
-        }
-        .accessibilityLabel(is3D ? "Show flat map" : "Show 3D map")
-    }
-}
-
 /// Wraps a toolbar-style control (a `Button`, a `Menu`) in the same floating
 /// pill/circle look as `RecenterButton`, for buttons sitting directly over a
 /// full-bleed map - the system navigation bar's default (near-transparent)
