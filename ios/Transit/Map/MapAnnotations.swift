@@ -64,6 +64,10 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
 /// The route a tracked vehicle runs along, so the map can glide it between
 /// live positions (`VehicleMotion`) instead of hopping every poll.
 struct VehicleRoute {
+    /// Settings > Smooth vehicle movement - off, vehicles hop to each live
+    /// position as they arrive.
+    static let glidingKey = "vehicleGliding"
+
     let shape: [Coordinate]
     /// The trip's stops in order - it never glides past the next one.
     let stops: [Coordinate]

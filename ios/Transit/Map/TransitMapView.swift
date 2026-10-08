@@ -43,6 +43,7 @@ struct TransitMapView: UIViewRepresentable {
     /// The map's 3D toggle (`Map3DButton`) - realistic terrain and buildings
     /// with a tilted camera, on every map at once.
     @AppStorage(Map3D.storageKey) private var is3D = false
+    @AppStorage(VehicleRoute.glidingKey) private var glidesVehicles = true
 
     var stops: [StopAnnotation] = []
     var vehicles: [VehicleAnnotation] = []
@@ -155,7 +156,7 @@ struct TransitMapView: UIViewRepresentable {
             in: mapView
         )
         context.coordinator.reconcileTripStops(tripStops, in: mapView)
-        context.coordinator.reconcileMotion(in: mapView)
+        context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes : [:], in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken)
         context.coordinator.applyCamera(camera, to: mapView)
@@ -454,8 +455,7 @@ struct TransitMapView: UIViewRepresentable {
         private var motionTimer: Timer?
         private static let motionStep: TimeInterval = 1
 
-        func reconcileMotion(in mapView: MKMapView) {
-            let routes = parent.vehicleRoutes
+        func reconcileMotion(_ routes: [String: VehicleRoute], in mapView: MKMapView) {
             for id in motions.keys where routes[id] == nil || vehiclesByID[id] == nil {
                 motions.removeValue(forKey: id)
                 motionKeys.removeValue(forKey: id)
