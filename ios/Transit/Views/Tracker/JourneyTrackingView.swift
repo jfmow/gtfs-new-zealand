@@ -36,7 +36,6 @@ struct JourneyTrackingView: View {
     private var walkStep: WalkNavigationTracker.Snapshot? { isCurrent ? session.walkStep : nil }
     private var alertStack: [JourneyAlert] { isCurrent ? session.alertStack : [] }
 
-    @State private var recenterTrigger = 0
     /// The camera follows the journey (see `camera`) until the rider pans or
     /// pinches the map themselves; the recentre button hands it back.
     @State private var autoFollow = true
@@ -106,7 +105,7 @@ struct JourneyTrackingView: View {
                     polylines: polylines,
                     camera: autoFollow ? camera : .none,
                     showsUserLocation: true,
-                    centerOnUserLocationTrigger: recenterTrigger,
+                    clustersVehicles: false,
                     cameraInsets: cameraInsets(in: proxy),
                     onUserInteraction: { if autoFollow { autoFollow = false } },
                     cameraResetToken: cameraResetToken
@@ -223,16 +222,13 @@ struct JourneyTrackingView: View {
         .padding(.horizontal, 16)
     }
 
-    /// First tap hands the camera back to the journey (after the rider
-    /// panned away); a second tap, with it already following, jumps to the
-    /// rider's own position.
+    /// Hands the camera back to the journey and re-frames it from scratch
+    /// (zoom included) - you're always in that framing when it matters.
+    /// This used to jump to the rider on a second tap, at a fixed zoom that
+    /// ignored the drawer, only for the journey camera to snap back.
     private func recenter() {
-        if autoFollow {
-            recenterTrigger += 1
-        } else {
-            autoFollow = true
-            cameraResetToken += 1
-        }
+        autoFollow = true
+        cameraResetToken += 1
     }
 
     /// Leaves the screen but keeps the journey running - unless it's

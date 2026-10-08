@@ -36,7 +36,10 @@ enum Map3D {
     /// Camera tilt in 3D, in degrees - MapKit lowers it when zoomed out.
     static let pitch: Double = 60
     /// The chase camera's steeper tilt, looking along the vehicle's path.
-    static let followPitch: Double = 70
+    static let followPitch: Double = 62
+    /// Framing several points (you and the bus) - tilted, but not so far
+    /// the far point is lost towards the horizon.
+    static let framePitch: Double = 45
 
     static func resetToDefault() {
         let defaults = UserDefaults.standard

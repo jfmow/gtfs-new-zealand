@@ -143,6 +143,7 @@ struct VehicleQuickLookView: View {
                     polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: routeHex)] } ?? [],
                     camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400)
                         : tripStops.isEmpty ? .none : .frame(points: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }, minSpanMeters: 800),
+                    clustersVehicles: false,
                     cameraInsets: usesSidePanel
                         ? UIEdgeInsets(top: proxy.safeAreaInsets.top + 60, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
                                        bottom: proxy.safeAreaInsets.bottom + 24, right: 24)

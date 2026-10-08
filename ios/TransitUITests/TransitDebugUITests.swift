@@ -754,6 +754,74 @@ final class TransitDebugUITests: XCTestCase {
         }
     }
 
+    /// Journey tracker camera: the waiting framing (you + the stop/bus),
+    /// a pan pausing it, recentre re-framing it, in 2D or 3D
+    /// (`JOURNEY_3D=1`). Location set beforehand with `simctl location`.
+    func testJourneyCamera() throws {
+        let use3D = ProcessInfo.processInfo.environment["JOURNEY_3D"] == "1"
+        app.launchArguments += ["-map3DDefault", use3D ? "YES" : "NO"]
+        let tag = use3D ? "3d" : "2d"
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 6)
+        dismissSystemAlertIfPresent(timeout: 2)
+        app.tabBars.buttons["Planner"].tap()
+        sleep(1)
+        let fromField = app.textFields.element(boundBy: 0)
+        if fromField.waitForExistence(timeout: 3) { fromField.tap() }
+        let myLocation = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch
+        XCTAssertTrue(myLocation.waitForExistence(timeout: 5))
+        myLocation.tap()
+        sleep(1)
+        let toField = app.textFields.element(boundBy: 1)
+        XCTAssertTrue(toField.waitForExistence(timeout: 3))
+        toField.tap()
+        toField.typeText("Newmarket")
+        sleep(2)
+        let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
+        if result.waitForExistence(timeout: 5) { result.tap() }
+        let returnKey = app.keyboards.buttons["Return"]
+        if returnKey.waitForExistence(timeout: 2) { returnKey.tap() }
+        app.buttons["Plan journey"].tap()
+        sleep(5)
+        let direct = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Direct")).firstMatch
+        let anyResult = direct.exists ? direct
+            : app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label CONTAINS[c] %@", "transfer", "Max")).firstMatch
+        XCTAssertTrue(anyResult.waitForExistence(timeout: 5), "no journey results")
+        anyResult.tap()
+        sleep(2)
+        let start = app.buttons["Start this journey"]
+        XCTAssertTrue(start.waitForExistence(timeout: 3))
+        start.tap()
+        sleep(6)
+        attach("jc-\(tag)-1-start")
+        sleep(10)
+        attach("jc-\(tag)-2-settled")
+
+        // Pan away: the camera should stay where the finger left it.
+        let map = app.otherElements.firstMatch
+        map.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+            .press(forDuration: 0.05, thenDragTo: map.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.15)))
+        sleep(6)
+        attach("jc-\(tag)-3-panned")
+
+        let recenter = app.buttons["Centre on my location"]
+        XCTAssertTrue(recenter.waitForExistence(timeout: 3))
+        recenter.tap()
+        sleep(5)
+        attach("jc-\(tag)-4-recentred")
+        recenter.tap()
+        sleep(4)
+        attach("jc-\(tag)-5-recentred-again")
+        XCTAssertEqual(app.state, .runningForeground)
+
+        let end = app.buttons["End"]
+        if end.waitForExistence(timeout: 3) {
+            end.tap()
+            let confirm = app.buttons["End journey"]
+            if confirm.waitForExistence(timeout: 3) { confirm.tap() }
+        }
+    }
+
     /// Verifies the redesigned saved-trip card (colour accent bar, icon,
     /// name/route subtitle, "..." menu with Rename/Colour/Delete) actually
     /// renders - replaces the old horizontal chip rail 2026-09-23.
