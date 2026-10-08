@@ -342,15 +342,17 @@ final class TransitDebugUITests: XCTestCase {
     /// With 3D as the default view, the vehicle tracker chases the
     /// vehicle from behind. Needs a live trip ID in `CHASE_TRIP_ID`.
     func testChaseCam() throws {
-        let tripID = try XCTUnwrap(ProcessInfo.processInfo.environment["CHASE_TRIP_ID"])
-        app.launchArguments += ["-map3DDefault", "YES"]
+        let environment = ProcessInfo.processInfo.environment
+        let tripID = try XCTUnwrap(environment["CHASE_TRIP_ID"])
+        app.launchArguments += ["-map3DDefault", environment["CHASE_3D"] == "0" ? "NO" : "YES"]
         app.launch()
         dismissSystemAlertIfPresent(timeout: 6)
         app.open(URL(string: "transit://trip?tripId=\(tripID)")!)
         dismissSystemAlertIfPresent(timeout: 3)
         sleep(6)
         attach("chase1")
-        sleep(20)
+        // Long enough to watch it glide between live positions (`CHASE_WAIT`).
+        sleep(UInt32(environment["CHASE_WAIT"].flatMap(Int.init) ?? 20))
         attach("chase2")
         XCTAssertEqual(app.state, .runningForeground)
     }

@@ -56,6 +56,9 @@ struct TransitMapView: UIViewRepresentable {
     /// Group nearby vehicles into clusters (the browse map); trackers show
     /// one followed vehicle and turn this off.
     var clustersVehicles: Bool = true
+    /// Trackers: each vehicle's route, keyed by trip id - those vehicles
+    /// glide along it between live positions (`VehicleMotion`).
+    var vehicleRoutes: [String: VehicleRoute] = [:]
 
     var onSelectStop: ((String) -> Void)?
     var onSelectVehicle: ((String) -> Void)?
@@ -102,6 +105,7 @@ struct TransitMapView: UIViewRepresentable {
         }
 
         mapView.delegate = context.coordinator
+        context.coordinator.mapView = mapView
         context.coordinator.installGestureWatchers(on: mapView)
         mapView.showsUserLocation = showsUserLocation
         context.coordinator.apply3D(is3D, to: mapView)
@@ -151,6 +155,7 @@ struct TransitMapView: UIViewRepresentable {
             in: mapView
         )
         context.coordinator.reconcileTripStops(tripStops, in: mapView)
+        context.coordinator.reconcileMotion(in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken)
         context.coordinator.applyCamera(camera, to: mapView)
@@ -161,10 +166,15 @@ struct TransitMapView: UIViewRepresentable {
         Coordinator(self)
     }
 
+    static func dismantleUIView(_ mapView: MKMapView, coordinator: Coordinator) {
+        coordinator.stopMotion()
+    }
+
     @MainActor
     final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
 
         var parent: TransitMapView
+        weak var mapView: MKMapView?
 
         private var stopsByID: [String: StopAnnotation] = [:]
         private var vehiclesByID: [String: VehicleAnnotation] = [:]
@@ -314,7 +324,20 @@ struct TransitMapView: UIViewRepresentable {
             }
 
             for vehicle in newVehicles {
+                latestFeed[vehicle.id] = (vehicle.coordinate, vehicle.isAtStop)
                 if let existing = vehiclesByID[vehicle.id] {
+                    existing.isAtStop = vehicle.isAtStop
+                    // Gliding along its route: `VehicleMotion` places it.
+                    if motions[vehicle.id] != nil {
+                        if existing.routeColorHex != vehicle.routeColorHex {
+                            existing.routeColorHex = vehicle.routeColorHex
+                            (mapView.view(for: existing) as? VehicleMarkerView)?.apply(
+                                bearing: existing.bearing, colorHex: vehicle.routeColorHex,
+                                vehicleType: vehicle.vehicleType, mapHeading: mapView.camera.heading
+                            )
+                        }
+                        continue
+                    }
                     // Every SwiftUI render hands over the vehicles again -
                     // only touch an annotation that actually changed. Each
                     // coordinate write is a KVO round through MapKit's
@@ -355,6 +378,7 @@ struct TransitMapView: UIViewRepresentable {
             for id in vehiclesByID.keys
             where !newIDs.contains(id) {
                 vehiclesByID.removeValue(forKey: id)
+                latestFeed.removeValue(forKey: id)
             }
         }
 
@@ -420,6 +444,105 @@ struct TransitMapView: UIViewRepresentable {
             }
         }
 
+        // MARK: - Vehicle motion
+
+        /// Gliding vehicles' models, by trip id, and the route each was built for.
+        private var motions: [String: VehicleMotion] = [:]
+        private var motionKeys: [String: String] = [:]
+        /// Each vehicle's latest live position (and whether it's at a stop).
+        private var latestFeed: [String: (coordinate: CLLocationCoordinate2D, atStop: Bool)] = [:]
+        private var motionTimer: Timer?
+        private static let motionStep: TimeInterval = 1
+
+        func reconcileMotion(in mapView: MKMapView) {
+            let routes = parent.vehicleRoutes
+            for id in motions.keys where routes[id] == nil || vehiclesByID[id] == nil {
+                motions.removeValue(forKey: id)
+                motionKeys.removeValue(forKey: id)
+            }
+            var created = false
+            let now = Date()
+            for (id, route) in routes {
+                guard let annotation = vehiclesByID[id] else { continue }
+                if motionKeys[id] != route.key {
+                    motionKeys[id] = route.key
+                    motions[id] = RouteLine(route.shape).map {
+                        VehicleMotion(line: $0, stops: route.stops, vehicleType: annotation.vehicleType)
+                    }
+                    created = true
+                }
+                if let feed = latestFeed[id] {
+                    motions[id]?.feed(
+                        Coordinate(latitude: feed.coordinate.latitude, longitude: feed.coordinate.longitude),
+                        stopped: feed.atStop, at: now
+                    )
+                }
+            }
+            if created { advanceMotion(in: mapView, glide: 0) }
+
+            if motions.isEmpty {
+                stopMotion()
+            } else if motionTimer == nil {
+                let timer = Timer(timeInterval: Self.motionStep, repeats: true) { [weak self] _ in
+                    MainActor.assumeIsolated {
+                        guard let self, let mapView = self.mapView else { return }
+                        self.advanceMotion(in: mapView, glide: Self.motionStep)
+                    }
+                }
+                // `.common`: keeps gliding while the map is being dragged.
+                RunLoop.main.add(timer, forMode: .common)
+                motionTimer = timer
+            }
+        }
+
+        func stopMotion() {
+            motionTimer?.invalidate()
+            motionTimer = nil
+        }
+
+        /// One step: each gliding vehicle to where its model says it is now,
+        /// animated linearly over the step so it moves continuously.
+        private func advanceMotion(in mapView: MKMapView, glide: TimeInterval) {
+            let now = Date()
+            for (id, var motion) in motions {
+                guard let annotation = vehiclesByID[id] else { continue }
+                if parent.vehicleRoutes[id]?.riderAboard == true,
+                   let location = mapView.userLocation.location,
+                   location.horizontalAccuracy >= 0, location.horizontalAccuracy <= 25,
+                   now.timeIntervalSince(location.timestamp) < 5 {
+                    motion.rider(
+                        Coordinate(latitude: location.coordinate.latitude, longitude: location.coordinate.longitude),
+                        speed: location.speed >= 0 ? location.speed : nil, at: location.timestamp
+                    )
+                }
+                let step = motion.step(to: now)
+                motions[id] = motion
+                guard let step else { continue }
+
+                let coordinate = CLLocationCoordinate2D(latitude: step.coordinate.latitude, longitude: step.coordinate.longitude)
+                if MKMapPoint(annotation.coordinate).distance(to: MKMapPoint(coordinate)) > 0.3 {
+                    if glide > 0 {
+                        UIView.animate(withDuration: glide, delay: 0, options: [.curveLinear, .beginFromCurrentState, .allowUserInteraction]) {
+                            annotation.coordinate = coordinate
+                        }
+                    } else {
+                        annotation.coordinate = coordinate
+                    }
+                }
+                // 0 is off the route shape - keep the feed's own bearing.
+                if step.bearing > 0, abs(step.bearing - annotation.bearing) > 0.5 {
+                    annotation.bearing = step.bearing
+                    (mapView.view(for: annotation) as? VehicleMarkerView)?.apply(
+                        bearing: step.bearing, colorHex: annotation.routeColorHex,
+                        vehicleType: annotation.vehicleType, mapHeading: mapView.camera.heading
+                    )
+                }
+            }
+            if case .follow(let id, _) = parent.camera, motions[id] != nil {
+                applyCamera(parent.camera, to: mapView, glide: glide > 0 ? glide : nil)
+            }
+        }
+
         // MARK: - Camera
         //
         // Every camera is worked out directly as an `MKMapCamera` - centre,
@@ -468,7 +591,7 @@ struct TransitMapView: UIViewRepresentable {
             applied = nil
         }
 
-        func applyCamera(_ mode: MapCamera, to mapView: MKMapView) {
+        func applyCamera(_ mode: MapCamera, to mapView: MKMapView, glide: TimeInterval? = nil) {
             // Never move the map out from under the person's fingers.
             guard !isUserTouching else { return }
             guard Self.isLaidOut(mapView) else {
@@ -495,7 +618,15 @@ struct TransitMapView: UIViewRepresentable {
                 }
             }
 
-            mapView.setCamera(target.camera, animated: true)
+            if let glide, applied?.identity == target.identity {
+                // Following a gliding vehicle: move with it, at its pace,
+                // rather than MapKit's ease-in-out hop each second.
+                UIView.animate(withDuration: glide, delay: 0, options: [.curveLinear, .beginFromCurrentState, .allowUserInteraction]) {
+                    mapView.camera = target.camera
+                }
+            } else {
+                mapView.setCamera(target.camera, animated: true)
+            }
             applied = AppliedCamera(
                 identity: target.identity, camera: target.camera, insets: insets,
                 size: mapView.bounds.size, isAutomatic: target.isAutomatic

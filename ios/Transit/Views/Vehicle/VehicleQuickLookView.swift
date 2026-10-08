@@ -131,6 +131,15 @@ struct VehicleQuickLookView: View {
         }
     }
 
+    /// The vehicle glides along its trip's shape between live positions.
+    private var vehicleRoutes: [String: VehicleRoute] {
+        guard let shape, vehicle != nil else { return [:] }
+        return [tripID: VehicleRoute(
+            shape: shape.geojson.geometry.lineCoordinates,
+            stops: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }
+        )]
+    }
+
     // MARK: - Body
 
     var body: some View {
@@ -144,6 +153,7 @@ struct VehicleQuickLookView: View {
                     camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400)
                         : tripStops.isEmpty ? .none : .frame(points: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }, minSpanMeters: 800),
                     clustersVehicles: false,
+                    vehicleRoutes: vehicleRoutes,
                     cameraInsets: usesSidePanel
                         ? UIEdgeInsets(top: proxy.safeAreaInsets.top + 60, left: proxy.safeAreaInsets.leading + MapSidePanelMetrics.occupiedWidth + 16,
                                        bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
