@@ -40,6 +40,9 @@ struct TransitMapView: UIViewRepresentable {
     /// Settings > Map style - basemap light/dark independent of the app
     /// theme, like the web's map style setting.
     @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
+    /// The map's 3D toggle (`Map3DButton`) - realistic terrain and buildings
+    /// with a tilted camera, on every map at once.
+    @AppStorage(Map3D.storageKey) private var is3D = false
 
     var stops: [StopAnnotation] = []
     var vehicles: [VehicleAnnotation] = []
@@ -97,7 +100,7 @@ struct TransitMapView: UIViewRepresentable {
 
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = showsUserLocation
-        mapView.pointOfInterestFilter = .excludingAll
+        context.coordinator.apply3D(is3D, to: mapView)
 
         // Register every annotation view that is dequeued using
         // dequeueReusableAnnotationView(withIdentifier:for:).
@@ -134,6 +137,7 @@ struct TransitMapView: UIViewRepresentable {
         mapView.overrideUserInterfaceStyle = (MapStyle(rawValue: mapStyleRaw) ?? .auto).interfaceStyle
 
         mapView.showsUserLocation = showsUserLocation
+        context.coordinator.apply3D(is3D, to: mapView)
 
         context.coordinator.reconcile(
             stops: stops,
@@ -178,6 +182,30 @@ struct TransitMapView: UIViewRepresentable {
         /// The annotation `.follow` last set a span for - so the span is set
         /// once when following starts, not on every position update.
         private var followSpanAppliedFor: String?
+
+        /// The 3D setting last applied - nil until the map's first
+        /// configuration, which shouldn't animate a tilt of its own (the
+        /// first camera move tilts as it frames).
+        private var applied3D: Bool?
+
+        /// Swap the basemap between flat and realistic elevation, and tilt
+        /// (or flatten) the camera when the toggle changes.
+        func apply3D(_ is3D: Bool, to mapView: MKMapView) {
+            guard is3D != applied3D else { return }
+            let isToggle = applied3D != nil
+            applied3D = is3D
+
+            let configuration = MKStandardMapConfiguration(elevationStyle: is3D ? .realistic : .flat)
+            configuration.pointOfInterestFilter = .excludingAll
+            mapView.preferredConfiguration = configuration
+
+            guard isToggle else { return }
+            // A follow camera re-frames for the new mode on its next update.
+            followSpanAppliedFor = nil
+            let camera = mapView.camera.copy() as! MKMapCamera
+            camera.pitch = is3D ? Map3D.pitch : 0
+            mapView.setCamera(camera, animated: true)
+        }
 
         func applyCameraReset(_ token: Int) {
             guard token != lastCameraResetToken else { return }
@@ -301,7 +329,8 @@ struct TransitMapView: UIViewRepresentable {
                         view.apply(
                             bearing: vehicle.bearing,
                             colorHex: vehicle.routeColorHex,
-                            vehicleType: vehicle.vehicleType
+                            vehicleType: vehicle.vehicleType,
+                            mapHeading: mapView.camera.heading
                         )
                     }
                 } else {
@@ -375,14 +404,14 @@ struct TransitMapView: UIViewRepresentable {
                 guard camera != lastAppliedCamera else { return }
                 lastAppliedCamera = camera
                 let rect = Self.mapRect(around: [center], minSpanMeters: radiusMeters)
-                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
+                move(mapView) { animated in mapView.setVisibleMapRect(rect, edgePadding: insets, animated: animated) }
 
             case .frame(let points, let minSpan):
                 guard camera != lastAppliedCamera, !points.isEmpty else { return }
                 lastAppliedCamera = camera
                 let rect = Self.mapRect(around: points, minSpanMeters: minSpan)
                 let padding = UIEdgeInsets(top: insets.top + 40, left: insets.left + 40, bottom: insets.bottom + 40, right: insets.right + 40)
-                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: padding, animated: true) }
+                move(mapView) { animated in mapView.setVisibleMapRect(rect, edgePadding: padding, animated: animated) }
 
             case .fitAll:
                 // Union annotation points with every overlay's rect - a
@@ -400,7 +429,7 @@ struct TransitMapView: UIViewRepresentable {
                 guard !rect.isNull else { return }
                 lastAppliedCamera = camera
                 let padding = UIEdgeInsets(top: insets.top + 40, left: insets.left + 30, bottom: insets.bottom + 40, right: insets.right + 30)
-                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: padding, animated: true) }
+                move(mapView) { animated in mapView.setVisibleMapRect(rect, edgePadding: padding, animated: animated) }
 
             case .follow(let id, let spanMeters):
                 lastAppliedCamera = camera
@@ -413,12 +442,16 @@ struct TransitMapView: UIViewRepresentable {
                     coordinate = nil
                 }
                 guard let coordinate else { return }
-                follow(coordinate, key: id, spanMeters: spanMeters, in: mapView)
+                let bearing = vehiclesByID[id]?.bearing ?? 0
+                // 0 is "no bearing data" on this API.
+                follow(coordinate, key: id, spanMeters: spanMeters, heading: bearing > 0 ? bearing : nil, in: mapView)
 
             case .followUser(let spanMeters):
                 lastAppliedCamera = camera
                 guard mapView.showsUserLocation, let location = mapView.userLocation.location else { return }
-                follow(location.coordinate, key: Self.userFollowKey, spanMeters: spanMeters, in: mapView)
+                // GPS course only means something once you're moving.
+                let course = location.course >= 0 && location.speed > 0.7 ? location.course : nil
+                follow(location.coordinate, key: Self.userFollowKey, spanMeters: spanMeters, heading: course, in: mapView)
             }
         }
 
@@ -427,7 +460,13 @@ struct TransitMapView: UIViewRepresentable {
         /// Centre `coordinate` in the unobscured area - zooming to
         /// `spanMeters` the first time `key` is followed, then leaving the
         /// rider's own pinch-zoom alone.
-        private func follow(_ coordinate: CLLocationCoordinate2D, key id: String, spanMeters: Double?, in mapView: MKMapView) {
+        private func follow(
+            _ coordinate: CLLocationCoordinate2D, key id: String, spanMeters: Double?, heading: Double?, in mapView: MKMapView
+        ) {
+            if applied3D == true, mapView.bounds.width > 1, mapView.bounds.height > 1 {
+                chase(coordinate, key: id, spanMeters: spanMeters, heading: heading, in: mapView)
+                return
+            }
             let insets = parent.cameraInsets
             // Still zoomed right out (e.g. the first attempt ran before
             // the map had its final size, when the drawer's padding
@@ -438,17 +477,82 @@ struct TransitMapView: UIViewRepresentable {
             if let spanMeters, followSpanAppliedFor != id || zoomedOut, paddingFits {
                 followSpanAppliedFor = id
                 let rect = Self.mapRect(around: [Coordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)], minSpanMeters: spanMeters)
-                move(mapView) { mapView.setVisibleMapRect(rect, edgePadding: insets, animated: true) }
+                move(mapView) { animated in mapView.setVisibleMapRect(rect, edgePadding: insets, animated: animated) }
             } else {
                 // Keep the zoom; put the point in the middle of the
                 // unobscured area rather than the middle of the view.
                 let center = Self.center(placing: coordinate, inInsets: insets, of: mapView)
-                move(mapView) { mapView.setCenter(center, animated: true) }
+                move(mapView) { animated in mapView.setCenter(center, animated: animated) }
             }
         }
 
-        private func move(_ mapView: MKMapView, _ change: () -> Void) {
-            change()
+        /// The 3D follow camera: behind `coordinate`, looking along
+        /// `heading` (the vehicle's bearing, or your course), steeply tilted
+        /// like a third-person chase cam - keeping the rider's own zoom
+        /// after the first frame. No heading keeps the current one.
+        private func chase(
+            _ coordinate: CLLocationCoordinate2D, key id: String, spanMeters: Double?, heading: Double?, in mapView: MKMapView
+        ) {
+            let distance: CLLocationDistance
+            if followSpanAppliedFor != id {
+                followSpanAppliedFor = id
+                distance = max(250, (spanMeters ?? 1000) * 0.45)
+            } else {
+                distance = mapView.camera.centerCoordinateDistance
+            }
+            let camera = MKMapCamera(
+                lookingAtCenter: coordinate,
+                fromDistance: distance,
+                pitch: Map3D.followPitch,
+                heading: heading ?? mapView.camera.heading
+            )
+
+            // Put the target in the middle of the unobscured area rather
+            // than the view's: aim at the ground that sits as far behind it
+            // on screen as that area's centre is above the view's.
+            let start = mapView.camera.copy() as! MKMapCamera
+            mapView.setCamera(camera, animated: false)
+            let insets = parent.cameraInsets
+            let bounds = mapView.bounds
+            let visibleMid = CGPoint(
+                x: insets.left + (bounds.width - insets.left - insets.right) / 2,
+                y: insets.top + (bounds.height - insets.top - insets.bottom) / 2
+            )
+            let aim = CGPoint(x: 2 * bounds.midX - visibleMid.x, y: 2 * bounds.midY - visibleMid.y)
+            if bounds.contains(aim) {
+                let center = mapView.convert(aim, toCoordinateFrom: mapView)
+                if CLLocationCoordinate2DIsValid(center) { camera.centerCoordinate = center }
+            }
+            mapView.setCamera(start, animated: false)
+            mapView.setCamera(camera, animated: true)
+        }
+
+        /// A 3D move made before layout, still to be tilted.
+        private var pendingTilt = false
+
+        /// Run a framing move (`setVisibleMapRect`/`setCenter`/`setRegion`).
+        /// Those flatten the camera, so in 3D the move is made instantly to
+        /// find where it lands, then the camera flies there tilted - one
+        /// animation, nothing drawn in between.
+        private func move(_ mapView: MKMapView, _ change: (_ animated: Bool) -> Void) {
+            guard applied3D == true else {
+                change(true)
+                return
+            }
+            // Not laid out yet (first render): an instant move has no real
+            // size to frame against and lands nowhere - let MapKit defer it
+            // as usual, and tilt once the map settles.
+            guard mapView.bounds.width > 1, mapView.bounds.height > 1 else {
+                change(true)
+                pendingTilt = true
+                return
+            }
+            let start = mapView.camera.copy() as! MKMapCamera
+            change(false)
+            let target = mapView.camera.copy() as! MKMapCamera
+            target.pitch = Map3D.pitch
+            mapView.setCamera(start, animated: false)
+            mapView.setCamera(target, animated: true)
         }
 
         /// A map rect containing `points`, at least `minSpanMeters` across.
@@ -493,14 +597,16 @@ struct TransitMapView: UIViewRepresentable {
 
             guard mapView.showsUserLocation, mapView.userLocation.location != nil else { return }
 
-            mapView.setRegion(
-                MKCoordinateRegion(
-                    center: mapView.userLocation.coordinate,
-                    latitudinalMeters: 1200,
-                    longitudinalMeters: 1200
-                ),
-                animated: true
-            )
+            move(mapView) { animated in
+                mapView.setRegion(
+                    MKCoordinateRegion(
+                        center: mapView.userLocation.coordinate,
+                        latitudinalMeters: 1200,
+                        longitudinalMeters: 1200
+                    ),
+                    animated: animated
+                )
+            }
         }
 
         // MARK: - MKMapViewDelegate
@@ -529,16 +635,35 @@ struct TransitMapView: UIViewRepresentable {
             regionDidChangeAnimated animated: Bool
         ) {
             reportVisibleRegion(of: mapView)
+            if pendingTilt, applied3D == true, mapView.bounds.width > 1, mapView.bounds.height > 1 {
+                pendingTilt = false
+                let camera = mapView.camera.copy() as! MKMapCamera
+                camera.pitch = Map3D.pitch
+                mapView.setCamera(camera, animated: true)
+            }
         }
 
         /// While a pan/zoom is still moving too - a few times a second, so
         /// stops fill in as you drag rather than only once the map settles.
         func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+            updateVehicleHeadings(in: mapView)
             guard Date().timeIntervalSince(lastRegionReport) > 0.25 else { return }
             reportVisibleRegion(of: mapView)
         }
 
         private var lastRegionReport = Date.distantPast
+        private var markerMapHeading: CLLocationDirection = 0
+
+        /// Vehicle pointers are drawn in screen space - turn them with the
+        /// map when it rotates (the chase cam, or a two-finger twist).
+        private func updateVehicleHeadings(in mapView: MKMapView) {
+            let heading = mapView.camera.heading
+            guard abs(heading - markerMapHeading) > 0.5 else { return }
+            markerMapHeading = heading
+            for vehicle in vehiclesByID.values {
+                (mapView.view(for: vehicle) as? VehicleMarkerView)?.apply(mapHeading: heading)
+            }
+        }
 
         func reportVisibleRegion(of mapView: MKMapView) {
             guard let onVisibleRegionChange = parent.onVisibleRegionChange,
@@ -622,7 +747,8 @@ struct TransitMapView: UIViewRepresentable {
                 view.apply(
                     bearing: vehicle.bearing,
                     colorHex: vehicle.routeColorHex,
-                    vehicleType: vehicle.vehicleType
+                    vehicleType: vehicle.vehicleType,
+                    mapHeading: mapView.camera.heading
                 )
 
                 return view
@@ -704,7 +830,8 @@ struct TransitMapView: UIViewRepresentable {
                 mapView.deselectAnnotation(cluster, animated: false)
                 // A deliberate camera move - stop any auto-follow.
                 parent.onUserInteraction?()
-                mapView.setVisibleMapRect(Self.expansionRect(for: cluster, in: mapView), animated: true)
+                let rect = Self.expansionRect(for: cluster, in: mapView)
+                move(mapView) { animated in mapView.setVisibleMapRect(rect, animated: animated) }
             } else if let stop = annotation as? StopAnnotation {
                 // Deselect straight away: MapKit never reports a second tap
                 // on an annotation that's still selected, so coming back
@@ -806,11 +933,17 @@ final class VehicleMarkerView: MKAnnotationView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    private var bearing: Double = 0
+    private var mapHeading: Double = 0
+
     func apply(
         bearing: Double,
         colorHex: String?,
-        vehicleType: String
+        vehicleType: String,
+        mapHeading: Double
     ) {
+        self.bearing = bearing
+        self.mapHeading = mapHeading
         let fill = colorHex.map { UIColor(hex: $0) } ?? MapMarkerArt.foreground
         let symbol = MapMarkerArt.symbolName(forMode: vehicleType)
         let key = "\(symbol)|\(colorHex ?? "")"
@@ -825,7 +958,17 @@ final class VehicleMarkerView: MKAnnotationView {
         pointer.fillColor = fill.cgColor
         // bearing == 0 means "no data" on this API - no pointer.
         pointerHost.isHidden = bearing <= 0
-        pointerHost.transform = CGAffineTransform(rotationAngle: CGFloat(bearing) * .pi / 180)
+        rotatePointer()
+    }
+
+    /// The map turned - bearing is true north, the pointer is on screen.
+    func apply(mapHeading: Double) {
+        self.mapHeading = mapHeading
+        rotatePointer()
+    }
+
+    private func rotatePointer() {
+        pointerHost.transform = CGAffineTransform(rotationAngle: CGFloat(bearing - mapHeading) * .pi / 180)
     }
 }
 

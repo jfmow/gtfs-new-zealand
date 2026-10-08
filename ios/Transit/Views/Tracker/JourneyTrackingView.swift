@@ -208,6 +208,7 @@ struct JourneyTrackingView: View {
             Spacer()
             // Up here rather than the map's bottom corner, which the
             // drawer covers.
+            Map3DButton()
             RecenterButton(isAuthorized: environment.location.isAuthorized) { recenter() }
             let endButton = FloatingBarButton {
                 Button("End", role: .destructive) { isConfirmingEnd = true }

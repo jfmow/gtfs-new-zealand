@@ -308,6 +308,53 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "app died after pinch-zoom on VehiclesMapView")
     }
 
+    /// The map's 3D button tilts the camera and back.
+    func testMap3DToggle() throws {
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 6)
+        app.tabBars.buttons["Map"].tap()
+        dismissSystemAlertIfPresent(timeout: 2)
+        sleep(3)
+        // Start flat whatever the last run left it as.
+        if app.buttons["Show flat map"].exists {
+            app.buttons["Show flat map"].tap()
+            sleep(2)
+        }
+        attach("3d1-flat")
+
+        let toggle = app.buttons["Show 3D map"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "3D button not found")
+        toggle.tap()
+        sleep(4)
+        attach("3d2-tilted")
+        XCTAssertTrue(app.buttons["Show flat map"].exists)
+
+        app.otherElements.firstMatch.pinch(withScale: 3, velocity: 1)
+        sleep(3)
+        attach("3d3-tilted-zoomed")
+
+        app.buttons["Show flat map"].tap()
+        sleep(3)
+        attach("3d4-flat-again")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
+    /// With 3D as the default view, the vehicle tracker chases the
+    /// vehicle from behind. Needs a live trip ID in `CHASE_TRIP_ID`.
+    func testChaseCam() throws {
+        let tripID = try XCTUnwrap(ProcessInfo.processInfo.environment["CHASE_TRIP_ID"])
+        app.launchArguments += ["-map3DDefault", "YES"]
+        app.launch()
+        dismissSystemAlertIfPresent(timeout: 6)
+        app.open(URL(string: "transit://trip?tripId=\(tripID)")!)
+        dismissSystemAlertIfPresent(timeout: 3)
+        sleep(6)
+        attach("chase1")
+        sleep(20)
+        attach("chase2")
+        XCTAssertEqual(app.state, .runningForeground)
+    }
+
     /// Tapping a cluster zooms in one layer: the group splits into smaller
     /// groups / single stops rather than jumping to street level.
     func testClusterTapExpands() throws {

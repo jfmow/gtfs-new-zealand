@@ -12,6 +12,7 @@ struct TransitApp: App {
 
     init() {
         ChromeAppearance.apply()
+        Map3D.resetToDefault()
         let environment = AppEnvironment()
         _environment = State(initialValue: environment)
         let (container, cloudError) = Self.makeModelContainer()

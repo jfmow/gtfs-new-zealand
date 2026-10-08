@@ -225,6 +225,7 @@ struct VehicleQuickLookView: View {
                         .accessibilityLabel("Alerts for route \(vehicle.route.name)")
                 }
             }
+            Map3DButton()
             FloatingBarButton {
                 Button {
                     autoFollow = true
