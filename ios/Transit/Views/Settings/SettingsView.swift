@@ -53,6 +53,8 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearanceMode") private var appearanceModeRaw = AppearanceMode.system.rawValue
     @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
+    @AppStorage(Map3D.defaultKey) private var map3DDefault = false
+    @AppStorage(Map3D.storageKey) private var map3D = false
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
     @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
 
@@ -99,6 +101,14 @@ struct SettingsView: View {
                         ShadSelect(
                             selection: $mapStyleRaw,
                             options: MapStyle.allCases.map { ($0.rawValue, $0.label) }
+                        )
+                    }
+
+                    RowDivider()
+                    SettingsRow(title: "Default map view", detail: "3D tilts the map and follows vehicles from behind") {
+                        ShadSelect(
+                            selection: Binding(get: { map3DDefault }, set: { map3DDefault = $0; map3D = $0 }),
+                            options: [(false, "2D"), (true, "3D")]
                         )
                     }
 

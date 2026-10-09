@@ -40,8 +40,11 @@ struct VehiclesMapView: View {
             .ignoresSafeArea(edges: .bottom)
 
             // Above the bottom safe area (tab bar, resume pill), not in it.
-            RecenterButton(isAuthorized: environment.location.isAuthorized) {
-                recenterTrigger += 1
+            VStack(spacing: 12) {
+                Map3DButton()
+                RecenterButton(isAuthorized: environment.location.isAuthorized) {
+                    recenterTrigger += 1
+                }
             }
             .padding(.trailing, 16)
             .padding(.bottom, 12)
