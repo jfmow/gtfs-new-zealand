@@ -106,6 +106,7 @@ struct JourneyTrackingView: View {
                     camera: autoFollow ? camera : .none,
                     showsUserLocation: true,
                     clustersVehicles: false,
+                    vehicleRoutes: vehicleRoutes,
                     cameraInsets: cameraInsets(in: proxy),
                     onUserInteraction: { if autoFollow { autoFollow = false } },
                     cameraResetToken: cameraResetToken
@@ -913,6 +914,19 @@ struct JourneyTrackingView: View {
         guard isCurrent, session.lastLiveFetch != nil, !session.isOffline,
               let leg = displayPlan.legs[safe: index], leg.mode == "transit" else { return nil }
         return vehiclesByTripID[leg.tripID] != nil && !session.estimatedTripIDs.contains(leg.tripID)
+    }
+
+    /// The ride's vehicle glides along its shape between live positions -
+    /// placed by the rider's own GPS once they're on board.
+    private var vehicleRoutes: [String: VehicleRoute] {
+        guard let vehicle = activeRideVehicle,
+              let shape = rideShapes[vehicle.tripID]?.geojson.geometry.lineCoordinates else { return [:] }
+        let stops = (isCurrent ? session.tripStops[vehicle.tripID] : nil) ?? []
+        return [vehicle.tripID: VehicleRoute(
+            shape: shape,
+            stops: stops.map(\.coordinate),
+            riderAboard: snapshot?.phase == .onboard
+        )]
     }
 
     /// That ride's vehicle, once it's sending a live position.

@@ -55,6 +55,7 @@ struct SettingsView: View {
     @AppStorage("mapStyle") private var mapStyleRaw = MapStyle.auto.rawValue
     @AppStorage(Map3D.defaultKey) private var map3DDefault = false
     @AppStorage(Map3D.storageKey) private var map3D = false
+    @AppStorage(VehicleRoute.glidingKey) private var glidesVehicles = true
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
     @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
 
@@ -110,6 +111,13 @@ struct SettingsView: View {
                             selection: Binding(get: { map3DDefault }, set: { map3DDefault = $0; map3D = $0 }),
                             options: [(false, "2D"), (true, "3D")]
                         )
+                    }
+
+                    RowDivider()
+                    SettingsRow(title: "Smooth vehicle movement", detail: "Glide tracked vehicles along their route between live updates") {
+                        Toggle("Smooth vehicle movement", isOn: $glidesVehicles)
+                            .labelsHidden()
+                            .tint(Theme.primary)
                     }
 
                     RowDivider()
