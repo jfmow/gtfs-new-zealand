@@ -592,17 +592,24 @@ struct TransitMapView: UIViewRepresentable {
         private var lastCameraResetToken = 0
         private var lastCenterOnUserLocationTrigger = 0
         /// The zoom the person had when they re-centred - a follow keeps it
-        /// (Apple Maps style) rather than snapping back to its default span.
+        /// (Apple Maps style) rather than snapping back to its default span;
+        /// a second tap, with no gesture in between, drops it.
         /// Pinned to the first follow that uses it, so a new stage (another
         /// vehicle, the walk after the ride) starts at its own default.
         private var keptFollowDistance: (distance: Double, key: String?)?
+        /// The person has moved the map since the last re-centre. Without
+        /// that, a re-centre is a second tap: back to the default zoom.
+        private var movedSinceReset = false
 
         func applyCameraReset(_ token: Int, in mapView: MKMapView) {
             guard token != lastCameraResetToken else { return }
             lastCameraResetToken = token
-            if applied != nil, Self.isLaidOut(mapView) {
+            if movedSinceReset, applied != nil, Self.isLaidOut(mapView) {
                 keptFollowDistance = (mapView.camera.centerCoordinateDistance, nil)
+            } else {
+                keptFollowDistance = nil
             }
+            movedSinceReset = false
             applied = nil
         }
 
@@ -1013,6 +1020,7 @@ struct TransitMapView: UIViewRepresentable {
 
         @objc private func userGesture(_ recognizer: UIGestureRecognizer) {
             if recognizer.state == .began || recognizer.state == .recognized {
+                movedSinceReset = true
                 parent.onUserInteraction?()
             }
         }
@@ -1258,6 +1266,7 @@ struct TransitMapView: UIViewRepresentable {
             if let cluster = annotation as? MKClusterAnnotation {
                 mapView.deselectAnnotation(cluster, animated: false)
                 // A deliberate camera move - stop any auto-follow.
+                movedSinceReset = true
                 parent.onUserInteraction?()
                 let rect = Self.expansionRect(for: cluster, in: mapView)
                 let points = [MKMapPoint(x: rect.minX, y: rect.minY).coordinate, MKMapPoint(x: rect.maxX, y: rect.maxY).coordinate]
