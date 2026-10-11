@@ -17,8 +17,9 @@ enum MapCamera: Equatable {
     case follow(annotationID: String, spanMeters: Double? = nil)
 
     /// `.follow`, but for the device's own location (the blue dot) - the
-    /// camera keeps the rider centred as they walk. Needs
-    /// `showsUserLocation`; does nothing until a fix arrives.
+    /// camera keeps the rider centred as they walk, turned to face the way
+    /// the phone points (compass). Needs `showsUserLocation`; does nothing
+    /// until a fix arrives.
     case followUser(spanMeters: Double? = nil)
 
     /// Frame all of these points (e.g. the bus and the stop you're waiting
@@ -162,6 +163,7 @@ struct TransitMapView: UIViewRepresentable {
         context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes.filter(\.value.riderAboard) : [:], in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken)
+        context.coordinator.updateCompass(for: camera, in: mapView)
         context.coordinator.applyCamera(camera, to: mapView)
         context.coordinator.applyCenterOnUserLocationTrigger(centerOnUserLocationTrigger, to: mapView)
     }
@@ -172,10 +174,11 @@ struct TransitMapView: UIViewRepresentable {
 
     static func dismantleUIView(_ mapView: MKMapView, coordinator: Coordinator) {
         coordinator.stopMotion()
+        coordinator.stopCompass()
     }
 
     @MainActor
-    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate {
+    final class Coordinator: NSObject, MKMapViewDelegate, UIGestureRecognizerDelegate, CLLocationManagerDelegate {
 
         var parent: TransitMapView
         weak var mapView: MKMapView?
@@ -708,28 +711,35 @@ struct TransitMapView: UIViewRepresentable {
 
             case .followUser(let spanMeters):
                 guard mapView.showsUserLocation, let location = mapView.userLocation.location else { return nil }
-                // GPS course only means something once you're moving.
+                // The way the phone points; failing that, GPS course (which
+                // only means something once you're moving).
                 let course = location.course >= 0 && location.speed > 1 && location.courseAccuracy >= 0 && location.courseAccuracy < 35
                     ? location.course : nil
-                return followTarget(location.coordinate, key: "followUser", spanMeters: spanMeters, heading: course, in: mapView)
+                return followTarget(
+                    location.coordinate, key: "followUser", spanMeters: spanMeters,
+                    heading: compassHeading ?? course, turns2D: true, in: mapView
+                )
             }
         }
 
         /// Follow `coordinate`: flat and north-up-as-you-left-it in 2D; in
         /// 3D a third-person chase cam - behind the target, looking along
         /// `heading` (the vehicle's bearing, or your course), steeply tilted.
-        /// No heading keeps the current one.
+        /// No heading keeps the current one. `turns2D` turns the flat map
+        /// to `heading` too (walking, by compass).
         private func followTarget(
-            _ coordinate: CLLocationCoordinate2D, key: String, spanMeters: Double?, heading: Double?, in mapView: MKMapView
+            _ coordinate: CLLocationCoordinate2D, key: String, spanMeters: Double?, heading: Double?,
+            turns2D: Bool = false, in mapView: MKMapView
         ) -> CameraTarget {
-            let currentHeading = applied?.camera.heading ?? mapView.camera.heading
+            let keptHeading = applied?.camera.heading ?? mapView.camera.heading
+            let currentHeading = turns2D ? heading ?? keptHeading : keptHeading
             let camera: MKMapCamera
             if applied3D == true {
                 // Far enough back to clear city towers - a walking follow's
                 // small span put the camera among the CBD's buildings.
                 camera = cameraPlacing(
                     coordinate, distance: max(600, (spanMeters ?? 1000) * 0.45),
-                    pitch: Map3D.followPitch, heading: heading ?? currentHeading, in: mapView
+                    pitch: Map3D.followPitch, heading: heading ?? keptHeading, in: mapView
                 )
             } else if let spanMeters {
                 camera = framingCamera(around: [coordinate], minSpanMeters: spanMeters, padding: 0, pitch: 0, heading: currentHeading, in: mapView)
@@ -890,6 +900,59 @@ struct TransitMapView: UIViewRepresentable {
                 pitch: applied3D == true ? Map3D.pitch : 0, heading: mapView.camera.heading, in: mapView
             )
             mapView.setCamera(camera, animated: true)
+        }
+
+        // MARK: - Compass
+
+        /// Heading updates for a `.followUser` camera - only while one is
+        /// on, since the compass costs battery.
+        private lazy var compass: CLLocationManager = {
+            let manager = CLLocationManager()
+            manager.delegate = self
+            manager.headingFilter = 3
+            return manager
+        }()
+        private var compassOn = false
+        /// Degrees from true north (magnetic if true isn't available) -
+        /// nil until a usable reading arrives.
+        private var compassHeading: CLLocationDirection?
+
+        func updateCompass(for mode: MapCamera, in mapView: MKMapView) {
+            guard case .followUser = mode, CLLocationManager.headingAvailable() else {
+                stopCompass()
+                return
+            }
+            // Headings are relative to the top of the device as held.
+            if let orientation = mapView.window?.windowScene?.effectiveGeometry.interfaceOrientation {
+                switch orientation {
+                case .landscapeLeft: compass.headingOrientation = .landscapeRight
+                case .landscapeRight: compass.headingOrientation = .landscapeLeft
+                case .portraitUpsideDown: compass.headingOrientation = .portraitUpsideDown
+                default: compass.headingOrientation = .portrait
+                }
+            }
+            guard !compassOn else { return }
+            compassOn = true
+            compass.startUpdatingHeading()
+        }
+
+        func stopCompass() {
+            guard compassOn else { return }
+            compassOn = false
+            compass.stopUpdatingHeading()
+            compassHeading = nil
+        }
+
+        nonisolated func locationManager(_ manager: CLLocationManager, didUpdateHeading newHeading: CLHeading) {
+            // Negative accuracy is an invalid reading; very poor accuracy
+            // (interference) would swing the map about.
+            guard newHeading.headingAccuracy >= 0, newHeading.headingAccuracy <= 45 else { return }
+            let heading = newHeading.trueHeading >= 0 ? newHeading.trueHeading : newHeading.magneticHeading
+            Task { @MainActor in
+                guard self.compassOn, let mapView = self.mapView else { return }
+                self.compassHeading = heading
+                self.applyCamera(self.parent.camera, to: mapView)
+            }
         }
 
         // MARK: - Gestures
