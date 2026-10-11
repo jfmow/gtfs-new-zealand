@@ -114,7 +114,7 @@ struct SettingsView: View {
                     }
 
                     RowDivider()
-                    SettingsRow(title: "Smooth vehicle movement", detail: "Glide tracked vehicles along their route between live updates") {
+                    SettingsRow(title: "Smooth vehicle movement", detail: "Move the vehicle you're on with your phone's location between live updates") {
                         Toggle("Smooth vehicle movement", isOn: $glidesVehicles)
                             .labelsHidden()
                             .tint(Theme.primary)

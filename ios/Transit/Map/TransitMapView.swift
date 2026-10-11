@@ -57,8 +57,9 @@ struct TransitMapView: UIViewRepresentable {
     /// Group nearby vehicles into clusters (the browse map); trackers show
     /// one followed vehicle and turn this off.
     var clustersVehicles: Bool = true
-    /// Trackers: each vehicle's route, keyed by trip id - those vehicles
-    /// glide along it between live positions (`VehicleMotion`).
+    /// Trackers: each vehicle's route, keyed by trip id. The one the rider
+    /// is aboard follows their GPS along it (`VehicleMotion`); the rest just
+    /// move to each live position.
     var vehicleRoutes: [String: VehicleRoute] = [:]
 
     var onSelectStop: ((String) -> Void)?
@@ -156,7 +157,7 @@ struct TransitMapView: UIViewRepresentable {
             in: mapView
         )
         context.coordinator.reconcileTripStops(tripStops, in: mapView)
-        context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes : [:], in: mapView)
+        context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes.filter(\.value.riderAboard) : [:], in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken)
         context.coordinator.applyCamera(camera, to: mapView)
@@ -325,10 +326,9 @@ struct TransitMapView: UIViewRepresentable {
             }
 
             for vehicle in newVehicles {
-                latestFeed[vehicle.id] = (vehicle.coordinate, vehicle.isAtStop)
+                latestFeed[vehicle.id] = vehicle.coordinate
                 if let existing = vehiclesByID[vehicle.id] {
-                    existing.isAtStop = vehicle.isAtStop
-                    // Gliding along its route: `VehicleMotion` places it.
+                    // Riding it: `VehicleMotion` places it from the rider's GPS.
                     if motions[vehicle.id] != nil {
                         if existing.routeColorHex != vehicle.routeColorHex {
                             existing.routeColorHex = vehicle.routeColorHex
@@ -450,8 +450,8 @@ struct TransitMapView: UIViewRepresentable {
         /// Gliding vehicles' models, by trip id, and the route each was built for.
         private var motions: [String: VehicleMotion] = [:]
         private var motionKeys: [String: String] = [:]
-        /// Each vehicle's latest live position (and whether it's at a stop).
-        private var latestFeed: [String: (coordinate: CLLocationCoordinate2D, atStop: Bool)] = [:]
+        /// Each vehicle's latest live position.
+        private var latestFeed: [String: CLLocationCoordinate2D] = [:]
         private var motionTimer: Timer?
         private static let motionStep: TimeInterval = 1
 
@@ -473,8 +473,7 @@ struct TransitMapView: UIViewRepresentable {
                 }
                 if let feed = latestFeed[id] {
                     motions[id]?.feed(
-                        Coordinate(latitude: feed.coordinate.latitude, longitude: feed.coordinate.longitude),
-                        stopped: feed.atStop, at: now
+                        Coordinate(latitude: feed.latitude, longitude: feed.longitude), at: now
                     )
                 }
             }

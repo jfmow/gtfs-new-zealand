@@ -79,21 +79,15 @@ public struct RouteLine: Sendable {
     }
 }
 
-/// Moves a tracked vehicle smoothly along its route between live positions,
-/// which only arrive every 10-30s.
+/// Moves the vehicle the rider is on smoothly along its route, using their
+/// own GPS - being on board, it places the vehicle far better than the live
+/// feed, which only reports every 10-30 s (with no speed or timestamp).
 ///
-/// The feed has no speed or timestamp, so speed is measured from successive
-/// positions along the route shape - or, when the rider is on board, taken
-/// from their own GPS (which also places the vehicle, being on it).
-///
-/// From the feed alone, the vehicle glides to each new position over about
-/// one report interval, then coasts only a few metres past it, easing to a
-/// halt. It runs a report behind the real thing, but never guesses ahead
-/// of it: carrying on at speed for the whole gap drew buses straight
-/// through red lights they'd stopped at. It also never passes the next stop
-/// and never visibly reverses (unless it's far off). With the rider's fresh
-/// GPS it does carry on at speed, briefly - that source is live.
-/// Off the route shape (a detour) it just shows the raw position.
+/// Between GPS fixes it carries on at the GPS speed, but only briefly
+/// (`riderExtrapolation`), never past the next stop and never visibly
+/// backwards. Without a fresh GPS fix it shows the feed's position as is -
+/// guessing ahead from the feed drew buses through red lights they'd
+/// stopped at. Off the route shape (a detour) it shows the raw position.
 public struct VehicleMotion: Sendable {
     public let line: RouteLine
     /// Metres along `line` of each stop, in trip order.
@@ -101,15 +95,8 @@ public struct VehicleMotion: Sendable {
     /// Metres per second - anything faster is a bad fix, not the vehicle.
     public let maxSpeed: Double
 
-    /// With the rider's GPS, never carry on longer than this past a fix.
+    /// Never carry on longer than this past a GPS fix.
     static let riderExtrapolation: TimeInterval = 5
-    /// From the feed, coast past the last position like this - easing off
-    /// over `coastTime`, never more than `maxCoast` - since it may have
-    /// stopped (lights, traffic) the moment it reported.
-    static let coastTime: TimeInterval = 3
-    static let maxCoast = 15.0
-    /// The same feed position for this long means the vehicle is stopped.
-    static let stationaryAfter: TimeInterval = 30
     /// Further off the route than this is a detour - show it raw.
     static let offRouteMetres = 60.0
     /// A rider fix is the best source for this long.
@@ -119,15 +106,9 @@ public struct VehicleMotion: Sendable {
     private(set) public var speed: Double = 0
     private var displayed: Double?
     private var lastStep: Date?
-    private var feedCoordinate: Coordinate?
-    private var feedChangedAt: Date?
     private var feedAlong: Double?
     private var riderAt: Date?
     private var offRoute: Coordinate?
-    /// Smoothed seconds between the feed's new positions.
-    private var reportInterval: TimeInterval = 15
-    /// When the glide to the latest feed position should arrive.
-    private var catchUpUntil: Date?
 
     public init(line: RouteLine, stops: [Coordinate], vehicleType: String) {
         self.line = line
@@ -146,51 +127,22 @@ public struct VehicleMotion: Sendable {
         }
     }
 
-    /// A position from the live feed (`stopped` when it says it's at a stop).
-    public mutating func feed(_ coordinate: Coordinate, stopped: Bool, at now: Date) {
-        if let previous = feedCoordinate, Geo.haversineDistanceMeters(previous, coordinate) < 1 {
-            // The feed repeats a position until the vehicle reports again;
-            // only a long-unchanged one means it's actually standing still.
-            if stopped || now.timeIntervalSince(feedChangedAt ?? now) > Self.stationaryAfter, !riderIsFresh(now) {
-                speed = 0
-                if let along = feedAlong { anchor = (along, now) }
-            }
-            return
-        }
-
+    /// A position from the live feed - where it's drawn when there's no
+    /// fresh rider GPS.
+    public mutating func feed(_ coordinate: Coordinate, at now: Date) {
         let projection = line.project(coordinate, near: feedAlong ?? displayed)
-        let previousAlong = feedAlong, previousTime = feedChangedAt
-        feedCoordinate = coordinate
-        feedChangedAt = now
         guard projection.offset <= Self.offRouteMetres else {
             offRoute = coordinate
             feedAlong = nil
             anchor = nil
-            speed = 0
             return
         }
         offRoute = nil
         feedAlong = projection.along
         // The rider's GPS is on the vehicle and current - the feed lags it.
         guard !riderIsFresh(now) else { return }
-
-        if stopped {
-            speed = 0
-        } else if let previousAlong, let previousTime {
-            let seconds = now.timeIntervalSince(previousTime)
-            let metres = projection.along - previousAlong
-            if (3...120).contains(seconds) {
-                reportInterval = reportInterval * 0.6 + seconds * 0.4
-            }
-            if (3...120).contains(seconds), metres > -10 {
-                let measured = min(max(metres, 0) / seconds, maxSpeed)
-                speed = speed > 0 ? speed * 0.4 + measured * 0.6 : measured
-            } else {
-                speed = 0
-            }
-        }
+        speed = 0
         anchor = (projection.along, now)
-        catchUpUntil = now + min(max(reportInterval, 4), 15)
     }
 
     /// The rider's own GPS while they're on board - precise fixes only.
@@ -200,7 +152,7 @@ public struct VehicleMotion: Sendable {
         riderAt = time
         offRoute = nil
         anchor = (projection.along, time)
-        if let gpsSpeed, gpsSpeed >= 0 { speed = min(gpsSpeed, maxSpeed) }
+        speed = gpsSpeed.map { min(max($0, 0), maxSpeed) } ?? 0
     }
 
     /// Where to draw the vehicle now, and which way it's facing.
@@ -209,34 +161,23 @@ public struct VehicleMotion: Sendable {
             displayed = nil
             return (offRoute, 0)
         }
-        guard let anchor else { return nil }
-
+        guard var anchor else { return nil }
         let riderFresh = riderIsFresh(now)
-        let elapsed = max(now.timeIntervalSince(anchor.time), 0)
-        let ahead = riderFresh
-            ? speed * min(elapsed, Self.riderExtrapolation)
-            : min(speed * Self.coastTime * (1 - exp(-elapsed / Self.coastTime)), Self.maxCoast)
+        // GPS gone stale: back to the feed's position.
+        if !riderFresh, let feedAlong { anchor.along = feedAlong; speed = 0 }
+
+        let elapsed = min(max(now.timeIntervalSince(anchor.time), 0), Self.riderExtrapolation)
         let nextStop = stopDistances.first { $0 > anchor.along } ?? line.length
         let cap = min(nextStop, line.length)
-        let target = min(anchor.along + ahead, max(cap, anchor.along))
+        let target = min(anchor.along + (riderFresh ? speed * elapsed : 0), max(cap, anchor.along))
 
         let dt = min(max(now.timeIntervalSince(lastStep ?? now), 0), 2)
         lastStep = now
-        if let current = displayed, target - current > -120, target - current < 400 {
-            // Never backwards, never past the target (capped at the next
-            // stop and the coast/extrapolation limit).
-            let move: Double
-            if riderFresh {
-                // Carry on at speed, closing on the target.
-                let carried = speed * dt
-                move = carried + (target - current - carried) * min(1, 0.6 * dt)
-            } else {
-                // Spread the glide to a new feed position over the time
-                // until it's due to arrive, then just track the coast.
-                let remaining = catchUpUntil.map { $0.timeIntervalSince(now) } ?? 0
-                move = remaining > dt ? (target - current) * dt / remaining : target - current
-            }
-            displayed = max(current, min(current + max(0, move), target))
+        if riderFresh, let current = displayed, target - current > -120, target - current < 400 {
+            // Carry on at speed, closing on the target; never backwards.
+            let carried = speed * dt
+            let move = max(0, carried + (target - current - carried) * min(1, 0.6 * dt))
+            displayed = max(current, min(current + move, target))
         } else {
             displayed = target
         }

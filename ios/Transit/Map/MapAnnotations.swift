@@ -34,8 +34,6 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
     var bearing: Double
     let vehicleType: String
     var routeColorHex: String?
-    /// The feed says it's standing at a stop.
-    var isAtStop: Bool
 
     init(vehicle: Vehicle) {
         id = vehicle.tripID
@@ -45,7 +43,6 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
         bearing = vehicle.position.bearing
         vehicleType = vehicle.type
         routeColorHex = vehicle.route.color.isEmpty ? nil : vehicle.route.color
-        isAtStop = vehicle.state == "AtStop"
     }
 
     /// Applies a fresh poll's data to this same instance (rather than
@@ -57,15 +54,15 @@ final class VehicleAnnotation: NSObject, MKAnnotation {
         subtitle = vehicle.trip?.headsign
         bearing = vehicle.position.bearing
         routeColorHex = vehicle.route.color.isEmpty ? nil : vehicle.route.color
-        isAtStop = vehicle.state == "AtStop"
     }
 }
 
-/// The route a tracked vehicle runs along, so the map can glide it between
-/// live positions (`VehicleMotion`) instead of hopping every poll.
+/// The route a tracked vehicle runs along. While the rider is aboard, the
+/// map moves it along this with their GPS (`VehicleMotion`) instead of
+/// hopping every poll.
 struct VehicleRoute {
-    /// Settings > Smooth vehicle movement - off, vehicles hop to each live
-    /// position as they arrive.
+    /// Settings > Smooth vehicle movement - off, the vehicle you're on hops
+    /// to each live position like the rest.
     static let glidingKey = "vehicleGliding"
 
     let shape: [Coordinate]

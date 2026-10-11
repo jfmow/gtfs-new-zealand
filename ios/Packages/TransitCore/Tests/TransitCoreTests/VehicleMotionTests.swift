@@ -17,115 +17,67 @@ final class VehicleMotionTests: XCTestCase {
 
     private let t0 = Date(timeIntervalSince1970: 1_000_000)
 
-    func testGlidesToEachNewPositionOverTheReportInterval() {
+    func testShowsTheFeedPositionWithoutRiderGPS() {
         var m = motion()
-        m.feed(point(100), stopped: false, at: t0)
-        _ = m.step(to: t0)
-        m.feed(point(250), stopped: false, at: t0 + 15)
-        XCTAssertEqual(m.speed, 10, accuracy: 0.5)
-        // Moving steadily towards the new position, not jumping to it...
-        var previous = along(m.step(to: t0 + 15)!.coordinate)
-        for s in 16...29 {
-            let shown = along(m.step(to: t0 + TimeInterval(s))!.coordinate)
-            XCTAssertGreaterThan(shown, previous)
-            XCTAssertLessThan(shown - previous, 20)
-            previous = shown
+        m.feed(point(1100), at: t0)
+        XCTAssertEqual(along(m.step(to: t0)!.coordinate), 1100, accuracy: 1)
+        m.feed(point(1300), at: t0 + 15)
+        // No guessing ahead between reports - it stays put until the next.
+        for s in 15...45 {
+            XCTAssertEqual(along(m.step(to: t0 + TimeInterval(s))!.coordinate), 1300, accuracy: 1)
         }
-        // ...and there (plus a short coast) by the time the next one is due.
-        XCTAssertGreaterThan(previous, 240)
-        XCTAssertLessThanOrEqual(previous, 250 + 15 + 1)
     }
 
-    func testDoesNotRunThroughALightItStoppedAt() {
+    func testRiderGPSDrivesTheVehicleWhileAboard() {
         var m = motion()
-        // 10 m/s, reporting every 15 s, then pulls up at a light at 1450.
-        m.feed(point(1150), stopped: false, at: t0)
+        m.feed(point(1100), at: t0)
         _ = m.step(to: t0)
-        m.feed(point(1300), stopped: false, at: t0 + 15)
-        for s in 15...30 { _ = m.step(to: t0 + TimeInterval(s)) }
-        m.feed(point(1450), stopped: false, at: t0 + 30)
-        var furthest = 0.0
-        for s in 30...90 {
-            m.feed(point(1450), stopped: false, at: t0 + TimeInterval(s))
-            furthest = max(furthest, along(m.step(to: t0 + TimeInterval(s))!.coordinate))
-        }
-        XCTAssertLessThanOrEqual(furthest, 1450 + 15 + 1)
-        XCTAssertGreaterThan(furthest, 1440)
-    }
-
-    func testNeverPassesTheNextStop() {
-        var m = motion()
-        // Reported 10 m short of the stop at 20 m/s - the coast would overshoot.
-        m.feed(point(790), stopped: false, at: t0)
-        _ = m.step(to: t0)
-        m.feed(point(990), stopped: false, at: t0 + 10)
-        var last = 0.0
-        for s in 10...60 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
-        XCTAssertLessThanOrEqual(last, 1001)
-        XCTAssertGreaterThan(last, 990)
-    }
-
-    func testCoastsOnlyAFewMetresPastTheLastPosition() {
-        var m = motion()
-        m.feed(point(1100), stopped: false, at: t0)
-        _ = m.step(to: t0)
-        m.feed(point(1150), stopped: false, at: t0 + 10) // 5 m/s
-        var last = 0.0
-        for s in 10...120 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
-        XCTAssertLessThanOrEqual(last, 1150 + 15 + 1)
-    }
-
-    func testDoesNotReverseWhenAFixIsSlightlyBehind() {
-        var m = motion()
-        m.feed(point(1100), stopped: false, at: t0)
-        _ = m.step(to: t0)
-        m.feed(point(1300), stopped: false, at: t0 + 20)
+        m.rider(point(1120, offset: 5), speed: 12, at: t0 + 2)
+        XCTAssertEqual(m.speed, 12)
+        // A lagging feed position doesn't drag it back while the rider's GPS is fresh.
+        m.feed(point(1105), at: t0 + 3)
+        XCTAssertEqual(m.speed, 12)
         var shown = 0.0
-        for s in 20...30 { shown = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
-        // The next report says it only got to 1350 (we showed ~1400).
-        m.feed(point(1350), stopped: false, at: t0 + 30)
-        let after = along(m.step(to: t0 + 31)!.coordinate)
-        XCTAssertGreaterThanOrEqual(after, shown - 0.5)
+        for s in 3...6 { shown = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
+        XCTAssertEqual(shown, 1120 + 12 * 4, accuracy: 15)
     }
 
-    func testRepeatedPositionMeansStopped() {
+    func testRiderGPSStopsExtrapolatingAfterFiveSeconds() {
         var m = motion()
-        m.feed(point(1100), stopped: false, at: t0)
-        m.feed(point(1300), stopped: false, at: t0 + 20)
-        XCTAssertGreaterThan(m.speed, 0)
-        m.feed(point(1300), stopped: false, at: t0 + 40)
-        m.feed(point(1300), stopped: false, at: t0 + 55)
-        XCTAssertEqual(m.speed, 0)
+        m.feed(point(1100), at: t0)
+        _ = m.step(to: t0)
+        m.rider(point(1100), speed: 10, at: t0)
+        var last = 0.0
+        for s in 1...7 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
+        XCTAssertLessThanOrEqual(last, 1100 + 10 * 5 + 1)
     }
 
-    func testAtStopStateZeroesSpeed() {
+    func testRiderGPSNeverCarriesItPastTheNextStop() {
         var m = motion()
-        m.feed(point(1100), stopped: false, at: t0)
-        m.feed(point(1300), stopped: true, at: t0 + 20)
-        XCTAssertEqual(m.speed, 0)
+        m.feed(point(980), at: t0)
+        _ = m.step(to: t0)
+        m.rider(point(990), speed: 20, at: t0)
+        var last = 0.0
+        for s in 1...5 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
+        XCTAssertLessThanOrEqual(last, 1001)
+    }
+
+    func testFallsBackToTheFeedWhenRiderGPSGoesStale() {
+        var m = motion()
+        m.feed(point(1100), at: t0)
+        m.rider(point(1120), speed: 10, at: t0)
+        _ = m.step(to: t0 + 1)
+        m.feed(point(1400), at: t0 + 20)
+        XCTAssertEqual(along(m.step(to: t0 + 20)!.coordinate), 1400, accuracy: 1)
     }
 
     func testOffRouteShowsTheRawPosition() {
         var m = motion()
         let detour = point(600, offset: 300)
-        m.feed(detour, stopped: false, at: t0)
+        m.feed(detour, at: t0)
         let shown = m.step(to: t0)!.coordinate
         XCTAssertEqual(shown.latitude, detour.latitude, accuracy: 1e-9)
         XCTAssertEqual(shown.longitude, detour.longitude, accuracy: 1e-9)
-    }
-
-    func testRiderGPSDrivesTheVehicleWhileAboard() {
-        var m = motion()
-        m.feed(point(1100), stopped: false, at: t0)
-        _ = m.step(to: t0)
-        m.rider(point(1120, offset: 5), speed: 12, at: t0 + 2)
-        XCTAssertEqual(m.speed, 12)
-        // A lagging feed position doesn't drag it back while the rider's GPS is fresh.
-        m.feed(point(1105), stopped: false, at: t0 + 3)
-        XCTAssertEqual(m.speed, 12)
-        var shown = 0.0
-        for s in 3...6 { shown = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
-        XCTAssertEqual(shown, 1120 + 12 * 4, accuracy: 15)
     }
 
     func testProjectionPrefersTheForwardPassOfALoop() {
