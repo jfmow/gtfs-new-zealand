@@ -17,36 +17,62 @@ final class VehicleMotionTests: XCTestCase {
 
     private let t0 = Date(timeIntervalSince1970: 1_000_000)
 
-    func testCarriesOnAtMeasuredSpeedBetweenFixes() {
+    func testGlidesToEachNewPositionOverTheReportInterval() {
         var m = motion()
         m.feed(point(100), stopped: false, at: t0)
         _ = m.step(to: t0)
-        m.feed(point(300), stopped: false, at: t0 + 20)
+        m.feed(point(250), stopped: false, at: t0 + 15)
         XCTAssertEqual(m.speed, 10, accuracy: 0.5)
-        XCTAssertEqual(along(m.step(to: t0 + 20)!.coordinate), 300, accuracy: 15)
-        for s in 21...30 { _ = m.step(to: t0 + TimeInterval(s)) }
-        XCTAssertEqual(along(m.step(to: t0 + 30)!.coordinate), 400, accuracy: 15)
+        // Moving steadily towards the new position, not jumping to it...
+        var previous = along(m.step(to: t0 + 15)!.coordinate)
+        for s in 16...29 {
+            let shown = along(m.step(to: t0 + TimeInterval(s))!.coordinate)
+            XCTAssertGreaterThan(shown, previous)
+            XCTAssertLessThan(shown - previous, 20)
+            previous = shown
+        }
+        // ...and there (plus a short coast) by the time the next one is due.
+        XCTAssertGreaterThan(previous, 240)
+        XCTAssertLessThanOrEqual(previous, 250 + 15 + 1)
+    }
+
+    func testDoesNotRunThroughALightItStoppedAt() {
+        var m = motion()
+        // 10 m/s, reporting every 15 s, then pulls up at a light at 1450.
+        m.feed(point(1150), stopped: false, at: t0)
+        _ = m.step(to: t0)
+        m.feed(point(1300), stopped: false, at: t0 + 15)
+        for s in 15...30 { _ = m.step(to: t0 + TimeInterval(s)) }
+        m.feed(point(1450), stopped: false, at: t0 + 30)
+        var furthest = 0.0
+        for s in 30...90 {
+            m.feed(point(1450), stopped: false, at: t0 + TimeInterval(s))
+            furthest = max(furthest, along(m.step(to: t0 + TimeInterval(s))!.coordinate))
+        }
+        XCTAssertLessThanOrEqual(furthest, 1450 + 15 + 1)
+        XCTAssertGreaterThan(furthest, 1440)
     }
 
     func testNeverPassesTheNextStop() {
         var m = motion()
-        m.feed(point(700), stopped: false, at: t0)
+        // Reported 10 m short of the stop at 20 m/s - the coast would overshoot.
+        m.feed(point(790), stopped: false, at: t0)
         _ = m.step(to: t0)
-        m.feed(point(900), stopped: false, at: t0 + 10)
+        m.feed(point(990), stopped: false, at: t0 + 10)
         var last = 0.0
         for s in 10...60 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
         XCTAssertLessThanOrEqual(last, 1001)
         XCTAssertGreaterThan(last, 990)
     }
 
-    func testStopsExtrapolatingAfterThirtySeconds() {
+    func testCoastsOnlyAFewMetresPastTheLastPosition() {
         var m = motion()
         m.feed(point(1100), stopped: false, at: t0)
         _ = m.step(to: t0)
         m.feed(point(1150), stopped: false, at: t0 + 10) // 5 m/s
         var last = 0.0
         for s in 10...120 { last = along(m.step(to: t0 + TimeInterval(s))!.coordinate) }
-        XCTAssertLessThanOrEqual(last, 1150 + 5 * 30 + 1)
+        XCTAssertLessThanOrEqual(last, 1150 + 15 + 1)
     }
 
     func testDoesNotReverseWhenAFixIsSlightlyBehind() {

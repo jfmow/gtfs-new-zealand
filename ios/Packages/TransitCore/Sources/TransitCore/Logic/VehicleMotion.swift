@@ -84,12 +84,15 @@ public struct RouteLine: Sendable {
 ///
 /// The feed has no speed or timestamp, so speed is measured from successive
 /// positions along the route shape - or, when the rider is on board, taken
-/// from their own GPS (which also places the vehicle, being on it). Between
-/// fixes the vehicle carries on at that speed, but never overshoots:
-/// - not past the next stop (it may well stop there),
-/// - not more than `maxExtrapolation` beyond its last real position,
-/// - and when a new position shows it ran ahead, it slows or waits for the
-///   real one to catch up rather than visibly reversing (unless it's far off).
+/// from their own GPS (which also places the vehicle, being on it).
+///
+/// From the feed alone, the vehicle glides to each new position over about
+/// one report interval, then coasts only a few metres past it, easing to a
+/// halt. It runs a report behind the real thing, but never guesses ahead
+/// of it: carrying on at speed for the whole gap drew buses straight
+/// through red lights they'd stopped at. It also never passes the next stop
+/// and never visibly reverses (unless it's far off). With the rider's fresh
+/// GPS it does carry on at speed, briefly - that source is live.
 /// Off the route shape (a detour) it just shows the raw position.
 public struct VehicleMotion: Sendable {
     public let line: RouteLine
@@ -98,8 +101,13 @@ public struct VehicleMotion: Sendable {
     /// Metres per second - anything faster is a bad fix, not the vehicle.
     public let maxSpeed: Double
 
-    /// Never carry on more than this far past a real position.
-    static let maxExtrapolation: TimeInterval = 30
+    /// With the rider's GPS, never carry on longer than this past a fix.
+    static let riderExtrapolation: TimeInterval = 5
+    /// From the feed, coast past the last position like this - easing off
+    /// over `coastTime`, never more than `maxCoast` - since it may have
+    /// stopped (lights, traffic) the moment it reported.
+    static let coastTime: TimeInterval = 3
+    static let maxCoast = 15.0
     /// The same feed position for this long means the vehicle is stopped.
     static let stationaryAfter: TimeInterval = 30
     /// Further off the route than this is a detour - show it raw.
@@ -116,6 +124,10 @@ public struct VehicleMotion: Sendable {
     private var feedAlong: Double?
     private var riderAt: Date?
     private var offRoute: Coordinate?
+    /// Smoothed seconds between the feed's new positions.
+    private var reportInterval: TimeInterval = 15
+    /// When the glide to the latest feed position should arrive.
+    private var catchUpUntil: Date?
 
     public init(line: RouteLine, stops: [Coordinate], vehicleType: String) {
         self.line = line
@@ -167,6 +179,9 @@ public struct VehicleMotion: Sendable {
         } else if let previousAlong, let previousTime {
             let seconds = now.timeIntervalSince(previousTime)
             let metres = projection.along - previousAlong
+            if (3...120).contains(seconds) {
+                reportInterval = reportInterval * 0.6 + seconds * 0.4
+            }
             if (3...120).contains(seconds), metres > -10 {
                 let measured = min(max(metres, 0) / seconds, maxSpeed)
                 speed = speed > 0 ? speed * 0.4 + measured * 0.6 : measured
@@ -175,6 +190,7 @@ public struct VehicleMotion: Sendable {
             }
         }
         anchor = (projection.along, now)
+        catchUpUntil = now + min(max(reportInterval, 4), 15)
     }
 
     /// The rider's own GPS while they're on board - precise fixes only.
@@ -195,21 +211,32 @@ public struct VehicleMotion: Sendable {
         }
         guard let anchor else { return nil }
 
-        let horizon = riderIsFresh(now) ? 5 : Self.maxExtrapolation
-        let elapsed = min(max(now.timeIntervalSince(anchor.time), 0), horizon)
-        let nextStop = stopDistances.first { $0 > anchor.along + 15 } ?? line.length
+        let riderFresh = riderIsFresh(now)
+        let elapsed = max(now.timeIntervalSince(anchor.time), 0)
+        let ahead = riderFresh
+            ? speed * min(elapsed, Self.riderExtrapolation)
+            : min(speed * Self.coastTime * (1 - exp(-elapsed / Self.coastTime)), Self.maxCoast)
+        let nextStop = stopDistances.first { $0 > anchor.along } ?? line.length
         let cap = min(nextStop, line.length)
-        let target = min(anchor.along + speed * elapsed, max(cap, anchor.along))
+        let target = min(anchor.along + ahead, max(cap, anchor.along))
 
         let dt = min(max(now.timeIntervalSince(lastStep ?? now), 0), 2)
         lastStep = now
         if let current = displayed, target - current > -120, target - current < 400 {
-            // Carry on at speed, closing on the target; never backwards, and
-            // never past the target (already capped at the next stop and
-            // the extrapolation limit) unless a new fix put it behind us.
-            let carried = speed * dt
-            let move = max(0, carried + (target - current - carried) * min(1, 0.6 * dt))
-            displayed = max(current, min(current + move, target))
+            // Never backwards, never past the target (capped at the next
+            // stop and the coast/extrapolation limit).
+            let move: Double
+            if riderFresh {
+                // Carry on at speed, closing on the target.
+                let carried = speed * dt
+                move = carried + (target - current - carried) * min(1, 0.6 * dt)
+            } else {
+                // Spread the glide to a new feed position over the time
+                // until it's due to arrive, then just track the coast.
+                let remaining = catchUpUntil.map { $0.timeIntervalSince(now) } ?? 0
+                move = remaining > dt ? (target - current) * dt / remaining : target - current
+            }
+            displayed = max(current, min(current + max(0, move), target))
         } else {
             displayed = target
         }
