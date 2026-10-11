@@ -110,6 +110,8 @@ struct TransitMapView: UIViewRepresentable {
         context.coordinator.mapView = mapView
         context.coordinator.installGestureWatchers(on: mapView)
         mapView.showsUserLocation = showsUserLocation
+        // MapKit's compass sits top-right, under our own overlaid controls.
+        mapView.showsCompass = false
         context.coordinator.apply3D(is3D, to: mapView)
 
         // Register every annotation view that is dequeued using
