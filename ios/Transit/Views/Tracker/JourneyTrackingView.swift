@@ -848,7 +848,9 @@ struct JourneyTrackingView: View {
         switch phase {
         case .onboard:
             if let vehicle = activeRideVehicle {
-                return .follow(annotationID: vehicle.tripID, spanMeters: 1600)
+                // In 2D the span is the full width of the screen - 1600 m
+                // left the bus a speck in a suburb-wide view.
+                return .follow(annotationID: vehicle.tripID, spanMeters: 700)
             }
             // No live position: the ride's two ends (and you, if known).
             let points = [activeRideLeg?.fromStop?.coordinate, activeRideLeg?.toStop?.coordinate, rider].compactMap { $0 }
