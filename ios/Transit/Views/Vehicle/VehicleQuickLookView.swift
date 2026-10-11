@@ -150,7 +150,7 @@ struct VehicleQuickLookView: View {
                     vehicles: vehicle.map { [VehicleAnnotation(vehicle: $0)] } ?? [],
                     tripStops: tripStopAnnotations,
                     polylines: shape.map { [RoutePolylineData(id: tripID, coordinates: $0.geojson.geometry.lineCoordinates, colorHex: routeHex)] } ?? [],
-                    camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 1400)
+                    camera: !autoFollow ? .none : vehicle != nil ? .follow(annotationID: tripID, spanMeters: 700)
                         : tripStops.isEmpty ? .none : .frame(points: tripStops.map { Coordinate(latitude: $0.lat, longitude: $0.lon) }, minSpanMeters: 800),
                     clustersVehicles: false,
                     vehicleRoutes: vehicleRoutes,
