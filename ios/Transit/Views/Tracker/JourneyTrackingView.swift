@@ -223,8 +223,8 @@ struct JourneyTrackingView: View {
         .padding(.horizontal, 16)
     }
 
-    /// Hands the camera back to the journey and re-frames it from scratch
-    /// (zoom included) - you're always in that framing when it matters.
+    /// Hands the camera back to the journey and re-frames it - following
+    /// keeps the zoom you'd pinched to, framing fits from scratch.
     /// This used to jump to the rider on a second tap, at a fixed zoom that
     /// ignored the drawer, only for the journey camera to snap back.
     private func recenter() {

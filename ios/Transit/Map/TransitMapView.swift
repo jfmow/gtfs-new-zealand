@@ -162,7 +162,7 @@ struct TransitMapView: UIViewRepresentable {
         context.coordinator.reconcileTripStops(tripStops, in: mapView)
         context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes.filter(\.value.riderAboard) : [:], in: mapView)
 
-        context.coordinator.applyCameraReset(cameraResetToken)
+        context.coordinator.applyCameraReset(cameraResetToken, in: mapView)
         context.coordinator.updateCompass(for: camera, in: mapView)
         context.coordinator.applyCamera(camera, to: mapView)
         context.coordinator.applyCenterOnUserLocationTrigger(centerOnUserLocationTrigger, to: mapView)
@@ -215,6 +215,9 @@ struct TransitMapView: UIViewRepresentable {
             // An automatic camera re-frames for the new mode in this same
             // update; anything else just tilts where it is.
             if applied?.isAutomatic == true, parent.camera != .none {
+                // Flat and tilted distances don't match - take the new
+                // mode's own framing.
+                keptFollowDistance = nil
                 applied = nil
             } else {
                 // A new camera at the same distance: setting `pitch` on a
@@ -588,11 +591,31 @@ struct TransitMapView: UIViewRepresentable {
         private var needsCameraApply = false
         private var lastCameraResetToken = 0
         private var lastCenterOnUserLocationTrigger = 0
+        /// The zoom the person had when they re-centred - a follow keeps it
+        /// (Apple Maps style) rather than snapping back to its default span.
+        /// Pinned to the first follow that uses it, so a new stage (another
+        /// vehicle, the walk after the ride) starts at its own default.
+        private var keptFollowDistance: (distance: Double, key: String?)?
 
-        func applyCameraReset(_ token: Int) {
+        func applyCameraReset(_ token: Int, in mapView: MKMapView) {
             guard token != lastCameraResetToken else { return }
             lastCameraResetToken = token
+            if applied != nil, Self.isLaidOut(mapView) {
+                keptFollowDistance = (mapView.camera.centerCoordinateDistance, nil)
+            }
             applied = nil
+        }
+
+        /// The distance a follow of `key` should keep, if the person
+        /// re-centred onto it from their own zoom.
+        private func keptDistance(for key: String) -> Double? {
+            guard let kept = keptFollowDistance else { return nil }
+            if kept.key == nil { keptFollowDistance?.key = key }
+            guard kept.key == nil || kept.key == key else {
+                keptFollowDistance = nil
+                return nil
+            }
+            return kept.distance
         }
 
         func applyCamera(_ mode: MapCamera, to mapView: MKMapView, glide: TimeInterval? = nil) {
@@ -603,6 +626,8 @@ struct TransitMapView: UIViewRepresentable {
                 return
             }
             guard let target = target(for: mode, in: mapView) else { return }
+            // Only a follow keeps the person's zoom; framing fits its points.
+            if !target.tracksMovement { keptFollowDistance = nil }
             let insets = parent.cameraInsets
 
             if let applied, applied.identity == target.identity {
@@ -734,7 +759,13 @@ struct TransitMapView: UIViewRepresentable {
             let keptHeading = applied?.camera.heading ?? mapView.camera.heading
             let currentHeading = turns2D ? heading ?? keptHeading : keptHeading
             let camera: MKMapCamera
-            if applied3D == true {
+            if let distance = keptDistance(for: key) {
+                camera = cameraPlacing(
+                    coordinate, distance: distance,
+                    pitch: applied3D == true ? Map3D.followPitch : 0,
+                    heading: applied3D == true ? heading ?? keptHeading : currentHeading, in: mapView
+                )
+            } else if applied3D == true {
                 // Far enough back to clear city towers - a walking follow's
                 // small span put the camera among the CBD's buildings.
                 camera = cameraPlacing(
