@@ -551,3 +551,41 @@ extension Color {
         )
     }
 }
+
+// MARK: - Polling
+
+extension View {
+    /// Runs `action` now, then every `interval`, while the app is in the
+    /// foreground - restarting when `id` changes, like `.task(id:)`. Stops
+    /// in the background, where a tracked journey keeps the app (and every
+    /// mounted tab) awake with the screen off, and catches up straight away
+    /// on return.
+    func foregroundPoll<ID: Equatable>(every interval: Duration, id: ID, _ action: @escaping @MainActor () async -> Void) -> some View {
+        modifier(ForegroundPoll(interval: interval, id: id, action: action))
+    }
+}
+
+private struct ForegroundPoll<ID: Equatable>: ViewModifier {
+    let interval: Duration
+    let id: ID
+    let action: @MainActor () async -> Void
+    @Environment(\.scenePhase) private var scenePhase
+
+    private struct Key: Equatable {
+        let id: ID
+        let isForeground: Bool
+    }
+
+    func body(content: Content) -> some View {
+        // Background only, not `.inactive` - pulling down Control Centre
+        // shouldn't restart every poll.
+        let isForeground = scenePhase != .background
+        content.task(id: Key(id: id, isForeground: isForeground)) {
+            guard isForeground else { return }
+            while !Task.isCancelled {
+                await action()
+                try? await Task.sleep(for: interval)
+            }
+        }
+    }
+}

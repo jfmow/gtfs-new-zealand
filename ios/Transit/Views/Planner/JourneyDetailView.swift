@@ -28,16 +28,14 @@ struct JourneyDetailView: View {
     /// fetch, when the timeline falls back to the plan's own answer.
     @State private var liveTripIDs: Set<String>?
 
-    /// Keeps the tracking icons current while the preview is open - a bus
-    /// that wasn't out yet when you searched can start reporting since.
+    /// Keeps the tracking icons current while the preview is open (polled
+    /// in the foreground) - a bus that wasn't out yet when you searched can
+    /// start reporting since.
     private func refreshLiveVehicles() async {
         let tripIDs = plan.legs.filter { $0.mode == "transit" && !$0.tripID.isEmpty }.map(\.tripID)
         guard !tripIDs.isEmpty else { return }
-        while !Task.isCancelled {
-            if let vehicles = try? await environment.api.liveVehicles(tripIDs: tripIDs) {
-                liveTripIDs = Set(vehicles.map(\.tripID))
-            }
-            try? await Task.sleep(for: .seconds(30))
+        if let vehicles = try? await environment.api.liveVehicles(tripIDs: tripIDs) {
+            liveTripIDs = Set(vehicles.map(\.tripID))
         }
     }
 
@@ -133,7 +131,7 @@ struct JourneyDetailView: View {
         .onDisappear {
             if router.visibleJourneyDetailPlanID == plan.id { router.visibleJourneyDetailPlanID = nil }
         }
-        .task(id: plan.id) { await refreshLiveVehicles() }
+        .foregroundPoll(every: .seconds(30), id: plan.id) { await refreshLiveVehicles() }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)
         }

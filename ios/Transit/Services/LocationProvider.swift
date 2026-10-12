@@ -27,6 +27,16 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private(set) var isResting = false
     /// When precise GPS last came back - fixes before it are coarse.
     @ObservationIgnored private var preciseSince = Date.distantPast
+    /// A journey is keeping updates running.
+    @ObservationIgnored private var journeyUpdates = false
+    /// Ends a `requestFix` burst that never got a good enough fix.
+    @ObservationIgnored private var fixTimeout: Task<Void, Never>?
+    /// How long a `requestFix` burst may run - longer than the 10s the
+    /// planner's "My location" waits.
+    private static let fixWindow: TimeInterval = 20
+    /// A fix this precise, and this fresh, ends a `requestFix` burst.
+    private static let goodFixAccuracy: Double = 50
+    private static let goodFixMaxAge: TimeInterval = 10
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -51,13 +61,27 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.requestWhenInUseAuthorization()
     }
 
-    func startUpdating() {
+    /// Gets a fresh fix: GPS runs until one precise and recent enough
+    /// arrives (or `fixWindow` passes), then stops - screens that show
+    /// where you are only need a fix, and leaving GPS streaming whenever
+    /// the app was open was a big battery cost. A tracked journey keeps it
+    /// running for as long as it's on (`setJourneyBackgroundUpdates`).
+    func requestFix() {
         guard isAuthorized else { return }
         manager.startUpdatingLocation()
+        guard !journeyUpdates else { return }
+        fixTimeout?.cancel()
+        fixTimeout = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(Self.fixWindow))
+            guard !Task.isCancelled else { return }
+            self?.endFix()
+        }
     }
 
-    func stopUpdating() {
-        manager.stopUpdatingLocation()
+    private func endFix() {
+        fixTimeout?.cancel()
+        fixTimeout = nil
+        if !journeyUpdates { manager.stopUpdatingLocation() }
     }
 
     /// Keeps location updates (and so the app) running in the background
@@ -71,7 +95,14 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.showsBackgroundLocationIndicator = enabled
         manager.pausesLocationUpdatesAutomatically = !enabled
         manager.activityType = enabled ? .otherNavigation : .other
-        if enabled { manager.startUpdatingLocation() } else { setResting(false) }
+        journeyUpdates = enabled
+        if enabled {
+            manager.startUpdatingLocation()
+        } else {
+            setResting(false)
+            // Journey's over: stop, unless a screen's still waiting on a fix.
+            if fixTimeout == nil { manager.stopUpdatingLocation() }
+        }
     }
 
     /// Swaps GPS for coarse cell/wifi fixes (far cheaper) and back.
@@ -88,7 +119,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         Task { @MainActor [weak self] in
             self?.authorizationStatus = status
             if status == .authorizedWhenInUse || status == .authorizedAlways {
-                self?.startUpdating()
+                self?.requestFix()
             }
         }
     }
@@ -106,6 +137,10 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             self.accuracy = accuracy
             self.fixDate = timestamp
             self.onUpdate?()
+            if self.fixTimeout != nil, let accuracy, accuracy <= Self.goodFixAccuracy,
+               Date().timeIntervalSince(timestamp) <= Self.goodFixMaxAge {
+                self.endFix()
+            }
         }
     }
 

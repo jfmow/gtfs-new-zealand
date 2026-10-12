@@ -85,7 +85,7 @@ struct OnboardingView: View {
             Button {
                 isLocating = true
                 environment.location.requestPermission()
-                environment.location.startUpdating()
+                environment.location.requestFix()
                 if let here = environment.location.coordinate {
                     isLocating = false
                     environment.choose(region: nearestRegion(to: here))

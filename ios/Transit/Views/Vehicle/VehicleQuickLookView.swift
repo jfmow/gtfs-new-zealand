@@ -25,7 +25,6 @@ struct VehicleQuickLookView: View {
     @State private var tripStops: [TripStopRef] = []
     @State private var shape: RouteShape?
     @State private var hasLoaded = false
-    @State private var pollTask: Task<Void, Never>?
 
     /// Regular width: the summary and stop list in a side panel rather than
     /// the bottom drawer (`MapSidePanel`).
@@ -209,12 +208,10 @@ struct VehicleQuickLookView: View {
                     .shadSheet(detents: [.large])
             }
         }
-        .task { await start() }
+        .task { await loadStatic() }
+        .foregroundPoll(every: .seconds(10), id: tripID) { await refresh() }
         .onAppear { router.isFullScreenMapVisible = true }
-        .onDisappear {
-            router.isFullScreenMapVisible = false
-            pollTask?.cancel()
-        }
+        .onDisappear { router.isFullScreenMapVisible = false }
     }
 
     private func drawerHeight(available: CGFloat) -> CGFloat {
@@ -527,19 +524,13 @@ struct VehicleQuickLookView: View {
 
     // MARK: - Data
 
-    private func start() async {
+    /// The trip's shape and stop list - fetched once; `refresh` polls the
+    /// live parts.
+    private func loadStatic() async {
         async let shapeFetch: () = loadShape()
         async let stopsFetch: () = loadTripStops()
-        await refresh()
         await shapeFetch
         await stopsFetch
-        pollTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { continue }
-                await refresh()
-            }
-        }
     }
 
     private func refresh() async {

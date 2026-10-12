@@ -23,7 +23,6 @@ struct StopBoardView: View {
 
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.scenePhase) private var scenePhase
     @Query private var favourites: [FavouriteStop]
 
     @State private var departures: [Departure] = []
@@ -32,7 +31,6 @@ struct StopBoardView: View {
     @State private var isNotFound = false
     @State private var selectedDate: Date?
     @State private var platformFilter: String?
-    @State private var pollTask: Task<Void, Never>?
     @State private var isShowingSubscriptionSheet = false
     @State private var isPickingDate = false
     @State private var isShowingAlerts = false
@@ -173,10 +171,10 @@ struct StopBoardView: View {
                 }
                 .shadSheet(detents: [.large])
             }
-            .task { await start() }
-            .onDisappear { pollTask?.cancel() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await refresh() } } else { pollTask?.cancel() }
+            // Live departures only - a picked date's timetable doesn't move.
+            .foregroundPoll(every: .seconds(10), id: 0) {
+                guard selectedDate == nil else { return }
+                await refresh()
             }
     }
 
@@ -349,17 +347,6 @@ struct StopBoardView: View {
     }
 
     // MARK: - Data
-
-    private func start() async {
-        await refresh()
-        pollTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled, selectedDate == nil else { continue }
-                await refresh()
-            }
-        }
-    }
 
     private func refresh() async {
         isLoading = departures.isEmpty

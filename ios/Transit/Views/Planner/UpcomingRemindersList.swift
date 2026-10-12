@@ -29,12 +29,7 @@ struct UpcomingRemindersList: View {
             }
             .shadCardBackground()
         }
-        .task(id: reminders.map(\.id)) {
-            while !Task.isCancelled {
-                await refreshLivePlans()
-                try? await Task.sleep(for: .seconds(60))
-            }
-        }
+        .foregroundPoll(every: .seconds(60), id: reminders.map(\.id)) { await refreshLivePlans() }
     }
 
     private func refreshLivePlans() async {

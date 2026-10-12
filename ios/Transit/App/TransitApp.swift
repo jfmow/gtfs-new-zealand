@@ -73,6 +73,9 @@ struct TransitApp: App {
         .onChange(of: scenePhase) { _, phase in
             environment.journey.setAppActive(phase != .background)
             if phase == .active {
+                // Location only runs on demand now - a fresh fix for the
+                // "near you" stops and map each time the app comes back.
+                environment.location.requestFix()
                 Task {
                     await environment.push.refreshAuthorizationStatus()
                     await environment.push.clearStaleDeliveredNotifications()

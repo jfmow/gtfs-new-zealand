@@ -107,8 +107,9 @@ extension View {
 // MARK: - Notification feed (bell badge)
 
 /// The in-app notification history behind the bell - polled once for the
-/// whole app (not per tab), read state kept locally the way the web keeps
-/// it in localStorage (`notifications_last_seen`).
+/// whole app (not per tab), in the foreground only (`RootView`), read state
+/// kept locally the way the web keeps it in localStorage
+/// (`notifications_last_seen`).
 @MainActor
 @Observable
 final class NotificationFeed {
@@ -145,14 +146,6 @@ final class NotificationFeed {
     func clearAll() async {
         entries = []
         try? await api.clearNotificationHistory()
-    }
-
-    /// Polls every 60s for as long as the calling task lives.
-    func poll() async {
-        while !Task.isCancelled {
-            await refresh()
-            try? await Task.sleep(for: .seconds(60))
-        }
     }
 }
 

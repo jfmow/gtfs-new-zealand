@@ -229,7 +229,7 @@ struct LocationField: View {
     /// fix rather than failing when one isn't cached yet.
     private func useCurrentLocation() {
         environment.location.requestPermission()
-        environment.location.startUpdating()
+        environment.location.requestFix()
         isFocused = false
         isLocating = true
         Task {

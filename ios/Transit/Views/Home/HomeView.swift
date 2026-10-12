@@ -303,7 +303,7 @@ struct HomeView: View {
     /// Doesn't ask for location itself - first launch explains and asks,
     /// and the "Enable location" hint asks again.
     private func loadNearby() async {
-        environment.location.startUpdating()
+        environment.location.requestFix()
         guard let coordinate = environment.location.coordinate else { return }
         isLoadingNearby = true
         defer { isLoadingNearby = false }

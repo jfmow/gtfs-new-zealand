@@ -56,7 +56,7 @@ struct RootView: View {
         .font(.bodyText)
         .toastOverlay(environment.toasts)
         .preferredColorScheme((AppearanceMode(rawValue: appearanceModeRaw) ?? .system).colorScheme)
-        .task { await environment.notificationFeed.poll() }
+        .foregroundPoll(every: .seconds(60), id: 0) { await environment.notificationFeed.refresh() }
         // A journey still on from before the app was closed carries on
         // tracking (from its saved offline data) straight away.
         .task { environment.journey.restoreIfNeeded(modelContext: modelContext, region: environment.region) }

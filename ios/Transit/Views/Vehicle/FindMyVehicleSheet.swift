@@ -82,7 +82,7 @@ struct FindMyVehicleSheet: View {
         locationMessage = nil
         loadError = nil
         environment.location.requestPermission()
-        environment.location.startUpdating()
+        environment.location.requestFix()
         var coordinate = environment.location.coordinate
         for _ in 0..<20 where coordinate == nil {
             try? await Task.sleep(for: .milliseconds(500))

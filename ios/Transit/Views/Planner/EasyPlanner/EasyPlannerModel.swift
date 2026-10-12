@@ -183,7 +183,7 @@ final class EasyPlannerModel {
     /// location".
     private func currentLocation(environment: AppEnvironment) async -> PlannerLocation? {
         environment.location.requestPermission()
-        environment.location.startUpdating()
+        environment.location.requestFix()
         var coordinate = environment.location.coordinate
         var waited = 0
         while coordinate == nil && waited < 20 {

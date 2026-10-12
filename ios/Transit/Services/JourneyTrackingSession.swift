@@ -110,6 +110,10 @@ final class JourneyTrackingSession {
     /// flicked between the two.
     private static let liveFreshAge: TimeInterval = 75
     private static let resumeGrace: TimeInterval = 45 * 60
+    /// How often an unchanged Live Activity state is re-sent - well inside
+    /// `LiveActivityCoordinator.staleAfter`, so it never shows as stale
+    /// while the app's keeping it current.
+    private static let unchangedActivityResend: TimeInterval = LiveActivityCoordinator.staleAfter / 2
     /// How long "You've arrived" stays up before the journey ends itself.
     static let arrivedCloseDelay: TimeInterval = 5 * 60
 
@@ -161,7 +165,7 @@ final class JourneyTrackingSession {
     func begin(plan: JourneyPlan, region: Region, modelContext: ModelContext) {
         self.modelContext = modelContext
         location.requestPermission()
-        location.startUpdating()
+        location.requestFix()
         if self.plan?.id == plan.id {
             if fetchTask == nil { startFetching() }
             startTicking()
@@ -762,12 +766,14 @@ final class JourneyTrackingSession {
         if let last = lastSentActivity {
             // Something the rider would notice (phase, leg, stops away)
             // goes straight out; the rest (countdown targets drifting with
-            // GPS re-timing) at most every 15s.
+            // GPS re-timing) at most every 15s. Nothing changed: only to
+            // move the stale date along - each update wakes the widget and
+            // redraws the Lock Screen, so not every poll.
             let elapsed = now.timeIntervalSince(last.at)
             let keyChange = last.state.phase != comparable.phase || last.state.legIndex != comparable.legIndex
                 || last.state.stopsAway != comparable.stopsAway || last.state.offline != comparable.offline
                 || last.state.status != comparable.status
-            if last.state == comparable ? elapsed < 30 : (!keyChange && elapsed < 15) { return }
+            if last.state == comparable ? elapsed < Self.unchangedActivityResend : (!keyChange && elapsed < 15) { return }
         }
         lastSentActivity = (comparable, now)
 

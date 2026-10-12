@@ -12,7 +12,6 @@ struct VehiclesMapView: View {
     /// Opens a vehicle's tracker - pushed by value by the owning tab (see
     /// `StopsMapView.onOpenStop`).
     var onOpenVehicle: (String) -> Void = { _ in }
-    @State private var pollTask: Task<Void, Never>?
     @State private var recenterTrigger = 0
     @AppStorage("vehicles.showStops") private var showStops = false
     @State private var allStops: [Stop] = []
@@ -76,8 +75,7 @@ struct VehiclesMapView: View {
         }
         .navigationTitle("Vehicles")
         .navigationBarTitleDisplayMode(.inline)
-        .task { await start() }
-        .onDisappear { pollTask?.cancel() }
+        .foregroundPoll(every: .seconds(10), id: 0) { await refresh() }
         .onChange(of: typeFilter) { _, _ in Task { await refresh() } }
         .task(id: showStops) {
             if showStops, allStops.isEmpty { allStops = (try? await environment.api.stops()) ?? [] }
@@ -104,17 +102,6 @@ struct VehiclesMapView: View {
         case 0: return "Route"
         case 1...3: return routeFilter.map(\.name).joined(separator: ", ")
         default: return "\(routeFilter.count) routes"
-        }
-    }
-
-    private func start() async {
-        await refresh()
-        pollTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(10))
-                guard !Task.isCancelled else { continue }
-                await refresh()
-            }
         }
     }
 

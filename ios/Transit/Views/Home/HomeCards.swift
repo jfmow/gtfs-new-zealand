@@ -163,11 +163,8 @@ struct HomeStopRow<Tile: View>: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .contentShape(Rectangle())
-        .task(id: stopQuery) {
-            while !Task.isCancelled {
-                await loader.load(stop: stopQuery, limit: 2, api: environment.api)
-                try? await Task.sleep(for: .seconds(30))
-            }
+        .foregroundPoll(every: .seconds(30), id: stopQuery) {
+            await loader.load(stop: stopQuery, limit: 2, api: environment.api)
         }
     }
 
