@@ -305,7 +305,9 @@ private struct ResumeJourneyAccessoryModifier: ViewModifier {
                 content
             }
         }
-        .onReceive(Timer.publish(every: 30, on: .main, in: .common).autoconnect()) { now = $0 }
+        // Foreground only - a tracked journey keeps the app awake in the
+        // background, where a timer here would wake it for nothing.
+        .foregroundPoll(every: .seconds(30), id: 0) { now = Date() }
     }
 }
 

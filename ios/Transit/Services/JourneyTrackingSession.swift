@@ -85,6 +85,8 @@ final class JourneyTrackingSession {
     @ObservationIgnored private var liveVehicles: [String: Vehicle] = [:]
     @ObservationIgnored private var fetchedStopTimes: [String: [StopTimeUpdate]] = [:]
     @ObservationIgnored private var failedFetches = 0
+    /// The server has no combined `journeyLive` endpoint (not deployed yet).
+    @ObservationIgnored private var combinedLiveUnsupported = false
     @ObservationIgnored private var fetchTask: Task<Void, Never>?
     @ObservationIgnored private var tickTask: Task<Void, Never>?
     /// Which loop is current - a cancelled one finishing late mustn't
@@ -391,9 +393,7 @@ final class JourneyTrackingSession {
         let api = self.api
         let tripIDs = plan.transitLegs.map(\.tripID)
 
-        async let vehiclesResult = Self.withTimeout(15) { try await api.liveVehicles(tripIDs: tripIDs) }
-        async let timesResult = Self.fetchStopTimes(api: api, tripIDs: tripIDs)
-        let (vehicles, times) = await (vehiclesResult, timesResult)
+        let (vehicles, times) = await fetchLive(api: api, tripIDs: tripIDs)
         guard self.plan?.id == plan.id else { return }
 
         let now = Date()
@@ -562,6 +562,31 @@ final class JourneyTrackingSession {
     private func updateOfflineState() {
         let offline = !network.isConnected || failedFetches >= 2
         if offline != isOffline { isOffline = offline }
+    }
+
+    /// The journey's live vehicles (nil when they couldn't be loaded, or
+    /// none are out - the last ones stand until `liveDataMaxAge`) and
+    /// whichever trips' stop times loaded: one request (`journeyLive`), or
+    /// one per trip from a server without it.
+    private func fetchLive(api: APIClient, tripIDs: [String]) async -> (vehicles: [Vehicle]?, times: [String: [StopTimeUpdate]]) {
+        if !combinedLiveUnsupported {
+            let result = await Self.withTimeout(15) { () -> Result<JourneyLive, Error> in
+                do { return .success(try await api.journeyLive(tripIDs: tripIDs)) } catch { return .failure(error) }
+            }
+            switch result {
+            case .success(let live)?:
+                return (live.vehicles.flatMap { $0.isEmpty ? nil : $0 }, live.stopTimes)
+            case .failure(let error)?:
+                // An older server: per-trip requests from now on.
+                guard case .server(let code, _, _)? = error as? APIError, code == 404 || code == 405 else { return (nil, [:]) }
+                combinedLiveUnsupported = true
+            case nil:
+                return (nil, [:])
+            }
+        }
+        async let vehiclesResult = Self.withTimeout(15) { try await api.liveVehicles(tripIDs: tripIDs) }
+        async let timesResult = Self.fetchStopTimes(api: api, tripIDs: tripIDs)
+        return await (vehiclesResult, timesResult)
     }
 
     private static func fetchStopTimes(api: APIClient, tripIDs: [String]) async -> [String: [StopTimeUpdate]] {

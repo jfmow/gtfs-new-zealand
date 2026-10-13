@@ -3,6 +3,7 @@ package providers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"sort"
@@ -85,75 +86,37 @@ func clampInt32Seconds(v int32, lo, hi int32) int32 {
 	return v
 }
 
+// tripStopTime is one stop of a trip with its predicted times - what
+// /stop-times returns a list of.
+type tripStopTime struct {
+	ParentStopId  string  `json:"parent_stop_id"`
+	ChildStopId   string  `json:"child_stop_id"`
+	ArrivalTime   int64   `json:"arrival_time"`
+	DepartureTime int64   `json:"departure_time"`
+	ScheduledTime int64   `json:"scheduled_time"`
+	Skipped       bool    `json:"skipped"`
+	Passed        bool    `json:"passed"`
+	DistanceAway  float64 `json:"dist"`
+}
+
+// journeyLiveResponse is /journey's: the trips' live vehicles (null when
+// the feed can't be read) and stop times by trip id.
+type journeyLiveResponse struct {
+	Vehicles  []VehiclesResponse        `json:"vehicles"`
+	StopTimes map[string][]tripStopTime `json:"stop_times"`
+}
+
+// maxJourneyTrips caps /journey's trip list - a journey has a handful of
+// rides; this keeps one request from fanning out over the whole network.
+const maxJourneyTrips = 10
+
 func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, getRouteCache caches.RouteCache, getParentStopByChildCache caches.ParentStopsByChildCache) {
 	realtimeRoute := primaryRoute.Group("/realtime")
 
-	//Returns all the locations of vehicles from the AT api
-	realtimeRoute.GET("/live", func(c echo.Context) error {
-		// ==================================================================
-		// Read and decode query parameters
-		// ==================================================================
-		// All params are URL-escaped by default, so unescape first.
-		// tripId accepts a single trip ID (legacy) or a comma-separated list of
-		// trip IDs (e.g. all transit legs of a planned journey) - both filter to
-		// exactly the given set of trips, matched by ID membership.
-		tripIDParam, err := url.PathUnescape(c.QueryParam("tripId"))
-		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil,
-				ResponseDetails("tripId", c.QueryParam("tripId"), "error", err.Error()))
-		}
-
-		tripIDs := make(map[string]bool)
-		for _, id := range strings.Split(tripIDParam, ",") {
-			if id = strings.TrimSpace(id); id != "" {
-				tripIDs[id] = true
-			}
-		}
-
-		vehicleTypeFilter, err := url.PathUnescape(c.QueryParam("type"))
-		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid vehicle type", nil,
-				ResponseDetails("vehicle_type", c.QueryParam("type"), "error", err.Error()))
-		}
-
-		boundsStr, err := url.PathUnescape(c.QueryParam("bounds"))
-		if err != nil {
-			return JsonApiResponse(c, http.StatusBadRequest, "invalid bounds", nil,
-				ResponseDetails("bounds", c.QueryParam("bounds"), "error", err.Error()))
-		}
-
-		// ==================================================================
-		// Parse bounds (optional)
-		// ==================================================================
-		// Bounds restrict vehicles to a visible map area.
-		// If omitted, all vehicles are returned.
-		hasBounds := boundsStr != ""
-		rawBounds := [][]float64{{0, 0}, {0, 0}}
-
-		if hasBounds {
-			// Expect [[lat1,lng1],[lat2,lng2]]
-			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil ||
-				len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
-
-				return JsonApiResponse(
-					c,
-					http.StatusBadRequest,
-					"invalid bounds format",
-					nil,
-					ResponseDetails(
-						"bounds",
-						boundsStr,
-						"details",
-						"Expected [[lat1,lng1],[lat2,lng2]]",
-					),
-				)
-			}
-		}
-
-		// Normalize bounds into LatLng structs for easy reuse
-		boundA := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
-		boundB := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
-
+	// liveVehicles is the live vehicles matching the filters, as /live
+	// returns them - shared with /journey. An empty tripIDs means every trip;
+	// with trip ids, each vehicle carries its trip's details.
+	liveVehicles := func(tripIDs map[string]bool, vehicleTypeFilter string, hasBounds bool, boundA, boundB LatLng) ([]VehiclesResponse, error) {
 		// ==================================================================
 		// Load realtime GTFS feeds
 		// ==================================================================
@@ -161,14 +124,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		// TripUpdates = service status + stop progression
 		vehicles, err := realtime.GetVehicles()
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
-				ResponseDetails("error", "No vehicles found", "details", err.Error()))
+			return nil, fmt.Errorf("No vehicles found: %w", err)
 		}
 
 		tripUpdates, err := realtime.GetTripUpdates()
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
-				ResponseDetails("error", "No trip updates found", "details", err.Error()))
+			return nil, fmt.Errorf("No trip updates found: %w", err)
 		}
 
 		// ==================================================================
@@ -307,6 +268,81 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			response = append(response, resp)
+		}
+
+		return response, nil
+	}
+
+	//Returns all the locations of vehicles from the AT api
+	realtimeRoute.GET("/live", func(c echo.Context) error {
+		// ==================================================================
+		// Read and decode query parameters
+		// ==================================================================
+		// All params are URL-escaped by default, so unescape first.
+		// tripId accepts a single trip ID (legacy) or a comma-separated list of
+		// trip IDs (e.g. all transit legs of a planned journey) - both filter to
+		// exactly the given set of trips, matched by ID membership.
+		tripIDParam, err := url.PathUnescape(c.QueryParam("tripId"))
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil,
+				ResponseDetails("tripId", c.QueryParam("tripId"), "error", err.Error()))
+		}
+
+		tripIDs := make(map[string]bool)
+		for _, id := range strings.Split(tripIDParam, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				tripIDs[id] = true
+			}
+		}
+
+		vehicleTypeFilter, err := url.PathUnescape(c.QueryParam("type"))
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid vehicle type", nil,
+				ResponseDetails("vehicle_type", c.QueryParam("type"), "error", err.Error()))
+		}
+
+		boundsStr, err := url.PathUnescape(c.QueryParam("bounds"))
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid bounds", nil,
+				ResponseDetails("bounds", c.QueryParam("bounds"), "error", err.Error()))
+		}
+
+		// ==================================================================
+		// Parse bounds (optional)
+		// ==================================================================
+		// Bounds restrict vehicles to a visible map area.
+		// If omitted, all vehicles are returned.
+		hasBounds := boundsStr != ""
+		rawBounds := [][]float64{{0, 0}, {0, 0}}
+
+		if hasBounds {
+			// Expect [[lat1,lng1],[lat2,lng2]]
+			if err := json.Unmarshal([]byte(boundsStr), &rawBounds); err != nil ||
+				len(rawBounds) != 2 || len(rawBounds[0]) != 2 || len(rawBounds[1]) != 2 {
+
+				return JsonApiResponse(
+					c,
+					http.StatusBadRequest,
+					"invalid bounds format",
+					nil,
+					ResponseDetails(
+						"bounds",
+						boundsStr,
+						"details",
+						"Expected [[lat1,lng1],[lat2,lng2]]",
+					),
+				)
+			}
+		}
+
+		// Normalize bounds into LatLng structs for easy reuse
+		boundA := LatLng{Lat: rawBounds[0][0], Lng: rawBounds[0][1]}
+		boundB := LatLng{Lat: rawBounds[1][0], Lng: rawBounds[1][1]}
+
+		response, err := liveVehicles(tripIDs, vehicleTypeFilter, hasBounds, boundA, boundB)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
+				ResponseDetails("error", err.Error()))
 		}
 
 		// ==================================================================
@@ -510,42 +546,25 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		return JsonApiResponse(c, http.StatusOK, "", result)
 	})
 
-	realtimeRoute.GET("/stop-times", func(c echo.Context) error {
-		filterTripId := c.QueryParam("tripId")
-		if filterTripId == "" {
-			return JsonApiResponse(c, http.StatusBadRequest, "Missing trip id", ResponseDetails("details", "no trip id provided"))
-		}
-
+	// tripStopTimes is one trip's stops with their predicted times, as
+	// /stop-times returns them - shared with /journey.
+	tripStopTimes := func(filterTripId string) ([]tripStopTime, error) {
 		stopsForTrip, err := gtfsData.GetStopTimesForTripID(filterTripId)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", ResponseDetails(
-				"details", "no stops found for trip",
-				"error", err.Error(),
-			))
+			return nil, fmt.Errorf("no stops found for trip: %w", err)
 		}
 
 		_, lowestSequence, err := gtfsData.GetStopsForTripID(filterTripId)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+			return nil, err
 		}
 
 		line, err := NewTripShapeDistance(filterTripId, gtfsData)
 		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+			return nil, err
 		}
 
-		type StopTimes struct {
-			ParentStopId  string  `json:"parent_stop_id"`
-			ChildStopId   string  `json:"child_stop_id"`
-			ArrivalTime   int64   `json:"arrival_time"`
-			DepartureTime int64   `json:"departure_time"`
-			ScheduledTime int64   `json:"scheduled_time"`
-			Skipped       bool    `json:"skipped"`
-			Passed        bool    `json:"passed"`
-			DistanceAway  float64 `json:"dist"`
-		}
-
-		var result []StopTimes
+		var result []tripStopTime
 		now := time.Now().In(localTimeZone)
 
 		// Realtime trip updates are optional.
@@ -645,7 +664,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		for _, stop := range stopsForTrip {
-			var data StopTimes
+			var data tripStopTime
 
 			if stop.ParentStation != "" {
 				data.ParentStopId = stop.ParentStation
@@ -715,7 +734,60 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			result = append(result, data)
 		}
 
+		return result, nil
+	}
+
+	realtimeRoute.GET("/stop-times", func(c echo.Context) error {
+		filterTripId := c.QueryParam("tripId")
+		if filterTripId == "" {
+			return JsonApiResponse(c, http.StatusBadRequest, "Missing trip id", ResponseDetails("details", "no trip id provided"))
+		}
+
+		result, err := tripStopTimes(filterTripId)
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		}
+
 		return JsonApiResponse(c, http.StatusOK, "", result)
+	})
+
+	// Everything a tracked journey polls for, in one request: the live
+	// vehicles on its trips (as /live with tripId) and each trip's predicted
+	// stop times (as /stop-times) - one radio wake per poll on the phone
+	// instead of one request per trip. Either part can be missing: vehicles
+	// is null when the feed can't be read, and a trip whose stop times can't
+	// be worked out is left out of stop_times.
+	realtimeRoute.GET("/journey", func(c echo.Context) error {
+		tripIDParam, err := url.PathUnescape(c.QueryParam("tripId"))
+		if err != nil {
+			return JsonApiResponse(c, http.StatusBadRequest, "invalid trip id", nil,
+				ResponseDetails("tripId", c.QueryParam("tripId"), "error", err.Error()))
+		}
+		tripIDs := make(map[string]bool)
+		var ordered []string
+		for _, id := range strings.Split(tripIDParam, ",") {
+			if id = strings.TrimSpace(id); id != "" && !tripIDs[id] {
+				tripIDs[id] = true
+				ordered = append(ordered, id)
+			}
+		}
+		if len(ordered) == 0 {
+			return JsonApiResponse(c, http.StatusBadRequest, "Missing trip id", nil, ResponseDetails("details", "no trip id provided"))
+		}
+		if len(ordered) > maxJourneyTrips {
+			return JsonApiResponse(c, http.StatusBadRequest, "too many trips", nil, ResponseDetails("count", len(ordered)))
+		}
+
+		response := journeyLiveResponse{StopTimes: make(map[string][]tripStopTime, len(ordered))}
+		if vehicles, err := liveVehicles(tripIDs, "", false, LatLng{}, LatLng{}); err == nil {
+			response.Vehicles = vehicles
+		}
+		for _, id := range ordered {
+			if times, err := tripStopTimes(id); err == nil && len(times) > 0 {
+				response.StopTimes[id] = times
+			}
+		}
+		return JsonApiResponse(c, http.StatusOK, "", response)
 	})
 
 	realtimeRoute.GET("/find-my-vehicle/:lat/:lon", func(c echo.Context) error {

@@ -103,6 +103,12 @@ extension APIClient {
         try await get("realtime/stop-times", query: [.init(name: "tripId", value: tripID)])
     }
 
+    /// A tracked journey's live vehicles and stop times in one request -
+    /// see `JourneyLive`.
+    public func journeyLive(tripIDs: [String]) async throws -> JourneyLive {
+        try await get("realtime/journey", query: [.init(name: "tripId", value: tripIDs.joined(separator: ","))])
+    }
+
     public func alerts(forStop stop: String, todayOnly: Bool = false) async throws -> AlertsForStop {
         try await get("realtime/alerts/\(Self.pathSegment(stop))", query: todayOnly ? [.init(name: "today", value: "true")] : [])
     }

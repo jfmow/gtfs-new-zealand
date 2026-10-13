@@ -178,4 +178,22 @@ final class APIClientTests: XCTestCase {
         XCTAssertTrue(body.contains("stopIdOrName=Britomart"))
         XCTAssertTrue(body.contains("routes="))
     }
+
+    func testJourneyLiveIsOneRequestForEveryTrip() async throws {
+        var requested: URL?
+        let client = makeMockedClient { request in
+            requested = request.url
+            return self.jsonResponse(request.url!, body: """
+            {"code":200,"message":"","data":{"vehicles":null,"stop_times":{"t1":[{"parent_stop_id":"p","child_stop_id":"c",
+            "arrival_time":1700000000000,"departure_time":1700000000000,"scheduled_time":1700000000000,
+            "skipped":false,"passed":false,"dist":12.5}]}},"trace_id":"t"}
+            """)
+        }
+        let live = try await client.journeyLive(tripIDs: ["t1", "t2"])
+        XCTAssertNil(live.vehicles)
+        XCTAssertEqual(live.stopTimes["t1"]?.first?.childStopID, "c")
+        XCTAssertNil(live.stopTimes["t2"])
+        let url = try XCTUnwrap(requested)
+        XCTAssertEqual(url.absoluteString, "https://trainapi.suddsy.dev/at/realtime/journey?tripId=t1,t2")
+    }
 }
