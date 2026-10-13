@@ -30,6 +30,19 @@ final class TransitDebugUITests: XCTestCase {
         }
     }
 
+    /// A whole-screen (SpringBoard included) screenshot, attached and saved
+    /// to `UX_SHOT_DIR` like `attach`.
+    private func attachScreen(_ name: String) {
+        let screen = XCUIScreen.main.screenshot()
+        let shot = XCTAttachment(screenshot: screen)
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+        if let dir = ProcessInfo.processInfo.environment["UX_SHOT_DIR"] {
+            try? screen.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
+        }
+    }
+
     private func attach(_ name: String) {
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = name
@@ -1231,14 +1244,19 @@ final class TransitDebugUITests: XCTestCase {
     /// (with a tight connection), and arrived.
     func testLiveActivityLayouts() throws {
         let now = Date().timeIntervalSince1970
-        let chain = #"[{"mode":"walk","shortName":"","colorHex":""},{"mode":"transit","shortName":"S-C","colorHex":"EE3524"},{"mode":"walk","shortName":"","colorHex":""},{"mode":"transit","shortName":"70","colorHex":"0073BD"}]"#
+        let chain = #"[{"mode":"walk","shortName":"","colorHex":""},{"mode":"train","shortName":"S-C","colorHex":"EE3524"},{"mode":"walk","shortName":"","colorHex":""},{"mode":"bus","shortName":"70","colorHex":"0073BD"}]"#
         let fixtures: [(String, String)] = [
-            ("walking", #"{"version":3,"legIndex":0,"phase":"walking","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Te Waihorotiu","primaryText":"Leave by 7:52am","secondaryText":"Walk to Te Waihorotiu for the S-C","countdownLabel":"Leave in","targetUnix":\#(now + 400),"delayMinutes":0,"status":"onTime","arrivalUnix":\#(now + 2400),"progressFraction":0,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","walkMinutes":4,"walkMeters":320,"hasVehicle":false}"#),
-            ("waiting", #"{"version":3,"legIndex":1,"phase":"waiting","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Newmarket","primaryText":"Board the S-C","secondaryText":"at Te Waihorotiu · Platform 2 · 3 stops away","countdownLabel":"Departs in","targetUnix":\#(now + 250),"delayMinutes":3,"status":"delayed","stopsAway":3,"arrivalUnix":\#(now + 2400),"progressFraction":0.2,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","hasVehicle":true,"occupancy":1}"#),
-            ("onboard", #"{"version":3,"legIndex":1,"phase":"onboard","routeShortName":"S-C","routeColorHex":"EE3524","headsign":"Newmarket","primaryText":"Get off at Newmarket","secondaryText":"Then 70 at 8:14am · 2 min to change","countdownLabel":"Arrives in","targetUnix":\#(now + 420),"delayMinutes":0,"status":"tightConnection","stopsAway":2,"arrivalUnix":\#(now + 2400),"progressFraction":0.5,"totalLegs":4,"legChain":\#(chain),"nextLeg":{"routeShortName":"70","routeColorHex":"0073BD","departureUnix":\#(now + 660),"connectMinutes":2},"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","nextStopName":"Grafton","rideStops":7,"hasVehicle":true,"occupancy":2}"#),
+            ("walking", #"{"version":3,"legIndex":0,"phase":"walking","routeShortName":"S-C","routeColorHex":"EE3524","vehicleMode":"train","headsign":"Te Waihorotiu","primaryText":"Leave by 7:52am","secondaryText":"Walk to Te Waihorotiu for the S-C","countdownLabel":"Leave in","targetUnix":\#(now + 400),"delayMinutes":0,"status":"onTime","arrivalUnix":\#(now + 2400),"progressFraction":0,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","walkMinutes":4,"walkMeters":320,"hasVehicle":false}"#),
+            ("waiting", #"{"version":3,"legIndex":1,"phase":"waiting","routeShortName":"S-C","routeColorHex":"EE3524","vehicleMode":"train","headsign":"Newmarket","primaryText":"Board the S-C","secondaryText":"at Te Waihorotiu · Platform 2 · 3 stops away","countdownLabel":"Departs in","targetUnix":\#(now + 250),"delayMinutes":3,"status":"delayed","stopsAway":3,"arrivalUnix":\#(now + 2400),"progressFraction":0.2,"totalLegs":4,"platform":"2","legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","hasVehicle":true,"occupancy":1}"#),
+            ("onboard", #"{"version":3,"legIndex":1,"phase":"onboard","routeShortName":"S-C","routeColorHex":"EE3524","vehicleMode":"train","headsign":"Newmarket","primaryText":"Get off at Newmarket","secondaryText":"Then 70 at 8:14am · 2 min to change","countdownLabel":"Arrives in","targetUnix":\#(now + 420),"delayMinutes":0,"status":"tightConnection","stopsAway":2,"arrivalUnix":\#(now + 2400),"progressFraction":0.5,"totalLegs":4,"legChain":\#(chain),"nextLeg":{"routeShortName":"70","routeColorHex":"0073BD","departureUnix":\#(now + 660),"connectMinutes":2},"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Te Waihorotiu","alightStopName":"Newmarket","nextStopName":"Grafton","rideStops":7,"hasVehicle":true,"occupancy":2}"#),
             ("arrived", #"{"version":3,"legIndex":3,"phase":"arrived","primaryText":"You've arrived","secondaryText":"","countdownLabel":"","targetUnix":\#(now),"delayMinutes":0,"status":"arrived","arrivalUnix":\#(now),"progressFraction":1,"totalLegs":4,"legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"hasVehicle":false}"#),
+            // A bus, to check the vehicle icon isn't a train's.
+            ("bus", #"{"version":3,"legIndex":1,"phase":"waiting","routeShortName":"70","routeColorHex":"0073BD","vehicleMode":"bus","headsign":"Botany","primaryText":"Board the 70","secondaryText":"","countdownLabel":"Departs in","targetUnix":\#(now + 180),"delayMinutes":0,"status":"onTime","stopsAway":2,"arrivalUnix":\#(now + 2400),"progressFraction":0.2,"totalLegs":4,"legChain":\#(chain),"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Customs St East","hasVehicle":true,"occupancy":1}"#),
+            // Long names everywhere - the overflow case.
+            ("long", #"{"version":3,"legIndex":1,"phase":"onboard","routeShortName":"WEST","routeColorHex":"84BC41","vehicleMode":"train","headsign":"Swanson Via Henderson And New Lynn","primaryText":"Get off at Mount Albert Train Station","secondaryText":"","countdownLabel":"Arrives in","targetUnix":\#(now + 3000),"delayMinutes":12,"status":"delayed","stopsAway":11,"arrivalUnix":\#(now + 5400),"progressFraction":0.3,"totalLegs":4,"legChain":\#(chain),"nextLeg":{"routeShortName":"NX1","routeColorHex":"0073BD","departureUnix":\#(now + 3600),"connectMinutes":4},"updatedUnix":\#(now),"isRealtime":true,"boardStopName":"Waitematā Britomart Train Station","alightStopName":"Mount Albert Train Station","nextStopName":"Grafton Train Station","rideStops":18,"hasVehicle":true,"occupancy":3}"#),
         ]
-        for (name, json) in fixtures {
+        let only = ProcessInfo.processInfo.environment["LA_ONLY"].map { $0.split(separator: ",").map(String.init) }
+        for (name, json) in fixtures where only?.contains(name) ?? true {
             app.launchEnvironment["LA_DEMO_JSON"] = json
             app.launch()
             dismissSystemAlertIfPresent(timeout: 3)
@@ -1249,18 +1267,12 @@ final class TransitDebugUITests: XCTestCase {
             sleep(3)
             XCUIDevice.shared.press(.home)
             sleep(2)
-            let compact = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            compact.name = "la-\(name)-1-compact"
-            compact.lifetime = .keepAlways
-            add(compact)
+            attachScreen("la-\(name)-1-compact")
 
             // Long-press the island to expand it.
             springboard.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.03)).press(forDuration: 1.2)
             sleep(2)
-            let expanded = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            expanded.name = "la-\(name)-2-expanded"
-            expanded.lifetime = .keepAlways
-            add(expanded)
+            attachScreen("la-\(name)-2-expanded")
             XCUIDevice.shared.press(.home)
             sleep(1)
 
@@ -1268,10 +1280,10 @@ final class TransitDebugUITests: XCTestCase {
             sleep(2)
             XCUIDevice.shared.press(.home)
             sleep(3)
-            let lock = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-            lock.name = "la-\(name)-3-lock"
-            lock.lifetime = .keepAlways
-            add(lock)
+            attachScreen("la-\(name)-3-lock")
+            // First run: the Lock Screen asks to allow Live Activities.
+            let allowActivities = springboard.buttons["Allow"]
+            if allowActivities.exists { allowActivities.tap(); sleep(1) }
             // Unlock (no passcode on the simulator) for the next round.
             XCUIDevice.shared.press(.home)
             sleep(2)
