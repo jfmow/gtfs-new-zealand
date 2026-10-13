@@ -1562,7 +1562,7 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertTrue(start.exists, "no journey was found")
     }
 
-    /// Add "Home" from Home's Places row, then tap it: the Planner should
+    /// Add "Home" from Home's shortcuts row, then tap it: the Planner should
     /// plan from here to Home. Also checks the From dropdown offers it.
     func testSavedPlaces() throws {
         app.launch()
@@ -1586,7 +1586,8 @@ final class TransitDebugUITests: XCTestCase {
         app.buttons["Save"].tap()
         sleep(1)
 
-        let chip = app.buttons["Home"]
+        // By identifier - the tab bar's "Home" shares the label.
+        let chip = app.buttons["shortcut.Home"]
         XCTAssertTrue(chip.waitForExistence(timeout: 5), "saved place chip missing")
         XCTAssertFalse(app.buttons["Add home"].exists, "Add home should hide once Home is saved")
         attach("sp-03-home-with-place")

@@ -80,6 +80,7 @@
 		C824CB35FAD796C528E40D82 /* SavedTripsViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A69012905ABBF481DDD1704 /* SavedTripsViews.swift */; };
 		CBBB26C921CCFDDFB0485022 /* LeaveReminderSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8970B9FE17B2C7AC8F0ED82 /* LeaveReminderSheet.swift */; };
 		CBC8B058C3B764BA3D72932B /* RouteMultiSelect.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A48E84F94B8E793E9D85289 /* RouteMultiSelect.swift */; };
+		CE16F2C79F246A4FC1ED9E48 /* HomeLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8426D6B57A0838F2E07F9074 /* HomeLists.swift */; };
 		D06BEB7CCEE30EA079F1BBAF /* FlowLayout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EED87D07EBAC42A622A9029 /* FlowLayout.swift */; };
 		D1B2D1C33EF981B4E2C381B9 /* TrackedLegRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ED9263CC89B1BCDDEDBEA9F /* TrackedLegRow.swift */; };
 		D2D2B02D0F5020769044448D /* DeepLinkPresentationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */; };
@@ -175,6 +176,7 @@
 		81A7BB232C09EA20A6B41A02 /* Components.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Components.swift; sourceTree = "<group>"; };
 		82BCE6C873F52831BE29810C /* TransitDebugUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransitDebugUITests.swift; sourceTree = "<group>"; };
 		83A7C4747E418842D562F7ED /* DeepLinkPresentationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkPresentationView.swift; sourceTree = "<group>"; };
+		8426D6B57A0838F2E07F9074 /* HomeLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeLists.swift; sourceTree = "<group>"; };
 		920010E42EE6E8E07D82BC5C /* DeparturesWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeparturesWidget.swift; sourceTree = "<group>"; };
 		9327C25313019AAEE82AE05B /* JourneyTrackingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyTrackingView.swift; sourceTree = "<group>"; };
 		96FD1A1253E838170449E63B /* EasyPlannerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EasyPlannerModel.swift; sourceTree = "<group>"; };
@@ -417,6 +419,7 @@
 			isa = PBXGroup;
 			children = (
 				1B0BA3B2CA480F69D2E04F94 /* HomeCards.swift */,
+				8426D6B57A0838F2E07F9074 /* HomeLists.swift */,
 				3B967C20C0A167A8F989E5C5 /* HomeView.swift */,
 			);
 			path = Home;
@@ -683,6 +686,7 @@
 				52F3023D11E34A6E7C284E7F /* FindMyVehicleSheet.swift in Sources */,
 				D06BEB7CCEE30EA079F1BBAF /* FlowLayout.swift in Sources */,
 				ADEA2951F4B0241365877AF6 /* HomeCards.swift in Sources */,
+				CE16F2C79F246A4FC1ED9E48 /* HomeLists.swift in Sources */,
 				9C6C09428E8557C04DE909F2 /* HomeView.swift in Sources */,
 				EF58183A535A969F5ECD0873 /* JourneyActivityAttributes.swift in Sources */,
 				B327BDCF76C3F69410561F2B /* JourneyAlertCenter.swift in Sources */,
