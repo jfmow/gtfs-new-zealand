@@ -95,6 +95,8 @@ final class JourneyTrackingSession {
     @ObservationIgnored private var liveWalkLegIndex: Int?
     @ObservationIgnored private var backgroundLocationOn = false
     @ObservationIgnored private var lastPackSave = Date.distantPast
+    /// The pack has changes not yet written out - see `savePackIfDue`.
+    @ObservationIgnored private var packDirty = false
     @ObservationIgnored private var lastSentActivity: (state: JourneyActivityAttributes.ContentState, at: Date)?
     @ObservationIgnored private var lastReportedLeg: (index: Int, phase: String, headphones: Bool, leftAt: Int64?, at: Date)?
     @ObservationIgnored private var savedAlightedThroughLeg = -1
@@ -115,6 +117,7 @@ final class JourneyTrackingSession {
     /// the Live Activity flicked between the two.
     private static let liveFreshAge: TimeInterval = 90
     private static let resumeGrace: TimeInterval = 45 * 60
+    private static let packSaveInterval: TimeInterval = 2 * 60
     /// How often an unchanged Live Activity state is re-sent - well inside
     /// `LiveActivityCoordinator.staleAfter`, so it never shows as stale
     /// while the app's keeping it current.
@@ -262,6 +265,9 @@ final class JourneyTrackingSession {
         if active {
             startFetching()  // catch up straight away
             startTicking()
+        } else if packDirty {
+            // iOS may suspend or end the app from here.
+            savePack()
         }
         tick()
     }
@@ -294,6 +300,7 @@ final class JourneyTrackingSession {
         lastSentActivity = nil
         lastReportedLeg = nil
         savedAlightedThroughLeg = -1
+        packDirty = false
         arrivedAt = nil
         momentNear = true
         progressModel = JourneyProgressModel()
@@ -331,12 +338,12 @@ final class JourneyTrackingSession {
         }
     }
 
-    /// 10s on screen. In the background 30s near a moment or while the
+    /// 10s on screen (20s in Low Power Mode). In the background 30s near a moment or while the
     /// server isn't answering (to notice being offline), else 60s - each
     /// poll wakes the radio, and the server is pushing the Live Activity's
     /// key moments either way.
     private var fetchInterval: TimeInterval {
-        if isAppActive { return 10 }
+        if isAppActive { return PowerState.shared.isLowPower ? 20 : 10 }
         return momentNear || failedFetches > 0 ? 30 : 60
     }
 
@@ -449,15 +456,27 @@ final class JourneyTrackingSession {
             isOfflineReady = pack.isComplete
             tick()
         }
-        // New predictions arrive every poll - written out at most every
-        // half minute; newly downloaded pieces straight away.
-        if downloaded || (predictionsChanged && Date().timeIntervalSince(lastPackSave) >= 30) {
+        // New predictions arrive every poll - left for the next save (see
+        // `savePackIfDue`); newly downloaded pieces straight away.
+        if downloaded {
             savePack()
+        } else if predictionsChanged {
+            packDirty = true
+            savePackIfDue()
         }
+    }
+
+    /// Writes out changes the pack's been holding: at most every
+    /// `packSaveInterval`, and straight away on a new leg or the app going
+    /// to the background (`setAppActive`) - not on every poll and tick.
+    private func savePackIfDue() {
+        guard packDirty, Date().timeIntervalSince(lastPackSave) >= Self.packSaveInterval else { return }
+        savePack()
     }
 
     private func savePack() {
         guard let pack else { return }
+        packDirty = false
         lastPackSave = Date()
         let store = self.store
         Task.detached(priority: .utility) { store.save(pack) }
@@ -623,10 +642,12 @@ final class JourneyTrackingSession {
 
         let justSetOff = updateDeparture(plan: plan, now: now)
         let display = JourneyPlanLiveAdjuster.buildLiveJourney(plan, stopTimesByTripID: times, setOffAt: setOffAt)
-        vehiclesByTripID = vehicles
-        estimatedTripIDs = estimatedIDs
-        stopTimesByTripID = times
-        displayPlan = display
+        // Only what changed: every assignment re-renders the tracker and its
+        // map, equal or not, and most ticks change nothing.
+        if vehiclesByTripID != vehicles { vehiclesByTripID = vehicles }
+        if estimatedTripIDs != estimatedIDs { estimatedTripIDs = estimatedIDs }
+        if stopTimesByTripID != times { stopTimesByTripID = times }
+        if displayPlan != display { displayPlan = display }
 
         func compute() -> JourneyProgressModel.Snapshot {
             progressModel.update(
@@ -644,14 +665,20 @@ final class JourneyTrackingSession {
             trackedStops = stops
             newSnapshot = compute()
         }
-        snapshot = newSnapshot
+        let legChanged = snapshot?.progressLegIndex != newSnapshot.progressLegIndex || snapshot?.phase != newSnapshot.phase
+        if snapshot != newSnapshot { snapshot = newSnapshot }
         saveProgress()
         let rideProgress = estimator.progress
         if var pack, (pack.rides ?? [:]) != rideProgress {
+            // Boarding or getting off goes straight to disk; moving along
+            // the ride waits for the next save.
+            let boardedOrAlighted = (pack.rides ?? [:]).mapValues(\.alighted) != rideProgress.mapValues(\.alighted)
             pack.rides = rideProgress
             self.pack = pack
-            savePack()
+            if boardedOrAlighted { savePack() } else { packDirty = true }
         }
+        if legChanged, packDirty { savePack() }
+        savePackIfDue()
 
         applyCachedWalkDirections(legIndex: newSnapshot.progressLegIndex)
         evaluateAlerts(newSnapshot, now: now)

@@ -113,7 +113,7 @@ struct TransitMapView: UIViewRepresentable {
         mapView.showsUserLocation = showsUserLocation
         // MapKit's compass sits top-right, under our own overlaid controls.
         mapView.showsCompass = false
-        context.coordinator.apply3D(is3D, to: mapView)
+        context.coordinator.apply3D(shows3D, to: mapView)
 
         // Register every annotation view that is dequeued using
         // dequeueReusableAnnotationView(withIdentifier:for:).
@@ -150,7 +150,7 @@ struct TransitMapView: UIViewRepresentable {
         mapView.overrideUserInterfaceStyle = (MapStyle(rawValue: mapStyleRaw) ?? .auto).interfaceStyle
 
         mapView.showsUserLocation = showsUserLocation
-        context.coordinator.apply3D(is3D, to: mapView)
+        context.coordinator.apply3D(shows3D, to: mapView)
 
         context.coordinator.reconcile(
             stops: stops,
@@ -160,12 +160,23 @@ struct TransitMapView: UIViewRepresentable {
             in: mapView
         )
         context.coordinator.reconcileTripStops(tripStops, in: mapView)
-        context.coordinator.reconcileMotion(glidesVehicles ? vehicleRoutes.filter(\.value.riderAboard) : [:], in: mapView)
+        context.coordinator.reconcileMotion(glidingRoutes, in: mapView)
 
         context.coordinator.applyCameraReset(cameraResetToken, in: mapView)
         context.coordinator.updateCompass(for: camera, in: mapView)
         context.coordinator.applyCamera(camera, to: mapView)
         context.coordinator.applyCenterOnUserLocationTrigger(centerOnUserLocationTrigger, to: mapView)
+    }
+
+    /// 3D as toggled - flat in Low Power Mode, where realistic terrain and
+    /// buildings cost the GPU too much.
+    private var shows3D: Bool { is3D && !PowerState.shared.isLowPower }
+
+    /// The routes vehicles glide along - none in Low Power Mode (they jump
+    /// to each live position instead of animating every second).
+    fileprivate var glidingRoutes: [String: VehicleRoute] {
+        guard glidesVehicles, !PowerState.shared.isLowPower else { return [:] }
+        return vehicleRoutes.filter(\.value.riderAboard)
     }
 
     func makeCoordinator() -> Coordinator {
@@ -232,8 +243,34 @@ struct TransitMapView: UIViewRepresentable {
             }
         }
 
+        /// The app is in the background - a tracked journey keeps it (and
+        /// this map) awake with the screen off, where the glide timer and
+        /// compass would only wake the CPU for nothing.
+        private var isInBackground: Bool
+
         init(_ parent: TransitMapView) {
             self.parent = parent
+            isInBackground = UIApplication.shared.applicationState == .background
+            super.init()
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil
+            )
+            NotificationCenter.default.addObserver(
+                self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil
+            )
+        }
+
+        @objc private func didEnterBackground() {
+            isInBackground = true
+            stopMotion()
+            stopCompass()
+        }
+
+        @objc private func willEnterForeground() {
+            isInBackground = false
+            guard let mapView else { return }
+            reconcileMotion(parent.glidingRoutes, in: mapView)
+            updateCompass(for: parent.camera, in: mapView)
         }
 
         func reconcile(
@@ -487,7 +524,7 @@ struct TransitMapView: UIViewRepresentable {
             }
             if created { advanceMotion(in: mapView, glide: 0) }
 
-            if motions.isEmpty {
+            if motions.isEmpty || isInBackground {
                 stopMotion()
             } else if motionTimer == nil {
                 let timer = Timer(timeInterval: Self.motionStep, repeats: true) { [weak self] _ in
@@ -956,7 +993,7 @@ struct TransitMapView: UIViewRepresentable {
         private var compassHeading: CLLocationDirection?
 
         func updateCompass(for mode: MapCamera, in mapView: MKMapView) {
-            guard case .followUser = mode, CLLocationManager.headingAvailable() else {
+            guard case .followUser = mode, !isInBackground, CLLocationManager.headingAvailable() else {
                 stopCompass()
                 return
             }

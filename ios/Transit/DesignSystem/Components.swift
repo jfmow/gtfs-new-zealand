@@ -330,23 +330,46 @@ struct SectionLabel: View {
 
 struct LiveDot: View {
     var color: Color = Theme.primary
-    @State private var pulse = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    /// One pulse every this often, rather than back to back - a ring that
+    /// never stops kept the screen redrawing at full rate the whole time a
+    /// live screen was open.
+    private static let pulseEvery: TimeInterval = 4
 
     var body: some View {
         Circle()
             .fill(color)
             .frame(width: 6, height: 6)
-            .overlay(
-                Circle().stroke(color.opacity(0.5), lineWidth: 1)
-                    .scaleEffect(pulse ? 2.2 : 1)
-                    .opacity(pulse ? 0 : 1)
-            )
-            .onAppear {
-                guard !reduceMotion else { return }
-                withAnimation(.easeOut(duration: 1.4).repeatForever(autoreverses: false)) { pulse = true }
+            .overlay {
+                if reduceMotion || PowerState.shared.isLowPower {
+                    Circle().stroke(color.opacity(0.5), lineWidth: 1)
+                } else {
+                    TimelineView(.periodic(from: .now, by: Self.pulseEvery)) { context in
+                        LiveDotPulse(color: color, trigger: context.date)
+                    }
+                }
             }
             .accessibilityHidden(true)
+    }
+}
+
+private struct LiveDotPulse: View {
+    let color: Color
+    let trigger: Date
+    @State private var expanded = false
+
+    var body: some View {
+        Circle().stroke(color.opacity(0.5), lineWidth: 1)
+            .scaleEffect(expanded ? 2.2 : 1)
+            .opacity(expanded ? 0 : 1)
+            .onChange(of: trigger, initial: true) {
+                withAnimation(.easeOut(duration: 1.4)) {
+                    expanded = true
+                } completion: {
+                    expanded = false
+                }
+            }
     }
 }
 
@@ -584,8 +607,35 @@ private struct ForegroundPoll<ID: Equatable>: ViewModifier {
             guard isForeground else { return }
             while !Task.isCancelled {
                 await action()
-                try? await Task.sleep(for: interval)
+                // Half as often in Low Power Mode.
+                try? await Task.sleep(for: PowerState.shared.isLowPower ? interval * 2 : interval)
             }
         }
+    }
+}
+
+// MARK: - Low Power Mode
+
+/// Whether the device is in Low Power Mode - live screens poll half as
+/// often, maps stay flat with no gliding vehicles, and live dots don't
+/// pulse while it's on. Observable, so views follow it being switched.
+@MainActor
+@Observable
+final class PowerState: NSObject {
+    static let shared = PowerState()
+
+    private(set) var isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    private override init() {
+        super.init()
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(powerStateDidChange), name: .NSProcessInfoPowerStateDidChange, object: nil
+        )
+    }
+
+    // Posted on whichever thread changed it.
+    @objc nonisolated private func powerStateDidChange() {
+        let isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
+        Task { @MainActor in PowerState.shared.isLowPower = isLowPower }
     }
 }

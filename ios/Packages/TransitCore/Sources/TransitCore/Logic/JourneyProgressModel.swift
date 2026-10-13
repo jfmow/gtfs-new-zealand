@@ -63,7 +63,7 @@ public final class JourneyProgressModel {
     /// while offline, once the rider is detected riding.
     public enum TrackingLevel: String, Sendable { case live, estimated, predicted, scheduled }
 
-    public struct Snapshot: Sendable {
+    public struct Snapshot: Sendable, Equatable {
         /// The first leg (of the live-adjusted plan) whose arrival is still
         /// in the future - purely clock-based, unguarded.
         public let currentLegIndex: Int

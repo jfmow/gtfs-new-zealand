@@ -53,10 +53,12 @@ struct Map3DButton: View {
     @AppStorage(Map3D.storageKey) private var is3D = false
 
     var body: some View {
+        // Maps stay flat in Low Power Mode (`TransitMapView.shows3D`).
+        let isLowPower = PowerState.shared.isLowPower
         Button {
             is3D.toggle()
         } label: {
-            Text(is3D ? "2D" : "3D")
+            Text(is3D && !isLowPower ? "2D" : "3D")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.foreground)
                 .frame(width: 44, height: 44)
@@ -66,7 +68,9 @@ struct Map3DButton: View {
                 .contentShape(.hoverEffect, Circle())
                 .hoverEffect()
         }
-        .accessibilityLabel(is3D ? "Show flat map" : "Show 3D map")
+        .disabled(isLowPower)
+        .accessibilityLabel(is3D && !isLowPower ? "Show flat map" : "Show 3D map")
+        .accessibilityHint(isLowPower ? "Off in Low Power Mode" : "")
     }
 }
 

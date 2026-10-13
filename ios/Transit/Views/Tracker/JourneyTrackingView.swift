@@ -39,6 +39,10 @@ struct JourneyTrackingView: View {
     /// The camera follows the journey (see `camera`) until the rider pans or
     /// pinches the map themselves; the recentre button hands it back.
     @State private var autoFollow = true
+    /// The clock for what's worked out from the time on screen (progress
+    /// bars, "Updating" once data goes stale) - the session only publishes
+    /// changes now, so without this they'd only move when the data does.
+    @State private var now = Date()
     @State private var cameraResetToken = 0
     /// The itinerary drawer's own detent - previously a fixed
     /// `.safeAreaInset`, which meant it could neither be dragged to resize
@@ -149,6 +153,7 @@ struct JourneyTrackingView: View {
                 .interactiveDismissDisabled()
         }
         .task { start() }
+        .foregroundPoll(every: .seconds(15), id: 0) { now = Date() }
         .onAppear {
             router.isTrackingVisible = true
             router.openTracker = (planID: plan.id, inLink: presentedFromLink)
@@ -554,7 +559,7 @@ struct JourneyTrackingView: View {
             return Countdown(target: arrival, caption: isLast ? "to your stop" : "to get off", urgent: false)
         case .walking, .waiting, .boarding:
             if let ride = currentOrNextTransitLeg, let departure = ride.departureTime.date, currentLeg?.mode == "walk" || currentLeg?.tripID == ride.tripID {
-                return Countdown(target: departure, caption: "to departure", urgent: departure.timeIntervalSinceNow < 120)
+                return Countdown(target: departure, caption: "to departure", urgent: departure.timeIntervalSince(now) < 120)
             }
             return displayPlan.arrivalTime.date.map { Countdown(target: $0, caption: "to arrive", urgent: false) }
         case nil:
@@ -574,7 +579,6 @@ struct JourneyTrackingView: View {
     @ViewBuilder
     private var statusChips: some View {
         if let snapshot, !snapshot.journeyArrived, snapshot.phase != nil {
-            let now = Date()
             FlowLayout(spacing: 6, lineSpacing: 6) {
                 if isCurrent, session.isOffline {
                     Label("Offline", systemImage: "wifi.slash")
@@ -736,7 +740,7 @@ struct JourneyTrackingView: View {
               let tripID = snapshot.trackedTripID, tripID == displayPlan.legs[index].tripID else { return nil }
         let leg = displayPlan.legs[index]
         guard let start = leg.departureTime.date, let end = leg.arrivalTime.date, end > start else { return nil }
-        return max(0, min(1, Date().timeIntervalSince(start) / end.timeIntervalSince(start)))
+        return max(0, min(1, now.timeIntervalSince(start) / end.timeIntervalSince(start)))
     }
 
     private func waitMinutes(after index: Int) -> Int? {
