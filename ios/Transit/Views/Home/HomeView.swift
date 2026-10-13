@@ -23,6 +23,7 @@ struct HomeView: View {
     @State private var isManagingFavourites = false
     @State private var isManagingTrips = false
     @State private var isManagingPlaces = false
+    @State private var isFindingVehicle = false
     @State private var placeEditor: PlaceEditorTarget?
     @State private var renaming: FavouriteStop?
     @State private var draftName = ""
@@ -92,6 +93,9 @@ struct HomeView: View {
             .sheet(isPresented: $isManagingFavourites) {
                 ManageFavouritesSheet().shadSheet(detents: [.medium, .large])
             }
+            .sheet(isPresented: $isFindingVehicle) {
+                FindMyVehicleSheet().shadSheet(detents: [.medium, .large])
+            }
             .sheet(isPresented: $isManagingPlaces) {
                 ManagePlacesSheet().shadSheet(detents: [.medium, .large])
             }
@@ -125,11 +129,18 @@ struct HomeView: View {
     @ViewBuilder
     private var shortcutsSection: some View {
         if isNew {
-            setupCard
+            VStack(alignment: .leading, spacing: 16) {
+                if environment.region.hasRealtime {
+                    HomeFindVehicleChip { isFindingVehicle = true }
+                        .padding(.horizontal, 16)
+                }
+                setupCard
+            }
         } else {
             HomeShortcutsRow(
                 places: places,
                 trips: savedTrips,
+                onFindVehicle: environment.region.hasRealtime ? { isFindingVehicle = true } : nil,
                 onGo: { router.plan(to: $0.plannerLocation) },
                 onEditPlace: { placeEditor = .edit($0) },
                 onManagePlaces: { isManagingPlaces = true },

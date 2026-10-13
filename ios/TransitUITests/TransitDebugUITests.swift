@@ -57,6 +57,21 @@ final class TransitDebugUITests: XCTestCase {
         attach("icloud-settings")
     }
 
+    /// Home's "Find my vehicle" chip opens the sheet and its list.
+    func testFindMyVehicle() throws {
+        app.launchArguments += ["-seedHomeDemo", "YES"]
+        app.launch()
+        dismissSystemAlertIfPresent()
+        sleep(4)
+        attach("fmv-01-home")
+        let chip = app.buttons["Find my vehicle"]
+        XCTAssertTrue(chip.waitForExistence(timeout: 5), "no Find my vehicle chip on Home")
+        chip.tap()
+        dismissSystemAlertIfPresent()
+        sleep(6)
+        attach("fmv-02-sheet")
+    }
+
     func testLaterDepartures() throws {
         app.launch()
         app.tabBars.buttons["Planner"].tap()

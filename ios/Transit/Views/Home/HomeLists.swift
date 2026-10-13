@@ -41,6 +41,8 @@ enum StopGlyph {
 struct HomeShortcutsRow: View {
     let places: [SavedPlace]
     let trips: [SavedTrip]
+    /// Nil where the region has no live vehicle positions.
+    let onFindVehicle: (() -> Void)?
     let onGo: (SavedPlace) -> Void
     let onEditPlace: (SavedPlace) -> Void
     let onManagePlaces: () -> Void
@@ -54,6 +56,9 @@ struct HomeShortcutsRow: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
+                if let onFindVehicle {
+                    HomeFindVehicleChip(action: onFindVehicle)
+                }
                 ForEach(places, id: \.persistentModelID) { place in
                     Button { onGo(place) } label: {
                         chip { SavedPlaceTile(icon: place.placeIcon, size: 24) } text: { Text(place.name) }
@@ -139,6 +144,27 @@ struct HomeShortcutsRow: View {
         .background(Theme.card, in: Capsule())
         .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
         .contentShape(Capsule())
+    }
+}
+
+/// "Find my vehicle" - filled, so it stands apart from the saved shortcuts.
+struct HomeFindVehicleChip: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 7) {
+                Image(systemName: "location.viewfinder").font(.system(size: 14, weight: .semibold))
+                Text("Find my vehicle").font(.bodyMedium).lineLimit(1)
+            }
+            .foregroundStyle(Theme.primaryForeground)
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .background(Theme.primary, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Finds the bus, train or ferry you're on from your location.")
     }
 }
 
