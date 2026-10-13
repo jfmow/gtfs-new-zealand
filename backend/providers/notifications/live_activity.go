@@ -63,7 +63,7 @@ func (a LiveActivity) departure(now time.Time) (leftUnix int64, watching bool) {
 }
 
 // headphonesFreshFor is how long a "headphones in" report is trusted - the
-// app reports every ~30s while it's running, so past this it's been
+// app reports every 30-60s while it's running, so past this it's been
 // suspended and the rider may well have taken them out.
 const headphonesFreshFor = 10 * time.Minute
 
@@ -254,9 +254,10 @@ const (
 // running and updating the activity itself (every ~10s, from its own poll),
 // so this cron leaves the content alone - two writers working from
 // different snapshots of the feed made the stop count flick back and forth
-// (2026-09-24). The app reports at least every 30s while it's doing that.
-// Key moments still go out, as the activity's alert.
-const clientActiveWindow = 75 * time.Second
+// (2026-09-24). The app reports with every poll while it's doing that - at
+// least every 60s in the background away from a journey moment, plus the
+// request (up to 15s). Key moments still go out, as the activity's alert.
+const clientActiveWindow = 100 * time.Second
 
 // runLiveActivitiesCron is one tick of the Live Activity progress pusher -
 // the background path for when the app isn't running to update ActivityKit

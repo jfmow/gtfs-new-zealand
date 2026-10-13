@@ -20,8 +20,10 @@ import TransitCore
 ///   the trip's stops from their GPS - stops away, "your stop is next" and
 ///   getting off all keep working.
 /// - While a journey is on, location runs in the background, so the app
-///   keeps tracking with the screen off - coarse only on a ride the live
-///   feed is following, precise again near the stop (`JourneyGPSPolicy`);
+///   keeps tracking with the screen off - only as precise as the moment
+///   needs (`JourneyGPSPolicy`): coarse at home well before leaving and on
+///   a ride the live feed is following, precise again near the stop. Away
+///   from a moment it also polls and works out progress less often;
 ///   get-on/get-off moments become local notifications while offline (the
 ///   server can't push them), and timetable-based ones are scheduled ahead
 ///   in case iOS suspends the app.
@@ -100,15 +102,18 @@ final class JourneyTrackingSession {
     /// When this session first saw the rider arrive - it ends itself
     /// `arrivedCloseDelay` after, taking the tracker and resume pill with it.
     @ObservationIgnored private var arrivedAt: Date?
+    /// A journey moment is close (`JourneyGPSPolicy.isMomentNear`) - the
+    /// background keeps its quick pace then. Set by `tick`.
+    @ObservationIgnored private var momentNear = true
 
     /// Positions older than this are dropped - it's no longer where the
     /// vehicle is.
     private static let liveDataMaxAge: TimeInterval = 120
     /// Past this, the rider's own GPS is trusted over the feed's last word.
-    /// Longer than the background poll (30s + the request), or the
-    /// estimate took over at the tail of every cycle and the Live Activity
-    /// flicked between the two.
-    private static let liveFreshAge: TimeInterval = 75
+    /// Longer than the slowest background poll (`fetchInterval` + the
+    /// request), or the estimate took over at the tail of every cycle and
+    /// the Live Activity flicked between the two.
+    private static let liveFreshAge: TimeInterval = 90
     private static let resumeGrace: TimeInterval = 45 * 60
     /// How often an unchanged Live Activity state is re-sent - well inside
     /// `LiveActivityCoordinator.staleAfter`, so it never shows as stale
@@ -290,6 +295,7 @@ final class JourneyTrackingSession {
         lastReportedLeg = nil
         savedAlightedThroughLeg = -1
         arrivedAt = nil
+        momentNear = true
         progressModel = JourneyProgressModel()
         estimator = OfflineRideEstimator()
         ratchet = VehicleProgressRatchet()
@@ -308,8 +314,8 @@ final class JourneyTrackingSession {
 
     // MARK: - Loops
 
-    /// Talks to the server: now, then every 10s (30s in the background).
-    /// Stops once the journey's over and the app is in the background.
+    /// Talks to the server: now, then every `fetchInterval`. Stops once the
+    /// journey's over and the app is in the background.
     private func startFetching() {
         fetchTask?.cancel()
         let loopID = UUID()
@@ -319,21 +325,42 @@ final class JourneyTrackingSession {
                 guard let self else { return }
                 await self.fetch()
                 if !self.isAppActive, self.snapshot?.journeyArrived == true { break }
-                try? await Task.sleep(for: .seconds(self.isAppActive ? 10 : 30))
+                try? await Task.sleep(for: .seconds(self.fetchInterval))
             }
             if self?.fetchLoopID == loopID { self?.fetchTask = nil }
         }
     }
 
-    /// Works out progress every 5s, on top of every location update -
-    /// never waiting on the network.
+    /// 10s on screen. In the background 30s near a moment or while the
+    /// server isn't answering (to notice being offline), else 60s - each
+    /// poll wakes the radio, and the server is pushing the Live Activity's
+    /// key moments either way.
+    private var fetchInterval: TimeInterval {
+        if isAppActive { return 10 }
+        return momentNear || failedFetches > 0 ? 30 : 60
+    }
+
+    /// 5s on screen and near a moment; 20s in the background otherwise.
+    private var tickInterval: TimeInterval {
+        isAppActive || momentNear ? 5 : 20
+    }
+
+    /// The least time between location-driven ticks: 2s on screen and near
+    /// a moment; 10s in the background otherwise.
+    private var locationTickGap: TimeInterval {
+        isAppActive || momentNear ? 2 : 10
+    }
+
+    /// Works out progress every `tickInterval`, on top of location updates
+    /// (`locationTickGap`) - never waiting on the network.
     private func startTicking() {
         guard tickTask == nil else { return }
         let loopID = UUID()
         tickLoopID = loopID
         tickTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(5))
+                guard let interval = self?.tickInterval else { return }
+                try? await Task.sleep(for: .seconds(interval))
                 guard let self, !Task.isCancelled else { return }
                 if !self.isAppActive, self.snapshot?.journeyArrived == true { break }
                 self.tick()
@@ -347,7 +374,7 @@ final class JourneyTrackingSession {
         if let steps = walkDirections?.steps, let coordinate = location.preciseCoordinate {
             walkStep = walkTracker.update(steps: steps, location: coordinate)
         }
-        if Date().timeIntervalSince(lastTick) >= 2 { tick() }
+        if Date().timeIntervalSince(lastTick) >= locationTickGap { tick() }
     }
 
     // MARK: - Network
@@ -454,10 +481,10 @@ final class JourneyTrackingSession {
         setWalkDirections(directions, legIndex: index)
     }
 
-    /// Tells the server which leg the rider is on - and, by reporting at
-    /// least every 25s, that the app is updating the Live Activity itself,
-    /// so the server holds off pushing its own content over the top
-    /// (`clientActiveWindow` on the backend).
+    /// Tells the server which leg the rider is on - and, by reporting with
+    /// every poll (25s apart at the least), that the app is updating the
+    /// Live Activity itself, so the server holds off pushing its own content
+    /// over the top (`clientActiveWindow` on the backend).
     private func reportLegIfNeeded() {
         guard !isOffline, let snapshot, let activityID = liveActivity.activity?.id else { return }
         let phase = snapshot.phase?.rawValue ?? "onboard"
@@ -482,9 +509,9 @@ final class JourneyTrackingSession {
     /// The rider's GPS can see whether they've set off: the journey starts
     /// with a walk and there's a recent fix.
     private var watchingDeparture: Bool {
-        guard plan?.legs.first?.mode == "walk", location.isAuthorized, location.preciseCoordinate != nil,
-              let fixDate = location.fixDate else { return false }
-        return Date().timeIntervalSince(fixDate) <= Self.departureFixMaxAge
+        guard plan?.legs.first?.mode == "walk", location.isAuthorized, location.departureCoordinate != nil,
+              let confirmedAt = location.positionConfirmedAt else { return false }
+        return Date().timeIntervalSince(confirmedAt) <= Self.departureFixMaxAge
     }
 
     /// Their GPS shows they haven't set off yet.
@@ -497,7 +524,7 @@ final class JourneyTrackingSession {
               let boardStop = plan.legs.first(where: { $0.mode == "transit" })?.fromStop,
               let left = departure.update(
                   start: Coordinate(latitude: plan.startLat, longitude: plan.startLon), boardStop: boardStop.coordinate,
-                  location: location.preciseCoordinate, accuracy: location.accuracy, at: location.fixDate ?? now
+                  location: location.departureCoordinate, accuracy: location.accuracy, at: location.positionConfirmedAt ?? now
               ) else { return false }
         setOffAt = left
         activeJourney(planID: plan.id)?.setOffAt = left
@@ -635,14 +662,20 @@ final class JourneyTrackingSession {
 
         let wantsBackgroundLocation = !newSnapshot.journeyArrived && location.isAuthorized
         if wantsBackgroundLocation != backgroundLocationOn { setBackgroundLocation(wantsBackgroundLocation) }
-        // On a ride the live feed is following well, GPS can rest until the
-        // rider's stop is near - see `JourneyGPSPolicy`.
+        // Only as much GPS, and as quick a pace, as the next moment needs -
+        // see `JourneyGPSPolicy`.
         let alightAt = newSnapshot.trackedTripID.flatMap { id in display.legs.first { $0.tripID == id } }?.arrivalTime.date
-        location.setResting(wantsBackgroundLocation && JourneyGPSPolicy.canRest(
+        let waitingToSetOff = setOffAt == nil && plan.legs.first?.mode == "walk" && newSnapshot.progressLegIndex <= 0
+        location.setGPSMode(wantsBackgroundLocation ? JourneyGPSPolicy.mode(
             appActive: isAppActive, offline: isOffline, phase: newSnapshot.phase, boarded: newSnapshot.boarded,
             trackingLevel: newSnapshot.trackingLevel, liveFresh: liveAge <= Self.liveFreshAge,
-            stopsAway: newSnapshot.trackedStopsAway, alightAt: alightAt, now: now
-        ))
+            stopsAway: newSnapshot.trackedStopsAway, alightAt: alightAt,
+            waitingToSetOff: waitingToSetOff, leaveAt: display.legs.first?.departureTime.date, now: now
+        ) : .precise)
+        momentNear = JourneyGPSPolicy.isMomentNear(
+            phase: newSnapshot.phase, stopsAway: newSnapshot.trackedStopsAway,
+            nextMomentAt: nextMomentAt(newSnapshot, plan: display, waitingToSetOff: waitingToSetOff, alightAt: alightAt), now: now
+        )
 
         // Arrived a while ago: done. The loops stop in the background once
         // arrived, so in that case this lands on the next foreground tick.
@@ -653,6 +686,20 @@ final class JourneyTrackingSession {
             arrivedAt = arrived
             if now.timeIntervalSince(arrived) >= Self.arrivedCloseDelay { end() }
         }
+    }
+
+    /// When the rider next has something to do: leave (still at the start),
+    /// get on the next ride (walking or waiting for it), get off (on board),
+    /// or arrive (on the last walk). Nil when it can't be told.
+    private func nextMomentAt(_ snapshot: JourneyProgressModel.Snapshot, plan: JourneyPlan, waitingToSetOff: Bool, alightAt: Date?) -> Date? {
+        if waitingToSetOff { return plan.legs.first?.departureTime.date }
+        if snapshot.phase == .onboard {
+            return alightAt ?? plan.legs[safe: snapshot.progressLegIndex]?.arrivalTime.date
+        }
+        let from = max(snapshot.progressLegIndex, 0)
+        guard from < plan.legs.count else { return nil }
+        if let ride = plan.legs[from...].first(where: { $0.mode == "transit" }) { return ride.departureTime.date }
+        return plan.arrivalTime.date
     }
 
     private func setBackgroundLocation(_ on: Bool) {

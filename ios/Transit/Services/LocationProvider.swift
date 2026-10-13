@@ -21,12 +21,15 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// Called on the main actor after every new fix - the journey tracker
     /// uses it to advance while the app is in the background.
     @ObservationIgnored var onUpdate: (() -> Void)?
-    /// GPS is resting: coarse cell/wifi fixes only, on a ride the live feed
-    /// is following (`JourneyGPSPolicy`). Updates keep running, so the app
-    /// stays awake in the background to turn it back on near the stop.
-    private(set) var isResting = false
-    /// When precise GPS last came back - fixes before it are coarse.
+    /// How much GPS a tracked journey is using in the background
+    /// (`JourneyGPSPolicy`) - `.precise` otherwise. Updates keep running in
+    /// every mode, so the app stays awake to turn it back up near a moment.
+    private(set) var gpsMode = JourneyGPSPolicy.Mode.precise
+    /// When fixes last became good enough to place the rider - ones before
+    /// it are left over from a coarser mode.
     @ObservationIgnored private var preciseSince = Date.distantPast
+    /// When fixes last became good enough to see the rider set off.
+    @ObservationIgnored private var coarseSince = Date.distantPast
     /// A journey is keeping updates running.
     @ObservationIgnored private var journeyUpdates = false
     /// Ends a `requestFix` burst that never got a good enough fix.
@@ -37,6 +40,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// A fix this precise, and this fresh, ends a `requestFix` burst.
     private static let goodFixAccuracy: Double = 50
     private static let goodFixMaxAge: TimeInterval = 10
+    /// How long a still rider under a distance filter can go without a fix
+    /// before it stops counting as "still there" (`positionConfirmedAt`).
+    private static let filteredFixMaxSilence: TimeInterval = 10 * 60
 
     override init() {
         authorizationStatus = manager.authorizationStatus
@@ -46,10 +52,30 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     /// The latest fix, when it's precise enough to place the rider - not
-    /// while GPS is resting, nor a coarse one left over from it.
+    /// while GPS is resting or coarse, nor a fix left over from either.
     var preciseCoordinate: Coordinate? {
-        guard !isResting, let fixDate, fixDate >= preciseSince else { return nil }
+        guard gpsMode.placesRider, let fixDate, fixDate >= preciseSince else { return nil }
         return coordinate
+    }
+
+    /// The latest fix, when it's good enough to see the rider set off from
+    /// the start (`DepartureDetector` checks its accuracy) - anything but a
+    /// resting one.
+    var departureCoordinate: Coordinate? {
+        guard gpsMode > .resting, let fixDate, fixDate >= coarseSince else { return nil }
+        return coordinate
+    }
+
+    /// Up to when the latest fix is known to still hold. Under a distance
+    /// filter no new fix means the rider hasn't moved past it, so while
+    /// journey updates run that's now (for a while - a lost signal sends
+    /// nothing either). Without one, when it was taken.
+    var positionConfirmedAt: Date? {
+        guard let fixDate else { return nil }
+        let now = Date()
+        guard journeyUpdates, manager.distanceFilter != kCLDistanceFilterNone,
+              now.timeIntervalSince(fixDate) <= Self.filteredFixMaxSilence else { return fixDate }
+        return max(fixDate, now)
     }
 
     var isAuthorized: Bool {
@@ -99,19 +125,41 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         if enabled {
             manager.startUpdatingLocation()
         } else {
-            setResting(false)
+            setGPSMode(.precise)
             // Journey's over: stop, unless a screen's still waiting on a fix.
             if fixTimeout == nil { manager.stopUpdatingLocation() }
         }
     }
 
-    /// Swaps GPS for coarse cell/wifi fixes (far cheaper) and back.
-    func setResting(_ resting: Bool) {
-        guard resting != isResting else { return }
-        isResting = resting
-        manager.desiredAccuracy = resting ? kCLLocationAccuracyThreeKilometers : kCLLocationAccuracyBest
-        manager.distanceFilter = resting ? 500 : kCLDistanceFilterNone
-        if !resting { preciseSince = Date() }
+    /// Sets how much GPS a journey uses - see `JourneyGPSPolicy.Mode`.
+    func setGPSMode(_ mode: JourneyGPSPolicy.Mode) {
+        guard mode != gpsMode else { return }
+        let previous = gpsMode
+        gpsMode = mode
+        switch mode {
+        case .resting:
+            manager.desiredAccuracy = kCLLocationAccuracyThreeKilometers
+            manager.distanceFilter = 500
+        case .coarse:
+            manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+            manager.distanceFilter = 50
+        case .pedestrian:
+            manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+            manager.distanceFilter = 10
+        case .precise:
+            manager.desiredAccuracy = kCLLocationAccuracyBest
+            manager.distanceFilter = kCLDistanceFilterNone
+        }
+        let now = Date()
+        if mode.placesRider, !previous.placesRider { preciseSince = now }
+        if mode > .resting, previous == .resting { coarseSince = now }
+        // Tighter: restart, so a fix at the new accuracy comes straight
+        // away - a rider standing still under a distance filter would
+        // otherwise get none until they move.
+        if mode > previous, journeyUpdates {
+            manager.stopUpdatingLocation()
+            manager.startUpdatingLocation()
+        }
     }
 
     nonisolated func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
