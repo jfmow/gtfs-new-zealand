@@ -4,18 +4,18 @@ import WidgetKit
 
 // Journey Live Activity - Lock Screen + Dynamic Island.
 //
-// Built from the same pieces as the in-app tracker drawer's hero header
-// (JourneyTrackingView.heroHeader / statusChips): a route-coloured tile,
-// the instruction in Geist, a big minutes countdown with a caption, and
-// status chips. Tokens are the app's Theme values (globals.css). One glance
-// answers "what do I do now, and how long have I got"; the middle row
-// changes with the phase to show the thing that matters most right then:
+// Three rows: a route tile (vehicle + name in the route's colour), the
+// instruction with one line of detail, and a big countdown; then one bar
+// for the phase; then one status line. Tokens are the app's Theme values.
+// The bar shows what matters most right then:
 //
-// - walking: the walk (minutes, distance), or the ride already on its way
-// - waiting: the vehicle's approach, stop by stop, and the platform
-// - on board: a stop track from where you got on to your stop
-// - a connection coming: "Then 70 at 9:40 · 4 min to change"
+// - walking: time left to leave / reach the stop, draining live
+// - waiting: the vehicle sliding in toward your stop
+// - on board: stops ridden, from where you got on to your stop
 // - arrived: the journey's legs as a recap
+//
+// Every text is line-limited so long stop names truncate rather than push
+// the Lock Screen card past its height cap (it overflowed before).
 
 // MARK: - Tokens (Transit/DesignSystem/Theme.swift - the widget can't import the app)
 
@@ -52,38 +52,43 @@ struct JourneyLiveActivity: Widget {
             let state = context.state
             let stale = context.isStale
             return DynamicIsland {
+                // Beside the camera: how live it is, and where it ends. The
+                // main row sits in the bottom region so tile, instruction
+                // and countdown line up (the centre region starts lower
+                // than the sides).
                 DynamicIslandExpandedRegion(.leading) {
-                    HeroTile(state: state, size: 44)
-                        .padding(.leading, 4)
-                        .padding(.top, 4)
+                    // Narrow beside the camera: the delay goes first.
+                    ViewThatFits(in: .horizontal) {
+                        FooterLine.Status(state: state, isStale: stale, showsOccupancy: false)
+                        FooterLine.Status(state: state, isStale: stale, showsOccupancy: false, showsDelay: false)
+                    }
+                    .font(.geist(12, .medium))
+                        .padding(.leading, 8)
+                        .padding(.top, 2)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    CountdownBlock(state: state, isStale: stale, numberSize: 24, compact: true)
-                        .padding(.trailing, 4)
-                        .padding(.top, 4)
-                }
-                DynamicIslandExpandedRegion(.center) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(state.primaryText)
-                            .font(.geist(15, .semibold))
-                            .foregroundStyle(state.urgent ? Tokens.warning : Color.white)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
-                        if let subtitle = subtitle(state) {
-                            Text(subtitle)
-                                .font(.geist(12))
-                                .foregroundStyle(statusColor(state.status) ?? Tokens.mutedForeground)
-                                .lineLimit(1)
-                        }
+                    ViewThatFits(in: .horizontal) {
+                        FooterLine.Trailing(state: state)
+                        FooterLine.Trailing(state: state, showsThen: false)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 4)
+                    .font(.geist(12, .medium))
+                        .padding(.trailing, 8)
+                        .padding(.top, 2)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    // No footer: the expanded island has room for one row.
-                    PhaseRow(state: state)
-                        .padding(.horizontal, 4)
-                        .padding(.top, 6)
+                    VStack(spacing: 12) {
+                        HStack(alignment: .center, spacing: 12) {
+                            HeroTile(state: state, size: 44)
+                            Headline(state: state, titleSize: 15, onDark: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if state.phase != "arrived" {
+                                CountdownBlock(state: state, isStale: stale, numberSize: 26)
+                            }
+                        }
+                        PhaseBar(state: state, onDark: true)
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.top, 4)
                 }
             } compactLeading: {
                 HStack(spacing: 4) {
@@ -109,39 +114,27 @@ struct JourneyLiveActivity: Widget {
 
 // MARK: - Lock Screen
 
+/// Three rows, sized to stay inside the Lock Screen's ~160pt cap whatever
+/// the names: headline + countdown, the phase's progress bar, one status
+/// line. Every text is line-limited, so long stop names truncate instead of
+/// pushing the card past its height.
 private struct LockScreenView: View {
     let state: JourneyState
     let isStale: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
-                HeroTile(state: state, size: 48)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(state.primaryText)
-                        .font(.geist(17, .semibold))
-                        .foregroundStyle(state.urgent ? Tokens.warning : Tokens.foreground)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
-                        .fixedSize(horizontal: false, vertical: true)
-                    if let subtitle = subtitle(state) {
-                        Text(subtitle)
-                            .font(.geist(13))
-                            .foregroundStyle(statusColor(state.status) ?? Tokens.mutedForeground)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                HeroTile(state: state, size: 46)
+                Headline(state: state, titleSize: 17, onDark: false)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 if state.phase != "arrived" {
-                    CountdownBlock(state: state, isStale: isStale, numberSize: 26)
+                    CountdownBlock(state: state, isStale: isStale, numberSize: 30)
                 }
             }
-
-            PhaseRow(state: state)
-
+            PhaseBar(state: state, onDark: false)
             if state.phase != "arrived" {
-                StatusFooter(state: state, isStale: isStale)
+                FooterLine(state: state, isStale: isStale)
             }
         }
         .padding(.horizontal, 16)
@@ -149,52 +142,81 @@ private struct LockScreenView: View {
     }
 }
 
+// MARK: - Headline
+
+/// What to do now, and the one fact that goes with it.
+private struct Headline: View {
+    let state: JourneyState
+    let titleSize: CGFloat
+    let onDark: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(state.primaryText)
+                .font(.geist(titleSize, .semibold))
+                .foregroundStyle(state.urgent ? Tokens.warning : onDark ? Color.white : Tokens.foreground)
+                .lineLimit(2)
+                .minimumScaleFactor(0.8)
+            if let detail = detailLine(state) {
+                Text(detail)
+                    .font(.geist(titleSize - 3))
+                    .foregroundStyle(statusColor(state.status) ?? Tokens.mutedForeground)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
 // MARK: - Hero
 
-/// The tracker drawer's hero tile: the route's colour and name, a walker
-/// while walking, a green tick once arrived.
+/// The route's colour with its vehicle and name; a walker while walking
+/// (amber when it's time to go), a tick once arrived.
 private struct HeroTile: View {
     let state: JourneyState
     let size: CGFloat
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: size * 0.3, style: .continuous)
         Group {
             if state.phase == "arrived" {
                 Image(systemName: "checkmark")
-                    .font(.system(size: size * 0.42, weight: .bold))
+                    .font(.system(size: size * 0.4, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: size, height: size)
                     .background(Tokens.success, in: shape)
             } else if state.phase == "walking" || state.routeShortName.isEmpty {
-                Image(systemName: "figure.walk")
+                Image(systemName: state.urgent ? "figure.walk.departure" : "figure.walk")
                     .font(.system(size: size * 0.42, weight: .semibold))
-                    .foregroundStyle(Tokens.foreground)
+                    .foregroundStyle(state.urgent ? Color.black : Tokens.foreground)
                     .frame(width: size, height: size)
-                    .background(Tokens.muted, in: shape)
-                    .overlay(shape.strokeBorder(Tokens.border, lineWidth: 1))
+                    .background(state.urgent ? Tokens.warning : Tokens.muted, in: shape)
             } else {
                 let hex = state.routeColorHex.isEmpty ? Tokens.neutralRoute : state.routeColorHex
-                Text(state.routeShortName)
-                    .font(.geist(size * 0.34, .bold))
-                    .foregroundStyle(RouteColors.text(onHex: hex))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
-                    .padding(.horizontal, 3)
-                    .frame(width: size, height: size)
-                    .background(Color(hex: hex), in: shape)
+                VStack(spacing: 1) {
+                    if let symbol = vehicleSymbol(state) {
+                        Image(systemName: symbol)
+                            .font(.system(size: size * 0.28, weight: .semibold))
+                    }
+                    Text(state.routeShortName)
+                        .font(.geist(size * 0.3, .bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.5)
+                }
+                .foregroundStyle(RouteColors.text(onHex: hex))
+                .padding(.horizontal, 3)
+                .frame(width: size, height: size)
+                .background(Color(hex: hex), in: shape)
             }
         }
         .accessibilityHidden(true)
     }
 }
 
-/// Big number + caption, like the drawer's "4 min / to departure".
+/// Big countdown + a short caption ("to leave", "departs", "to your stop").
 private struct CountdownBlock: View {
     let state: JourneyState
     let isStale: Bool
     let numberSize: CGFloat
-    var compact = false
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
@@ -205,11 +227,13 @@ private struct CountdownBlock: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
             Text(caption)
-                .font(.geist(12))
+                .font(.geist(12, .medium))
                 .foregroundStyle(Tokens.mutedForeground)
                 .lineLimit(1)
+                .fixedSize()
         }
-        .frame(minWidth: 64, maxWidth: compact ? 84 : 120, alignment: .trailing)
+        .frame(minWidth: 60, maxWidth: 104, alignment: .trailing)
+        .opacity(isStale ? 0.6 : 1)
     }
 
     private var countdownColor: Color {
@@ -230,7 +254,7 @@ private struct CountdownBlock: View {
         }
         switch state.countdownLabel {
         case "Leave in": return "to leave"
-        case "Departs in": return "to departure"
+        case "Departs in": return "departs"
         case "Arrives in": return "to your stop"
         case "Arrive in": return "to arrive"
         default: return state.countdownLabel.lowercased()
@@ -270,347 +294,222 @@ private struct MinutesText: View {
     }
 }
 
-// MARK: - Phase row
+// MARK: - Phase bar
 
-private struct PhaseRow: View {
+/// One bar, whatever the phase: stops ridden on board, the vehicle closing
+/// in while you wait, time running down while you walk, the legs once
+/// you've arrived.
+private struct PhaseBar: View {
     let state: JourneyState
+    let onDark: Bool
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            switch state.phase {
-            case "arrived":
-                LegChain(state: state)
-            case "onboard":
-                StopTrack(state: state)
-            case "waiting", "boarding":
-                ApproachRow(state: state)
-            default:
-                WalkRow(state: state)
-            }
-            if state.phase != "arrived", let next = state.nextLeg {
-                ConnectionLine(next: next, status: state.status)
-            }
-        }
+    private var color: Color {
+        if state.urgent { return Tokens.warning }
+        return state.routeColorHex.isEmpty ? (onDark ? .white : Tokens.foreground) : Color(hex: state.routeColorHex)
     }
-}
-
-/// On board: where you got on, how far along you are, and your stop.
-private struct StopTrack: View {
-    let state: JourneyState
-
-    private var toGo: Int? { state.stopsAway.map { $0 + 1 } }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let total = state.rideStops, let toGo {
-                let done = max(0, min(total, total - toGo))
-                Track(total: total, done: done, colorHex: state.routeColorHex)
+        switch state.phase {
+        case "arrived":
+            LegChain(state: state)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        case "onboard":
+            let total = max(1, state.rideStops ?? 1)
+            let toGo = state.stopsAway.map { $0 + 1 } ?? total
+            KnobTrack(fraction: Double(max(0, total - toGo)) / Double(total), ticks: total <= 14 ? total : 0,
+                      color: color, symbol: vehicleSymbol(state), onDark: onDark)
+        case "waiting", "boarding":
+            if let away = state.stopsAway, state.hasVehicle {
+                // Up to eight stops out, the vehicle slides in toward you.
+                let window = 8.0
+                KnobTrack(fraction: 1 - min(Double(away), window) / window, ticks: 0,
+                          color: color, symbol: vehicleSymbol(state), onDark: onDark)
             } else {
-                // No stop list: a plain line from your stop to theirs.
-                Track(total: 1, done: 0, colorHex: state.routeColorHex)
+                TimeBar(state: state, color: color, onDark: onDark)
             }
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(state.boardStopName ?? "")
-                    .font(.geist(11))
-                    .foregroundStyle(Tokens.mutedForeground)
-                    .lineLimit(1)
-                Spacer(minLength: 8)
-                if let toGo {
-                    Text(toGo == 1 ? "next stop" : "\(toGo) stops")
-                        .font(.geist(11, .semibold).monospacedDigit())
-                        .foregroundStyle(Tokens.foreground)
-                    Text("·").font(.geist(11)).foregroundStyle(Tokens.mutedForeground)
-                }
-                Text(state.alightStopName ?? state.headsign)
-                    .font(.geist(11, .semibold))
-                    .foregroundStyle(Tokens.foreground)
-                    .lineLimit(1)
-            }
+        default:
+            TimeBar(state: state, color: color, onDark: onDark)
         }
     }
 }
 
-/// A stop-by-stop track: `done` of `total` stops passed, the rest ahead,
-/// your stop a ring at the end. Many stops shrink to a continuous line.
-private struct Track: View {
-    let total: Int
-    let done: Int
-    let colorHex: String
+/// A thick bar with a knob - the vehicle - at `fraction`, and your stop as
+/// a ring at the end.
+private struct KnobTrack: View {
+    let fraction: Double
+    let ticks: Int
+    let color: Color
+    /// The vehicle's glyph; a plain dot when the mode isn't known.
+    let symbol: String?
+    let onDark: Bool
 
     var body: some View {
-        let color = colorHex.isEmpty ? Tokens.foreground : Color(hex: colorHex)
+        let ground = onDark ? Color.white.opacity(0.18) : Tokens.border
+        let background = onDark ? Color.black : Tokens.card
         GeometryReader { geo in
             let width = geo.size.width
-            let fraction = total > 0 ? CGFloat(done) / CGFloat(total) : 0
-            let x = max(6, min(width - 6, width * fraction))
+            let x = max(9, min(width - 9, width * fraction))
             ZStack(alignment: .leading) {
-                Capsule().fill(Tokens.border).frame(height: 4)
-                Capsule().fill(color).frame(width: x, height: 4)
-                // Stop ticks, when there are few enough to tell apart.
-                if total > 1, total <= 14 {
-                    ForEach(1..<total, id: \.self) { i in
+                Capsule().fill(ground).frame(height: 6)
+                Capsule().fill(color).frame(width: x, height: 6)
+                if ticks > 1 {
+                    ForEach(1..<ticks, id: \.self) { i in
+                        let tx = width * CGFloat(i) / CGFloat(ticks)
                         Circle()
-                            .fill(i <= done ? color : Tokens.mutedForeground.opacity(0.45))
-                            .frame(width: 5, height: 5)
-                            .position(x: width * CGFloat(i) / CGFloat(total), y: 6)
+                            .fill(tx <= x ? background.opacity(0.7) : Tokens.mutedForeground.opacity(0.5))
+                            .frame(width: 3, height: 3)
+                            .position(x: tx, y: 9)
                     }
                 }
-                // You.
                 Circle()
-                    .fill(color)
+                    .strokeBorder(onDark ? Color.white : Tokens.foreground, lineWidth: 2.5)
+                    .background(Circle().fill(background))
                     .frame(width: 12, height: 12)
-                    .overlay(Circle().strokeBorder(Tokens.card, lineWidth: 2))
-                    .position(x: x, y: 6)
-                // Your stop.
-                Circle()
-                    .strokeBorder(Tokens.foreground, lineWidth: 2.5)
-                    .background(Circle().fill(Tokens.card))
-                    .frame(width: 12, height: 12)
-                    .position(x: width - 6, y: 6)
+                    .position(x: width - 6, y: 9)
+                Image(systemName: symbol ?? "circle.fill")
+                    .font(.system(size: symbol == nil ? 5 : 8, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 18, height: 18)
+                    .background(color, in: Circle())
+                    .overlay(Circle().strokeBorder(background, lineWidth: 2))
+                    .position(x: x, y: 9)
             }
         }
-        .frame(height: 12)
-    }
-}
-
-/// Waiting: the vehicle's approach (stops away) and the platform.
-private struct ApproachRow: View {
-    let state: JourneyState
-
-    var body: some View {
-        HStack(spacing: 10) {
-            if let away = state.stopsAway, state.hasVehicle {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
-                Text(away == 0 ? "Arriving now" : away == 1 ? "1 stop away" : "\(away) stops away")
-                    .font(.geist(12, .semibold).monospacedDigit())
-                    .foregroundStyle(Tokens.foreground)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-            } else {
-                Label {
-                    Text(state.boardStopName ?? state.headsign).lineLimit(1)
-                } icon: {
-                    Image(systemName: "mappin.and.ellipse")
-                }
-                .font(.geist(12))
-                .foregroundStyle(Tokens.mutedForeground)
-            }
-            Spacer(minLength: 4)
-            if let platform = state.platform {
-                PlatformChip(platform: platform)
-            }
-        }
-    }
-}
-
-/// A vehicle dot sliding toward your stop: up to five stops between.
-private struct VehicleApproach: View {
-    let stopsAway: Int
-    let colorHex: String
-    let symbol: String
-
-    var body: some View {
-        let color = colorHex.isEmpty ? Tokens.foreground : Color(hex: colorHex)
-        let shown = min(stopsAway, 5)
-        HStack(spacing: 3) {
-            Image(systemName: symbol)
-                .font(.system(size: 9, weight: .bold))
-                .foregroundStyle(RouteColors.text(onHex: colorHex.isEmpty ? Tokens.neutralRoute : colorHex))
-                .frame(width: 16, height: 16)
-                .background(color, in: Circle())
-            ForEach(0..<shown, id: \.self) { _ in
-                Capsule().fill(Tokens.mutedForeground.opacity(0.5)).frame(width: 8, height: 3)
-            }
-            if stopsAway > shown {
-                Text("…").font(.geist(10)).foregroundStyle(Tokens.mutedForeground)
-            }
-            Circle()
-                .strokeBorder(Tokens.foreground, lineWidth: 2.5)
-                .frame(width: 11, height: 11)
-        }
+        .frame(height: 18)
         .accessibilityHidden(true)
     }
 }
 
-/// Walking: to your ride (or the ride coming toward you) - or to the
-/// destination.
-private struct WalkRow: View {
+/// Time left in this segment - the walk or the wait - drained live by the
+/// system between updates.
+private struct TimeBar: View {
     let state: JourneyState
+    let color: Color
+    let onDark: Bool
 
-    var body: some View {
-        HStack(spacing: 10) {
-            if let away = state.stopsAway, state.hasVehicle, !state.routeShortName.isEmpty {
-                VehicleApproach(stopsAway: away, colorHex: state.routeColorHex, symbol: vehicleSymbol(state))
-                Text(away == 0 ? "\(state.routeShortName) arriving" : "\(state.routeShortName) \(away == 1 ? "1 stop" : "\(away) stops") away")
-                    .font(.geist(12, .semibold).monospacedDigit())
-                    .foregroundStyle(Tokens.foreground)
-                    .lineLimit(1)
-                    .layoutPriority(1)
-            } else {
-                Image(systemName: "figure.walk")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Tokens.mutedForeground)
-                Text(walkText)
-                    .font(.geist(12))
-                    .foregroundStyle(Tokens.mutedForeground)
-                    .lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if let platform = state.platform {
-                PlatformChip(platform: platform)
-            }
+    private var interval: ClosedRange<Date> {
+        let start = state.segmentStartUnix, end = state.segmentEndUnix
+        if start > 0, end > start {
+            return Date(timeIntervalSince1970: start)...Date(timeIntervalSince1970: end)
         }
+        let target = state.targetDate
+        return min(Date(), target.addingTimeInterval(-600))...target
     }
 
-    private var walkText: String {
-        var parts: [String] = []
-        if let minutes = state.walkMinutes { parts.append("\(minutes) min walk") }
-        if let meters = state.walkMeters {
-            parts.append(meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m")
-        }
-        return parts.isEmpty ? "Walk to \(state.headsign)" : parts.joined(separator: " · ")
-    }
-}
-
-private struct PlatformChip: View {
-    let platform: String
-
     var body: some View {
-        HStack(spacing: 3) {
-            Text("Platform").font(.geist(11)).foregroundStyle(Tokens.mutedForeground)
-            Text(platform).font(.geist(13, .bold)).foregroundStyle(Tokens.foreground)
+        ProgressView(timerInterval: interval, countsDown: true) {
+            EmptyView()
+        } currentValueLabel: {
+            EmptyView()
         }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 3)
-        .background(Tokens.muted, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).strokeBorder(Tokens.border, lineWidth: 1))
-    }
-}
-
-/// "Then [70] at 9:40 · 4 min to change" - amber when tight, red when
-/// it's likely missed.
-private struct ConnectionLine: View {
-    let next: JourneyState.NextLeg
-    let status: String
-
-    var body: some View {
-        let color: Color = status == "missedConnection" ? Tokens.danger : status == "tightConnection" ? Tokens.warning : Tokens.mutedForeground
-        HStack(spacing: 5) {
-            Image(systemName: status == "missedConnection" ? "exclamationmark.triangle.fill" : "arrow.turn.down.right")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(color)
-            Text("Then").font(.geist(12)).foregroundStyle(Tokens.mutedForeground)
-            RouteChip(name: next.routeShortName, hex: next.routeColorHex, size: 11)
-            Text("at \(clock(Date(timeIntervalSince1970: next.departureUnix)))")
-                .font(.geist(12).monospacedDigit())
-                .foregroundStyle(Tokens.mutedForeground)
-            Text("·").font(.geist(12)).foregroundStyle(Tokens.mutedForeground)
-            Text(status == "missedConnection" ? "likely missed" : "\(max(0, next.connectMinutes)) min to change")
-                .font(.geist(12, status == "onTime" ? .regular : .semibold))
-                .foregroundStyle(color)
-        }
-        .lineLimit(1)
-        .minimumScaleFactor(0.85)
+        .progressViewStyle(.linear)
+        .tint(color)
+        .scaleEffect(x: 1, y: 1.5, anchor: .center)
+        .frame(height: 10)
+        .accessibilityHidden(true)
     }
 }
 
 // MARK: - Footer
 
-/// Live / Scheduled / Updating chip, delay, occupancy - and arrival time.
-private struct StatusFooter: View {
+/// One line: how live the times are, any delay, how full - then the
+/// connection if there is one, otherwise the arrival time. Occupancy drops
+/// off first when it's too narrow.
+private struct FooterLine: View {
     let state: JourneyState
     let isStale: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
-            if state.phase == "arrived" {
-                Chip { Text("Journey complete") }
-            } else {
-                trackingChip
-                if state.status == "cancelled" {
-                    Chip(tint: Tokens.danger) { Text("Cancelled") }
-                } else if state.delayMinutes >= 2 {
-                    Chip(tint: Tokens.warning) { Text("\(state.delayMinutes) min late") }
-                } else if state.delayMinutes <= -2 {
-                    Chip(tint: Tokens.success) { Text("\(-state.delayMinutes) min early") }
-                }
-                if let occupancy = state.occupancy, let label = occupancyLabel(occupancy) {
-                    Chip {
-                        HStack(spacing: 3) {
-                            OccupancyIcons(occupancy: occupancy)
-                            Text(label)
-                        }
-                    }
-                }
+        HStack(spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                Status(state: state, isStale: isStale, showsOccupancy: true)
+                Status(state: state, isStale: isStale, showsOccupancy: false)
             }
             Spacer(minLength: 6)
-            Text("Arrive \(clock(state.arrivalDate))")
-                .font(.geist(12, .medium).monospacedDigit())
-                .foregroundStyle(Tokens.mutedForeground)
-                .lineLimit(1)
-                .layoutPriority(1)
+            Trailing(state: state).layoutPriority(1)
         }
+        .font(.geist(12, .medium))
+        .lineLimit(1)
     }
 
-    @ViewBuilder private var trackingChip: some View {
-        if state.offline && !isStale {
-            // The app is still updating this from GPS and the timetable -
-            // not stale, just not live.
-            Chip {
-                HStack(spacing: 4) {
-                    Image(systemName: "wifi.slash").font(.system(size: 9, weight: .semibold))
-                    Text(state.hasVehicle ? "Offline · GPS" : "Offline")
+    /// Live / Timetable / Offline / Updated, then any delay and occupancy.
+    struct Status: View {
+        let state: JourneyState
+        let isStale: Bool
+        let showsOccupancy: Bool
+        var showsDelay = true
+
+        var body: some View {
+            HStack(spacing: 10) {
+                tracking
+                if !showsDelay {
+                    EmptyView()
+                } else if state.status == "cancelled" {
+                    Text("Cancelled").foregroundStyle(Tokens.danger)
+                } else if state.delayMinutes >= 2 {
+                    Text("\(state.delayMinutes) min late").foregroundStyle(Tokens.warning)
+                } else if state.delayMinutes <= -2 {
+                    Text("\(-state.delayMinutes) min early").foregroundStyle(Tokens.success)
+                }
+                if showsOccupancy, let occupancy = state.occupancy, occupancy >= 0, occupancy <= 4 {
+                    OccupancyIcons(occupancy: occupancy)
                 }
             }
-        } else if isStale {
-            Chip {
-                HStack(spacing: 4) {
+            .lineLimit(1)
+            .fixedSize()
+        }
+
+        @ViewBuilder private var tracking: some View {
+            HStack(spacing: 5) {
+                if state.phase == "arrived" {
+                    EmptyView()
+                } else if state.offline && !isStale {
+                    // Still updating from GPS and the timetable - not
+                    // stale, just not live.
+                    Image(systemName: "wifi.slash").font(.system(size: 9, weight: .semibold))
+                    Text("Offline")
+                } else if isStale {
                     Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 9, weight: .semibold))
                     Text("Updated \(clock(state.updatedDate))")
-                }
-            }
-        } else if state.hasVehicle || state.isRealtime {
-            Chip {
-                HStack(spacing: 4) {
+                } else if state.hasVehicle || state.isRealtime {
                     Circle().fill(Tokens.success).frame(width: 6, height: 6)
                     Text("Live")
-                }
-            }
-        } else {
-            Chip {
-                HStack(spacing: 4) {
+                } else {
                     Image(systemName: "calendar").font(.system(size: 9, weight: .semibold))
                     Text("Timetable")
                 }
             }
+            .foregroundStyle(Tokens.mutedForeground)
         }
     }
 
-    private func occupancyLabel(_ value: Int) -> String? {
-        switch value {
-        case 0, 1: return "Seats free"
-        case 2: return "Filling up"
-        case 3: return "Standing room"
-        case 4: return "Likely full"
-        default: return nil
-        }
-    }
-}
+    /// "Then [70] 9:49am" when there's a connection, else "Arrive 10:18am".
+    struct Trailing: View {
+        let state: JourneyState
+        var showsThen = true
 
-/// The app's StatusChipStyle: small, muted, bordered.
-private struct Chip<Content: View>: View {
-    var tint: Color? = nil
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-            .font(.geist(11, tint == nil ? .medium : .semibold))
-            .foregroundStyle(tint ?? Tokens.foreground)
+        var body: some View {
+            Group {
+                if state.phase == "arrived" {
+                    EmptyView()
+                } else if let next = state.nextLeg {
+                    let color: Color = state.status == "missedConnection" ? Tokens.danger : state.status == "tightConnection" ? Tokens.warning : Tokens.mutedForeground
+                    HStack(spacing: 5) {
+                        if showsThen { Text("Then").foregroundStyle(Tokens.mutedForeground) }
+                        RouteChip(name: next.routeShortName, hex: next.routeColorHex, size: 11)
+                        Text(state.status == "missedConnection" ? "likely missed" : clock(Date(timeIntervalSince1970: next.departureUnix)))
+                            .monospacedDigit()
+                            .foregroundStyle(color)
+                    }
+                } else {
+                    Text("Arrive \(clock(state.arrivalDate))")
+                        .monospacedDigit()
+                        .foregroundStyle(Tokens.mutedForeground)
+                }
+            }
             .lineLimit(1)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 3)
-            .background((tint ?? Tokens.muted).opacity(tint == nil ? 1 : 0.14), in: Capsule())
-            .overlay(Capsule().strokeBorder(tint == nil ? Tokens.border : .clear, lineWidth: 1))
+            .fixedSize()
+        }
     }
 }
 
@@ -623,9 +522,10 @@ private struct OccupancyIcons: View {
             ForEach(0..<3, id: \.self) { i in
                 Image(systemName: "person.fill")
                     .font(.system(size: 8))
-                    .foregroundStyle(i < filled ? Tokens.foreground : Tokens.mutedForeground.opacity(0.35))
+                    .foregroundStyle(i < filled ? (occupancy >= 3 ? Tokens.warning : Tokens.mutedForeground) : Tokens.mutedForeground.opacity(0.3))
             }
         }
+        .accessibilityLabel(occupancy <= 1 ? "Seats free" : occupancy == 2 ? "Filling up" : occupancy == 3 ? "Standing room" : "Likely full")
     }
 }
 
@@ -647,7 +547,14 @@ private struct LegChain: View {
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Tokens.mutedForeground)
                 } else {
-                    RouteChip(name: chip.shortName, hex: chip.colorHex, size: 11)
+                    HStack(spacing: 3) {
+                        if let symbol = modeSymbol(chip.mode) {
+                            Image(systemName: symbol)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(Tokens.mutedForeground)
+                        }
+                        RouteChip(name: chip.shortName, hex: chip.colorHex, size: 11)
+                    }
                 }
             }
         }
@@ -665,9 +572,45 @@ private struct RouteChip: View {
             .font(.geist(size, .bold))
             .foregroundStyle(RouteColors.text(onHex: fill))
             .lineLimit(1)
+            .fixedSize()
             .padding(.horizontal, 5)
             .padding(.vertical, 1.5)
             .background(Color(hex: fill), in: RoundedRectangle(cornerRadius: 4, style: .continuous))
+    }
+}
+
+/// The line under the instruction - the one fact that goes with it, in a
+/// single line (the platform rides here rather than in its own chip).
+private func detailLine(_ state: JourneyState) -> String? {
+    let platform = state.platform.map { "Platform \($0)" }
+    switch state.phase {
+    case "arrived":
+        return "Arrived \(clock(state.arrivalDate))"
+    case "onboard":
+        let toGo = state.stopsAway.map { $0 + 1 }
+        let stops = toGo.map { $0 == 1 ? "next stop" : "\($0) stops" }
+        if state.hasVehicle, let next = state.nextStopName, !next.isEmpty, state.stopsAway != 0 {
+            // The count first - the name truncates, the count shouldn't.
+            return [stops, "next \(next)"].compactMap { $0 }.joined(separator: " · ")
+        }
+        return stops ?? (state.secondaryText.isEmpty ? nil : state.secondaryText)
+    case "waiting", "boarding":
+        let approach: String? = state.hasVehicle ? state.stopsAway.map { $0 == 0 ? "Arriving now" : $0 == 1 ? "1 stop away" : "\($0) stops away" } : state.boardStopName.map { "at \($0)" }
+        let parts = [approach, platform].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    default:
+        if let away = state.stopsAway, state.hasVehicle, !state.routeShortName.isEmpty {
+            return away == 0 ? "\(state.routeShortName) arriving" : "\(state.routeShortName) \(away == 1 ? "1 stop" : "\(away) stops") away"
+        }
+        var parts: [String] = []
+        if let minutes = state.walkMinutes { parts.append("\(minutes) min walk") }
+        if let platform {
+            parts.append(platform)
+        } else if let meters = state.walkMeters {
+            parts.append(meters >= 1000 ? String(format: "%.1f km", Double(meters) / 1000) : "\(meters) m")
+        }
+        if parts.isEmpty { return state.secondaryText.isEmpty ? nil : state.secondaryText }
+        return parts.joined(separator: " · ")
     }
 }
 
@@ -744,24 +687,6 @@ private struct MinimalRing: View {
 
 // MARK: - Helpers
 
-/// The line under the instruction. The server's `secondaryText` repeats
-/// what the phase row now draws (stops away, platform, the connection), so
-/// with structured data the widget says the one thing that row doesn't.
-private func subtitle(_ state: JourneyState) -> String? {
-    switch state.phase {
-    case "arrived":
-        return "Arrived \(clock(state.arrivalDate))"
-    case "onboard":
-        if state.hasVehicle, let next = state.nextStopName, !next.isEmpty, state.stopsAway != 0 { return "Next stop: \(next)" }
-        if state.boardStopName != nil, state.stopsAway != 0 { return "Due \(clock(state.targetDate))" }
-    case "waiting", "boarding":
-        if let board = state.boardStopName { return "at \(board)" }
-    default:
-        break
-    }
-    return state.secondaryText.isEmpty ? nil : state.secondaryText
-}
-
 private let clockFormatter: DateFormatter = {
     let f = DateFormatter()
     f.locale = Locale(identifier: "en_US_POSIX")
@@ -778,18 +703,25 @@ private func phaseSymbol(_ state: JourneyState) -> String {
     switch state.phase {
     case "arrived": return "checkmark"
     case "walking": return state.urgent ? "figure.walk.departure" : "figure.walk"
-    case "waiting": return "clock"
-    case "boarding": return "bell.fill"
-    default: return vehicleSymbol(state)
+    // Waiting or boarding: the vehicle you're waiting for, when known.
+    case "waiting": return vehicleSymbol(state) ?? "clock"
+    case "boarding": return vehicleSymbol(state) ?? "bell.fill"
+    default: return vehicleSymbol(state) ?? "arrow.triangle.turn.up.right.circle.fill"
     }
 }
 
-/// The ride's vehicle - matches `TravelMode.systemImage` in the app.
-private func vehicleSymbol(_ state: JourneyState) -> String {
-    switch state.vehicleMode {
+/// The ride's vehicle - matches `TravelMode.systemImage` in the app. Nil
+/// when the mode isn't known, rather than guessing a bus for a train.
+private func vehicleSymbol(_ state: JourneyState) -> String? {
+    modeSymbol(state.vehicleMode)
+}
+
+private func modeSymbol(_ mode: String) -> String? {
+    switch mode {
+    case "bus": return "bus.fill"
     case "train": return "tram.fill"
     case "ferry": return "ferry.fill"
-    default: return "bus.fill"
+    default: return nil
     }
 }
 

@@ -788,7 +788,13 @@ func legChain(plan gtfs.JourneyPlan) []activityLegChip {
 			chain = append(chain, activityLegChip{Mode: "walk"})
 			continue
 		}
-		chain = append(chain, activityLegChip{Mode: "transit", ShortName: routeShortNameOrEmpty(leg), ColorHex: routeColorOrEmpty(leg)})
+		// The vehicle's mode (bus/train/ferry) so the widget's chip gets
+		// the right icon; "transit" when the route type is unknown.
+		mode := vehicleModeOf(leg)
+		if mode == "" {
+			mode = "transit"
+		}
+		chain = append(chain, activityLegChip{Mode: mode, ShortName: routeShortNameOrEmpty(leg), ColorHex: routeColorOrEmpty(leg)})
 	}
 	return chain
 }

@@ -420,7 +420,9 @@ public enum LiveActivityContentBuilder {
         legs.prefix(6).map { leg in
             leg.mode == "walk"
                 ? .init(mode: "walk", shortName: "", colorHex: "")
-                : .init(mode: "transit", shortName: shortName(leg), colorHex: leg.route?.routeColor ?? "")
+                // The vehicle's mode (bus/train/ferry) so the chip gets the
+                // right icon; "transit" when the route type is unknown.
+                : .init(mode: vehicleMode(leg) ?? "transit", shortName: shortName(leg), colorHex: leg.route?.routeColor ?? "")
         }
     }
 
