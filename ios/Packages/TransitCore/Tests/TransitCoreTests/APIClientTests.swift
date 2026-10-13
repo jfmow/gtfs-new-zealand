@@ -189,11 +189,11 @@ final class APIClientTests: XCTestCase {
             "skipped":false,"passed":false,"dist":12.5}]}},"trace_id":"t"}
             """)
         }
-        let live = try await client.journeyLive(tripIDs: ["t1", "t2"])
+        let live = try await client.journeyLive(tripIDs: ["t1", "t2"], from: ["s1", ""], to: ["s9", "s4"])
         XCTAssertNil(live.vehicles)
         XCTAssertEqual(live.stopTimes["t1"]?.first?.childStopID, "c")
         XCTAssertNil(live.stopTimes["t2"])
         let url = try XCTUnwrap(requested)
-        XCTAssertEqual(url.absoluteString, "https://trainapi.suddsy.dev/at/realtime/journey?tripId=t1,t2")
+        XCTAssertEqual(url.absoluteString, "https://trainapi.suddsy.dev/at/realtime/journey?tripId=t1,t2&from=s1,&to=s9,s4")
     }
 }

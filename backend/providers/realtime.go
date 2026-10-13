@@ -106,6 +106,31 @@ type journeyLiveResponse struct {
 	StopTimes map[string][]tripStopTime `json:"stop_times"`
 }
 
+// trimStopTimes cuts a trip's stop times down to the stretch a rider is on:
+// from the first stop matching from to the last matching to (a stop
+// matches by its own id or its parent's). First and last, so a trip that
+// passes a stop twice keeps whichever visit the rider means - the client
+// picks between them by time. An empty or unmatched end isn't cut.
+func trimStopTimes(times []tripStopTime, from, to string) []tripStopTime {
+	matches := func(t tripStopTime, id string) bool {
+		return id != "" && (t.ChildStopId == id || t.ParentStopId == id)
+	}
+	start, end := 0, len(times)-1
+	for i, t := range times {
+		if matches(t, from) {
+			start = i
+			break
+		}
+	}
+	for i := len(times) - 1; i >= start; i-- {
+		if matches(times[i], to) {
+			end = i
+			break
+		}
+	}
+	return times[start : end+1]
+}
+
 // maxJourneyTrips caps /journey's trip list - a journey has a handful of
 // rides; this keeps one request from fanning out over the whole network.
 const maxJourneyTrips = 10
@@ -757,6 +782,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	// instead of one request per trip. Either part can be missing: vehicles
 	// is null when the feed can't be read, and a trip whose stop times can't
 	// be worked out is left out of stop_times.
+	//
+	// Optional from/to: comma-separated stop ids in tripId's order - where
+	// the rider gets on and off each trip. A trip's stop times are then cut
+	// down to that stretch (trimStopTimes); an empty or unknown one leaves
+	// that end uncut.
 	realtimeRoute.GET("/journey", func(c echo.Context) error {
 		tripIDParam, err := url.PathUnescape(c.QueryParam("tripId"))
 		if err != nil {
@@ -778,13 +808,29 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusBadRequest, "too many trips", nil, ResponseDetails("count", len(ordered)))
 		}
 
+		// Read in tripId's order, before duplicates were dropped - the
+		// first of each trip's entries is the one that counts.
+		fromStops, toStops := make(map[string]string), make(map[string]string)
+		rawIDs := strings.Split(tripIDParam, ",")
+		fromParam := strings.Split(c.QueryParam("from"), ",")
+		toParam := strings.Split(c.QueryParam("to"), ",")
+		for i, id := range rawIDs {
+			id = strings.TrimSpace(id)
+			if _, seen := fromStops[id]; !seen && i < len(fromParam) {
+				fromStops[id] = strings.TrimSpace(fromParam[i])
+			}
+			if _, seen := toStops[id]; !seen && i < len(toParam) {
+				toStops[id] = strings.TrimSpace(toParam[i])
+			}
+		}
+
 		response := journeyLiveResponse{StopTimes: make(map[string][]tripStopTime, len(ordered))}
 		if vehicles, err := liveVehicles(tripIDs, "", false, LatLng{}, LatLng{}); err == nil {
 			response.Vehicles = vehicles
 		}
 		for _, id := range ordered {
 			if times, err := tripStopTimes(id); err == nil && len(times) > 0 {
-				response.StopTimes[id] = times
+				response.StopTimes[id] = trimStopTimes(times, fromStops[id], toStops[id])
 			}
 		}
 		return JsonApiResponse(c, http.StatusOK, "", response)

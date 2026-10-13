@@ -104,9 +104,14 @@ extension APIClient {
     }
 
     /// A tracked journey's live vehicles and stop times in one request -
-    /// see `JourneyLive`.
-    public func journeyLive(tripIDs: [String]) async throws -> JourneyLive {
-        try await get("realtime/journey", query: [.init(name: "tripId", value: tripIDs.joined(separator: ","))])
+    /// see `JourneyLive`. `from`/`to`, in `tripIDs`' order, are the stop ids
+    /// the rider gets on and off each trip at (empty for unknown): each
+    /// trip's stop times come back cut down to that stretch.
+    public func journeyLive(tripIDs: [String], from: [String] = [], to: [String] = []) async throws -> JourneyLive {
+        var query: [URLQueryItem] = [.init(name: "tripId", value: tripIDs.joined(separator: ","))]
+        if !from.isEmpty { query.append(.init(name: "from", value: from.joined(separator: ","))) }
+        if !to.isEmpty { query.append(.init(name: "to", value: to.joined(separator: ","))) }
+        return try await get("realtime/journey", query: query)
     }
 
     public func alerts(forStop stop: String, todayOnly: Bool = false) async throws -> AlertsForStop {

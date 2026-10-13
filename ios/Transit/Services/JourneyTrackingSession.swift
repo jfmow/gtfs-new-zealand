@@ -391,9 +391,13 @@ final class JourneyTrackingSession {
     private func fetch() async {
         guard let plan else { return }
         let api = self.api
-        let tripIDs = plan.transitLegs.map(\.tripID)
+        let rides = plan.transitLegs
+        let tripIDs = rides.map(\.tripID)
+        // Only the stretch of each trip the rider is on (`journeyLive`).
+        let boardStops = rides.map { $0.fromStop?.stopID ?? "" }
+        let alightStops = rides.map { $0.toStop?.stopID ?? "" }
 
-        let (vehicles, times) = await fetchLive(api: api, tripIDs: tripIDs)
+        let (vehicles, times) = await fetchLive(api: api, tripIDs: tripIDs, from: boardStops, to: alightStops)
         guard self.plan?.id == plan.id else { return }
 
         let now = Date()
@@ -568,10 +572,10 @@ final class JourneyTrackingSession {
     /// none are out - the last ones stand until `liveDataMaxAge`) and
     /// whichever trips' stop times loaded: one request (`journeyLive`), or
     /// one per trip from a server without it.
-    private func fetchLive(api: APIClient, tripIDs: [String]) async -> (vehicles: [Vehicle]?, times: [String: [StopTimeUpdate]]) {
+    private func fetchLive(api: APIClient, tripIDs: [String], from: [String], to: [String]) async -> (vehicles: [Vehicle]?, times: [String: [StopTimeUpdate]]) {
         if !combinedLiveUnsupported {
             let result = await Self.withTimeout(15) { () -> Result<JourneyLive, Error> in
-                do { return .success(try await api.journeyLive(tripIDs: tripIDs)) } catch { return .failure(error) }
+                do { return .success(try await api.journeyLive(tripIDs: tripIDs, from: from, to: to)) } catch { return .failure(error) }
             }
             switch result {
             case .success(let live)?:
@@ -724,6 +728,11 @@ final class JourneyTrackingSession {
             stopsAway: newSnapshot.trackedStopsAway, alightAt: alightAt,
             waitingToSetOff: waitingToSetOff, leaveAt: display.legs.first?.departureTime.date, now: now
         ) : .precise)
+        // On foot until getting on - from boarding, riding (the estimator
+        // and get-off alerts want vehicle-paced fixes).
+        if wantsBackgroundLocation {
+            location.setJourneyOnFoot(newSnapshot.phase == .walking || newSnapshot.phase == .waiting)
+        }
         momentNear = JourneyGPSPolicy.isMomentNear(
             phase: newSnapshot.phase, stopsAway: newSnapshot.trackedStopsAway,
             nextMomentAt: nextMomentAt(newSnapshot, plan: display, waitingToSetOff: waitingToSetOff, alightAt: alightAt), now: now

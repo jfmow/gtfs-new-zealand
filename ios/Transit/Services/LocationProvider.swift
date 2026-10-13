@@ -131,6 +131,15 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// Tells Core Location how the rider is moving, so it can filter and
+    /// pace fixes for it: on foot (`.fitness`) or riding
+    /// (`.otherNavigation` - buses and trains alike). Journey updates only.
+    func setJourneyOnFoot(_ onFoot: Bool) {
+        guard journeyUpdates else { return }
+        let type: CLActivityType = onFoot ? .fitness : .otherNavigation
+        if manager.activityType != type { manager.activityType = type }
+    }
+
     /// Sets how much GPS a journey uses - see `JourneyGPSPolicy.Mode`.
     func setGPSMode(_ mode: JourneyGPSPolicy.Mode) {
         guard mode != gpsMode else { return }
