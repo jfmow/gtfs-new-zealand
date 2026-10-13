@@ -2,12 +2,10 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-/// The Home tab's landing screen - `pages/index.tsx` with no stop
-/// selected: stop search, then saved places (one tap to plan a trip
-/// there), saved stops, saved trips and the stops near you, stops with live
-/// next departures. The map lives on the Stops tab (a
-/// map inside this scroll view fought the scroll gesture and duplicated
-/// that tab).
+/// The Home tab's landing screen: stop search, then one row of shortcuts
+/// (saved places and trips - one tap plans a journey), then your saved stops
+/// and the stops near you, each with its next departures. The map lives on
+/// the Map tab (a map inside this scroll view fought the scroll gesture).
 struct HomeView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
@@ -25,6 +23,7 @@ struct HomeView: View {
     @State private var isManagingFavourites = false
     @State private var isManagingTrips = false
     @State private var isManagingPlaces = false
+    @State private var isFindingVehicle = false
     @State private var placeEditor: PlaceEditorTarget?
     @State private var renaming: FavouriteStop?
     @State private var draftName = ""
@@ -42,29 +41,28 @@ struct HomeView: View {
                 .zIndex(1)
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
+                    VStack(alignment: .leading, spacing: 20) {
                         if !environment.network.isConnected {
                             StaleDataBanner(isOffline: true, lastUpdated: nil)
                                 .padding(.horizontal, 16)
                         }
                         if usesColumns {
-                            // Your things on the left, what's around you on
-                            // the right.
+                            // Now + go on the left, the stop lists on the right.
                             HStack(alignment: .top, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 28) {
-                                    placesSection
-                                    savedStopsSection
-                                    savedTripsSection
+                                VStack(alignment: .leading, spacing: 20) {
+                                    shortcutsSection
                                 }
                                 .frame(maxWidth: .infinity, alignment: .leading)
-                                nearbySection
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                VStack(alignment: .leading, spacing: 24) {
+                                    yourStopsSection
+                                    nearYouSection
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         } else {
-                            placesSection
-                            savedStopsSection
-                            savedTripsSection
-                            nearbySection
+                            shortcutsSection
+                            yourStopsSection
+                            nearYouSection
                         }
                     }
                     .padding(.top, 4)
@@ -78,7 +76,12 @@ struct HomeView: View {
             .navigationTitle(environment.region.displayName)
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
-            .task { await loadNearby() }
+            .task {
+                #if DEBUG
+                seedDemoIfAsked()
+                #endif
+                await loadNearby()
+            }
             .onChange(of: router.stopSearchFocusRequest) { _, _ in path = NavigationPath() }
             .onChange(of: environment.location.coordinate == nil) { _, _ in Task { await loadNearby() } }
             // A single registration for the whole stack - registering the
@@ -89,6 +92,9 @@ struct HomeView: View {
             }
             .sheet(isPresented: $isManagingFavourites) {
                 ManageFavouritesSheet().shadSheet(detents: [.medium, .large])
+            }
+            .sheet(isPresented: $isFindingVehicle) {
+                FindMyVehicleSheet().shadSheet(detents: [.medium, .large])
             }
             .sheet(isPresented: $isManagingPlaces) {
                 ManagePlacesSheet().shadSheet(detents: [.medium, .large])
@@ -116,7 +122,149 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - Places
+    // MARK: - Sections
+
+    private var isNew: Bool { favourites.isEmpty && places.isEmpty && savedTrips.isEmpty }
+
+    @ViewBuilder
+    private var shortcutsSection: some View {
+        if isNew {
+            VStack(alignment: .leading, spacing: 16) {
+                if environment.region.hasRealtime {
+                    HomeFindVehicleChip { isFindingVehicle = true }
+                        .padding(.horizontal, 16)
+                }
+                setupCard
+            }
+        } else {
+            HomeShortcutsRow(
+                places: places,
+                trips: savedTrips,
+                onFindVehicle: environment.region.hasRealtime ? { isFindingVehicle = true } : nil,
+                onGo: { router.plan(to: $0.plannerLocation) },
+                onEditPlace: { placeEditor = .edit($0) },
+                onManagePlaces: { isManagingPlaces = true },
+                onAddPlace: { placeEditor = .add(name: $0, icon: $1) },
+                onPlanTrip: planTrip,
+                onManageTrips: { isManagingTrips = true }
+            )
+        }
+    }
+
+    private var setupCard: some View {
+        HomeSetupCard {
+            Button { placeEditor = .add(name: "Home", icon: .home) } label: {
+                Label("Add home", systemImage: "house")
+            }
+            .buttonStyle(.shad(.outline, size: .sm, fullWidth: true))
+            if !environment.location.isAuthorized {
+                locationButton.buttonStyle(.shad(.outline, size: .sm, fullWidth: true))
+            }
+            Button {
+                router.mapMode = .stops
+                router.selectedTab = .map
+            } label: {
+                Label("Find a stop on the map", systemImage: "map")
+            }
+            .buttonStyle(.shad(.outline, size: .sm, fullWidth: true))
+        }
+    }
+
+    @ViewBuilder
+    private var locationButton: some View {
+        // Once refused, iOS won't ask again - only Settings can.
+        if environment.location.authorizationStatus == .notDetermined {
+            Button { environment.location.requestPermission() } label: { Label("Turn on location", systemImage: "location") }
+        } else if let url = URL(string: UIApplication.openSettingsURLString) {
+            Button { UIApplication.shared.open(url) } label: { Label("Turn on location in Settings", systemImage: "location") }
+        }
+    }
+
+    @ViewBuilder
+    private var yourStopsSection: some View {
+        if !favourites.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HomeHeading(title: "Your stops") {
+                    Button("Edit") { isManagingFavourites = true }
+                }
+                HomeGroup(items: favourites) { favourite in
+                    NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
+                        HomeCompactStopRow(stopQuery: favourite.stopID, title: favourite.displayName) {
+                            HomeSavedTile(colorHex: favourite.colorHex)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { favouriteMenu(favourite) }
+                    .accessibilityHint("Opens departures. Touch and hold for options.")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var nearYouSection: some View {
+        let stops = nearestDistinct.filter { stop in
+            !favourites.contains { $0.stopID == stop.boardQuery }
+        }
+        if !environment.location.isAuthorized {
+            if !isNew {
+                VStack(alignment: .leading, spacing: 10) {
+                    HomeHeading(title: "Near you") { EmptyView() }
+                    HStack(spacing: 12) {
+                        Text("See live departures from the stops around you.")
+                            .font(.meta)
+                            .foregroundStyle(Theme.mutedForeground)
+                        Spacer(minLength: 8)
+                        locationButton.buttonStyle(.shad(.outline, size: .sm))
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+        } else if !stops.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HomeHeading(title: "Near you", liveDot: true) {
+                    Button {
+                        router.mapMode = .stops
+                        router.selectedTab = .map
+                    } label: {
+                        Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
+                    }
+                }
+                HomeGroup(items: Array(stops.prefix(showsMoreNearby ? 6 : 3))) { stop in
+                    NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
+                        HomeCompactStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop)) {
+                            HomeModeTile(stopType: stop.stopType)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .contextMenu { nearbyMenu(stop) }
+                }
+                if stops.count > 3 {
+                    Button(showsMoreNearby ? "Show fewer" : "Show more") {
+                        withAnimation(.snappy) { showsMoreNearby.toggle() }
+                    }
+                    .font(.metaMedium)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .padding(.horizontal, 16)
+                }
+            }
+        } else if isLoadingNearby || environment.location.coordinate == nil {
+            nearYouNote("Finding stops near you...")
+        } else if let nearbyError {
+            nearYouNote(nearbyError)
+        } else if nearestDistinct.isEmpty {
+            nearYouNote("No stops found nearby.")
+        }
+    }
+
+    private func nearYouNote(_ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HomeHeading(title: "Near you") { EmptyView() }
+            Text(text).font(.meta).foregroundStyle(Theme.mutedForeground).padding(.horizontal, 16)
+        }
+    }
+
+    // MARK: - Layout
 
     /// Regular width (iPad): the sections in two columns across a wider
     /// page, rather than one phone-width column.
@@ -125,50 +273,7 @@ struct HomeView: View {
 
     private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
 
-    private var placesSection: some View {
-        HomeSection(title: "Places", count: places.count) {
-            if !places.isEmpty {
-                Button("Edit") { isManagingPlaces = true }
-            }
-        } content: {
-            SavedPlacesRow(
-                places: places,
-                onGo: { router.plan(to: $0.plannerLocation) },
-                onEdit: { placeEditor = .edit($0) },
-                onAdd: { placeEditor = .add(name: $0, icon: $1) }
-            )
-        }
-    }
-
-    // MARK: - Saved stops
-
-    private var savedStopsSection: some View {
-        HomeSection(title: "Saved stops", count: favourites.count) {
-            if !favourites.isEmpty {
-                Button("Edit") { isManagingFavourites = true }
-            }
-        } content: {
-            if favourites.isEmpty {
-                HomeHint(systemImage: "star", text: "Tap the star on any stop to keep its departures here.")
-                    .padding(.horizontal, 16)
-            } else {
-                VStack(spacing: 10) {
-                    ForEach(favourites, id: \.persistentModelID) { favourite in
-                        NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
-                            HomeStopRow(stopQuery: favourite.stopID, title: favourite.displayName) {
-                                FavouriteTile(colorHex: favourite.colorHex)
-                            }
-                            .shadCardBackground()
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu { favouriteMenu(favourite) }
-                        .accessibilityHint("Opens departures. Touch and hold for options.")
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
+    // MARK: - Menus
 
     @ViewBuilder
     private func favouriteMenu(_ favourite: FavouriteStop) -> some View {
@@ -203,44 +308,11 @@ struct HomeView: View {
         environment.toasts.show("Removed from saved stops")
     }
 
-    // MARK: - Saved trips
-
-    private var savedTripsSection: some View {
-        HomeSection(title: "Saved trips", count: savedTrips.count) {
-            if !savedTrips.isEmpty {
-                Button("Manage") { isManagingTrips = true }
-            }
-        } content: {
-            if savedTrips.isEmpty {
-                HomeHint(systemImage: "bookmark", text: "Plan a journey and tap the bookmark to plan it again in one tap.") {
-                    Button("Plan a journey") { router.selectedTab = .planner }
-                        .buttonStyle(.shad(.outline, size: .sm))
-                }
-                .padding(.horizontal, 16)
-            } else {
-                SavedTripsCarousel(trips: savedTrips, onPlan: planTrip, onManage: { isManagingTrips = true })
-            }
-        }
-    }
-
     private func planTrip(_ trip: SavedTrip) {
         router.plan(savedTrip: trip.persistentModelID)
     }
 
     // MARK: - Nearby
-
-    private var nearbySection: some View {
-        HomeSection(title: "Nearby", liveDot: environment.location.isAuthorized) {
-            Button {
-                router.mapMode = .stops
-                router.selectedTab = .map
-            } label: {
-                Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
-            }
-        } content: {
-            nearby.padding(.horizontal, 16)
-        }
-    }
 
     /// The nearest stops, one per name - a station's platforms come back as
     /// separate stops.
@@ -249,56 +321,29 @@ struct HomeView: View {
         return nearbyStops.filter { seen.insert($0.stopName).inserted }
     }
 
-    @ViewBuilder
-    private var nearby: some View {
-        let stops = nearestDistinct
-        if !environment.location.isAuthorized {
-            HomeHint(systemImage: "location", text: "See live departures from the stops around you.") {
-                // Once refused, iOS won't ask again - only Settings can.
-                if environment.location.authorizationStatus == .notDetermined {
-                    Button("Enable location") { environment.location.requestPermission() }
-                        .buttonStyle(.shad(.outline, size: .sm))
-                } else if let url = URL(string: UIApplication.openSettingsURLString) {
-                    Button("Turn on in Settings") { UIApplication.shared.open(url) }
-                        .buttonStyle(.shad(.outline, size: .sm))
-                }
-            }
-        } else if !stops.isEmpty {
-            VStack(spacing: 10) {
-                ForEach(stops.prefix(showsMoreNearby ? 6 : 3), id: \.stopID) { stop in
-                    NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
-                        HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop)) {
-                            StopModeTile(stopType: stop.stopType)
-                        }
-                        .shadCardBackground()
-                    }
-                    .buttonStyle(.plain)
-                    // Long-press, or right-click with a pointer (iPad).
-                    .contextMenu { nearbyMenu(stop) }
-                }
-                if stops.count > 3 {
-                    Button {
-                        withAnimation(.snappy) { showsMoreNearby.toggle() }
-                    } label: {
-                        Label(showsMoreNearby ? "Show fewer" : "Show more nearby stops",
-                              systemImage: showsMoreNearby ? "chevron.up" : "chevron.down")
-                    }
-                    .buttonStyle(.shad(.ghost, size: .sm, fullWidth: true))
-                }
-            }
-        } else if isLoadingNearby || environment.location.coordinate == nil {
-            HomeHint(systemImage: "location.magnifyingglass", text: "Finding stops near you...")
-        } else if let nearbyError {
-            HomeHint(systemImage: "exclamationmark.triangle", text: nearbyError)
-        } else {
-            HomeHint(systemImage: "mappin.slash", text: "No stops found nearby.")
-        }
-    }
-
     private func distanceLabel(to stop: Stop) -> String? {
         guard let here = environment.location.coordinate else { return nil }
         return TimeFormatting.formatDistance(meters: Geo.haversineDistanceMeters(here, stop.coordinate))
     }
+
+    #if DEBUG
+    /// `-seedHomeDemo YES`: Auckland saved stops, places and a trip, for
+    /// looking at Home in the simulator.
+    private func seedDemoIfAsked() {
+        guard UserDefaults.standard.bool(forKey: "seedHomeDemo"), favourites.isEmpty else { return }
+        let stops = [("Waitemata Train Station 133", "Britomart"), ("Maungawhau Train Station 136", "Mt Eden station"), ("AUT 7039", "AUT")]
+        for (i, stop) in stops.enumerated() {
+            modelContext.insert(FavouriteStop(stopID: stop.0, displayName: stop.1, colorHex: Swatches.color(at: i), sortOrder: i))
+        }
+        let home = Coordinate(latitude: -36.8780, longitude: 174.7610)
+        let work = Coordinate(latitude: -36.8485, longitude: 174.7633)
+        modelContext.insert(SavedPlace(name: "Home", address: "Mt Eden", coordinate: home, icon: "home", regionSlug: environment.region.slug, sortOrder: 0))
+        modelContext.insert(SavedPlace(name: "Work", address: "Queen Street", coordinate: work, icon: "work", regionSlug: environment.region.slug, sortOrder: 1))
+        modelContext.insert(SavedTrip(name: "Netball", startLabel: "Home", startCoordinate: home,
+                                      endLabel: "Auckland Netball Centre", endCoordinate: Coordinate(latitude: -36.8710, longitude: 174.7430),
+                                      colorHex: Swatches.color(at: 4)))
+    }
+    #endif
 
     /// Doesn't ask for location itself - first launch explains and asks,
     /// and the "Enable location" hint asks again.
