@@ -710,6 +710,7 @@ export function RouteDetailSheet({
             trackingLevel={trackingLevel}
             stopsAway={trackedStopsAway}
             occupancy={trackedOccupancy}
+            cars={trackedVehicle?.cars}
             platform={trackedPlatform}
             replanOptions={replanOptions}
             onReplan={handleReplan}
@@ -825,6 +826,7 @@ function JourneySummary({
     trackingLevel,
     stopsAway,
     occupancy,
+    cars,
     platform,
     replanOptions,
     onReplan,
@@ -845,6 +847,8 @@ function JourneySummary({
     stopsAway?: number
     /** Occupancy level (0-4) of the tracked vehicle - undefined when unreported. */
     occupancy?: number
+    /** Train length in cars of the tracked vehicle - undefined when unknown or not a train. */
+    cars?: number
     /** Platform of whichever stop is currently relevant (board, then alight once on board). */
     platform?: string
     replanOptions: ReplanChoice[]
@@ -954,7 +958,7 @@ function JourneySummary({
                 </div>
             </div>
 
-            {journeyStarted && trackingLevel === "live" && (platform || occupancy !== undefined || stopsAway !== undefined) && (
+            {journeyStarted && trackingLevel === "live" && (platform || occupancy !== undefined || !!cars || stopsAway !== undefined) && (
                 <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         {platform && <span>Platform {platform}</span>}
@@ -963,6 +967,12 @@ function JourneySummary({
                                 {platform && <span className="text-border">·</span>}
                                 <OccupancyIcons occupancy={occupancy} />
                                 <span className="text-xs">{getOccupancyLabel(occupancy)}</span>
+                            </span>
+                        )}
+                        {!!cars && (
+                            <span className="flex items-center gap-1.5">
+                                {(platform || occupancy !== undefined) && <span className="text-border">·</span>}
+                                <span>{cars} cars</span>
                             </span>
                         )}
                     </div>

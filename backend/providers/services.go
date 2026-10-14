@@ -151,6 +151,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 
 		tripUpdatesData, _ := realtime.GetTripUpdates()
 		vehicleLocations, _ := realtime.GetVehicles()
+		consists, _ := realtime.GetConsists()
 
 		realtimeData := GetRealtimeTripDataForServices(
 			filteredServices,
@@ -197,6 +198,7 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 
 			realtimeData[i].Apply(&response)
+			response.Cars = consistCars(consists[service.TripID])
 			resultData = append(resultData, response)
 		}
 
@@ -556,6 +558,10 @@ type ServicesResponse2 struct {
 	TripStarted        bool   `json:"trip_started"`
 
 	PlatformChanged bool `json:"platform_changed"`
+
+	// Cars is the train's length, 0 when unknown (not a train, or no live
+	// vehicle yet). See consistCars.
+	Cars int `json:"cars,omitempty"`
 }
 
 type ServicesRoute struct {

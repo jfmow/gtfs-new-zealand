@@ -635,6 +635,10 @@ struct JourneyTrackingView: View {
                     .modifier(StatusChipStyle())
                 }
 
+                if let cars = trackedVehicle?.cars {
+                    Label("\(cars) cars", systemImage: "train.side.front.car").modifier(StatusChipStyle())
+                }
+
                 if let ride = currentOrNextTransitLeg {
                     if !ride.tripUsable {
                         Label("Not running", systemImage: "exclamationmark.triangle.fill")

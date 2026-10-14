@@ -2,6 +2,7 @@ package providers
 
 import (
 	"math"
+	"strings"
 	"time"
 
 	"github.com/jfmow/at-trains-api/providers/vehiclestate"
@@ -207,4 +208,24 @@ func (r RealtimeTripData) Apply(response *ServicesResponse2) {
 	response.PlatformChanged = r.PlatformChanged
 	response.Occupancy = r.Occupancy
 	response.WheelchairsAllowed = r.WheelchairsAllowed
+}
+
+// carsPerUnit is how many cars each train class's units have, by the label's
+// leading word ("AMP        1020").
+var carsPerUnit = map[string]int{
+	"AMP": 3, // Auckland's CAF EMUs: 3-car units, run alone or as a 6-car pair
+}
+
+// consistCars is the length of a train from the units realtime.Consists infers
+// are coupled to run it; 0 when any unit's class is unknown (buses included).
+func consistCars(units []*proto.VehicleDescriptor) int {
+	cars := 0
+	for _, u := range units {
+		class := strings.Fields(u.GetLabel())
+		if len(class) == 0 || carsPerUnit[class[0]] == 0 {
+			return 0
+		}
+		cars += carsPerUnit[class[0]]
+	}
+	return cars
 }

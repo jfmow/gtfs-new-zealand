@@ -19,6 +19,8 @@ public struct Vehicle: Codable, Hashable, Sendable, Identifiable {
     /// `providers/vehiclestate`).
     public let state: String?
     public let offCourse: Bool
+    /// Train length in cars; nil when not a train or unknown.
+    public var cars: Int? = nil
 
     public var id: String { tripID }
 
@@ -42,6 +44,7 @@ public struct Vehicle: Codable, Hashable, Sendable, Identifiable {
         case licensePlate = "license_plate"
         case position, type, state
         case offCourse = "off_course"
+        case cars
     }
 }
 

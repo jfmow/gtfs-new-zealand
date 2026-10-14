@@ -34,6 +34,9 @@ public struct Departure: Codable, Hashable, Sendable, Identifiable {
     public let stopState: String
     public let tripStarted: Bool
     public let platformChanged: Bool
+    /// Train length in cars once the train is live (3 or 6 in Auckland);
+    /// nil for buses/ferries or before the backend has seen the consist.
+    public var cars: Int? = nil
 
     public var id: String { tripID }
 
@@ -63,5 +66,6 @@ public struct Departure: Codable, Hashable, Sendable, Identifiable {
         case stopState = "stop_state"
         case tripStarted = "trip_started"
         case platformChanged = "platform_changed"
+        case cars
     }
 }

@@ -337,6 +337,9 @@ struct VehicleQuickLookView: View {
                     }
                     .modifier(StatusChipStyle())
                 }
+                if let cars = vehicle.cars {
+                    Label("\(cars) cars", systemImage: "train.side.front.car").modifier(StatusChipStyle())
+                }
                 if let platform = vehicle.trip?.nextStop?.platform, !platform.isEmpty {
                     Text("Platform \(platform)").modifier(StatusChipStyle())
                 }

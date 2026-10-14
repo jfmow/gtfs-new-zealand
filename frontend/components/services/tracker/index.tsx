@@ -145,6 +145,8 @@ export interface VehiclesResponse {
     type: string
     state: "Arriving" | "AtStop" | "Leaving" | "Travelling" | "Unknown"
     off_course: boolean
+    /** Train length in cars - absent for buses/ferries or when unknown. */
+    cars?: number
 }
 
 export interface Position {
