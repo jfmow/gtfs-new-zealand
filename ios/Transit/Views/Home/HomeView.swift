@@ -46,24 +46,12 @@ struct HomeView: View {
                             StaleDataBanner(isOffline: true, lastUpdated: nil)
                                 .padding(.horizontal, 16)
                         }
-                        if usesColumns {
-                            // Now + go on the left, the stop lists on the right.
-                            HStack(alignment: .top, spacing: 8) {
-                                VStack(alignment: .leading, spacing: 20) {
-                                    shortcutsSection
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                VStack(alignment: .leading, spacing: 24) {
-                                    yourStopsSection
-                                    nearYouSection
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                        } else {
-                            shortcutsSection
-                            yourStopsSection
-                            nearYouSection
-                        }
+                        // iPad lays each section's stops out as a two-column
+                        // grid (`gridColumns`) rather than splitting the
+                        // sections into columns, so both sides fill evenly.
+                        shortcutsSection
+                        yourStopsSection
+                        nearYouSection
                     }
                     .padding(.top, 4)
                     .padding(.bottom, 24)
@@ -187,9 +175,9 @@ struct HomeView: View {
                 HomeHeading(title: "Your stops") {
                     Button("Edit") { isManagingFavourites = true }
                 }
-                HomeGroup(items: favourites) { favourite in
+                HomeGroup(items: favourites, columns: gridColumns) { favourite in
                     NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
-                        HomeCompactStopRow(stopQuery: favourite.stopID, title: favourite.displayName) {
+                        HomeCompactStopRow(stopQuery: favourite.stopID, title: favourite.displayName, departureCount: departureCount) {
                             HomeSavedTile(colorHex: favourite.colorHex)
                         }
                     }
@@ -230,16 +218,16 @@ struct HomeView: View {
                         Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
                     }
                 }
-                HomeGroup(items: Array(stops.prefix(showsMoreNearby ? 6 : 3))) { stop in
+                HomeGroup(items: Array(stops.prefix(showsMoreNearby ? nearbyLimit * 2 : nearbyLimit)), columns: gridColumns) { stop in
                     NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
-                        HomeCompactStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop)) {
+                        HomeCompactStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop), departureCount: departureCount) {
                             HomeModeTile(stopType: stop.stopType)
                         }
                     }
                     .buttonStyle(.plain)
                     .contextMenu { nearbyMenu(stop) }
                 }
-                if stops.count > 3 {
+                if stops.count > nearbyLimit {
                     Button(showsMoreNearby ? "Show fewer" : "Show more") {
                         withAnimation(.snappy) { showsMoreNearby.toggle() }
                     }
@@ -266,10 +254,14 @@ struct HomeView: View {
 
     // MARK: - Layout
 
-    /// Regular width (iPad): the sections in two columns across a wider
-    /// page, rather than one phone-width column.
+    /// Regular width (iPad): a wider page, with each section's stops in a
+    /// two-column grid of cards.
     private var usesColumns: Bool { horizontalSizeClass == .regular }
     private var contentWidth: CGFloat { usesColumns ? 1100 : 720 }
+    /// iPad: stops in a two-column grid, more of them, more departures each.
+    private var gridColumns: Int { usesColumns ? 2 : 1 }
+    private var nearbyLimit: Int { usesColumns ? 6 : 3 }
+    private var departureCount: Int { usesColumns ? 4 : 3 }
 
     private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
 

@@ -188,12 +188,29 @@ struct HomeHeading<Action: View>: View {
     }
 }
 
-/// One surface around a list of rows, with hairlines between them.
+/// One surface around a list of rows, with hairlines between them - or,
+/// with `columns` > 1 (iPad), a grid of cards so both sides fill evenly.
 struct HomeGroup<Item: Identifiable, Row: View>: View {
     let items: [Item]
+    var columns = 1
     @ViewBuilder var row: (Item) -> Row
 
     var body: some View {
+        if columns > 1 {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), spacing: 12) {
+                ForEach(items) { item in
+                    row(item)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .shadCardBackground(radius: 14)
+                }
+            }
+            .padding(.horizontal, 16)
+        } else {
+            list
+        }
+    }
+
+    private var list: some View {
         VStack(spacing: 0) {
             ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                 if index > 0 {
@@ -213,6 +230,7 @@ struct HomeCompactStopRow<Tile: View>: View {
     let stopQuery: String
     let title: String
     var detail: String?
+    var departureCount = 3
     @ViewBuilder var tile: Tile
 
     @Environment(AppEnvironment.self) private var environment
@@ -241,7 +259,7 @@ struct HomeCompactStopRow<Tile: View>: View {
         .padding(.vertical, 9)
         .contentShape(Rectangle())
         .foregroundPoll(every: .seconds(30), id: stopQuery) {
-            await loader.load(stop: stopQuery, limit: 3, api: environment.api)
+            await loader.load(stop: stopQuery, limit: departureCount, api: environment.api)
         }
     }
 
@@ -251,9 +269,13 @@ struct HomeCompactStopRow<Tile: View>: View {
             if list.isEmpty {
                 Text("No more departures today").font(.meta).foregroundStyle(Theme.mutedForeground)
             } else {
+                // Always one line: drop departures from the end until the
+                // rest fit (stacking them made some rows very tall).
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 12) { pairs(list) }
-                    VStack(alignment: .leading, spacing: 6) { pairs(list) }
+                    ForEach([5, 4, 3, 2], id: \.self) { count in
+                        HStack(spacing: 12) { pairs(Array(list.prefix(count))) }
+                    }
+                    VStack(alignment: .leading, spacing: 6) { pairs(Array(list.prefix(2))) }
                 }
                 .opacity(loader.isStale ? 0.6 : 1)
             }
