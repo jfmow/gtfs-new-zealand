@@ -15,6 +15,8 @@ import { MarkerManager } from "./cluster-manager";
 import { useUrl } from "@/lib/url-context";
 import { fitPoints, setView, zoomBy, type Insets, type LatLng } from "./geo";
 import { hasMapKitToken, loadMapKit } from "./mapkit";
+import { MAP_REGIONS, MIN_CAMERA_DISTANCE, maxCameraDistance } from "./regions";
+import { getRegionSlug } from "@/lib/url-store";
 
 export type { LatLng };
 type BackupLatLng = LatLng
@@ -245,6 +247,24 @@ export default function MapComp({
         // so whatever was centred stays centred in the new free area.
         map.padding = new mk.Padding({ top: padTop, right: padRight, bottom: padBottom, left: padLeft });
     }, [ready, mk, padTop, padRight, padBottom, padLeft]);
+
+    // --- keep the camera inside the current region ------------------------
+    const regionSlug = getRegionSlug(currentUrl);
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!ready || !map || !mk) return;
+        const region = MAP_REGIONS[regionSlug];
+        if (!region) {
+            map.cameraBoundary = null;
+            map.cameraZoomRange = new mk.CameraZoomRange(MIN_CAMERA_DISTANCE, 40_000_000);
+            return;
+        }
+        map.cameraBoundary = new mk.CoordinateRegion(
+            new mk.Coordinate(region.center[0], region.center[1]),
+            new mk.CoordinateSpan(region.span[0], region.span[1]),
+        );
+        map.cameraZoomRange = new mk.CameraZoomRange(MIN_CAMERA_DISTANCE, maxCameraDistance(region));
+    }, [ready, mk, regionSlug]);
 
     // --- refit when the thing being shown changes (fitTo.key) -------------
     const fittedKey = useRef<string | null>(null);
