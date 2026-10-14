@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { MapTheme } from "./tile-layer";
+import type { MapTheme } from "./basemap";
 
 /**
  * The basemap normally follows the app's light/dark theme. This override lets

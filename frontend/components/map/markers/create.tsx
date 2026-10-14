@@ -1,5 +1,4 @@
-import maplibregl from "maplibre-gl";
-import { toLngLat } from "../geo";
+import type { Annotation, MapKit } from "@apple/mapkit-loader";
 import { isCentredIcon, staticMarkerHtml, vehicleMarkerHtml, type MarkerIcon } from "./icons";
 
 export interface MapItem {
@@ -38,18 +37,37 @@ export interface MapItem {
     zoomButton?: string
 }
 
-/**
- * MapLibre `Marker`s are just DOM elements the map keeps positioned, so - like
- * Leaflet's `divIcon` before it - the icon is plain HTML we render into a
- * `<div>`. `anchor`/`offset` reproduce Leaflet's old `iconAnchor` pixel points.
- */
-type MarkerStyle = { anchor: maplibregl.PositionAnchor; offset: [number, number] };
+/** What our MapKit annotations carry in `data`. */
+export type AnnotationData =
+    | { kind: "item"; item: MapItem }
+    | { kind: "cluster" };
 
-function markerStyle(item: MapItem): MarkerStyle {
-    // Dots and vehicles mark an exact point, so they sit centred on it; the
-    // pins hang above the point by their tail.
-    if (item.type === "vehicle" || isCentredIcon(item.icon)) return { anchor: "center", offset: [0, 0] };
-    return { anchor: "bottom", offset: [0, 0] };
+/**
+ * MapKit hit-tests an annotation by its element's box, and ours are 0x0 (see
+ * `pointElement`), so its `select` event never fires for them - clicks are
+ * handled on the artwork itself. Stops the click reaching the map, which would
+ * otherwise treat it as a tap on empty map (deselecting / onMapClick).
+ */
+function onTap(content: HTMLElement, handler: () => void) {
+    content.addEventListener("click", (e) => {
+        e.stopPropagation();
+        handler();
+    });
+    for (const ev of ["pointerdown", "pointerup", "mousedown", "mouseup", "touchstart", "touchend"]) {
+        content.addEventListener(ev, (e) => e.stopPropagation());
+    }
+}
+
+/**
+ * MapKit JS anchors an annotation's element by its bottom centre and sizes
+ * collisions/callouts from it. Our artwork comes in two kinds (centred dots and
+ * vehicles; pins that hang above the point by their tail), so the element itself
+ * is a 0x0 box sitting exactly on the coordinate and the artwork inside is
+ * translated to the right spot - no measuring needed.
+ */
+function anchorTransform(item: MapItem): string {
+    const centred = item.type === "vehicle" || isCentredIcon(item.icon);
+    return centred ? "translate(-50%, -50%)" : "translate(-50%, -100%)";
 }
 
 const VEHICLE_SIZE = 30;
@@ -90,73 +108,86 @@ function iconInnerHtml(item: MapItem): string {
     return `<div style="position: relative; opacity: ${opacity ?? 1};">${label}${artwork}</div>`;
 }
 
-/** The click listener is bound once and reads the marker's current item, which
- * `updateExistingMarker` swaps in place on every poll - so the handler always
- * fires against the latest data without ever being re-subscribed. */
-type MarkerWithItem = maplibregl.Marker & { __item: MapItem; __popupKey?: string };
+/** A 0x0 element on the coordinate; `content` is positioned relative to it. */
+export function pointElement(): { root: HTMLDivElement; content: HTMLDivElement } {
+    const root = document.createElement("div");
+    root.style.width = "0px";
+    root.style.height = "0px";
+    root.style.overflow = "visible";
+    const content = document.createElement("div");
+    content.style.position = "absolute";
+    content.style.left = "0";
+    content.style.top = "0";
+    content.style.width = "max-content";
+    root.appendChild(content);
+    return { root, content };
+}
 
-/**
- * The marker's outer element is owned by MapLibre (it manages its class list
- * and transform for positioning), so all our styling goes on an inner wrapper.
- * Overwriting the outer element's className would strip `maplibregl-marker` and
- * its `position: absolute`, and the markers then drift on pan/zoom.
- */
-function paintContent(item: MapItem, content: HTMLDivElement) {
+function paintContent(item: MapItem, content: HTMLElement) {
     if (!item.icon) {
         throw new Error("Icon is undefined, must be bus, train, ferry, etc.");
     }
+    content.style.transform = anchorTransform(item);
     content.style.cursor = typeof item.onClick === "function" && item.id !== "" ? "pointer" : "";
-    content.innerHTML = iconInnerHtml(item);
+    const html = iconInnerHtml(item);
+    // Skip identical repaints - vehicle polls re-send every item every few seconds.
+    if ((content as HTMLElement & { __html?: string }).__html !== html) {
+        (content as HTMLElement & { __html?: string }).__html = html;
+        content.innerHTML = html;
+    }
 }
 
-function syncPopup(item: MapItem, marker: MarkerWithItem) {
-    const key = item.popup ? JSON.stringify(item.popup) : "";
-    if (key === marker.__popupKey) return;
-    marker.__popupKey = key;
-    marker.setPopup(
-        item.popup
-            ? new maplibregl.Popup({ offset: 20, closeButton: false }).setHTML(createPopupHtml(item.popup))
-            : undefined
-    );
+function contentOf(annotation: Annotation): HTMLElement {
+    return annotation.element.firstElementChild as HTMLElement;
 }
 
-function contentOf(marker: maplibregl.Marker): HTMLDivElement {
-    return marker.getElement().firstElementChild as HTMLDivElement;
+function popupCallout(): { calloutElementForAnnotation(a: Annotation): HTMLElement } {
+    return {
+        calloutElementForAnnotation(a: Annotation) {
+            const data = a.data as AnnotationData;
+            const el = document.createElement("div");
+            el.className = "map-popup";
+            if (data.kind === "item" && data.item.popup) el.innerHTML = createPopupHtml(data.item.popup);
+            return el;
+        },
+    };
 }
 
-export function createNewMarker(item: MapItem): maplibregl.Marker {
-    const style = markerStyle(item);
-    const root = document.createElement("div");
-    const content = document.createElement("div");
-    root.appendChild(content);
+function syncAnnotationOptions(item: MapItem, annotation: Annotation) {
+    annotation.calloutEnabled = !!item.popup;
+    // Only callout-bearing annotations are ever selected (by our tap handler).
+    annotation.enabled = !!item.popup;
+    annotation.element.style.zIndex = String(item.zIndex ?? 0);
+}
+
+export function createAnnotation(mk: MapKit, item: MapItem): Annotation {
+    const { root, content } = pointElement();
     paintContent(item, content);
-
-    const marker = new maplibregl.Marker({
-        element: root,
-        anchor: style.anchor,
-        offset: style.offset,
-    }).setLngLat(toLngLat([item.lat, item.lon])) as MarkerWithItem;
-
-    root.style.zIndex = String(item.zIndex ?? 0);
-    marker.__item = item;
-    content.addEventListener("click", () => {
-        const it = marker.__item;
-        if (typeof it.onClick === "function" && it.id !== "") it.onClick(it.id);
+    const data: AnnotationData = { kind: "item", item };
+    const annotation = new mk.Annotation(new mk.Coordinate(item.lat, item.lon), () => root, {
+        data,
+        // We do our own clustering and decluttering - never let MapKit hide one.
+        displayPriority: mk.AnnotationDisplayPriority.Required,
+        collisionMode: mk.AnnotationCollisionMode.None,
+        animates: false,
+        callout: popupCallout(),
+        calloutOffset: new DOMPoint(0, -20),
     });
-
-    syncPopup(item, marker);
-    return marker;
+    syncAnnotationOptions(item, annotation);
+    onTap(content, () => {
+        const it = (annotation.data as AnnotationData & { kind: "item" }).item;
+        if (typeof it.onClick === "function" && it.id !== "") it.onClick(it.id);
+        if (it.popup && annotation.map) annotation.map.selectedAnnotation = annotation;
+    });
+    return annotation;
 }
 
-export function updateExistingMarker(item: MapItem, marker: maplibregl.Marker): maplibregl.Marker {
-    const m = marker as MarkerWithItem;
-    m.__item = item;
-    m.setOffset(markerStyle(item).offset);
-    m.getElement().style.zIndex = String(item.zIndex ?? 0);
-    paintContent(item, contentOf(m));
-    syncPopup(item, m);
-    animateMarkerTo(m, item.lat, item.lon);
-    return m;
+export function updateAnnotation(mk: MapKit, item: MapItem, annotation: Annotation): Annotation {
+    (annotation.data as AnnotationData & { kind: "item" }).item = item;
+    syncAnnotationOptions(item, annotation);
+    paintContent(item, contentOf(annotation));
+    animateAnnotationTo(mk, annotation, item.lat, item.lon);
+    return annotation;
 }
 
 function escapeHtml(value: string): string {
@@ -179,31 +210,41 @@ function createPopupHtml(popup: NonNullable<MapItem["popup"]>): string {
     return `<div style="font-size:13px;min-width:120px;">${title}${subtitle}${link}</div>`
 }
 
-/** Cluster-bubble marker element - ported from the old markercluster iconCreateFunction. */
-export function createClusterElement(count: number): HTMLDivElement {
-    const el = document.createElement("div");
-    el.className = "custom-cluster-icon";
-    el.style.cursor = "pointer";
-    el.innerHTML = `<div style="width: 32px; height: 32px; border-radius: 9999px; background: #fff; border: 2px solid #18181b; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35); box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #18181b;">
-         ${count}
-       </div>`;
-    return el;
+/** Cluster bubble (a count in a ringed circle), centred on the cluster. */
+export function createClusterAnnotation(mk: MapKit, lat: number, lon: number, count: number, onSelect: () => void): Annotation {
+    const { root, content } = pointElement();
+    content.style.transform = "translate(-50%, -50%)";
+    content.style.cursor = "pointer";
+    content.innerHTML = `<div style="width: 32px; height: 32px; border-radius: 9999px; background: #fff; border: 2px solid #18181b; box-shadow: 0 1px 4px rgba(15, 23, 42, 0.35); box-sizing: border-box; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #18181b;">${count}</div>`;
+    onTap(content, onSelect);
+    const data: AnnotationData = { kind: "cluster" };
+    return new mk.Annotation(new mk.Coordinate(lat, lon), () => root, {
+        data,
+        displayPriority: mk.AnnotationDisplayPriority.Required,
+        collisionMode: mk.AnnotationCollisionMode.None,
+        animates: false,
+        calloutEnabled: false,
+    });
 }
 
-function animateMarkerTo(marker: maplibregl.Marker, newLat: number, newLng: number, duration = 500) {
-    const start = marker.getLngLat();
-    const endLng = newLng;
-    const endLat = newLat;
+const animations = new WeakMap<Annotation, number>();
+
+function animateAnnotationTo(mk: MapKit, annotation: Annotation, newLat: number, newLng: number, duration = 500) {
+    const start = annotation.coordinate;
+    if (start.latitude === newLat && start.longitude === newLng) return;
+    const prev = animations.get(annotation);
+    if (prev) cancelAnimationFrame(prev);
     const startTime = performance.now();
 
     function animate(time: number) {
         const t = Math.min(1, (time - startTime) / duration);
-        const lng = start.lng + (endLng - start.lng) * t;
-        const lat = start.lat + (endLat - start.lat) * t;
-        marker.setLngLat([lng, lat]);
-
-        if (t < 1) requestAnimationFrame(animate);
+        annotation.coordinate = new mk.Coordinate(
+            start.latitude + (newLat - start.latitude) * t,
+            start.longitude + (newLng - start.longitude) * t,
+        );
+        if (t < 1) animations.set(annotation, requestAnimationFrame(animate));
+        else animations.delete(annotation);
     }
 
-    requestAnimationFrame(animate);
+    animations.set(annotation, requestAnimationFrame(animate));
 }

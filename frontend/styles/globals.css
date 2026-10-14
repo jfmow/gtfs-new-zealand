@@ -122,14 +122,14 @@ html[data-journey-open] [data-resume-prompt] {
 
 /* The Map tab (pages/map.tsx): its corner buttons sit above the resume card
    (--resume-h, set on <html>) and a stop's preview card (--map-card-h). */
-.map-page .maplibregl-ctrl-bottom-left,
-.map-page .maplibregl-ctrl-bottom-right {
+.map-page .map-ctrl-bottom-left,
+.map-page .map-ctrl-bottom-right {
   margin-bottom: calc(var(--resume-h, 0px) + var(--map-card-h, 0px));
   transition: margin-bottom 0.2s ease-out;
 }
 
 /* ...and the bottom-left ones clear an open side panel (components/map/map-side-panel.tsx). */
-.map-page:has(.map-side-panel) .maplibregl-ctrl-bottom-left {
+.map-page:has(.map-side-panel) .map-ctrl-bottom-left {
   margin-left: 424px;
 }
 
@@ -153,8 +153,23 @@ html[data-journey-open] [data-resume-prompt] {
   color: #1d4ed8;
 }
 
-/* MapLibre controls: our custom buttons live inside .maplibregl-ctrl wrappers. */
-.maplibregl-ctrl .map-control-button {
+/* Map corner controls (components/map/map.tsx) - our own pill buttons over
+   MapKit JS. The bottom corners sit above Apple's logo/legal line. */
+.map-ctrl {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px;
+}
+
+.map-ctrl-top-left { top: 0; left: 0; }
+.map-ctrl-top-right { top: 0; right: 0; }
+.map-ctrl-bottom-left { bottom: 24px; left: 0; }
+.map-ctrl-bottom-right { bottom: 24px; right: 0; }
+
+.map-ctrl .map-control-button {
   border-radius: 9999px;
   border: 1px solid rgba(148, 163, 184, 0.5) !important;
   background: rgba(255, 255, 255, 0.95) !important;
@@ -162,31 +177,23 @@ html[data-journey-open] [data-resume-prompt] {
   box-shadow: 0 1px 4px rgba(15, 23, 42, 0.18);
 }
 
-.maplibregl-ctrl .map-control-button .lucide {
+.map-ctrl .map-control-button .lucide {
   stroke-width: 2.1px;
 }
 
-/* Drop MapLibre's default control chrome - we bring our own pill buttons. */
-.maplibregl-ctrl-group {
-  background: none;
-  box-shadow: none;
-  border-radius: 0;
-}
-
-.maplibregl-popup-content {
+/* Marker popups (MapKit callouts) and the waypoint speed tip. */
+.map-popup {
+  background: #fff;
+  color: #0f172a;
   border-radius: 10px;
   padding: 10px 12px;
   box-shadow: 0 4px 16px rgba(15, 23, 42, 0.18);
+  white-space: nowrap;
 }
 
-.dark .maplibregl-popup-content {
+.dark .map-popup {
   background: #1e293b;
   color: #e2e8f0;
-}
-
-.dark .maplibregl-popup-tip {
-  border-top-color: #1e293b;
-  border-bottom-color: #1e293b;
 }
 
 @keyframes live-pulse {

@@ -1,19 +1,20 @@
 'use client';
 
-import maplibregl from "maplibre-gl"
-import "maplibre-gl/dist/maplibre-gl.css"
-import React, { useEffect, useRef } from "react"
+import type { Annotation, Map as MKMap, MapKit, Overlay } from "@apple/mapkit-loader";
+import React, { useEffect, useRef, useState } from "react"
 import { useTheme } from "next-themes"
-import type { Feature, FeatureCollection, LineString } from "geojson"
+import { Navigation, ZoomIn, ZoomOut } from "lucide-react";
+import type { Feature } from "geojson"
 import { GeoJSON } from "./geojson-types";
-import { buttonVariants } from "../ui/button";
-import { BasemapManager, styleUrlForTheme, type MapTheme } from "./tile-layer";
+import { Button } from "../ui/button";
+import { BasemapManager, MapVariantToggle, type MapTheme } from "./basemap";
 import { resolveMapTheme, useMapThemeOverride } from "./map-theme";
-import { MapItem } from "./markers/create";
+import { MapItem, pointElement } from "./markers/create";
 import { USER_LOCATION_HTML } from "./markers/icons";
 import { MarkerManager } from "./cluster-manager";
 import { useUrl } from "@/lib/url-context";
-import { boundsOf, toLngLat, whenStyleReady, type LatLng } from "./geo";
+import { fitPoints, setView, zoomBy, type Insets, type LatLng } from "./geo";
+import { hasMapKitToken, loadMapKit } from "./mapkit";
 
 export type { LatLng };
 type BackupLatLng = LatLng
@@ -62,8 +63,16 @@ interface MapOptions {
     buttonPosition: "top" | "bottom"
 }
 
-const ROUTE_SOURCE = "route-line"
-const WAYPOINT_SOURCE = "waypoint-line"
+const FIT_PADDING = 40;
+
+function insets(pad: number, extra?: Partial<Insets>): Insets {
+    return {
+        top: pad + (extra?.top ?? 0),
+        right: pad + (extra?.right ?? 0),
+        bottom: pad + (extra?.bottom ?? 0),
+        left: pad + (extra?.left ?? 0),
+    };
+}
 
 export default function MapComp({
     mapItems = [],
@@ -92,137 +101,137 @@ export default function MapComp({
     const themeOverride = useMapThemeOverride();
     const theme: MapTheme = resolveMapTheme(themeOverride, resolvedTheme === "dark" ? "dark" : "light");
 
-    const mapRef = useRef<maplibregl.Map | null>(null);
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [mk, setMk] = useState<MapKit | null>(null);
+    const [loadError, setLoadError] = useState<string | null>(null);
+    const mapRef = useRef<MKMap | null>(null);
     const basemapRef = useRef<BasemapManager | null>(null);
     const markerManagerRef = useRef<MarkerManager | null>(null);
-    const userRef = useRef<{ marker: maplibregl.Marker | null; control: maplibregl.IControl | null }>({ marker: null, control: null });
-    const zoomButtonsRef = useRef<Record<string, maplibregl.IControl>>({});
-    const zoomControlsRef = useRef<maplibregl.IControl[]>([]);
-    const readyRef = useRef(false);
-    const [ready, setReady] = React.useState(false);
+    const routeOverlaysRef = useRef<Overlay[]>([]);
+    const waypointOverlaysRef = useRef<Overlay[]>([]);
+    const speedTipRef = useRef<Annotation | null>(null);
+    const userAnnotationRef = useRef<Annotation | null>(null);
+    const [ready, setReady] = useState(false);
+    const [hasUserLocation, setHasUserLocation] = useState(false);
 
     // Kept current every render so the async callbacks below never need re-subscribing.
     const onLocationUpdateRef = useRef(onLocationUpdate);
     const onUserMoveRef = useRef(onUserMove);
-    onUserMoveRef.current = onUserMove;
+    const onMapClickRef = useRef(onMapClick);
     const followUserRef = useRef(followUser);
     const followFitWithRef = useRef(followFitWith);
     const themeRef = useRef(theme);
-    const lineDataRef = useRef<FeatureCollection | null>(null);
-    const waypointDataRef = useRef<FeatureCollection | null>(null);
     onLocationUpdateRef.current = onLocationUpdate;
+    onUserMoveRef.current = onUserMove;
+    onMapClickRef.current = onMapClick;
     followUserRef.current = followUser;
     followFitWithRef.current = followFitWith;
     themeRef.current = theme;
 
+    // --- load MapKit JS (once per page) ----------------------------------------
+    useEffect(() => {
+        if (!hasMapKitToken()) {
+            setLoadError("Map unavailable - no MapKit token configured.");
+            return;
+        }
+        let cancelled = false;
+        loadMapKit()
+            .then((m) => { if (!cancelled) setMk(m); })
+            .catch((err) => {
+                console.error("MapKit JS failed to load", err);
+                if (!cancelled) setLoadError("Map failed to load.");
+            });
+        return () => { cancelled = true; };
+    }, []);
+
     // --- map creation (once per map_id) --------------------------------------
     useEffect(() => {
         if (map_id.length < 3) throw new Error("Map ID is too short, must be at least 3 characters");
-        if (mapRef.current) return;
+        const container = containerRef.current;
+        if (!mk || !container || mapRef.current) return;
 
-        const buttonPos = options?.buttonPosition;
-        const init = initialCamera(defaultZoom);
-
-        const map = new maplibregl.Map({
-            container: map_id,
-            style: styleUrlForTheme(themeRef.current),
-            attributionControl: { compact: true },
-            fadeDuration: 0, // no 300ms tile cross-fade - show them as they arrive
-            ...init.camera,
+        const map = new mk.Map(container, {
+            showsZoomControl: false,
+            showsMapTypeControl: false,
+            showsUserLocationControl: false,
+            showsScale: mk.FeatureVisibility.Hidden,
+            showsCompass: mk.FeatureVisibility.Adaptive,
+            showsPointsOfInterest: false,
+            isRotationEnabled: true,
         });
         mapRef.current = map;
-
-        if (init.locateUser) {
-            getUserLocation()
-                .then((r) => map.jumpTo({ center: toLngLat(r), zoom: 17 }))
-                .catch(() => map.jumpTo({ center: toLngLat(init.locateUser as LatLng), zoom: 17 }));
-        }
-
-        const markerManager = new MarkerManager(map, {
+        basemapRef.current = new BasemapManager(mk, map, themeRef.current);
+        markerManagerRef.current = new MarkerManager(mk, map, {
             clusterThreshold: clusterOptions?.threshold,
             clusterRadius: clusterOptions?.maxClusterRadius,
         });
-        markerManagerRef.current = markerManager;
 
-        const basemap = new BasemapManager(map, themeRef.current, () => {
-            // Runs after the first style load and after every theme swap - the
-            // setStyle wipes every source/layer we added, so rebuild them.
-            addLineLayers(map);
-            if (lineDataRef.current) (map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(lineDataRef.current);
-            if (waypointDataRef.current) (map.getSource(WAYPOINT_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(waypointDataRef.current);
-            markerManagerRef.current?.reattachSources();
+        const initial = initialCamera(defaultZoom);
+        const applyInitial = () => {
+            if (initial.kind === "fit") fitPoints(mk, map, initial.points, insets(FIT_PADDING), { animate: false });
+            else setView(mk, map, initial.center, initial.zoom, false);
+        };
+        applyInitial();
+        if (initial.kind === "user") {
+            getUserLocation()
+                .then((r) => setView(mk, map, r, 17, false))
+                .catch(() => setView(mk, map, initial.center, 17, false));
+        }
+
+        // Marker taps are handled on the markers themselves (markers/create.tsx);
+        // the only selectable overlays are the history page's speed segments.
+        map.addEventListener("select", (e: Event) => {
+            const overlay = (e as Event & { overlay?: Overlay }).overlay;
+            const info = (overlay?.data ?? {}) as { speed?: string; mid?: LatLng };
+            if (info.speed && info.mid) showSpeedTip(mk, map, speedTipRef, info.mid, info.speed);
         });
-        basemapRef.current = basemap;
-
-        // Controls need neither style nor tiles - add them now so the buttons are
-        // there from the first frame instead of only after tiles finish loading.
-        if (!hideZoomControls) zoomControlsRef.current = addZoomControls(map, buttonPos === "bottom" ? "bottom-left" : "top-left");
-        basemap.addControl(buttonPos === "bottom" ? "bottom-right" : "top-right");
-        if (onMapClick) map.on("click", (e) => onMapClick(e.lngLat.lat, e.lngLat.lng));
-        // Only gestures carry an originalEvent - not our own panTo/fitBounds.
-        map.on("movestart", (e) => { if ((e as { originalEvent?: unknown }).originalEvent) onUserMoveRef.current?.(); });
-
-        // Gate marker/line setup on `style.load` (style parsed) rather than
-        // `load` (which also waits for the first tiles) - markers are DOM
-        // overlays and don't need to wait for imagery.
-        let didFirstFit = false;
-        map.on("style.load", () => {
-            if (!didFirstFit && init.fitBounds && !init.fitBounds.isEmpty()) {
-                didFirstFit = true;
-                // The container may have been 0-sized when the constructor fit
-                // the bounds (drawer/flex still settling), so redo it now.
-                map.fitBounds(init.fitBounds, { padding: FIT_PADDING, animate: false });
+        map.addEventListener("deselect", (e: Event) => {
+            if ((e as Event & { overlay?: Overlay }).overlay && speedTipRef.current) {
+                map.removeAnnotation(speedTipRef.current);
+                speedTipRef.current = null;
             }
-            readyRef.current = true;
-            setReady(true);
         });
+        map.addEventListener("single-tap", (e: Event) => {
+            const cb = onMapClickRef.current;
+            if (!cb) return;
+            const c = map.convertPointOnPageToCoordinate((e as Event & { pointOnPage: DOMPoint }).pointOnPage);
+            cb(c.latitude, c.longitude);
+        });
+        // scroll-start / zoom-start only fire for user gestures, not our own camera moves.
+        const userMoved = () => onUserMoveRef.current?.();
+        map.addEventListener("scroll-start", userMoved);
+        map.addEventListener("zoom-start", userMoved);
 
-        // MapLibre's own trackResize only watches the window - the map container
-        // here is flex-sized and often lands at its final height a frame after
-        // creation, so keep watching it directly (this is what the old Leaflet
-        // invalidateSize observer did). Only act on a real size change, or
-        // resize() feeds the flex layout back into the observer in a loop.
-        const container = document.getElementById(map_id);
-        let lastW = container?.clientWidth ?? 0;
-        let lastH = container?.clientHeight ?? 0;
+        // The container is flex/drawer-sized and is often still 0 tall when the
+        // map is created - redo the initial framing once it has a real size.
+        let framed = container.clientWidth > 0 && container.clientHeight > 0;
         const resizeObserver = new ResizeObserver(() => {
-            if (!container) return;
-            if (container.clientWidth === lastW && container.clientHeight === lastH) return;
-            lastW = container.clientWidth;
-            lastH = container.clientHeight;
-            map.resize();
+            if (!framed && container.clientWidth > 0 && container.clientHeight > 0) {
+                framed = true;
+                applyInitial();
+            }
         });
-        if (container) resizeObserver.observe(container);
+        resizeObserver.observe(container);
+
+        setReady(true);
 
         return () => {
             resizeObserver.disconnect();
             markerManagerRef.current?.destroy();
             basemapRef.current?.destroy();
-            map.remove();
+            map.destroy();
             mapRef.current = null;
             markerManagerRef.current = null;
             basemapRef.current = null;
-            userRef.current = { marker: null, control: null };
-            zoomButtonsRef.current = {};
-            zoomControlsRef.current = [];
-            readyRef.current = false;
+            routeOverlaysRef.current = [];
+            waypointOverlaysRef.current = [];
+            speedTipRef.current = null;
+            userAnnotationRef.current = null;
+            setHasUserLocation(false);
             setReady(false);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [map_id]);
-
-    // --- zoom buttons appear/disappear with the layout (phone <-> desktop) ---
-    useEffect(() => {
-        const map = mapRef.current;
-        if (!map) return;
-        const has = zoomControlsRef.current.length > 0;
-        if (hideZoomControls && has) {
-            zoomControlsRef.current.forEach((c) => map.removeControl(c));
-            zoomControlsRef.current = [];
-        } else if (!hideZoomControls && !has) {
-            zoomControlsRef.current = addZoomControls(map, options?.buttonPosition === "bottom" ? "bottom-left" : "top-left");
-        }
-    }, [hideZoomControls, options?.buttonPosition]);
+    }, [mk, map_id]);
 
     // --- camera padding (overlays covering part of the map) --------------
     const padTop = padding?.top ?? 0;
@@ -231,33 +240,22 @@ export default function MapComp({
     const padLeft = padding?.left ?? 0;
     useEffect(() => {
         const map = mapRef.current;
-        if (!ready || !map) return;
-        map.easeTo({ padding: { top: padTop, right: padRight, bottom: padBottom, left: padLeft }, duration: 300 });
-    }, [ready, padTop, padRight, padBottom, padLeft]);
+        if (!ready || !map || !mk) return;
+        // MapKit keeps the inset frame's centre and scale when padding changes,
+        // so whatever was centred stays centred in the new free area.
+        map.padding = new mk.Padding({ top: padTop, right: padRight, bottom: padBottom, left: padLeft });
+    }, [ready, mk, padTop, padRight, padBottom, padLeft]);
 
     // --- refit when the thing being shown changes (fitTo.key) -------------
     const fittedKey = useRef<string | null>(null);
     useEffect(() => {
         const map = mapRef.current;
-        if (!ready || !map || !fitTo || fitTo.points.length === 0 || fittedKey.current === fitTo.key) return;
+        if (!ready || !map || !mk || !fitTo || fitTo.points.length === 0 || fittedKey.current === fitTo.key) return;
         const first = fittedKey.current === null;
         fittedKey.current = fitTo.key;
-        const bounds = new maplibregl.LngLatBounds();
-        for (const point of fitTo.points) bounds.extend(toLngLat(point));
-        if (bounds.isEmpty()) return;
-        const pad = fitTo.padding ?? {};
-        map.fitBounds(bounds, {
-            padding: {
-                top: FIT_PADDING + (pad.top ?? 0),
-                right: FIT_PADDING + (pad.right ?? 0),
-                bottom: FIT_PADDING + (pad.bottom ?? 0),
-                left: FIT_PADDING + (pad.left ?? 0),
-            },
-            maxZoom: 16,
-            // The first fit lands straight away; switching journeys glides.
-            duration: first ? 0 : 600,
-        });
-    }, [ready, fitTo]);
+        // The first fit lands straight away; switching journeys glides.
+        fitPoints(mk, map, fitTo.points, insets(FIT_PADDING, fitTo.padding), { maxZoom: 16, animate: !first });
+    }, [ready, mk, fitTo]);
 
     // --- theme swap --------------------------------------------------------
     useEffect(() => {
@@ -266,20 +264,33 @@ export default function MapComp({
 
     // --- geolocation polling (one 3s loop per map instance) ----------------
     useEffect(() => {
-        if (!ready) return;
         const map = mapRef.current;
-        if (!map) return;
+        if (!ready || !map || !mk) return;
 
-        const controlPosition = options?.buttonPosition === "bottom" ? "bottom-right" : "top-right";
         let intervalId: NodeJS.Timeout | undefined;
         let cancelled = false;
 
         startLocationUpdates((latLng) => {
-            addUserMarker(userRef.current, map, latLng, controlPosition);
-            onLocationUpdateRef.current?.(latLng[0], latLng[1]);
-            if (followUserRef.current) {
-                map.panTo(toLngLat(latLng), { duration: 500 });
+            if (cancelled || (latLng[0] === 0 && latLng[1] === 0)) return;
+            const coord = new mk.Coordinate(latLng[0], latLng[1]);
+            if (userAnnotationRef.current) {
+                userAnnotationRef.current.coordinate = coord;
+            } else {
+                const { root, content } = pointElement();
+                content.style.transform = "translate(-50%, -50%)";
+                content.innerHTML = USER_LOCATION_HTML;
+                const a = new mk.Annotation(coord, () => root, {
+                    enabled: false,
+                    displayPriority: mk.AnnotationDisplayPriority.Required,
+                    collisionMode: mk.AnnotationCollisionMode.None,
+                    animates: false,
+                });
+                userAnnotationRef.current = a;
+                map.addAnnotation(a);
+                setHasUserLocation(true);
             }
+            onLocationUpdateRef.current?.(latLng[0], latLng[1]);
+            if (followUserRef.current) setView(mk, map, latLng);
         }).then((res) => {
             if (cancelled) {
                 if (res) clearInterval(res);
@@ -292,15 +303,13 @@ export default function MapComp({
             cancelled = true;
             if (intervalId) clearInterval(intervalId);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [ready, options?.buttonPosition]);
+    }, [ready, mk]);
 
     // --- markers ---------------------------------------------------------
     useEffect(() => {
-        if (!ready) return;
         const map = mapRef.current;
         const markerManager = markerManagerRef.current;
-        if (!map || !markerManager) return;
+        if (!ready || !map || !mk || !markerManager) return;
 
         markerManager.setOptions({
             clusterThreshold: clusterOptions?.threshold,
@@ -308,79 +317,70 @@ export default function MapComp({
         });
         markerManager.setItems(mapItems);
 
-        // Per-marker "zoom to" controls.
-        const wantButtons = new Set(mapItems.filter((i) => i.zoomButton).map((i) => i.id));
-        for (const [id, control] of Object.entries(zoomButtonsRef.current)) {
-            if (!wantButtons.has(id)) {
-                map.removeControl(control);
-                delete zoomButtonsRef.current[id];
-            }
-        }
-        for (const item of mapItems) {
-            if (!item.zoomButton || zoomButtonsRef.current[item.id]) continue;
-            const control = new ButtonControl(
-                item.zoomButton,
-                () => map.flyTo({ center: toLngLat([item.lat, item.lon]), zoom: 17 })
-            );
-            zoomButtonsRef.current[item.id] = control;
-            map.addControl(control, "top-right");
-        }
-
         // Follow a moving marker.
         if (followMarkerId && !followPaused) {
             const target = mapItems.find((i) => i.id === followMarkerId);
             if (target) {
                 const fitWith = followFitWithRef.current;
                 if (fitWith) {
-                    map.fitBounds(boundsOf([target.lat, target.lon], [fitWith[0], fitWith[1]]), {
-                        padding: 55,
-                        maxZoom: 16,
-                        duration: 500,
-                    });
+                    fitPoints(mk, map, [[target.lat, target.lon], [fitWith[0], fitWith[1]]], insets(55), { maxZoom: 16 });
                 } else {
-                    map.panTo(toLngLat([target.lat, target.lon]), { duration: 500 });
+                    setView(mk, map, [target.lat, target.lon]);
                 }
             }
         }
 
         // Waypoint connector line (history page).
         const waypoints = mapItems.filter((i) => i.type === "waypoint");
-        const waypointFc = waypoints.length >= 2 ? buildWaypointLine(waypoints) : emptyFc();
-        waypointDataRef.current = waypointFc;
-        whenStyleReady(map, () => {
-            addLineLayers(map);
-            (map.getSource(WAYPOINT_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(waypointFc);
-        });
-    }, [ready, mapItems, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId, followPaused]);
+        const next = waypoints.length >= 2 ? buildWaypointOverlays(mk, waypoints) : [];
+        if (waypointOverlaysRef.current.length) map.removeOverlays(waypointOverlaysRef.current);
+        waypointOverlaysRef.current = next;
+        if (next.length) map.addOverlays(next);
+    }, [ready, mk, mapItems, clusterOptions?.threshold, clusterOptions?.maxClusterRadius, followMarkerId, followPaused]);
 
     // --- one-shot fly-in on zoomInTrigger false→true ---------------------
     const wasZoomInTriggered = useRef(false);
     useEffect(() => {
         const map = mapRef.current;
-        if (ready && map && zoomInTrigger && !wasZoomInTriggered.current && zoomInCenter) {
-            map.easeTo({ center: toLngLat(zoomInCenter), zoom: 16, duration: 500 });
+        if (ready && map && mk && zoomInTrigger && !wasZoomInTriggered.current && zoomInCenter) {
+            setView(mk, map, zoomInCenter, 16);
         }
         wasZoomInTriggered.current = !!zoomInTrigger;
-    }, [ready, zoomInTrigger, zoomInCenter]);
+    }, [ready, mk, zoomInTrigger, zoomInCenter]);
 
     // --- route line -----------------------------------------------------
     useEffect(() => {
-        if (!ready) return;
         const map = mapRef.current;
-        if (!map) return;
+        if (!ready || !map || !mk) return;
+        const next = line ? buildRouteOverlays(mk, line.GeoJson, line.color, currentUrl.textColor) : [];
+        if (routeOverlaysRef.current.length) map.removeOverlays(routeOverlaysRef.current);
+        routeOverlaysRef.current = next;
+        // Lines go under the annotations regardless of add order.
+        if (next.length) map.addOverlays(next);
+    }, [ready, mk, line, currentUrl.textColor]);
 
-        const fc = line ? resolveLineFeatures(line.GeoJson, line.color, currentUrl.textColor) : emptyFc();
-        lineDataRef.current = fc;
-        whenStyleReady(map, () => {
-            addLineLayers(map);
-            (map.getSource(ROUTE_SOURCE) as maplibregl.GeoJSONSource | undefined)?.setData(fc);
-        });
-    }, [ready, line, currentUrl.textColor]);
+    // --- controls --------------------------------------------------------
+    const bottom = options?.buttonPosition === "bottom";
+    const zoomTargets = mapItems.filter((i) => i.zoomButton);
+    const map = mapRef.current;
+    const withMap = (fn: (mk: MapKit, map: MKMap) => void) => () => {
+        if (mk && mapRef.current) fn(mk, mapRef.current);
+    };
+    // Per-marker "zoom to" buttons (always top-right).
+    const zoomTargetButtons = zoomTargets.map((item) => (
+        <Button
+            key={item.id}
+            size="icon"
+            className="map-control-button"
+            onClick={withMap((m, mp) => setView(m, mp, [item.lat, item.lon], 17))}
+            dangerouslySetInnerHTML={{ __html: item.zoomButton as string }}
+        />
+    ));
 
     return (
         <div
-            id={map_id}
             style={{
+                position: "relative",
                 height: height,
                 width: "100%",
                 maxHeight: height ? "" : "50vh",
@@ -388,26 +388,59 @@ export default function MapComp({
                 borderRadius: square ? 0 : "var(--radius)",
                 overflow: "hidden",
                 flexGrow: 1,
-                // Match the eventual basemap ground colour so there's no white
-                // flash while the style/tiles load.
+                // Match the basemap ground colour so there's no white flash while it loads.
                 backgroundColor: theme === "dark" ? "#1b1b1b" : "#f2f1ee",
             }}
-        />
+        >
+            <div id={map_id} ref={containerRef} style={{ position: "absolute", inset: 0 }} />
+            {loadError && (
+                <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-sm text-muted-foreground">
+                    {loadError}
+                </div>
+            )}
+            {ready && map && (
+                <>
+                    {!hideZoomControls && (
+                        <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-left" : "map-ctrl-top-left"}`}>
+                            <Button size="icon" className="map-control-button" title="Zoom in" onClick={withMap((m, mp) => zoomBy(m, mp, 1))}>
+                                <ZoomIn />
+                            </Button>
+                            <Button size="icon" className="map-control-button" title="Zoom out" onClick={withMap((m, mp) => zoomBy(m, mp, -1))}>
+                                <ZoomOut />
+                            </Button>
+                        </div>
+                    )}
+                    <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-right" : "map-ctrl-top-right"}`}>
+                        {basemapRef.current && <MapVariantToggle manager={basemapRef.current} />}
+                        {hasUserLocation && (
+                            <Button
+                                size="icon"
+                                className="map-control-button"
+                                title="Show my location"
+                                onClick={withMap((m, mp) => {
+                                    const c = userAnnotationRef.current?.coordinate;
+                                    if (c) setView(m, mp, [c.latitude, c.longitude], 15);
+                                })}
+                            >
+                                <Navigation />
+                            </Button>
+                        )}
+                        {!bottom && zoomTargetButtons}
+                    </div>
+                    {bottom && zoomTargets.length > 0 && <div className="map-ctrl map-ctrl-top-right">{zoomTargetButtons}</div>}
+                </>
+            )}
+        </div>
     );
 }
 
 // --------------------------------------------------------------------------
 // camera
 
-type InitialCamera = {
-    camera: { center: [number, number]; zoom: number } | { bounds: maplibregl.LngLatBounds; fitBoundsOptions: maplibregl.FitBoundsOptions };
-    /** Re-applied once on `load`, when the container has its real size (a bounds
-     * fit computed against a 0-height flex/drawer container comes out wrong). */
-    fitBounds?: maplibregl.LngLatBounds;
-    locateUser?: LatLng;
-};
-
-const FIT_PADDING = 40;
+type InitialCamera =
+    | { kind: "fit"; points: LatLng[] }
+    | { kind: "point"; center: LatLng; zoom: number }
+    | { kind: "user"; center: LatLng; zoom: number };
 
 function initialCamera(defaultZoom: MapProps["defaultZoom"]): InitialCamera {
     if (
@@ -419,26 +452,13 @@ function initialCamera(defaultZoom: MapProps["defaultZoom"]): InitialCamera {
         throw new Error("Missing or invalid defaultZoom");
     }
 
-    if (defaultZoom[0] === "user") {
-        const backup = defaultZoom[1] as LatLng;
-        return { camera: { center: toLngLat(backup), zoom: 12 }, locateUser: backup };
-    }
-    if (defaultZoom.length === 2) {
-        const bounds = boundsOf(defaultZoom[0] as LatLng, defaultZoom[1] as LatLng);
-        return {
-            camera: { bounds, fitBoundsOptions: { padding: FIT_PADDING } },
-            fitBounds: bounds,
-        };
-    }
-    return { camera: { center: toLngLat(defaultZoom[0] as LatLng), zoom: 17 } };
+    if (defaultZoom[0] === "user") return { kind: "user", center: defaultZoom[1] as LatLng, zoom: 12 };
+    if (defaultZoom.length === 2) return { kind: "fit", points: [defaultZoom[0] as LatLng, defaultZoom[1] as LatLng] };
+    return { kind: "point", center: defaultZoom[0] as LatLng, zoom: 17 };
 }
 
 // --------------------------------------------------------------------------
 // route + waypoint lines
-
-function emptyFc(): FeatureCollection {
-    return { type: "FeatureCollection", features: [] };
-}
 
 function toFeatures(geojson: GeoJSON): Feature[] {
     const any = geojson as unknown as { type: string; features?: Feature[] };
@@ -446,14 +466,25 @@ function toFeatures(geojson: GeoJSON): Feature[] {
     return [any as unknown as Feature];
 }
 
+/** A feature's line parts as [lat, lon] paths (LineString / MultiLineString). */
+function lineParts(feature: Feature): LatLng[][] {
+    const g = feature.geometry as { type: string; coordinates: unknown } | null;
+    if (!g) return [];
+    const toPath = (coords: number[][]) => coords.map(([lon, lat]) => [lat, lon] as LatLng);
+    if (g.type === "LineString") return [toPath(g.coordinates as number[][])];
+    if (g.type === "MultiLineString") return (g.coordinates as number[][][]).map(toPath);
+    return [];
+}
+
 /**
- * Ports the old Leaflet `geoJSON` per-feature style function: resolves each
- * feature's colour/weight/opacity from its `mode`/`segment`/`color` properties
- * (with the region brand colour and the blanket `line.color` as fallbacks) and
- * stashes the result in `_color`/`_weight`/`_opacity` for a data-driven paint.
+ * Each feature's colour/weight/opacity from its `mode`/`segment`/`color`
+ * properties, with the region brand colour and the blanket `line.color` as
+ * fallbacks. Every line gets a translucent white casing drawn under it.
  */
-function resolveLineFeatures(geojson: GeoJSON, lineColor: string, textColor: string): FeatureCollection {
-    const features = toFeatures(geojson).map((feature) => {
+function buildRouteOverlays(mk: MapKit, geojson: GeoJSON, lineColor: string, textColor: string): Overlay[] {
+    const casings: Overlay[] = [];
+    const mains: Overlay[] = [];
+    for (const feature of toFeatures(geojson)) {
         const props = (feature.properties ?? {}) as Record<string, unknown>;
         const mode = props.mode as string | undefined;
         const segment = props.segment as string | undefined;
@@ -481,16 +512,22 @@ function resolveLineFeatures(geojson: GeoJSON, lineColor: string, textColor: str
             opacity = 0.95;
         }
 
-        return {
-            ...feature,
-            properties: { ...props, _color: color, _weight: weight, _opacity: opacity },
-        } as Feature;
-    });
-
-    return { type: "FeatureCollection", features };
+        for (const path of lineParts(feature)) {
+            const coords = path.map(([lat, lon]) => new mk.Coordinate(lat, lon));
+            casings.push(new mk.PolylineOverlay(coords, {
+                enabled: false,
+                style: new mk.Style({ strokeColor: "#ffffff", strokeOpacity: 0.55, lineWidth: weight + 2, lineCap: "round", lineJoin: "round" }),
+            }));
+            mains.push(new mk.PolylineOverlay(coords, {
+                enabled: false,
+                style: new mk.Style({ strokeColor: color, strokeOpacity: opacity, lineWidth: weight, lineCap: "round", lineJoin: "round" }),
+            }));
+        }
+    }
+    return [...casings, ...mains];
 }
 
-/** Green→yellow→red by average segment speed - ported from the old polyline builder. */
+/** Green→yellow→red by average segment speed. */
 function speedColor(avgSpeed: number): string {
     const ratio = Math.min(avgSpeed / 100, 1);
     if (ratio <= 0.5) {
@@ -501,168 +538,42 @@ function speedColor(avgSpeed: number): string {
     return `rgb(255,${g},0)`;
 }
 
-function buildWaypointLine(items: MapItem[]): FeatureCollection {
+function buildWaypointOverlays(mk: MapKit, items: MapItem[]): Overlay[] {
     const sorted = [...items].sort((a, b) => a.id.localeCompare(b.id));
-    const features: Feature[] = [];
+    const overlays: Overlay[] = [];
     for (let i = 0; i < sorted.length - 1; i++) {
         const a = sorted[i];
         const b = sorted[i + 1];
         const avgSpeed = ((a.speedKmh ?? 0) + (b.speedKmh ?? 0)) / 2;
-        features.push({
-            type: "Feature",
-            properties: { _color: speedColor(avgSpeed), _speed: `${avgSpeed.toFixed(1)} km/h` },
-            geometry: {
-                type: "LineString",
-                coordinates: [toLngLat([a.lat, a.lon]), toLngLat([b.lat, b.lon])],
-            } as LineString,
-        });
+        overlays.push(new mk.PolylineOverlay(
+            [new mk.Coordinate(a.lat, a.lon), new mk.Coordinate(b.lat, b.lon)],
+            {
+                // Tapping a segment shows its speed.
+                data: { speed: `${avgSpeed.toFixed(1)} km/h`, mid: [(a.lat + b.lat) / 2, (a.lon + b.lon) / 2] },
+                style: new mk.Style({ strokeColor: speedColor(avgSpeed), lineWidth: 6, strokeOpacity: 0.95, lineCap: "round", lineJoin: "round" }),
+            },
+        ));
     }
-    return { type: "FeatureCollection", features };
+    return overlays;
 }
 
-function addLineLayers(map: maplibregl.Map) {
-    if (!map.getSource(ROUTE_SOURCE)) map.addSource(ROUTE_SOURCE, { type: "geojson", data: emptyFc() });
-    if (!map.getSource(WAYPOINT_SOURCE)) map.addSource(WAYPOINT_SOURCE, { type: "geojson", data: emptyFc() });
-
-    if (!map.getLayer("route-line-casing")) {
-        map.addLayer({
-            id: "route-line-casing",
-            type: "line",
-            source: ROUTE_SOURCE,
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-                "line-color": "#ffffff",
-                "line-opacity": 0.55,
-                "line-width": ["+", ["coalesce", ["get", "_weight"], 6], 2],
-            },
-        });
-    }
-    if (!map.getLayer("route-line-main")) {
-        map.addLayer({
-            id: "route-line-main",
-            type: "line",
-            source: ROUTE_SOURCE,
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-                "line-color": ["coalesce", ["get", "_color"], "#6ec3db"],
-                "line-width": ["coalesce", ["get", "_weight"], 6],
-                "line-opacity": ["coalesce", ["get", "_opacity"], 0.95],
-            },
-        });
-    }
-    if (!map.getLayer("waypoint-line")) {
-        map.addLayer({
-            id: "waypoint-line",
-            type: "line",
-            source: WAYPOINT_SOURCE,
-            layout: { "line-cap": "round", "line-join": "round" },
-            paint: {
-                "line-color": ["coalesce", ["get", "_color"], "#22c55e"],
-                "line-width": 6,
-                "line-opacity": 0.95,
-            },
-        });
-    }
-
-    const flagged = map as unknown as { __waypointHoverBound?: boolean };
-    if (!flagged.__waypointHoverBound) {
-        flagged.__waypointHoverBound = true;
-        const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8 });
-        map.on("mousemove", "waypoint-line", (e) => {
-            const f = e.features?.[0];
-            const speed = f?.properties?._speed;
-            if (!speed) return;
-            map.getCanvas().style.cursor = "pointer";
-            popup.setLngLat(e.lngLat).setHTML(`<div style="font-size:12px;font-weight:600;">${speed}</div>`).addTo(map);
-        });
-        map.on("mouseleave", "waypoint-line", () => {
-            map.getCanvas().style.cursor = "";
-            popup.remove();
-        });
-    }
+function showSpeedTip(mk: MapKit, map: MKMap, ref: React.MutableRefObject<Annotation | null>, at: LatLng, text: string) {
+    if (ref.current) map.removeAnnotation(ref.current);
+    const { root, content } = pointElement();
+    content.style.transform = "translate(-50%, calc(-100% - 8px))";
+    content.className = "map-popup";
+    content.innerHTML = `<div style="font-size:12px;font-weight:600;">${text}</div>`;
+    ref.current = new mk.Annotation(new mk.Coordinate(at[0], at[1]), () => root, {
+        enabled: false,
+        displayPriority: mk.AnnotationDisplayPriority.Required,
+        collisionMode: mk.AnnotationCollisionMode.None,
+        animates: false,
+    });
+    map.addAnnotation(ref.current);
 }
 
 // --------------------------------------------------------------------------
-// controls
-
-class ButtonControl implements maplibregl.IControl {
-    private html: string;
-    private onClick: () => void;
-    private container?: HTMLDivElement;
-
-    constructor(html: string, onClick: () => void) {
-        this.html = html;
-        this.onClick = onClick;
-    }
-
-    onAdd(): HTMLElement {
-        const container = document.createElement("div");
-        container.className = "maplibregl-ctrl";
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = `${buttonVariants({ variant: "default", size: "icon" })} map-control-button`;
-        button.innerHTML = this.html;
-        const stop = (e: Event) => {
-            e.stopPropagation();
-            if ("preventDefault" in e) e.preventDefault();
-        };
-        button.addEventListener("pointerup", (e) => {
-            stop(e);
-            this.onClick();
-        });
-        ["mousedown", "dblclick", "pointerdown", "click"].forEach((ev) => button.addEventListener(ev, stop));
-        container.appendChild(button);
-        this.container = container;
-        return container;
-    }
-
-    onRemove(): void {
-        this.container?.remove();
-        this.container = undefined;
-    }
-}
-
-const ZOOM_IN_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-in"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
-const ZOOM_OUT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zoom-out"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>`;
-const LOCATE_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-navigation"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>`;
-
-function addZoomControls(map: maplibregl.Map, position: maplibregl.ControlPosition): maplibregl.IControl[] {
-    const controls = [
-        new ButtonControl(ZOOM_IN_SVG, () => map.zoomIn()),
-        new ButtonControl(ZOOM_OUT_SVG, () => map.zoomOut()),
-    ];
-    controls.forEach((c) => map.addControl(c, position));
-    return controls;
-}
-
-function addUserMarker(
-    user: { marker: maplibregl.Marker | null; control: maplibregl.IControl | null },
-    map: maplibregl.Map,
-    userLocation: LatLng,
-    position: maplibregl.ControlPosition
-) {
-    if (userLocation[0] === 0 && userLocation[1] === 0) return;
-
-    if (user.marker) {
-        user.marker.setLngLat(toLngLat(userLocation));
-    } else {
-        const el = document.createElement("div");
-        el.className = "flex items-center justify-center";
-        el.innerHTML = USER_LOCATION_HTML;
-        user.marker = new maplibregl.Marker({ element: el, anchor: "center" }).setLngLat(toLngLat(userLocation)).addTo(map);
-    }
-
-    if (!user.control) {
-        const marker = user.marker;
-        user.control = new ButtonControl(LOCATE_SVG, () => {
-            if (marker) map.flyTo({ center: marker.getLngLat(), zoom: 15 });
-        });
-        map.addControl(user.control, position);
-    }
-}
-
-// --------------------------------------------------------------------------
-// geolocation (framework-agnostic - unchanged from the Leaflet version)
+// geolocation
 
 async function checkPermission(): Promise<boolean> {
     if (!navigator.permissions) return true;
@@ -719,3 +630,4 @@ async function getUserLocation(): Promise<LatLng> {
         );
     });
 }
+
