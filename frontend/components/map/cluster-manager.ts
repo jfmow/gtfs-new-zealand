@@ -1,7 +1,7 @@
-import maplibregl from "maplibre-gl";
-import type { FeatureCollection, Point } from "geojson";
-import { createClusterElement, createNewMarker, updateExistingMarker, type MapItem } from "./markers/create";
-import { toLngLat, whenStyleReady } from "./geo";
+import type { Annotation, Map as MKMap, MapKit } from "@apple/mapkit-loader";
+import Supercluster from "supercluster";
+import { createAnnotation, createClusterAnnotation, updateAnnotation, type MapItem } from "./markers/create";
+import { currentZoom, setView, viewBBox } from "./geo";
 
 interface MarkerManagerOptions {
     /** A marker `type` with at least this many items switches to clustered rendering. */
@@ -12,44 +12,47 @@ interface MarkerManagerOptions {
 const DEFAULT_THRESHOLD = 100;
 const DEFAULT_RADIUS = 50;
 
+type ClusterProps = { id: string };
+
 /**
- * Keeps the map's HTML markers in sync with a list of `MapItem`s.
+ * Keeps the map's annotations in sync with a list of `MapItem`s.
  *
  * Per marker `type`: below the cluster threshold each item just gets its own
- * marker, diffed in place by id (the old Leaflet behaviour). At or above it the
- * points go into a MapLibre GeoJSON source with native clustering, and only
- * what's in the current viewport is rendered as markers - cluster bubbles or
- * leaf markers - which keeps the DOM node count bounded the way
- * Leaflet.markercluster did. Item ids are unique across the whole list, so a
- * single id-keyed marker map serves both modes.
+ * annotation, diffed in place by id. At or above it the points go into a
+ * Supercluster index and only what's in (or near) the viewport is put on the
+ * map - cluster bubbles or leaf markers - which keeps the DOM node count
+ * bounded on the ~6.5k-stop maps. MapKit's own clustering is not used: it
+ * keeps every member annotation in the DOM.
  */
 export class MarkerManager {
-    private map: maplibregl.Map;
+    private mk: MapKit;
+    private map: MKMap;
     private opts: MarkerManagerOptions;
 
-    private markers = new Map<string, maplibregl.Marker>();
-    private clusterMarkers = new Map<string, maplibregl.Marker>();
+    private annotations = new Map<string, Annotation>();
+    private clusterAnnotations = new Map<string, Annotation>();
+    /** ids currently on the map (annotation.map is set). */
+    private shown = new Set<string>();
 
-    /** ids currently rendered as their own marker (plain mode). */
+    /** ids rendered as their own marker (plain mode). */
     private plainIds = new Set<string>();
-    /** clustered type -> (id -> item) for leaf lookup during viewport render. */
-    private clusteredTypes = new Map<string, Map<string, MapItem>>();
+    /** clustered type -> index + (id -> item). */
+    private clustered = new Map<string, { index: Supercluster<ClusterProps>; lookup: Map<string, MapItem> }>();
     /** id -> minZoom, for the plain-mode declutter-on-zoom behaviour. */
     private minZoom = new Map<string, number>();
 
-    constructor(map: maplibregl.Map, opts?: Partial<MarkerManagerOptions>) {
+    constructor(mk: MapKit, map: MKMap, opts?: Partial<MarkerManagerOptions>) {
+        this.mk = mk;
         this.map = map;
         this.opts = {
             clusterThreshold: opts?.clusterThreshold ?? DEFAULT_THRESHOLD,
             clusterRadius: opts?.clusterRadius ?? DEFAULT_RADIUS,
         };
-        this.map.on("moveend", this.renderClustered);
-        this.map.on("sourcedata", this.onSourceData);
-        this.map.on("zoom", this.onZoom);
+        this.map.addEventListener("region-change-end", this.onRegionChange);
     }
 
-    getMarker(id: string): maplibregl.Marker | undefined {
-        return this.markers.get(id);
+    getAnnotation(id: string): Annotation | undefined {
+        return this.annotations.get(id);
     }
 
     setOptions(opts: Partial<MarkerManagerOptions>) {
@@ -68,264 +71,159 @@ export class MarkerManager {
         }
 
         const nextPlain = new Map<string, MapItem>();
-        const nextClusteredTypes = new Set<string>();
+        const nextClustered = new Map<string, MapItem[]>();
         for (const [type, list] of byType) {
-            if (list.length >= this.opts.clusterThreshold) nextClusteredTypes.add(type);
+            if (list.length >= this.opts.clusterThreshold) nextClustered.set(type, list);
             else for (const item of list) nextPlain.set(item.id, item);
         }
 
-        // Tear down cluster sources for types that are no longer clustered.
-        for (const type of [...this.clusteredTypes.keys()]) {
-            if (!nextClusteredTypes.has(type)) this.teardownClusterSource(type);
+        // Types that stopped being clustered: drop their leaves + bubbles.
+        for (const type of [...this.clustered.keys()]) {
+            if (!nextClustered.has(type)) this.teardownClusterType(type);
         }
 
-        // Plain markers: drop the ones that left, upsert the rest.
+        // Plain annotations: drop the ones that left, upsert the rest.
         for (const id of [...this.plainIds]) {
             if (!nextPlain.has(id)) {
-                this.markers.get(id)?.remove();
-                this.markers.delete(id);
+                this.hide(id);
+                this.annotations.delete(id);
                 this.plainIds.delete(id);
             }
         }
         this.minZoom.clear();
-        const zoom = this.map.getZoom();
+        const zoom = currentZoom(this.map);
         for (const [id, item] of nextPlain) {
             if (item.minZoom !== undefined) this.minZoom.set(id, item.minZoom);
-            const belowMinZoom = item.minZoom !== undefined && zoom < item.minZoom;
-            const existing = this.markers.get(id);
-            if (existing) {
-                updateExistingMarker(item, existing);
-                if (belowMinZoom) existing.remove();
-                else existing.addTo(this.map);
-            } else {
-                const marker = createNewMarker(item);
-                this.markers.set(id, marker);
-                if (!belowMinZoom) marker.addTo(this.map);
-            }
+            this.upsert(item);
             this.plainIds.add(id);
+            if (item.minZoom !== undefined && zoom < item.minZoom) this.hide(id);
+            else this.show(id);
         }
 
-        // Clustered types: (re)fill their GeoJSON sources.
-        for (const type of nextClusteredTypes) {
-            this.syncClusterSource(type, byType.get(type) ?? []);
+        for (const [type, list] of nextClustered) {
+            const index = new Supercluster<ClusterProps>({ radius: this.opts.clusterRadius, maxZoom: 16 });
+            index.load(list.map((item) => ({
+                type: "Feature",
+                properties: { id: item.id },
+                geometry: { type: "Point", coordinates: [item.lon, item.lat] },
+            })));
+            this.clustered.set(type, { index, lookup: new Map(list.map((i) => [i.id, i])) });
         }
 
         this.renderClustered();
     }
 
     destroy() {
-        this.map.off("moveend", this.renderClustered);
-        this.map.off("sourcedata", this.onSourceData);
-        this.map.off("zoom", this.onZoom);
-        for (const m of this.markers.values()) m.remove();
-        for (const m of this.clusterMarkers.values()) m.remove();
-        this.markers.clear();
-        this.clusterMarkers.clear();
-        for (const type of [...this.clusteredTypes.keys()]) this.teardownClusterSource(type);
+        this.map.removeEventListener("region-change-end", this.onRegionChange);
+        const all = [...this.annotations.values(), ...this.clusterAnnotations.values()].filter((a) => a.map);
+        if (all.length) this.map.removeAnnotations(all);
+        this.annotations.clear();
+        this.clusterAnnotations.clear();
+        this.shown.clear();
+        this.clustered.clear();
     }
 
-    /** Re-add cluster sources after a basemap style reload wiped them. */
-    reattachSources() {
-        const snapshot = [...this.clusteredTypes.entries()].map(([type, lookup]) => ({
-            type,
-            list: [...lookup.values()],
-        }));
-        this.clusteredTypes.clear();
-        for (const { type, list } of snapshot) this.syncClusterSource(type, list);
+    private upsert(item: MapItem): Annotation {
+        const existing = this.annotations.get(item.id);
+        if (existing) return updateAnnotation(this.mk, item, existing);
+        const a = createAnnotation(this.mk, item);
+        this.annotations.set(item.id, a);
+        return a;
+    }
+
+    private show(id: string) {
+        const a = this.annotations.get(id);
+        if (!a || this.shown.has(id)) return;
+        this.map.addAnnotation(a);
+        this.shown.add(id);
+    }
+
+    private hide(id: string) {
+        const a = this.annotations.get(id);
+        if (a && this.shown.has(id)) this.map.removeAnnotation(a);
+        this.shown.delete(id);
+    }
+
+    private onRegionChange = () => {
+        if (this.minZoom.size > 0) {
+            const zoom = currentZoom(this.map);
+            for (const [id, min] of this.minZoom) {
+                if (zoom >= min) this.show(id);
+                else this.hide(id);
+            }
+        }
         this.renderClustered();
-    }
-
-    private onZoom = () => {
-        if (this.minZoom.size === 0) return;
-        const zoom = this.map.getZoom();
-        for (const [id, min] of this.minZoom) {
-            const marker = this.markers.get(id);
-            if (!marker) continue;
-            const shown = marker.getElement().isConnected;
-            const shouldShow = zoom >= min;
-            if (shouldShow && !shown) marker.addTo(this.map);
-            else if (!shouldShow && shown) marker.remove();
-        }
     };
 
-    // ---- clustered mode -------------------------------------------------
-
-    private sourceId(type: string) {
-        return `cluster-src-${type}`;
-    }
-
-    private probeLayerId(type: string) {
-        return `cluster-probe-${type}`;
-    }
-
-    private syncClusterSource(type: string, list: MapItem[]) {
-        this.clusteredTypes.set(type, new Map(list.map((i) => [i.id, i])));
-
-        const data: FeatureCollection = {
-            type: "FeatureCollection",
-            features: list.map((item) => ({
-                type: "Feature",
-                properties: { id: item.id },
-                geometry: { type: "Point", coordinates: toLngLat([item.lat, item.lon]) as [number, number] },
-            })),
-        };
-
-        // addSource/addLayer throw if the style isn't fully parsed (initial load,
-        // or mid theme swap), so defer until it is.
-        whenStyleReady(this.map, () => {
-            if (!this.clusteredTypes.has(type)) return; // no longer clustered
-            const src = this.map.getSource(this.sourceId(type)) as maplibregl.GeoJSONSource | undefined;
-            if (src) {
-                src.setData(data);
-            } else {
-                this.map.addSource(this.sourceId(type), {
-                    type: "geojson",
-                    data,
-                    cluster: true,
-                    clusterRadius: this.opts.clusterRadius,
-                    clusterMaxZoom: 16,
-                });
-            }
-
-            // MapLibre only tiles a source that at least one layer references, and
-            // querySourceFeatures reads from those tiles - so add an invisible
-            // circle layer purely to make the cluster index build and be queryable.
-            if (!this.map.getLayer(this.probeLayerId(type))) {
-                this.map.addLayer({
-                    id: this.probeLayerId(type),
-                    type: "circle",
-                    source: this.sourceId(type),
-                    paint: { "circle-radius": 0, "circle-opacity": 0 },
-                });
-            }
-            this.renderClustered();
-        });
-    }
-
-    private teardownClusterSource(type: string) {
-        const lookup = this.clusteredTypes.get(type);
-        for (const id of lookup?.keys() ?? []) {
-            this.markers.get(id)?.remove();
-            this.markers.delete(id);
+    private teardownClusterType(type: string) {
+        const entry = this.clustered.get(type);
+        for (const id of entry?.lookup.keys() ?? []) {
+            this.hide(id);
+            this.annotations.delete(id);
         }
-        this.clusteredTypes.delete(type);
-        for (const [key, m] of [...this.clusterMarkers]) {
+        for (const [key, a] of [...this.clusterAnnotations]) {
             if (key.startsWith(`cl_${type}_`)) {
-                m.remove();
-                this.clusterMarkers.delete(key);
+                if (a.map) this.map.removeAnnotation(a);
+                this.clusterAnnotations.delete(key);
             }
         }
-        try {
-            if (this.map.getLayer(this.probeLayerId(type))) this.map.removeLayer(this.probeLayerId(type));
-            if (this.map.getSource(this.sourceId(type))) this.map.removeSource(this.sourceId(type));
-        } catch {
-            /* style already gone */
-        }
+        this.clustered.delete(type);
     }
-
-    private onSourceData = (e: maplibregl.MapSourceDataEvent) => {
-        if (e.sourceId?.startsWith("cluster-src-") && e.isSourceLoaded) this.renderClustered();
-    };
 
     private renderClustered = () => {
-        if (this.clusteredTypes.size === 0) return;
+        if (this.clustered.size === 0) return;
+        // Supercluster's radius is in pixels of 512px tiles - the same zoom scale as geo.ts.
+        // MapKit lands a hair under the zoom asked for (17 → 16.99).
+        const zoom = Math.floor(currentZoom(this.map) + 0.02);
+        const bbox = viewBBox(this.map);
 
         const keepLeaves = new Set<string>();
         const keepClusters = new Set<string>();
-        // Only cull a type's markers once we've actually read its source this
-        // pass - querySourceFeatures returns [] for a fraction of a second while
-        // the cluster index (re)builds, and culling on that would flush every
-        // marker off the map only to re-add it a frame later (visible flicker).
-        const culledTypes = new Set<string>();
+        const addClusters: Annotation[] = [];
 
-        for (const [type, lookup] of this.clusteredTypes) {
-            const srcId = this.sourceId(type);
-            if (!this.map.getSource(srcId)) continue;
-            const source = this.map.getSource(srcId) as maplibregl.GeoJSONSource;
-
-            let features: maplibregl.GeoJSONFeature[];
-            try {
-                features = this.map.querySourceFeatures(srcId);
-            } catch {
-                continue;
-            }
-
-            if (features.length === 0 && lookup.size > 0 && !this.map.isSourceLoaded(srcId)) {
-                continue;
-            }
-            culledTypes.add(type);
-
-            const seen = new Set<string>();
-            for (const f of features) {
-                const props = f.properties ?? {};
-                const coords = (f.geometry as Point).coordinates as [number, number];
-
+        for (const [type, { index, lookup }] of this.clustered) {
+            for (const f of index.getClusters(bbox, zoom)) {
+                const [lon, lat] = f.geometry.coordinates;
+                const props = f.properties as Partial<Supercluster.ClusterProperties> & Partial<ClusterProps>;
                 if (props.cluster) {
-                    const key = `cl_${type}_${props.cluster_id}`;
-                    if (seen.has(key)) continue;
-                    seen.add(key);
+                    const clusterId = props.cluster_id as number;
+                    const count = props.point_count ?? 0;
+                    const key = `cl_${type}_${clusterId}_${count}`;
                     keepClusters.add(key);
-                    const count = Number(props.point_count) || 0;
-                    const existing = this.clusterMarkers.get(key);
-                    if (existing) {
-                        existing.setLngLat(coords);
-                        const label = existing.getElement().querySelector("div > div");
-                        if (label && label.textContent?.trim() !== String(count)) {
-                            label.textContent = String(count);
-                        }
-                    } else {
-                        const el = createClusterElement(count);
-                        el.addEventListener("click", () => {
-                            source
-                                .getClusterExpansionZoom(Number(props.cluster_id))
-                                .then((z) => this.map.easeTo({ center: coords, zoom: z, duration: 400 }))
-                                .catch(() => {});
-                        });
-                        this.clusterMarkers.set(
-                            key,
-                            new maplibregl.Marker({ element: el }).setLngLat(coords).addTo(this.map)
-                        );
-                    }
+                    if (this.clusterAnnotations.has(key)) continue;
+                    const a = createClusterAnnotation(this.mk, lat, lon, count, () => {
+                        const z = Math.min(index.getClusterExpansionZoom(clusterId), 18);
+                        setView(this.mk, this.map, [lat, lon], z);
+                    });
+                    this.clusterAnnotations.set(key, a);
+                    addClusters.push(a);
                 } else {
-                    const id = String(props.id ?? "");
-                    const item = lookup.get(id);
-                    if (!item || seen.has(id)) continue;
-                    seen.add(id);
-                    keepLeaves.add(id);
-                    const existing = this.markers.get(id);
-                    if (existing) {
-                        updateExistingMarker(item, existing);
-                        existing.addTo(this.map);
-                    } else {
-                        const marker = createNewMarker(item);
-                        this.markers.set(id, marker);
-                        marker.addTo(this.map);
-                    }
+                    const item = lookup.get(props.id ?? "");
+                    if (!item) continue;
+                    keepLeaves.add(item.id);
+                    this.upsert(item);
+                    this.show(item.id);
                 }
             }
         }
 
-        for (const [key, m] of [...this.clusterMarkers]) {
-            const type = key.slice(3, key.lastIndexOf("_"));
-            if (culledTypes.has(type) && !keepClusters.has(key)) {
-                m.remove();
-                this.clusterMarkers.delete(key);
+        const removeClusters: Annotation[] = [];
+        for (const [key, a] of [...this.clusterAnnotations]) {
+            if (!keepClusters.has(key)) {
+                if (a.map) removeClusters.push(a);
+                this.clusterAnnotations.delete(key);
             }
         }
-        for (const [id, m] of [...this.markers]) {
-            if (this.plainIds.has(id) || keepLeaves.has(id)) continue;
-            const type = this.typeOfClusteredId(id);
-            if (type && culledTypes.has(type)) {
-                m.remove();
-                this.markers.delete(id);
+        if (removeClusters.length) this.map.removeAnnotations(removeClusters);
+        if (addClusters.length) this.map.addAnnotations(addClusters);
+
+        for (const { lookup } of this.clustered.values()) {
+            for (const id of lookup.keys()) {
+                if (!keepLeaves.has(id) && this.shown.has(id)) {
+                    this.hide(id);
+                    this.annotations.delete(id);
+                }
             }
         }
     };
-
-    private typeOfClusteredId(id: string): string | undefined {
-        for (const [type, lookup] of this.clusteredTypes) {
-            if (lookup.has(id)) return type;
-        }
-        return undefined;
-    }
 }

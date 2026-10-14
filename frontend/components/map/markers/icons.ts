@@ -5,7 +5,7 @@ import { Backpack, Bus, Flag, MapPin, Ship, TrainFront, Triangle, type LucideIco
 /**
  * Map marker artwork, drawn with the same Lucide icons the lists use
  * (`StopModeTile`, the planner's mode chips) so the map and the rest of the
- * UI read as one set. Markers are plain HTML strings (MapLibre markers are
+ * UI read as one set. Markers are plain HTML strings (MapKit JS annotations are
  * DOM elements), so each icon is rendered to SVG markup once and cached.
  */
 const svgCache = new Map<string, string>()

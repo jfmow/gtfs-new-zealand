@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/jfmow/at-trains-api/basemap"
 	"github.com/jfmow/at-trains-api/providers"
 	"github.com/jfmow/at-trains-api/providers/caches"
 	"github.com/jfmow/gtfs"
@@ -110,11 +109,6 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	e := echo.New()
-
-	nzApi := e.Group("/nz")
-	nzApi.Use(middleware.RateLimiterWithConfig(basemap.BasemapRateLimiterConfig))
-
-	nzApi.GET("/tiles/:z/:x/:y", basemap.LINZBasemapProxy)
 
 	//Enables rate limiter middleware for the following routes
 	e.Use(TraceIDMiddleware())
