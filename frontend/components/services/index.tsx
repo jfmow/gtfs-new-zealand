@@ -83,6 +83,8 @@ export interface Service {
     platform: string
     stops_away: number
     occupancy: number
+    /** Train length in cars once it's live - absent for buses/ferries or when unknown. */
+    cars?: number
     canceled: boolean
     skipped: boolean
     bikes_allowed: number
@@ -558,6 +560,7 @@ function ServiceRow({
                         <span className="font-medium text-blue-600 dark:text-blue-400">At this stop</span>
                     )}
                     {showOccupancy && <span>{getOccupancyShort(service.occupancy)}</span>}
+                    {isLive && !!service.cars && <span>{service.cars} cars</span>}
 
                     <span className="ml-auto inline-flex items-center gap-1.5">
                         <BikeIcon className={cn("h-3.5 w-3.5", allowedColor(service.bikes_allowed))} />

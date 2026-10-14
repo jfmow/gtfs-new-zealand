@@ -529,6 +529,9 @@ struct DepartureRow: View {
             if showOccupancy {
                 Text(OccupancyText.short(departure.occupancy)).font(.caption2).foregroundStyle(Theme.mutedForeground)
             }
+            if isLive, let cars = departure.cars {
+                Text("\(cars) cars").font(.caption2).foregroundStyle(Theme.mutedForeground)
+            }
 
             Spacer()
 

@@ -157,6 +157,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return nil, fmt.Errorf("No trip updates found: %w", err)
 		}
 
+		consists, _ := realtime.GetConsists()
+
 		// ==================================================================
 		// Preload caches to avoid repeated DB / file access
 		// ==================================================================
@@ -238,6 +240,7 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				Position:     VehiclesPosition{Lat: pos.GetLatitude(), Lon: pos.GetLongitude(), Bearing: pos.GetBearing()},
 				Occupancy:    int8(vehicle.GetOccupancyStatus()),
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
+				Cars:         consistCars(consists[tripIDCur]),
 			}
 
 			// ------------------------------------------------------------------
@@ -1021,6 +1024,7 @@ type VehiclesResponse struct {
 	VehicleType  string           `json:"type"` // bus, tram, metro
 	State        string           `json:"state,omitempty"`
 	OffCourse    bool             `json:"off_course"`
+	Cars         int              `json:"cars,omitempty"` // train length, 0 = unknown
 }
 
 type VehiclesRoute struct {

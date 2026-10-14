@@ -108,6 +108,7 @@ export function TrackerHero() {
                             {getOccupancyShort(vehicle.occupancy)}
                         </Chip>
                     )}
+                    {!!vehicle.cars && <Chip>{vehicle.cars} cars</Chip>}
                     {platform && <Chip>Platform {platform}</Chip>}
                     {vehicle.off_course && (
                         <Chip className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
