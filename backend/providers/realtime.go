@@ -384,6 +384,30 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		return JsonApiResponse(c, http.StatusOK, "", response)
 	})
 
+	// How many trains are running without a trip in the feed, so they can't
+	// be shown on the live map. AT sometimes stops attaching trips to trains
+	// in service; the web map shows a note when this is high. Only units that
+	// are fresh, moving and not the trailing half of a coupled train count -
+	// stabled units in yards report positions with no trip all the time.
+	realtimeRoute.GET("/train-coverage", func(c echo.Context) error {
+		untripped, err := realtime.GetUntrippedVehicles()
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
+				ResponseDetails("error", err.Error()))
+		}
+
+		consists, _ := realtime.GetConsists()
+		untracked := countUntrackedTrains(untripped, consists, time.Now())
+
+		tracked, err := liveVehicles(nil, "Train", false, LatLng{}, LatLng{})
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil,
+				ResponseDetails("error", err.Error()))
+		}
+
+		return JsonApiResponse(c, http.StatusOK, "", TrainCoverageResponse{Tracked: len(tracked), Untracked: untracked})
+	})
+
 	//Returns alerts from AT for a stop
 	realtimeRoute.GET("/alerts/:stopName", func(c echo.Context) error {
 		stopNameEncoded := c.PathParam("stopName")
@@ -1014,6 +1038,44 @@ func checkIfTripStarted(startTime, startDate string, localTimeZone *time.Locatio
 }
 
 // Vehicles
+const (
+	trainCoverageMaxAge   = 2 * time.Minute
+	trainCoverageMinSpeed = 2.0 // m/s - slower is a stabled or dwelling unit
+)
+
+// countUntrackedTrains counts the train units in `untripped` that look like a
+// train in service: a known train class, reported within trainCoverageMaxAge,
+// moving, and not a unit of a consist (a coupled train's trailing half).
+func countUntrackedTrains(untripped []*proto.VehiclePosition, consists rt.Consists, now time.Time) int {
+	inConsist := make(map[string]bool)
+	for _, units := range consists {
+		for _, u := range units {
+			inConsist[u.GetId()] = true
+		}
+	}
+
+	untracked := 0
+	for _, vp := range untripped {
+		unit := vp.GetVehicle()
+		if !isTrainUnit(unit.GetLabel()) || inConsist[unit.GetId()] {
+			continue
+		}
+		if now.Sub(time.Unix(int64(vp.GetTimestamp()), 0)) > trainCoverageMaxAge {
+			continue
+		}
+		if vp.GetPosition().GetSpeed() < trainCoverageMinSpeed {
+			continue
+		}
+		untracked++
+	}
+	return untracked
+}
+
+type TrainCoverageResponse struct {
+	Tracked   int `json:"tracked"`   // trains on the live map
+	Untracked int `json:"untracked"` // moving train units with no trip in the feed
+}
+
 type VehiclesResponse struct {
 	TripId       string           `json:"trip_id"`
 	Route        VehiclesRoute    `json:"route"`

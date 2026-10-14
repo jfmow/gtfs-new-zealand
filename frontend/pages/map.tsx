@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/router"
-import { MapPin, Search, X } from "lucide-react"
+import { Info, MapPin, Search, X } from "lucide-react"
 import { Header } from "@/components/nav"
 import LoadingSpinner from "@/components/loading-spinner"
 import ErrorScreen from "@/components/ui/error-screen"
@@ -271,6 +271,35 @@ type VehicleTypeFilter = "all" | "Bus" | "Train" | "Ferry"
 
 const VEHICLE_TYPE: Record<ModeFilter, VehicleTypeFilter> = { all: "all", bus: "Bus", train: "Train", ferry: "Ferry" }
 
+/** Fewer than this many unreported trains is normal noise - no note. */
+const UNTRACKED_TRAINS_NOTE_MIN = 3
+
+type TrainCoverage = { tracked: number; untracked: number }
+
+/** Moving trains the feed has no trip for (backend /realtime/train-coverage), polled with the live map. */
+function useUntrackedTrains(enabled: boolean): number {
+    const { currentUrl } = useUrl()
+    const [untracked, setUntracked] = useState(0)
+    useEffect(() => {
+        if (!enabled || !hasRealtime(currentUrl)) {
+            setUntracked(0)
+            return
+        }
+        let cancelled = false
+        async function load() {
+            const res = await ApiFetch<TrainCoverage>("realtime/train-coverage")
+            if (!cancelled) setUntracked(res.ok ? res.data.untracked : 0)
+        }
+        load()
+        const id = setInterval(load, VEHICLE_REFRESH_MS)
+        return () => {
+            cancelled = true
+            clearInterval(id)
+        }
+    }, [enabled, currentUrl])
+    return untracked
+}
+
 function VehiclesMode() {
     const isMobile = useIsMobile({ immediate: true })
     const { currentUrl } = useUrl()
@@ -306,6 +335,10 @@ function VehiclesMode() {
             clearInterval(id)
         }
     }, [filter, selectedTrip])
+
+    // Trains AT is running without a trip in its feed can't go on the map -
+    // when there are several, say so rather than look like they're missing.
+    const untrackedTrains = useUntrackedTrains(filter === "all" || filter === "train")
 
     useEffect(() => {
         if (!showStops || allStops.length > 0) return
@@ -429,7 +462,16 @@ function VehiclesMode() {
             {/* On a phone the tracker takes over the map, as on iOS - no
                 switch or filters floating over it. */}
             {!(isMobile && selectedTrip !== "") && (
-                <MapTopBar switcher={<MapModeSwitch mode="vehicles" />} insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}>
+                <MapTopBar
+                    switcher={<MapModeSwitch mode="vehicles" />}
+                    insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}
+                    note={untrackedTrains >= UNTRACKED_TRAINS_NOTE_MIN && (
+                        <>
+                            <Info className="h-3.5 w-3.5 shrink-0" />
+                            <span>{untrackedTrains} trains aren&apos;t shown - {currentUrl.displayName} isn&apos;t reporting their routes right now</span>
+                        </>
+                    )}
+                >
                     <ModeFilterChips value={filter} onChange={setFilter} />
                     <span className="mx-0.5 w-px shrink-0 self-stretch bg-border" aria-hidden />
                     <Popover>

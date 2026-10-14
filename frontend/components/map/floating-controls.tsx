@@ -34,9 +34,10 @@ export const MapChip = forwardRef<HTMLButtonElement, {
 /**
  * The row of controls floating at the top of the map: the mode switch, then
  * a horizontally scrolling row of filter pills (the iOS `MapModeFilterBar`).
- * `insetLeft` keeps it clear of an open side panel.
+ * `insetLeft` keeps it clear of an open side panel; `note` is a small line of
+ * status text under the pills.
  */
-export function MapTopBar({ switcher, children, insetLeft = 0 }: { switcher: ReactNode; children: ReactNode; insetLeft?: number }) {
+export function MapTopBar({ switcher, children, insetLeft = 0, note }: { switcher: ReactNode; children: ReactNode; insetLeft?: number; note?: ReactNode }) {
     return (
         <div
             className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 pt-3 transition-[padding] duration-300"
@@ -46,6 +47,11 @@ export function MapTopBar({ switcher, children, insetLeft = 0 }: { switcher: Rea
             <div className="pointer-events-auto flex max-w-full gap-1.5 overflow-x-auto px-3 pb-2 scrollbar-hide">
                 {children}
             </div>
+            {note && (
+                <div className="pointer-events-auto mx-3 -mt-1 flex max-w-sm items-center gap-1.5 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
+                    {note}
+                </div>
+            )}
         </div>
     )
 }

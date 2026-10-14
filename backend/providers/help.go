@@ -216,6 +216,13 @@ var carsPerUnit = map[string]int{
 	"AMP": 3, // Auckland's CAF EMUs: 3-car units, run alone or as a 6-car pair
 }
 
+// isTrainUnit reports whether a vehicle label is one of the known train unit
+// classes in carsPerUnit.
+func isTrainUnit(label string) bool {
+	class := strings.Fields(label)
+	return len(class) > 0 && carsPerUnit[class[0]] > 0
+}
+
 // consistCars is the length of a train from the units realtime.Consists infers
 // are coupled to run it; 0 when any unit's class is unknown (buses included).
 func consistCars(units []*proto.VehicleDescriptor) int {
