@@ -25,21 +25,6 @@ struct JourneyTimeline: View {
         legs.indices.contains(index) && legs[index].mode == "transit" && legs[..<index].contains { $0.mode == "transit" }
     }
 
-    /// A first walk that just reaches the stop the rider is already at
-    /// ("Walk to Alice Wylie Reserve · 1 min · 20 m") - it's noise, so the
-    /// timeline goes straight from "Leave from" to boarding. Same 50 m
-    /// "effectively the same pole" cut-off the planner uses for transfers.
-    /// Kept when it's to a different platform - the rider still has to move.
-    private func isAlreadyAtStop(_ index: Int) -> Bool {
-        guard index == 0, legs.count > 1, legs[1].mode == "transit" else { return false }
-        let leg = legs[index]
-        guard leg.mode == "walk", leg.distanceKm <= 0.05, leg.duration.timeInterval <= 120 else { return false }
-        if let platform = leg.toStop?.platformNumber, !platform.isEmpty {
-            return leg.fromStop?.platformNumber == platform
-        }
-        return true
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             if let startName, let first = legs.first {
@@ -50,7 +35,7 @@ struct JourneyTimeline: View {
                 }
             }
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
-                if !isAlreadyAtStop(index) {
+                if !(index == 0 && legs.hidesOriginWalk) {
                     TrackedLegRow(
                         leg: leg,
                         status: status(index),

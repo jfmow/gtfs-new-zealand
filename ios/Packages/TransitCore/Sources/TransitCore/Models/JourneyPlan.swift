@@ -98,3 +98,34 @@ public struct JourneyLeg: Codable, Hashable, Sendable {
         case vehicleTracked = "vehicle_tracked"
     }
 }
+
+public extension Array where Element == JourneyLeg {
+    /// Whether the first leg is a walk that only reaches the stop the rider
+    /// is already at ("Walk to Alice Wylie Reserve · 1 min · 20 m") - the
+    /// timeline and map leave it out. Same 50 m "effectively the same pole"
+    /// cut-off the planner uses for transfers. Kept when it's to a different
+    /// platform - the rider still has to move.
+    var hidesOriginWalk: Bool {
+        guard count > 1, let leg = first, leg.mode == "walk", self[1].mode == "transit",
+              leg.distanceKm <= 0.05, leg.duration.timeInterval <= 120 else { return false }
+        if let platform = leg.toStop?.platformNumber, !platform.isEmpty {
+            return leg.fromStop?.platformNumber == platform
+        }
+        return true
+    }
+}
+
+public extension JourneyPlan {
+    /// `routeGeoJSON`'s features minus the origin walk's line when
+    /// `legs.hidesOriginWalk` - features skip legs with no shape, so it's
+    /// matched as the first feature, a walk to the first leg's stop.
+    var visibleRouteFeatures: [GeoJSONFeature] {
+        guard var features = routeGeoJSON?.features else { return [] }
+        if legs.hidesOriginWalk, let feature = features.first,
+           (feature.properties?["mode"]?.stringValue ?? "walk") == "walk" {
+            let toStop = feature.properties?["to_stop_id"]?.stringValue
+            if toStop == nil || toStop == legs[0].toStop?.stopID { features.removeFirst() }
+        }
+        return features
+    }
+}
