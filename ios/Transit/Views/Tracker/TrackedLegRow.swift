@@ -25,6 +25,16 @@ struct JourneyTimeline: View {
         legs.indices.contains(index) && legs[index].mode == "transit" && legs[..<index].contains { $0.mode == "transit" }
     }
 
+    /// A first walk that just reaches the stop the rider is already at
+    /// ("Walk to Alice Wylie Reserve · 1 min · 20 m") - it's noise, so the
+    /// timeline goes straight from "Leave from" to boarding. Same 50 m
+    /// "effectively the same pole" cut-off the planner uses for transfers.
+    private func isAlreadyAtStop(_ index: Int) -> Bool {
+        guard index == 0, legs.count > 1, legs[1].mode == "transit" else { return false }
+        let leg = legs[index]
+        return leg.mode == "walk" && leg.distanceKm <= 0.05 && leg.duration.timeInterval <= 120
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if let startName, let first = legs.first {
@@ -35,14 +45,16 @@ struct JourneyTimeline: View {
                 }
             }
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
-                TrackedLegRow(
-                    leg: leg,
-                    status: status(index),
-                    progress: progress(index),
-                    tracked: tracked?(index) ?? leg.vehicleTracked,
-                    destinationName: index == legs.count - 1 ? destinationName : nil,
-                    accent: accent
-                )
+                if !isAlreadyAtStop(index) {
+                    TrackedLegRow(
+                        leg: leg,
+                        status: status(index),
+                        progress: progress(index),
+                        tracked: tracked?(index) ?? leg.vehicleTracked,
+                        destinationName: index == legs.count - 1 ? destinationName : nil,
+                        accent: accent
+                    )
+                }
                 if index < legs.count - 1, let wait = waitMinutes(index), wait >= 1 || isTransfer(before: index + 1) {
                     let transfer = isTransfer(before: index + 1)
                     TimelineRow(time: nil, rail: .dotted(Theme.mutedForeground.opacity(0.4)), marker: .none, highlighted: false) {
