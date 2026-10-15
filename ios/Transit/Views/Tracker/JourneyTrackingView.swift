@@ -816,7 +816,7 @@ struct JourneyTrackingView: View {
     /// the vehicle's full route shape instead, with the parts before you
     /// board and after you get off greyed out - like the web tracker.
     private var polylines: [RoutePolylineData] {
-        let features = plan.visibleRouteFeatures
+        guard let features = plan.routeGeoJSON?.features else { return [] }
         let transitLegs = plan.legs.filter { $0.mode == "transit" }
         let activeRide = activeRideLeg
         var transitIndex = 0

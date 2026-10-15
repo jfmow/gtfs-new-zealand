@@ -224,7 +224,7 @@ struct JourneyDetailView: View {
 
     /// Each ride in its own route colour, walks in grey.
     private var polylines: [RoutePolylineData] {
-        let features = plan.visibleRouteFeatures
+        guard let features = plan.routeGeoJSON?.features else { return [] }
         let transitColors = plan.legs.filter { $0.mode == "transit" }.map { $0.route?.routeColor ?? "" }
         var transitIndex = 0
         return features.enumerated().map { index, feature in

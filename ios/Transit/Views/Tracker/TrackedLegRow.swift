@@ -35,16 +35,14 @@ struct JourneyTimeline: View {
                 }
             }
             ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
-                if !(index == 0 && legs.hidesOriginWalk) {
-                    TrackedLegRow(
-                        leg: leg,
-                        status: status(index),
-                        progress: progress(index),
-                        tracked: tracked?(index) ?? leg.vehicleTracked,
-                        destinationName: index == legs.count - 1 ? destinationName : nil,
-                        accent: accent
-                    )
-                }
+                TrackedLegRow(
+                    leg: leg,
+                    status: status(index),
+                    progress: progress(index),
+                    tracked: tracked?(index) ?? leg.vehicleTracked,
+                    destinationName: index == legs.count - 1 ? destinationName : nil,
+                    accent: accent
+                )
                 if index < legs.count - 1, let wait = waitMinutes(index), wait >= 1 || isTransfer(before: index + 1) {
                     let transfer = isTransfer(before: index + 1)
                     TimelineRow(time: nil, rail: .dotted(Theme.mutedForeground.opacity(0.4)), marker: .none, highlighted: false) {
