@@ -29,10 +29,15 @@ struct JourneyTimeline: View {
     /// ("Walk to Alice Wylie Reserve · 1 min · 20 m") - it's noise, so the
     /// timeline goes straight from "Leave from" to boarding. Same 50 m
     /// "effectively the same pole" cut-off the planner uses for transfers.
+    /// Kept when it's to a different platform - the rider still has to move.
     private func isAlreadyAtStop(_ index: Int) -> Bool {
         guard index == 0, legs.count > 1, legs[1].mode == "transit" else { return false }
         let leg = legs[index]
-        return leg.mode == "walk" && leg.distanceKm <= 0.05 && leg.duration.timeInterval <= 120
+        guard leg.mode == "walk", leg.distanceKm <= 0.05, leg.duration.timeInterval <= 120 else { return false }
+        if let platform = leg.toStop?.platformNumber, !platform.isEmpty {
+            return leg.fromStop?.platformNumber == platform
+        }
+        return true
     }
 
     var body: some View {
