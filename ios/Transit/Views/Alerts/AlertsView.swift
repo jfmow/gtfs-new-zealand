@@ -19,6 +19,7 @@ struct AlertsView: View {
     @State private var loadError: Error?
     @State private var isLoading = true
     @State private var isShowingSubscription = false
+    @State private var isShowingPast = false
 
     var body: some View {
         content
@@ -48,30 +49,74 @@ struct AlertsView: View {
         } else if routesToDisplay.isEmpty {
             EmptyState(systemImage: "checkmark.circle", title: "No travel alerts", message: "No travel alerts found for this stop.")
         } else {
-            let current = selectedRoute ?? routesToDisplay[0]
+            let current = selectedRoute ?? defaultRoute
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     FlowLayout(spacing: 6, lineSpacing: 6) {
                         ForEach(routesToDisplay, id: \.self) { route in
-                            Chip(label: "\(route)  \(alertsByRoute[route]?.count ?? 0)", isActive: route == current) {
+                            Chip(label: "\(route)  \(currentAlerts(route).count)", isActive: route == current) {
                                 selectedRoute = route
+                                isShowingPast = false
                             }
                         }
                     }
-                    let alerts = alertsByRoute[current] ?? []
+                    let alerts = currentAlerts(current)
                     if alerts.isEmpty {
-                        EmptyState(systemImage: "checkmark.circle", title: "No alerts for this route")
+                        EmptyState(systemImage: "checkmark.circle", title: "No current alerts for this route")
                     } else {
                         ForEach(Array(alerts.enumerated()), id: \.offset) { _, alert in
                             AlertCard(alert: alert)
                         }
                     }
+                    pastAlertsSection(pastAlerts(current))
                 }
                 .padding(16)
                 .readableContentWidth()
             }
             .refreshable { await load() }
         }
+    }
+
+    /// Ended alerts the feed still carries, most recently ended first -
+    /// tucked away below the current ones until asked for.
+    @ViewBuilder
+    private func pastAlertsSection(_ past: [TransitAlert]) -> some View {
+        if !past.isEmpty {
+            if isShowingPast {
+                SectionLabel(text: "Past alerts")
+                    .padding(.top, 8)
+                ForEach(Array(past.enumerated()), id: \.offset) { _, alert in
+                    AlertCard(alert: alert)
+                }
+            } else {
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) { isShowingPast = true }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "clock.arrow.circlepath").font(.system(size: 12, weight: .medium))
+                        Text("Load past alerts (\(past.count))")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.shad(.outline, size: .sm))
+                .padding(.top, 8)
+            }
+        }
+    }
+
+    /// Open on a route with something current, not one whose chip reads 0.
+    private var defaultRoute: String {
+        routesToDisplay.first { !currentAlerts($0).isEmpty }
+            ?? routesToDisplay.first { !(alertsByRoute[$0] ?? []).isEmpty }
+            ?? routesToDisplay[0]
+    }
+
+    private func currentAlerts(_ route: String) -> [TransitAlert] {
+        (alertsByRoute[route] ?? []).filter { !AlertStatusCalculator.hasEnded($0) }
+    }
+
+    private func pastAlerts(_ route: String) -> [TransitAlert] {
+        (alertsByRoute[route] ?? []).filter { AlertStatusCalculator.hasEnded($0) }.sorted { $0.endDate > $1.endDate }
     }
 
     private func load() async {
