@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Activity, BarChart3, Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useUrl } from '@/lib/url-context'
 import { hasRealtime } from '@/lib/url-store'
@@ -174,7 +174,7 @@ function TabBar({ tabs, activeTab }: { tabs: NavTab[]; activeTab: NavTab | undef
     )
 }
 
-/** ☰ - what the iOS app's menu holds: My reminders, Find my vehicle, Settings. */
+/** ☰ - what the iOS app's menu holds: My reminders, Find my vehicle, Settings - plus Route reliability and Your travel. */
 function AppMenu() {
     const router = useRouter()
     const [remindersOpen, setRemindersOpen] = useState(false)
@@ -206,6 +206,16 @@ function AppMenu() {
                             Find my vehicle
                         </DropdownMenuItem>
                     )}
+                    {realtime && (
+                        <DropdownMenuItem onSelect={() => router.push('/reliability')}>
+                            <Activity className="w-4 h-4" />
+                            Route reliability
+                        </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onSelect={() => router.push('/recap')}>
+                        <BarChart3 className="w-4 h-4" />
+                        Your travel
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => router.push('/settings')}>
                         <Settings2Icon className="w-4 h-4" />

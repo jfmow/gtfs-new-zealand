@@ -162,6 +162,23 @@ final class LiveActivityContentBuilderTests: XCTestCase {
         XCTAssertEqual(c.nextLeg?.connectMinutes, -2)
     }
 
+    func testConnectingRideCancelled() {
+        var legs = [
+            leg("transit", route: route("A", "111111"), from: stop("s1", "One"), to: stop("s2", "Two"), dep: 0, arr: 600),
+            leg("walk", to: stop("s3", "Three"), dep: 600, arr: 720),
+            leg("transit", route: route("B", "222222"), from: stop("s3", "Three"), to: stop("s4", "Four"), dep: 840, arr: 1800),
+        ]
+        legs[2].realtimeStatus = "canceled"
+        var c = LiveActivityContentBuilder.build(legs: legs, progress: progress(0, "onboard"), now: base.addingTimeInterval(300))
+        XCTAssertEqual(c.status, "missedConnection")
+        XCTAssertTrue(c.secondaryText.hasPrefix("The B at "), c.secondaryText)
+        XCTAssertTrue(c.secondaryText.hasSuffix("has been cancelled"), c.secondaryText)
+
+        legs[2].realtimeStatus = "skipped"
+        c = LiveActivityContentBuilder.build(legs: legs, progress: progress(0, "onboard"), now: base.addingTimeInterval(300))
+        XCTAssertTrue(c.secondaryText.hasSuffix("won't stop at Three"), c.secondaryText)
+    }
+
     func testCancelledLeg() {
         var legs = testLegs()
         legs[1] = leg("transit", route: route("70", "0073bd"), from: stop("board", "Britomart"), to: stop("alight", "Newmarket"), dep: 480, arr: 1500, usable: false)

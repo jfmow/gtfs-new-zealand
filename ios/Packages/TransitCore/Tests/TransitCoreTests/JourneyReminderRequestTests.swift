@@ -99,6 +99,53 @@ final class JourneyReminderRequestTests: XCTestCase {
         XCTAssertEqual(prefill.onlyRoutes, ["70-201"])
     }
 
+    func testWatchForChangesSendsAlertMode() throws {
+        var request = try XCTUnwrap(JourneyReminderRequest.make(
+            plan: plan, start: home, end: uni, arriveBy: false,
+            maxWalkKm: 1, walkSpeed: 4.8, maxTransfers: 2, onlyRoutes: [],
+            offsets: [60], recurrence: "1111100", recurrenceUntil: nil, regionSlug: "at"))
+        XCTAssertNil(request.formFields["alertMode"], "the default leave-by reminder sends no mode")
+        request.alertMode = .changes
+        XCTAssertEqual(request.formFields["alertMode"], "changes")
+        XCTAssertEqual(request.formFields["offsets"], "[60]")
+    }
+
+    func testReliabilityRideKeysAndDecoding() throws {
+        // The walk has no key; the ride is route|stop|scheduled departure.
+        XCTAssertEqual(JourneyReliability.rideKeys(plan.legs),
+                       [nil, "70-201|s1|\(Int(base.addingTimeInterval(480).timeIntervalSince1970))"])
+
+        let json = #"{"rides":[{"samples":40,"on_time_pct":82,"early_pct":3,"late_pct":15,"typical_min":2,"cancelled_pct":10,"summary":"Usually 1–3 min late","detail":"82% on time · 1 in 10 cancelled","level":"poor"},null]}"#
+        let decoded = try JSONDecoder().decode(RidesReliability.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.rides.count, 2)
+        XCTAssertEqual(decoded.rides[0]?.level, .poor)
+        XCTAssertEqual(decoded.rides[0]?.cancelledPct, 10)
+        XCTAssertNil(decoded.rides[1])
+    }
+
+    func testChangeKeysOnlyBetweenRides() {
+        // One ride: no change.
+        XCTAssertTrue(JourneyReliability.changeKeys(plan.legs).isEmpty)
+        // Ride arriving 8:25, walk 2 min, ride leaving 8:30: 3 min slack.
+        let route = Route(routeID: "22N-201", agencyID: "", routeShortName: "22N", routeLongName: "", routeType: 3, routeColor: "", vehicleType: "Bus")
+        let walk = JourneyLeg(
+            mode: "walk", fromStop: stop("s2", "Newmarket"), toStop: stop("s3", "Broadway"), tripID: "", routeID: "", route: nil,
+            departureTime: GoTime(date: base.addingTimeInterval(1500)), arrivalTime: GoTime(date: base.addingTimeInterval(1620)),
+            duration: GoDuration(nanoseconds: 120_000_000_000), distanceKm: 0.1, stopSequenceID: 0,
+            scheduledDepartureTime: GoTime(date: nil), scheduledArrivalTime: GoTime(date: nil),
+            realtimeStatus: nil, delaySeconds: nil, tripUsable: true)
+        let second = JourneyLeg(
+            mode: "transit", fromStop: stop("s3", "Broadway"), toStop: stop("s4", "Ponsonby"), tripID: "trip-22", routeID: "22N-201", route: route,
+            departureTime: GoTime(date: base.addingTimeInterval(1800)), arrivalTime: GoTime(date: base.addingTimeInterval(2400)),
+            duration: GoDuration(nanoseconds: 600_000_000_000), distanceKm: 3, stopSequenceID: 0,
+            scheduledDepartureTime: GoTime(date: base.addingTimeInterval(1800)), scheduledArrivalTime: GoTime(date: base.addingTimeInterval(2400)),
+            realtimeStatus: nil, delaySeconds: nil, tripUsable: true)
+        let keys = JourneyReliability.changeKeys([plan.legs[1], walk, second])
+        XCTAssertEqual(keys.keys.sorted(), [2])
+        XCTAssertTrue(keys[2]!.hasPrefix("70-201|s2|"), keys[2]!)
+        XCTAssertTrue(keys[2]!.hasSuffix("|180"), keys[2]!)
+    }
+
     func testNoTransitLegMeansNoReminder() {
         var walkOnly = plan
         walkOnly.legs = [plan.legs[0]]

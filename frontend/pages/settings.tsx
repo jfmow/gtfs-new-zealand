@@ -12,6 +12,9 @@ import { usePlannerStyle, type PlannerStyle } from "@/lib/planner-style";
 import { ensureSubscription } from "@/lib/notifications";
 import { toast } from "sonner";
 import Link from "next/link";
+import { FareTypeSelect } from "@/components/fare-type-select";
+import { Switch } from "@/components/ui/switch";
+import { useShowFares } from "@/lib/fare-type";
 
 export default function Settings() {
     const { urlOptions, setCurrentUrl, currentUrl } = useUrl()
@@ -19,6 +22,7 @@ export default function Settings() {
     const [mapTheme, setMapTheme] = useState<MapThemeOverride>("auto")
     const [remindersOpen, setRemindersOpen] = useState(false)
     const [plannerStyle, setPlannerStyle] = usePlannerStyle()
+    const [showFares, setShowFares] = useShowFares()
     useEffect(() => setMapTheme(getMapThemeOverride()), [])
 
     return (
@@ -91,6 +95,24 @@ export default function Settings() {
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {/* Fares */}
+                    <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+                        <div>
+                            <p className="text-sm font-medium">Show fares</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">Estimated fares on planned journeys</p>
+                        </div>
+                        <Switch checked={showFares} onCheckedChange={setShowFares} aria-label="Show fares" />
+                    </div>
+
+                    {/* Fare type */}
+                    {showFares && <div className="flex items-center justify-between gap-6 px-4 py-3.5">
+                        <div>
+                            <p className="text-sm font-medium">Fare type</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">The fare you pay in this region - its own concessions</p>
+                        </div>
+                        <FareTypeSelect />
+                    </div>}
 
                     {/* Theme */}
                     <div className="flex items-center justify-between gap-6 px-4 py-3.5">

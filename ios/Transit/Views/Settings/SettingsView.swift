@@ -57,6 +57,23 @@ struct SettingsView: View {
     @AppStorage(Map3D.storageKey) private var map3D = false
     @AppStorage(VehicleRoute.glidingKey) private var glidesVehicles = true
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
+    @AppStorage(FareType.storageKey) private var fareTypes = ""
+    /// What this region offers - just Adult until it loads.
+    @State private var fareTypeOptions = FareTypeOption.adultOnly
+
+    /// The region's choice, as one of its options (Adult if it isn't one).
+    private var fareTypeSelection: Binding<String> {
+        Binding(
+            get: {
+                let chosen = FareTypeChoices.choice(in: fareTypes, region: environment.region.slug).rawValue
+                return fareTypeOptions.contains { $0.value == chosen } ? chosen : FareType.adult.rawValue
+            },
+            set: { value in
+                fareTypes = FareTypeChoices.setting(FareType(rawValue: value) ?? .adult, for: environment.region.slug, in: fareTypes)
+            }
+        )
+    }
+    @AppStorage(FareType.showFaresKey) private var showFares = true
     @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
 
     var body: some View {
@@ -121,6 +138,24 @@ struct SettingsView: View {
                     }
 
                     RowDivider()
+                    SettingsRow(title: "Show fares", detail: "Estimated fares on planned journeys") {
+                        Toggle("Show fares", isOn: $showFares)
+                            .labelsHidden()
+                            .tint(Theme.primary)
+                    }
+
+                    if showFares {
+                        RowDivider()
+                        SettingsRow(title: "Fare type",
+                                    detail: fareTypeOptions.first { $0.value == fareTypeSelection.wrappedValue }?.detail ?? "Which fares journeys show") {
+                            ShadSelect(
+                                selection: fareTypeSelection,
+                                options: fareTypeOptions.map { ($0.value, $0.label) }
+                            )
+                        }
+                    }
+
+                    RowDivider()
                     SettingsRow(title: "Planner", detail: "Step by step asks 4 simple questions, with large text and buttons") {
                         ShadSelect(
                             selection: $plannerStyleRaw,
@@ -138,6 +173,9 @@ struct SettingsView: View {
         }
         .pageBackground()
         .navigationTitle("Settings")
+        .task(id: environment.region.slug) {
+            fareTypeOptions = (try? await environment.api.fareTypes()).flatMap { $0.isEmpty ? nil : $0 } ?? FareTypeOption.adultOnly
+        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {

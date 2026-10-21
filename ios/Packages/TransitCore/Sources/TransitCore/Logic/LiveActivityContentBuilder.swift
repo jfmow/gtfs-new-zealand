@@ -348,7 +348,13 @@ public enum LiveActivityContentBuilder {
         c.nextLeg = .init(routeShortName: shortName(next), routeColorHex: next.route?.routeColor ?? "", departureUnix: depart.timeIntervalSince1970, connectMinutes: connect)
 
         guard c.status != "cancelled" else { return }
-        if transfer < 0 {
+        let nextRT = next.realtimeStatus ?? ""
+        if nextRT == "canceled" || nextRT == "cancelled" || nextRT == "skipped" {
+            // The ride being changed to won't be there - same as the Go builder.
+            c.status = "missedConnection"
+            let what = nextRT == "skipped" ? "won't stop at \(next.fromStop?.stopName ?? "your stop")" : "has been cancelled"
+            c.secondaryText = "The \(routeLabel(next)) at \(clock(depart)) \(what)"
+        } else if transfer < 0 {
             c.status = "missedConnection"
             c.secondaryText = "You'll likely miss the \(routeLabel(next)) at \(clock(depart))"
         } else if transfer - 60 < 90 {

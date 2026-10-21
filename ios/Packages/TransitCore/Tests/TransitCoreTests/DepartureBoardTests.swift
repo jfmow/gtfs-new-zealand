@@ -52,4 +52,15 @@ final class DepartureBoardTests: XCTestCase {
         let result = DepartureBoard.filterAndSort(departures).map(\.tripID)
         XCTAssertEqual(result, ["just-left", "running-late"])
     }
+
+    func testBunchedNeedsTwoCloseThenALongGap() {
+        let departures = [
+            makeDeparture(tripID: "a", timeTillArrival: 3),
+            makeDeparture(tripID: "b", timeTillArrival: 4),   // right behind a
+            makeDeparture(tripID: "c", timeTillArrival: 18),  // then a 14 min gap
+            makeDeparture(tripID: "d", timeTillArrival: 20),  // close to c, but no long gap after
+        ]
+        XCTAssertEqual(DepartureBoard.bunched(departures), ["b": 14])
+        XCTAssertEqual(DepartureBoard.bunched(Array(departures.prefix(2))), [:], "needs one after to know the gap")
+    }
 }

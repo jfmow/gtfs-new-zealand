@@ -1,7 +1,7 @@
 import SwiftUI
 import TransitCore
 
-/// First launch: pick the region (or have location pick it), then location
+/// First launch: pick the region (or have location pick it) and fare type, then location
 /// and notifications - each asked with a line on why, rather than a cold
 /// system prompt the moment Home appears - then whether to sync with
 /// iCloud, and which planner to use.
@@ -11,10 +11,12 @@ struct OnboardingView: View {
     @Environment(AppEnvironment.self) private var environment
     @AppStorage(PlannerStyle.storageKey) private var plannerStyleRaw = PlannerStyle.standard.rawValue
     @AppStorage(CloudSyncMonitor.enabledKey) private var iCloudSyncEnabled = true
+    @AppStorage(FareType.storageKey) private var fareTypes = ""
+    @State private var fareTypeOptions = FareTypeOption.adultOnly
     @State private var step = Step.region
     @State private var isLocating = false
 
-    enum Step: Int, CaseIterable { case region, location, notifications, sync, planner }
+    enum Step: Int, CaseIterable { case region, fare, location, notifications, sync, planner }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -98,6 +100,21 @@ struct OnboardingView: View {
             }
             .buttonStyle(.shad(.ghost, size: .sm))
 
+        case .fare:
+            header(icon: "ticket.fill", title: "What fare do you pay?",
+                   message: "Journeys show what they'll cost you. You can change this any time in Settings.")
+            let chosen = FareTypeChoices.choice(in: fareTypes, region: environment.region.slug).rawValue
+            VStack(spacing: 8) {
+                ForEach(fareTypeOptions) { option in
+                    choiceRow(title: option.label, detail: option.detail, isSelected: chosen == option.value) {
+                        fareTypes = FareTypeChoices.setting(FareType(rawValue: option.value) ?? .adult, for: environment.region.slug, in: fareTypes)
+                    }
+                }
+            }
+            .task(id: environment.region.slug) {
+                fareTypeOptions = (try? await environment.api.fareTypes()).flatMap { $0.isEmpty ? nil : $0 } ?? FareTypeOption.adultOnly
+            }
+
         case .location:
             header(icon: "location.fill", title: "Stops near you",
                    message: "Your location shows the stops around you with their next departures, times your walks, and follows a journey you're on - even with no mobile data.")
@@ -152,7 +169,7 @@ struct OnboardingView: View {
     private var footer: some View {
         VStack(spacing: 6) {
             switch step {
-            case .region:
+            case .region, .fare:
                 Button("Continue") { advance() }
                     .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
             case .location:

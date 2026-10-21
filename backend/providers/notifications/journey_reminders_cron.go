@@ -58,9 +58,19 @@ func runJourneyRemindersCron(
 	}
 
 	updates, _ := rt.GetTripUpdates() // nil / partial tolerated per row
+	// Service alerts, fetched only if a "changes" reminder is watching.
+	var alerts realtime.AlertMap
+	alertsFetched := false
+	getAlerts := func() realtime.AlertMap {
+		if !alertsFetched {
+			alerts, _ = rt.GetAlerts()
+			alertsFetched = true
+		}
+		return alerts
+	}
 
 	jrCronResolve(db, gtfsData, &rt, tz, region, osrmURL, planPut, now)
-	jrCronNotify(db, updates, live, tz, region, planLookup, now, findNext)
+	jrCronNotify(db, updates, live, tz, region, planLookup, now, findNext, getAlerts)
 	jrCronReroute(db, gtfsData, &rt, updates, tz, region, osrmURL, planLookup, planPut, now)
 }
 
@@ -181,6 +191,17 @@ func jrCronResolve(
 			planPut(plan)
 			_ = db.SetJourneyReminderPlanID(r.Id, plan.ID)
 		}
+		// A "changes" reminder whose ride was cancelled: say what replaces it
+		// (a leave-by reminder's next rung does that).
+		if r.AlertMode == jrAlertChanges && jrTakeRebooked(r) {
+			if title, body, ok := rebookedCopy(plan, tz, now); ok {
+				url := reminderURL(r)
+				if plan.ID != "" {
+					url = planViewURL(plan.ID, region)
+				}
+				notifyJourneyReminderClientURL(db, r, "rebooked", title, body, url)
+			}
+		}
 	}
 }
 
@@ -210,7 +231,9 @@ func jrHandleResolveFailure(db *Database, tz *time.Location, r JourneyReminder, 
 
 // ── PASS 2 — arm / notify ────────────────────────────────────────────────────
 
-func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLookup, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time, findNext nextJourneyFinder) {
+//
+// alerts (nil: none) is only called for a "changes" reminder that's watching.
+func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLookup, tz *time.Location, region string, planLookup func(id string) (gtfs.JourneyPlan, bool), now time.Time, findNext nextJourneyFinder, alerts func() realtime.AlertMap) {
 	rows, err := db.GetArmedJourneyReminders(region)
 	if err != nil {
 		return
@@ -226,6 +249,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 		sched := r.ScheduledDepartureUnix.Int64
 		access := r.AccessSeconds.Int64
 		boardSeq := int(r.BoardStopSequence.Int64)
+		quiet := r.AlertMode == jrAlertChanges
 
 		delay, canceled, skipped := 0, false, false
 		if updates != nil {
@@ -286,7 +310,9 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 		// Before the first rung, just track the live leave time silently -
 		// the list/next_leave_local and the first "leave in" push then use
 		// it rather than the timetable's.
-		if !ladderStarted && leaveUnix != baseline {
+		// A "changes" reminder keeps the time the rider has (the timetable's)
+		// until it tells them otherwise.
+		if !quiet && !ladderStarted && leaveUnix != baseline {
 			baseline = leaveUnix
 			changed = true
 		}
@@ -298,6 +324,10 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 		// go unsaid - the shift push only covered a new time still ahead,
 		// and a rung due with it said "leave in 5" (2026-10-02).
 		shifted := ladderStarted && prevLeave > 0 && absInt64(leaveUnix-prevLeave) >= jrReNotifyThresholdSeconds
+		if quiet {
+			shifted = prevLeave > 0 && absInt64(leaveUnix-prevLeave) >= jrChangeThresholdSeconds &&
+				jrWatching(r, leaveUnix, prevLeave, now)
+		}
 		jumpedPast := prevLeave > 0 && prevLeave-leaveUnix >= jrReNotifyThresholdSeconds &&
 			!leaveTime.After(now) && time.Unix(prevLeave, 0).After(now)
 		switch {
@@ -324,8 +354,12 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 				dir = "earlier"
 			}
 			shiftKey := fmt.Sprintf("shift-%d", now.Unix()/60)
+			shiftTitle := "Leave time updated"
 			shiftBody := fmt.Sprintf("The %s is running %s. New leave time %s (in %d min).",
 				orLabel(r.RouteShortName, "your service"), dir, leaveTime.Format("3:04pm"), maxInt(0, minsUntilLeave))
+			if quiet {
+				shiftTitle, shiftBody = changeCopy(r, departUnix, leaveUnix, tz, now)
+			}
 			// Earlier than planned: the rider may not be able to go
 			// sooner - offer a way that still leaves when they planned to
 			// and arrives about when they planned.
@@ -335,12 +369,12 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 				alt, haveAlt = findKeepingLeaveTime(findNext, plan, now, r.BoardTripID.String)
 			}
 			if haveAlt {
-				notifyJourneyReminderClientURL(db, r, shiftKey, "Leave time updated",
+				notifyJourneyReminderClientURL(db, r, shiftKey, shiftTitle,
 					shiftBody+" "+keepTimeSummary(alt, plan.ArrivalTime, tz)+" Tap to switch to it.", journeyTrackURL(alt.ID, region))
 			} else {
 				// Through the Live Activity when one's running, so the card
 				// and the push change together (one buzz).
-				notifyJourneyReminderLeave(db, r, shiftKey, "Leave time updated", shiftBody)
+				notifyJourneyReminderLeave(db, r, shiftKey, shiftTitle, shiftBody)
 			}
 
 			// Slipped >10 min later: replay any ladder rung whose new fire time
@@ -372,7 +406,7 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 			if now.Unix() >= leaveUnix-int64(o)*60 {
 				sent = append(sent, o)
 				changed = true
-				if left || (activityAlerts && o*60 <= int(getReadyLead.Seconds())) {
+				if left || quiet || (activityAlerts && o*60 <= int(getReadyLead.Seconds())) {
 					continue
 				}
 				fireMins = o // offsets are sorted desc, so the last write is the smallest rung
@@ -395,8 +429,13 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 		}
 
 		// Put the journey on the Lock Screen as the rider gets ready to go.
-		if !r.LAStarted && minsUntilLeave <= liveActivityStartLeadMinutes && departTime.After(now) {
+		if !quiet && !r.LAStarted && minsUntilLeave <= liveActivityStartLeadMinutes && departTime.After(now) {
 			jrMaybeStartLiveActivity(db, r, region, planLookup, now)
+		}
+
+		// Service alerts on the way, while a "changes" reminder is watching.
+		if quiet && havePlan && alerts != nil && !left && departTime.After(now) && jrWatching(r, leaveUnix, prevLeave, now) {
+			jrNotifyCommuteAlerts(db, r, plan, alerts())
 		}
 
 		// (c) persist / finish
@@ -423,6 +462,17 @@ func jrCronNotify(db *Database, updates realtime.TripUpdatesMap, live liveLegLoo
 // jrHandleBoardingLost handles a resolved boarding trip being cancelled or the
 // board stop being skipped.
 func jrHandleBoardingLost(db *Database, tz *time.Location, r JourneyReminder, now time.Time) {
+	if r.AlertMode == jrAlertChanges && now.Unix() < r.TargetUnix {
+		ride := "Your " + orLabel(r.RouteShortName, "service")
+		if r.ScheduledDepartureUnix.Valid {
+			ride = fmt.Sprintf("Your %s %s", time.Unix(r.ScheduledDepartureUnix.Int64, 0).In(tz).Format("3:04pm"), orLabel(r.RouteShortName, "service"))
+		}
+		notifyJourneyReminderClient(db, r, "rebook", ride+" has been cancelled",
+			"Finding the next way to go - we'll tell you which in a moment.")
+		jrMarkRebooked(r)
+		_ = db.ClearJourneyReminderResolution(r.Id)
+		return
+	}
 	if now.Unix() < r.TargetUnix {
 		notifyJourneyReminderClient(db, r, "rebook", "Journey change",
 			fmt.Sprintf("Your %s service was cancelled - we're finding you another and will still tell you when to leave.",

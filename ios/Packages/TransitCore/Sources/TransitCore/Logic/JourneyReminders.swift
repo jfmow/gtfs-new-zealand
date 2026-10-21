@@ -14,6 +14,15 @@ public struct JourneyReminderRequest: Equatable, Sendable {
         case journeyRequest = "journey_request"
     }
 
+    /// What the reminder pushes - `alert_mode` on the backend.
+    public enum AlertMode: String, Sendable {
+        /// "Leave in 15", "leave now" and the rest.
+        case leave
+        /// Only when something's wrong: the ride running late or early,
+        /// cancelled, or a service alert on the way.
+        case changes
+    }
+
     public struct Place: Equatable, Sendable {
         public var label: String
         public var coordinate: Coordinate
@@ -37,8 +46,10 @@ public struct JourneyReminderRequest: Equatable, Sendable {
     /// server re-plans the same way. Empty/0 = the planner's defaults.
     public var modes: Set<TravelMode> = []
     public var minTransferSec: Int = 0
-    /// Minutes before the leave time; 0 = "when to leave".
+    /// Minutes before the leave time; 0 = "when to leave". For `.changes`,
+    /// one value: how long before leaving to start watching.
     public var offsets: [Int]
+    public var alertMode: AlertMode = .leave
     public var deeplink: String
     // journey_request only
     public var recurrence: String?
@@ -74,6 +85,7 @@ public struct JourneyReminderRequest: Equatable, Sendable {
            let data = try? JSONEncoder().encode(onlyRoutes), let json = String(data: data, encoding: .utf8) {
             form["onlyRoutes"] = json
         }
+        if alertMode != .leave { form["alertMode"] = alertMode.rawValue }
         if !modes.isEmpty { form["modes"] = TravelMode.queryValue(modes) }
         if minTransferSec > 0 { form["minTransferSec"] = String(minTransferSec) }
         if let recurrence, !recurrence.isEmpty { form["recurrence"] = recurrence }

@@ -984,8 +984,14 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			kind = "journey_request"
 		}
 
-		// offsets
+		alertMode := normalizeAlertMode(c.FormValue("alertMode"))
+
+		// offsets - for a "changes" reminder, how long before leaving it
+		// starts watching (an hour, unless asked otherwise).
 		offsets := []int{30, 15, 5, 0}
+		if alertMode == jrAlertChanges {
+			offsets = []int{60}
+		}
 		if raw := c.FormValue("offsets"); raw != "" {
 			var parsed []int
 			if json.Unmarshal([]byte(raw), &parsed) != nil {
@@ -1102,6 +1108,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			RouteTypes:      routeTypes,
 			MinTransferSec:  ClampMinTransferSec(minTransferSec),
 			Offsets:         offsets,
+			AlertMode:       alertMode,
 			Recurrence:      recurrence,
 			RecurrenceUntil: recurrenceUntil,
 			Deeplink:        deeplink,
@@ -1191,6 +1198,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			"status":       reminder.Status,
 			"kind":         reminder.Kind,
 			"service_date": reminder.ServiceDate,
+			"alert_mode":   alertMode,
 		}
 		if reminder.BaselineLeaveUnix.Valid {
 			out["next_leave_unix"] = reminder.BaselineLeaveUnix.Int64

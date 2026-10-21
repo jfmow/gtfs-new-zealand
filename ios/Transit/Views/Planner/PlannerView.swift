@@ -39,6 +39,10 @@ struct PlannerView: View {
 
     // Results
     @State private var results: [JourneyPlan] = []
+    /// Plan id -> fare, for the results shown.
+    @State private var fares: [String: FareEstimate] = [:]
+    @AppStorage(FareType.storageKey) private var fareTypes = ""
+    @AppStorage(FareType.showFaresKey) private var showFares = true
     @State private var isPlanning = false
     @State private var planError: String?
     /// The search that produced `results` - reminders use this, not the
@@ -229,6 +233,12 @@ struct PlannerView: View {
                         .overlay(RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous).strokeBorder(Theme.danger.opacity(0.3), lineWidth: 1))
                 }
                 resultsList
+                    .task(id: results.map(\.id)) { await loadFares() }
+                    .onChange(of: fareTypes) { _, _ in
+                        fares = [:]
+                        Task { await loadFares() }
+                    }
+                    .onChange(of: showFares) { _, _ in Task { await loadFares() } }
             }
             .padding(16)
             .readableContentWidth()
@@ -450,6 +460,18 @@ struct PlannerView: View {
 
     // MARK: - Results (results-list.tsx)
 
+    /// Fares for the results - one request; an older server without the
+    /// endpoint just leaves them out.
+    private func loadFares() async {
+        guard showFares else { return }
+        let ids = results.map(\.id).filter { !$0.isEmpty && fares[$0] == nil }
+        let fareType = FareTypeChoices.choice(in: fareTypes, region: environment.region.slug)
+        guard !ids.isEmpty, let response = try? await environment.api.fares(planIDs: Array(ids.prefix(10)), fareType: fareType) else { return }
+        for (id, fare) in response.fares {
+            if let fare { fares[id] = fare }
+        }
+    }
+
     @ViewBuilder
     private var resultsList: some View {
         if !results.isEmpty {
@@ -460,7 +482,7 @@ struct PlannerView: View {
                     resultsHeader(now: context.date)
                     ForEach(results) { plan in
                         let missed = hasLeft(plan, now: context.date)
-                        let card = JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil, isMissed: missed)
+                        let card = JourneyResultCard(plan: plan, onRemind: canRemind(plan) ? { reminderPlan = plan } : nil, isMissed: missed, fare: showFares ? fares[plan.id] : nil)
                         if usesSplit {
                             Button { selectedPlanID = plan.id } label: {
                                 card.overlay {
@@ -720,6 +742,7 @@ struct JourneyResultCard: View {
     var onRemind: (() -> Void)?
     /// Its first ride has already left - still shown, but greyed.
     var isMissed = false
+    var fare: FareEstimate?
 
     private var hasDisruption: Bool {
         plan.legs.contains { $0.mode == "transit" && !$0.tripUsable }
@@ -746,6 +769,13 @@ struct JourneyResultCard: View {
                                 Text(departure, style: .time)
                                 Image(systemName: "arrow.right").font(.system(size: 9, weight: .semibold))
                                 Text(arrival, style: .time)
+                                if let fare {
+                                    Text(fare.label)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(Theme.foreground)
+                                        .padding(.leading, 4)
+                                        .accessibilityLabel("Fare \(fare.label)")
+                                }
                             }
                             .font(.meta)
                             .foregroundStyle(Theme.mutedForeground)

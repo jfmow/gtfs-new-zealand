@@ -5,3 +5,12 @@ fly.toml
 # local compose data + secrets
 docker-data
 .env
+
+# local runtime data - the image builds the binary only; the server's own
+# databases live on its /data volume
+/gtfs
+/notifications
+/plans
+/reliability
+/logs
+/base

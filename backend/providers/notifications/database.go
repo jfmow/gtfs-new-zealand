@@ -313,6 +313,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// reminder re-plans the way the rider asked.
 		{"route_types", `ALTER TABLE journey_reminders ADD COLUMN route_types TEXT NOT NULL DEFAULT '[]';`},
 		{"min_transfer_sec", `ALTER TABLE journey_reminders ADD COLUMN min_transfer_sec INTEGER NOT NULL DEFAULT 0;`},
+		// "leave" (the leave-by pushes) or "changes" (only when something
+		// changes - see jrAlertChanges).
+		{"alert_mode", `ALTER TABLE journey_reminders ADD COLUMN alert_mode TEXT NOT NULL DEFAULT 'leave';`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {

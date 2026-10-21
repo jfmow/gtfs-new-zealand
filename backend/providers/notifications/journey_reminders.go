@@ -54,6 +54,21 @@ const (
 
 	// Open-ended recurring reminders are capped this far past creation.
 	jrRecurrenceMaxDays = 90
+
+	// A "changes" reminder speaks up once the leave time has moved this far
+	// from the last one the rider has (the timetable's, to begin with).
+	jrChangeThresholdSeconds = 180
+)
+
+// Alert modes. jrAlertLeave is the leave-by reminder: "leave in 15", "leave
+// now" and the rest. jrAlertChanges watches the same journey but only
+// pushes when something's wrong - the ride running late or early (with the
+// new leave time), cancelled (with the next way to go), or a service alert
+// on the way - and is silent on a normal day. Offsets[0] is then how long
+// before leaving it starts watching.
+const (
+	jrAlertLeave   = "leave"
+	jrAlertChanges = "changes"
 )
 
 // Terminal / non-actionable statuses - excluded from the "active" queries.
@@ -104,6 +119,8 @@ type JourneyReminder struct {
 	// LAStarted is set once a Live Activity has been push-started for the
 	// current occurrence.
 	LAStarted bool
+	// AlertMode is jrAlertLeave or jrAlertChanges.
+	AlertMode string
 
 	Created int64
 	Updated int64
@@ -119,7 +136,7 @@ const jrColumns = `
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 	sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated,
-	plan_id, la_started
+	plan_id, la_started, alert_mode
 `
 
 func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
@@ -138,7 +155,7 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
 		&sentRaw, &r.BaselineLeaveUnix, &r.ResolveAttempts, &r.LastError, &r.Created, &r.Updated,
-		&r.PlanID, &r.LAStarted,
+		&r.PlanID, &r.LAStarted, &r.AlertMode,
 	); err != nil {
 		return JourneyReminder{}, err
 	}
@@ -267,8 +284,9 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			offsets, recurrence, recurrence_until, deeplink,
 			service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 			scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
-			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated
-		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?)
+			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated,
+			alert_mode
+		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?, ?)
 		ON CONFLICT(clientId, dedup_key) DO UPDATE SET
 			region=excluded.region, kind=excluded.kind, status=excluded.status,
 			start_lat=excluded.start_lat, start_lon=excluded.start_lon, start_label=excluded.start_label,
@@ -284,7 +302,8 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			scheduled_departure_unix=excluded.scheduled_departure_unix, access_seconds=excluded.access_seconds,
 			route_short_name=excluded.route_short_name, board_stop_name=excluded.board_stop_name,
 			sent_offsets='[]', baseline_leave_unix=excluded.baseline_leave_unix,
-			resolve_attempts=0, last_error='', updated=excluded.updated`,
+			resolve_attempts=0, last_error='', updated=excluded.updated,
+			alert_mode=excluded.alert_mode`,
 		r.ClientId, r.Region, r.DedupKey, r.Kind, r.Status,
 		r.StartLat, r.StartLon, r.StartLabel, r.EndLat, r.EndLon, r.EndLabel,
 		r.TimeType, r.TargetHHMM, r.MaxWalkKm, r.WalkSpeed, r.MaxTransfers,
@@ -293,6 +312,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 		r.ServiceDate, r.TargetUnix, r.BoardTripID, r.BoardStopID, r.BoardStopSequence,
 		r.ScheduledDepartureUnix, r.AccessSeconds, r.RouteShortName, r.BoardStopName,
 		encodeIntSlice(r.SentOffsets), r.BaselineLeaveUnix, r.ResolveAttempts, r.LastError, now, now,
+		normalizeAlertMode(r.AlertMode),
 	)
 	if err != nil {
 		return 0, fmt.Errorf("failed to upsert journey reminder: %w", err)
@@ -374,7 +394,9 @@ func (v *Database) ClearJourneyReminderResolution(id int) error {
 			plan_id='', la_started=0,
 			resolve_attempts=0, last_error='', updated=?
 		 WHERE id=?`,
-		now, id,
+		// Back-dated past the resolve throttle (GetJourneyRemindersToResolve)
+		// so the replacement is found on the next tick, not 10 min later.
+		now-600, id,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to clear journey reminder resolution: %w", err)
@@ -714,6 +736,7 @@ func journeyReminderDTO(r JourneyReminder, tz *time.Location) map[string]any {
 		"target_unix": r.TargetUnix,
 		"plan_id":     reminderPlanID(r),
 		"deeplink":    reminderURL(r),
+		"alert_mode":  normalizeAlertMode(r.AlertMode),
 	}
 	if r.RecurrenceUntil != "" {
 		dto["recurrence_until"] = r.RecurrenceUntil
@@ -731,4 +754,12 @@ func prettyServiceDate(serviceDate string, tz *time.Location) string {
 		return t.Format("Mon 2 Jan")
 	}
 	return serviceDate
+}
+
+// normalizeAlertMode maps anything but jrAlertChanges to jrAlertLeave.
+func normalizeAlertMode(mode string) string {
+	if mode == jrAlertChanges {
+		return jrAlertChanges
+	}
+	return jrAlertLeave
 }

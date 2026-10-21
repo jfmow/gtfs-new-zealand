@@ -27,6 +27,39 @@ struct JourneyDetailView: View {
     /// Trip ids with a vehicle in the live feed - nil until the first
     /// fetch, when the timeline falls back to the plan's own answer.
     @State private var liveTripIDs: Set<String>?
+    /// How each ride usually runs, aligned with `plan.legs`.
+    @State private var reliability: [ReliabilityStat?] = []
+    @State private var fare: FareEstimate?
+    /// How often each change works out, by the index of the ride changed to.
+    @State private var odds: [Int: ReliabilityConnection] = [:]
+    @AppStorage(FareType.storageKey) private var fareTypes = ""
+    @AppStorage(FareType.showFaresKey) private var showFares = true
+
+    /// One fetch per plan - the figures move over weeks. An older server
+    /// without the endpoint just leaves it empty.
+    private func loadFare() async {
+        guard showFares else { fare = nil; return }
+        let fareType = FareTypeChoices.choice(in: fareTypes, region: environment.region.slug)
+        fare = (try? await environment.api.fares(planIDs: [plan.id], fareType: fareType).fares[plan.id]) ?? nil
+    }
+
+    private func loadOdds() async {
+        let keys = JourneyReliability.changeKeys(plan.legs).sorted { $0.key < $1.key }
+        guard !keys.isEmpty, let result = try? await environment.api.reliability(changes: keys.map(\.value)) else { return }
+        var out: [Int: ReliabilityConnection] = [:]
+        for (n, entry) in keys.enumerated() where n < result.changes.count {
+            if let c = result.changes[n] { out[entry.key] = c }
+        }
+        odds = out
+    }
+
+    private func loadReliability() async {
+        let keys = JourneyReliability.rideKeys(plan.legs)
+        let asked = keys.compactMap { $0 }
+        guard !asked.isEmpty, let result = try? await environment.api.reliability(rides: asked) else { return }
+        var answers = result.rides.makeIterator()
+        reliability = keys.map { key in key == nil ? nil : (answers.next() ?? nil) }
+    }
 
     /// Keeps the tracking icons current while the preview is open (polled
     /// in the foreground) - a bus that wasn't out yet when you searched can
@@ -71,6 +104,23 @@ struct JourneyDetailView: View {
 
                 summary
 
+                if let fare {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Fare").font(.meta).foregroundStyle(Theme.mutedForeground)
+                            Spacer()
+                            Text(fare.label).font(.number(17))
+                        }
+                        Text([fare.detail, fare.note].compactMap { $0 }.joined(separator: " · "))
+                            .font(.meta)
+                            .foregroundStyle(Theme.mutedForeground)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(14)
+                    .shadCardBackground()
+                    .accessibilityElement(children: .combine)
+                }
+
                 if hasDisruption {
                     Label("Service disruption on this route. Check alternative routes.", systemImage: "exclamationmark.triangle")
                         .font(.bodyText)
@@ -99,7 +149,9 @@ struct JourneyDetailView: View {
                             guard let liveTripIDs, let leg = plan.legs[safe: index], leg.mode == "transit",
                                   let depart = leg.departureTime.date, depart.timeIntervalSinceNow < 3 * 3600 else { return nil }
                             return liveTripIDs.contains(leg.tripID)
-                        }
+                        },
+                        reliability: { index in reliability[safe: index] ?? nil },
+                        connectionOdds: { index in odds[index] }
                     )
                 }
 
@@ -132,6 +184,12 @@ struct JourneyDetailView: View {
             if router.visibleJourneyDetailPlanID == plan.id { router.visibleJourneyDetailPlanID = nil }
         }
         .foregroundPoll(every: .seconds(30), id: plan.id) { await refreshLiveVehicles() }
+        .task(id: plan.id) {
+            async let r: Void = loadReliability()
+            async let o: Void = loadOdds()
+            _ = await (r, o)
+        }
+        .task(id: "\(plan.id)|\(fareTypes)|\(showFares)") { await loadFare() }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)
         }

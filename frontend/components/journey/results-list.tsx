@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useFares } from "@/lib/fares"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { AlarmClock, AlertTriangle, ArrowLeftRight, ArrowRight, Bus, ChevronRight, Flag, Footprints, Loader2, RefreshCw, Ship, TrainFront } from "lucide-react"
@@ -52,6 +53,8 @@ export function ResultsList({
         const id = setInterval(() => setNow(Date.now()), 30_000)
         return () => clearInterval(id)
     }, [])
+
+    const fares = useFares(routes.map((r) => r.ID))
 
     if (routes.length === 0) return null
     const stale = !!canGoStale && !!plannedAt && now - plannedAt.getTime() > STALE_MS
@@ -108,6 +111,11 @@ export function ResultsList({
                                             {formatTime(route.DepartureTime)}
                                             <ArrowRight className="mx-1 inline h-3 w-3" />
                                             {formatTime(route.ArrivalTime)}
+                                            {fares[route.ID] && (
+                                                <span className="ml-2 font-medium text-foreground" title={fares[route.ID]!.detail}>
+                                                    {fares[route.ID]!.label}
+                                                </span>
+                                            )}
                                         </span>
                                     </div>
                                     {missed && <Badge variant="outline" className="text-[10px]">Left</Badge>}

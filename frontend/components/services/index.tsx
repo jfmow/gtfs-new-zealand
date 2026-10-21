@@ -15,6 +15,7 @@ import {
 } from "lucide-react"
 import { convert24hTo12h, formatTextToNiceLookingWords } from "@/lib/formating"
 import { getOccupancyShort } from "./occupancy"
+import { reliabilityTone, useStopReliability, type ReliabilityStat } from "@/lib/reliability"
 import ServiceTrackerView from "./tracker/panel"
 import type { PreviewData } from "./tracker"
 import { ApiFetch } from "@/lib/url-context"
@@ -140,6 +141,8 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
     const retryRef = useRef<(() => void) | null>(null)
     const online = useOnlineStatus()
     const isMobile = useIsMobile()
+    // How each route usually runs here - not for a future day's timetable.
+    const reliability = useStopReliability(filterDate ? undefined : services[0]?.stop.parent_stop_id || undefined)
 
     const getUniquePlatforms = (services: Service[]) => {
         const platforms = services.map((service) => service.platform)
@@ -265,6 +268,12 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
         : uniquePlatforms.platforms
 
     const visibleServices = sortServices(services, platformFilter)
+    const bunched = findBunched(visibleServices)
+    const waits = Object.entries(reliability.waits)
+        .map(([routeId, w]) => ({ w, name: services.find((s) => s.route.id === routeId)?.route.name ?? routeId }))
+        // Only worth a line where unevenness really adds to the wait.
+        .filter(({ w }) => w.real_wait_min - w.timetable_wait_min >= 0.5)
+        .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
     const isStale = !filterDate && (refreshFailed || !online) && lastUpdated !== null
 
     const trackerProps = selectedService && trackerTargetFor(selectedService)
@@ -326,6 +335,19 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
                     </section>
                 )}
 
+                {!filterDate && waits.length > 0 && (
+                    <p className="mb-3 text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Real waits here: </span>
+                        {waits.map(({ w, name }, i) => (
+                            <span key={name}>
+                                {i > 0 && " · "}
+                                {name} about {Math.round(w.real_wait_min)} min (timetable says {Math.round(w.timetable_wait_min)})
+                            </span>
+                        ))}
+                        <span className="hidden sm:inline"> - turning up at random, services running unevenly</span>
+                    </p>
+                )}
+
                 <section aria-labelledby="services-heading">
                     <h2 id="services-heading" className="sr-only">Departures from {stopName}</h2>
 
@@ -357,6 +379,8 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
                                             selected={(openTripId ?? selectedService?.trip_id) === service.trip_id}
                                             onOpen={() => onOpenService ? onOpenService(trackerTargetFor(service)) : setSelectedService(service)}
                                             onRemind={() => setReminderFor(service)}
+                                            reliability={reliability.routes[service.route.id]}
+                                            bunched={bunched.get(service.trip_id + service.platform)}
                                         />
                                     </motion.li>
                                 ))}
@@ -428,6 +452,8 @@ function ServiceRow({
     selected,
     onOpen,
     onRemind,
+    reliability,
+    bunched,
 }: {
     service: Service
     displayingSchedulePreview: boolean
@@ -435,6 +461,10 @@ function ServiceRow({
     onOpen: () => void
     /** "Remind me before it arrives" - right-click, or long-press on touch (the iOS row's context menu). */
     onRemind: () => void
+    /** How this route usually runs here - shown only when it's worth knowing (not "good"). */
+    reliability?: ReliabilityStat
+    /** Running right behind the one ahead on its route: minutes until the one after. */
+    bunched?: number
 }) {
     const isCanceled = service.canceled
     const isSkipped = service.skipped
@@ -561,6 +591,16 @@ function ServiceRow({
                     )}
                     {showOccupancy && <span>{getOccupancyShort(service.occupancy)}</span>}
                     {isLive && !!service.cars && <span>{service.cars} cars</span>}
+                    {bunched !== undefined && isLive && (
+                        <span className="font-medium text-amber-700 dark:text-amber-400" title={`Arriving just behind the ${service.route.name} ahead - the next one after isn't for ${bunched} min`}>
+                            Bunched · next after in {bunched} min
+                        </span>
+                    )}
+                    {reliability && reliability.level !== "good" && !isCanceled && !isSkipped && (
+                        <span className={reliabilityTone(reliability.level)} title={reliability.detail}>
+                            {reliability.summary}
+                        </span>
+                    )}
 
                     <span className="ml-auto inline-flex items-center gap-1.5">
                         <BikeIcon className={cn("h-3.5 w-3.5", allowedColor(service.bikes_allowed))} />
@@ -721,4 +761,36 @@ function sortServices(services: Service[], platformFilter: PlatformFilter | unde
             // to the top of the board.
             return a.time_till_arrival - b.time_till_arrival
         })
+}
+
+// Two of a route arriving within this of each other, with this long a wait
+// for the one after, are bunched.
+const BUNCHED_WITHIN_MIN = 2
+const BUNCHED_GAP_AFTER_MIN = 10
+
+/**
+ * Departures running right behind another of their route (same headsign)
+ * with a long gap after - the "two come at once, then nothing" pattern - as
+ * key (trip id + platform) -> minutes until the next one. Live services only.
+ */
+function findBunched(services: Service[]): Map<string, number> {
+    const out = new Map<string, number>()
+    const byLine = new Map<string, Service[]>()
+    for (const s of services) {
+        const live = (s.location_tracking || s.trip_update_tracking) && !s.canceled && !s.skipped && !s.departed
+        if (!live) continue
+        const key = `${s.route.id}|${s.headsign}`
+        byLine.set(key, [...(byLine.get(key) ?? []), s])
+    }
+    for (const line of byLine.values()) {
+        const sorted = [...line].sort((a, b) => a.time_till_arrival - b.time_till_arrival)
+        for (let i = 1; i + 1 < sorted.length; i++) {
+            const gapBefore = sorted[i].time_till_arrival - sorted[i - 1].time_till_arrival
+            const gapAfter = sorted[i + 1].time_till_arrival - sorted[i].time_till_arrival
+            if (gapBefore <= BUNCHED_WITHIN_MIN && gapAfter >= BUNCHED_GAP_AFTER_MIN) {
+                out.set(sorted[i].trip_id + sorted[i].platform, gapAfter)
+            }
+        }
+    }
+    return out
 }
