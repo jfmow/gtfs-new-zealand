@@ -119,6 +119,17 @@ type activityAlert struct {
 	// the Live Activity's own alert, which a tap can only open the journey
 	// from.
 	TapHint string `json:"-"`
+	// replan is where a connection alert's next way to go starts from (see
+	// offerNextJourney) - nil for alerts that don't offer one this way.
+	replan *replanSpot
+}
+
+// replanSpot: plan the next way to go from (lat, lon), setting off no
+// sooner than at, without boarding the ride that's been lost.
+type replanSpot struct {
+	lat, lon float64
+	at       time.Time
+	avoid    string
 }
 
 // isSettingOff is true for the alerts about leaving for the journey - the
@@ -696,15 +707,38 @@ func applyConnection(state *journeyActivityState, plan gtfs.JourneyPlan, timings
 	if state.Status == "cancelled" {
 		return
 	}
+	// The next way to go starts where the rider gets off this ride, once
+	// they're there.
+	var spot *replanSpot
+	if alight := plan.Legs[from].ToStop; alight != nil && (alight.StopLat != 0 || alight.StopLon != 0) {
+		spot = &replanSpot{lat: alight.StopLat, lon: alight.StopLon, at: timings[from].arr, avoid: next.TripID}
+	}
+	nt := timings[to]
 	slack := transfer - 60*time.Second
 	switch {
+	case nt.hasLive && (nt.live.Cancelled || nt.live.BoardSkipped):
+		// The ride they're changing to won't be there for them. Same key
+		// as fillTransit's once they reach it, so it's said only once.
+		state.Status = "missedConnection"
+		what := "has been cancelled"
+		if !nt.live.Cancelled {
+			what = "won't stop at " + stopLabel(next.FromStop)
+		}
+		state.SecondaryText = fmt.Sprintf("The %s at %s %s", routeLabel(next.Route), clock(nt.dep), what)
+		state.alert = &activityAlert{
+			Key:    fmt.Sprintf("cancel-%d", to),
+			Title:  fmt.Sprintf("The %s %s", routeLabel(next.Route), what),
+			Body:   "It's the one you're changing to.",
+			replan: spot,
+		}
 	case transfer < 0:
 		state.Status = "missedConnection"
 		state.SecondaryText = fmt.Sprintf("You'll likely miss the %s at %s", routeLabel(next.Route), clock(timings[to].dep))
 		state.alert = &activityAlert{
-			Key:   fmt.Sprintf("missed-%d", to),
-			Title: fmt.Sprintf("You'll likely miss the %s", routeLabel(next.Route)),
-			Body:  "Your connection no longer works. Tap to re-plan from here.",
+			Key:    fmt.Sprintf("missed-%d", to),
+			Title:  fmt.Sprintf("You'll likely miss the %s", routeLabel(next.Route)),
+			Body:   "Your connection no longer works.",
+			replan: spot,
 		}
 	case slack < 90*time.Second:
 		state.Status = "tightConnection"

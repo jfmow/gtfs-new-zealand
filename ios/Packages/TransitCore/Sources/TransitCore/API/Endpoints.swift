@@ -114,6 +114,46 @@ extension APIClient {
         return try await get("realtime/journey", query: query)
     }
 
+    // MARK: - Fares
+
+    /// Fare estimates for planned journeys, by plan id (up to 10), for the
+    /// rider's fare type.
+    public func fares(planIDs: [String], fareType: FareType = .adult) async throws -> FaresResponse {
+        try await get("fares", query: [
+            .init(name: "plans", value: planIDs.joined(separator: ",")),
+            .init(name: "concession", value: fareType.rawValue),
+        ])
+    }
+
+    /// The fare types the current region offers.
+    public func fareTypes() async throws -> [FareTypeOption] {
+        let response: FareTypesResponse = try await get("fares/types")
+        return response.types
+    }
+
+    // MARK: - Reliability
+
+    /// How each route usually runs at `stop` (or its station) around `at`.
+    public func reliability(stop: String, at: Date = Date()) async throws -> StopReliability {
+        try await get("reliability/stop", query: [
+            .init(name: "stop", value: stop),
+            .init(name: "at", value: String(Int(at.timeIntervalSince1970))),
+        ])
+    }
+
+    /// How each of a journey's rides usually runs - `rides` from
+    /// `JourneyReliability.rideKeys` (nils dropped); results come back in
+    /// the same order.
+    public func reliability(rides: [String]) async throws -> RidesReliability {
+        try await get("reliability/rides", query: [.init(name: "rides", value: rides.joined(separator: ","))])
+    }
+
+    /// How often each change works out - `changes` from
+    /// `JourneyReliability.changeKeys`; results in the same order.
+    public func reliability(changes: [String]) async throws -> ConnectionsReliability {
+        try await get("reliability/connections", query: [.init(name: "changes", value: changes.joined(separator: ","))])
+    }
+
     public func alerts(forStop stop: String, todayOnly: Bool = false) async throws -> AlertsForStop {
         try await get("realtime/alerts/\(Self.pathSegment(stop))", query: todayOnly ? [.init(name: "today", value: "true")] : [])
     }

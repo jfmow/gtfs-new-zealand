@@ -147,6 +147,8 @@ export interface VehiclesResponse {
     off_course: boolean
     /** Train length in cars - absent for buses/ferries or when unknown. */
     cars?: number
+    /** How late (negative: early) it's running now - absent when the feed doesn't say. */
+    delay_seconds?: number
 }
 
 export interface Position {

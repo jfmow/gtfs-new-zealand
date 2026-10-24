@@ -231,7 +231,7 @@ func main() {
 		if r.rtErr != nil {
 			panic(r.rtErr)
 		}
-		providers.SetupProvider(r.group, r.gtfs, r.rt, r.name, r.timeZone(), r.caches)
+		providers.SetupProvider(r.group, r.gtfs, r.rt, r.name, r.dbName, r.timeZone(), r.caches)
 	}
 	var httpAddr string
 	flag.StringVar(&httpAddr, "http", "0.0.0.0:8090", "HTTP server address (IP:Port)")

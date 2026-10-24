@@ -112,6 +112,9 @@ struct UpcomingRemindersList: View {
         if reminder.isRepeating {
             parts.append(JourneyReminderMath.weekdayMaskLabel(reminder.recurrence))
         }
+        if reminder.watchesForChanges {
+            parts.append("only if something changes")
+        }
         return parts.joined(separator: " · ")
     }
 

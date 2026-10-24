@@ -73,7 +73,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^24.19.2",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "eslint": "^8",

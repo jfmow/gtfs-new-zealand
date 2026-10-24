@@ -107,6 +107,7 @@ public enum SubscriptionDetail {
     /// arrive, never the ride's departure.
     public static func text(for reminder: JourneyReminderDTO) -> String {
         var parts = [JourneyReminderMath.weekdayMaskLabel(reminder.recurrence)]
+        if reminder.watchesForChanges { parts.append("only if something changes") }
         if reminder.status == "pending_resolve" {
             parts.append("finding your trip…")
         } else if reminder.status == "scheduled" {
@@ -188,6 +189,8 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
     /// What the reminder's notification opens (a journey or the prefilled
     /// planner).
     public let deeplink: String?
+    /// "leave" or "changes" - absent from older servers.
+    public let alertMode: String?
 
     enum CodingKeys: String, CodingKey {
         case id, kind, status, recurrence, offsets
@@ -204,7 +207,11 @@ public struct JourneyReminderDTO: Codable, Sendable, Identifiable {
         case targetUnix = "target_unix"
         case planID = "plan_id"
         case deeplink
+        case alertMode = "alert_mode"
     }
+
+    /// Only pushes when something changes (no leave-by reminders).
+    public var watchesForChanges: Bool { alertMode == JourneyReminderRequest.AlertMode.changes.rawValue }
 
     public var isRepeating: Bool { recurrence.contains("1") }
     public var targetDate: Date? { targetUnix.flatMap { $0 > 0 ? Date(timeIntervalSince1970: TimeInterval($0)) : nil } }

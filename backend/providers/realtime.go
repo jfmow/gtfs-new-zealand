@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -242,6 +243,9 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 				LicensePlate: vehicle.GetVehicle().GetLicensePlate(),
 				Cars:         consistCars(consists[tripIDCur]),
 			}
+			if d, ok := currentDelay(tripUpdate, time.Now()); ok {
+				resp.DelaySeconds = &d
+			}
 
 			// ------------------------------------------------------------------
 			// Detailed trip information (only when specific trip(s) are requested)
@@ -382,6 +386,16 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", response)
+	})
+
+	// How the network's running right now - every running vehicle's delay,
+	// summed up, and the routes running latest.
+	realtimeRoute.GET("/network", func(c echo.Context) error {
+		vehicles, err := liveVehicles(nil, "", false, LatLng{}, LatLng{})
+		if err != nil {
+			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
+		}
+		return JsonApiResponse(c, http.StatusOK, "", summariseNetwork(vehicles))
 	})
 
 	// How many trains are running without a trip in the feed, so they can't
@@ -1087,6 +1101,9 @@ type VehiclesResponse struct {
 	State        string           `json:"state,omitempty"`
 	OffCourse    bool             `json:"off_course"`
 	Cars         int              `json:"cars,omitempty"` // train length, 0 = unknown
+	// DelaySeconds is how late (negative: early) it's running now, from its
+	// trip update - absent when the update doesn't say.
+	DelaySeconds *int `json:"delay_seconds,omitempty"`
 }
 
 type VehiclesRoute struct {
@@ -1140,4 +1157,116 @@ func firstTranslation(ts *proto.TranslatedString) string {
 		return ""
 	}
 	return translations[0].GetText()
+}
+
+// currentDelay is how late a running trip is now: the delay at the
+// furthest stop it has already been at, else its next prediction, else the
+// trip update's own delay.
+func currentDelay(tu *proto.TripUpdate, now time.Time) (int, bool) {
+	var past, next *int32
+	var pastSeq uint32
+	nextAt := int64(math.MaxInt64)
+	for _, stu := range tu.GetStopTimeUpdate() {
+		ev := stu.GetDeparture()
+		if ev == nil || ev.Delay == nil {
+			ev = stu.GetArrival()
+		}
+		if ev == nil || ev.Delay == nil {
+			continue
+		}
+		if at := ev.GetTime(); at != 0 && at <= now.Unix() {
+			if past == nil || stu.GetStopSequence() >= pastSeq {
+				past, pastSeq = ev.Delay, stu.GetStopSequence()
+			}
+		} else if at == 0 || at < nextAt {
+			next, nextAt = ev.Delay, at
+		}
+	}
+	switch {
+	case past != nil:
+		return int(*past), true
+	case next != nil:
+		return int(*next), true
+	case tu.Delay != nil:
+		return int(tu.GetDelay()), true
+	}
+	return 0, false
+}
+
+// NetworkStatus is how every running vehicle is doing now.
+type NetworkStatus struct {
+	Vehicles  int `json:"vehicles"`
+	Measured  int `json:"measured"`
+	OnTimePct int `json:"on_time_pct"`
+	EarlyPct  int `json:"early_pct"`
+	LatePct   int `json:"late_pct"`
+	// LatestRoutes are those running latest on average (5+ min), worst first.
+	LatestRoutes []NetworkRoute `json:"latest_routes"`
+}
+
+type NetworkRoute struct {
+	RouteID    string `json:"route_id"`
+	Name       string `json:"name"`
+	Color      string `json:"color"`
+	Vehicles   int    `json:"vehicles"`
+	AverageMin int    `json:"average_min"`
+}
+
+// On time, as reliability counts it: from 1 min early to 5 min late.
+const (
+	onTimeEarliest = -60
+	onTimeLatest   = 300
+)
+
+func summariseNetwork(vehicles []VehiclesResponse) NetworkStatus {
+	s := NetworkStatus{Vehicles: len(vehicles), LatestRoutes: []NetworkRoute{}}
+	var early, onTime, late int
+	type acc struct {
+		route VehiclesRoute
+		n     int
+		sum   int
+	}
+	routes := map[string]*acc{}
+	for _, v := range vehicles {
+		if v.DelaySeconds == nil {
+			continue
+		}
+		d := *v.DelaySeconds
+		switch {
+		case d < onTimeEarliest:
+			early++
+		case d < onTimeLatest:
+			onTime++
+		default:
+			late++
+		}
+		a := routes[v.Route.RouteId]
+		if a == nil {
+			a = &acc{route: v.Route}
+			routes[v.Route.RouteId] = a
+		}
+		a.n++
+		a.sum += d
+	}
+	s.Measured = early + onTime + late
+	if s.Measured > 0 {
+		pct := func(n int) int { return int(math.Round(100 * float64(n) / float64(s.Measured))) }
+		s.OnTimePct, s.EarlyPct, s.LatePct = pct(onTime), pct(early), pct(late)
+	}
+	for id, a := range routes {
+		avg := int(math.Round(float64(a.sum) / float64(a.n) / 60))
+		if avg >= 5 {
+			s.LatestRoutes = append(s.LatestRoutes, NetworkRoute{RouteID: id, Name: a.route.RouteShortName, Color: a.route.RouteColor, Vehicles: a.n, AverageMin: avg})
+		}
+	}
+	sort.Slice(s.LatestRoutes, func(i, j int) bool {
+		if s.LatestRoutes[i].AverageMin != s.LatestRoutes[j].AverageMin {
+			return s.LatestRoutes[i].AverageMin > s.LatestRoutes[j].AverageMin
+		}
+		return s.LatestRoutes[i].RouteID < s.LatestRoutes[j].RouteID
+	})
+	if len(s.LatestRoutes) > 5 {
+		s.LatestRoutes = s.LatestRoutes[:5]
+	}
+	return s
 }

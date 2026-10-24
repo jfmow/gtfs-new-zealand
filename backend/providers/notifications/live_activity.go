@@ -347,13 +347,14 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		// chime that leaves nothing behind once the screen goes dark. The
 		// notification stays on the Lock Screen, gets through a Focus and
 		// reaches a paired watch; the activity's alert then goes without
-		// sound so the phone only buzzes once.
+		// sound so the phone only buzzes once. So do alerts offering another
+		// journey: tapping the activity can only open the one it's for.
 		announce := alert != nil && activity.announcesAlerts(now)
 		laAlert := alert
 		bannerSent := false
 		if announce {
 			laAlert = nil
-		} else if alert != nil && alert.isSettingOff() {
+		} else if alert != nil && (alert.isSettingOff() || alert.URL != "") {
 			bannerSent = sendJourneyMomentNotification(db, activity, *alert)
 			if bannerSent {
 				a := *alert

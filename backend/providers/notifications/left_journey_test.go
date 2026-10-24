@@ -356,7 +356,7 @@ func TestReminder_LeaveTimeJumpsIntoThePast_LeaveNow(t *testing.T) {
 
 	// Running 3 min early: leave time now -1 min, ride +7, an 8 min walk
 	// + buffer - still makeable by leaving now.
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, nil)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, nil, nil)
 	sent := testNotifier.take()
 	if len(sent) != 1 || sent[0].Title != "Leave now for the 70" || !strings.Contains(sent[0].Body, "running 3 min early") {
 		t.Fatalf("want one leave-now push, got %+v", sent)
@@ -366,7 +366,7 @@ func TestReminder_LeaveTimeJumpsIntoThePast_LeaveNow(t *testing.T) {
 		t.Errorf("the 0 rung should be marked sent, got %v", rows[0].SentOffsets)
 	}
 	// Nothing more on the next tick.
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now.Add(30*time.Second), nil)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now.Add(30*time.Second), nil, nil)
 	if more := testNotifier.take(); len(more) != 0 {
 		t.Errorf("repeated: %+v", more)
 	}
@@ -384,7 +384,7 @@ func TestReminder_LeaveTimeJumpsIntoThePast_OffersThePlannedLeaveTime(t *testing
 		gotAt = at
 		return nextPlan(at), true
 	}
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find, nil)
 	sent := testNotifier.take()
 	if len(sent) != 1 || sent[0].Title != "Leave now for the 70" {
 		t.Fatalf("want one leave-now push, got %+v", sent)
@@ -408,7 +408,7 @@ func TestReminder_LeaveTimeMovesEarlier_OffersThePlannedLeaveTime(t *testing.T) 
 		return nextPlan(at), true
 	}
 	// 3 min early: leave time 7 min from now instead of 10.
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, find, nil)
 	sent := testNotifier.take()
 	if len(sent) != 1 || sent[0].Title != "Leave time updated" {
 		t.Fatalf("want one shift push, got %+v", sent)
@@ -432,7 +432,7 @@ func TestReminder_LeaveTimeJumpsIntoThePast_TooLateOffersNext(t *testing.T) {
 		return nextPlan(at), true
 	}
 	// 6 min early: the ride's at +4, an 8 min walk away.
-	jrCronNotify(db, nil, earlyBy(360), mustNZ(t), "at", lookup, now, find)
+	jrCronNotify(db, nil, earlyBy(360), mustNZ(t), "at", lookup, now, find, nil)
 	sent := testNotifier.take()
 	if len(sent) != 1 || sent[0].Title != "You'll miss the 70" {
 		t.Fatalf("want one missed push, got %+v", sent)
@@ -453,13 +453,81 @@ func TestReminder_NothingAboutLeavingOnceOnTheWay(t *testing.T) {
 	db.UpdateLiveActivityLeg(client.Id, "act-1", 0, "walking", false, now.Add(-3*time.Minute).Unix())
 	testNotifier.take()
 
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, nil)
-	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now.Add(3*time.Minute), nil)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now, nil, nil)
+	jrCronNotify(db, nil, earlyBy(180), mustNZ(t), "at", lookup, now.Add(3*time.Minute), nil, nil)
 	if sent := testNotifier.take(); len(sent) != 0 {
 		t.Errorf("sent %+v to a rider already on the way", sent)
 	}
 	activities, _ := db.GetActiveLiveActivitiesForRegion("at")
 	if len(activities) == 1 && activities[0].pendingAlert() != nil {
 		t.Errorf("queued %+v on the card for a rider already on the way", activities[0].pendingAlert())
+	}
+}
+
+// A connection that no longer works offers the next way from the stop the
+// rider gets off at, once they're there - and it goes out as a notification
+// too, since tapping the Live Activity can only open the journey it's for.
+func TestOfferNextJourney_MissedConnection(t *testing.T) {
+	plan := twoRidePlan(base)
+	plan.Legs[0].ToStop.StopLat, plan.Legs[0].ToStop.StopLon = -36.85, 174.76
+
+	// Ride A 4 min late: arrives 9:14, B leaves 9:14.
+	live := liveFor(map[string]legLive{"trip-a": {HasTripUpdate: true, DepartureDelay: 240, ArrivalDelay: 240}})
+	state := computeJourneyActivityState(plan, base.Add(8*time.Minute), live, noHint)
+	if state.alert == nil || state.alert.Key != "missed-2" || state.alert.replan == nil {
+		t.Fatalf("want a missed-connection alert with somewhere to re-plan from, got %+v", state.alert)
+	}
+
+	var gotLat float64
+	var gotAt time.Time
+	var gotAvoid string
+	find := func(_ gtfs.JourneyPlan, lat, _ float64, at time.Time, avoid string) (gtfs.JourneyPlan, bool) {
+		gotLat, gotAt, gotAvoid = lat, at, avoid
+		return nextPlan(at), true
+	}
+	alert := *state.alert
+	offerNextJourney(&alert, "m:2", plan, noHint, false, "auckland", time.UTC, base.Add(8*time.Minute), find)
+	if gotLat != -36.85 || !gotAt.Equal(base.Add(14*time.Minute)) || gotAvoid != "trip-b" {
+		t.Errorf("planned from %v at %v avoiding %q, want stop Two at 9:14 avoiding trip-b", gotLat, gotAt, gotAvoid)
+	}
+	if alert.URL != "/journey?id=next+plan&region=auckland&track=1" || alert.TapHint != "Tap to switch to it." {
+		t.Errorf("url=%q tap=%q", alert.URL, alert.TapHint)
+	}
+	if !strings.HasPrefix(alert.Body, "Your connection no longer works. Next: the 70 at 9:19am") {
+		t.Errorf("body = %q", alert.Body)
+	}
+
+	// Nothing found: still points at re-planning.
+	none := *state.alert
+	offerNextJourney(&none, "m:3", plan, noHint, false, "auckland", time.UTC, base.Add(8*time.Minute), func(gtfs.JourneyPlan, float64, float64, time.Time, string) (gtfs.JourneyPlan, bool) {
+		return gtfs.JourneyPlan{}, false
+	})
+	if none.URL != "" || none.TapHint != "Tap to find another way." || none.Body != "Your connection no longer works." {
+		t.Errorf("no offer: %+v", none)
+	}
+}
+
+// The ride being changed to is cancelled while the rider's still on the
+// first: said straight away, with the next way to go.
+func TestActivity_ConnectingRideCancelled(t *testing.T) {
+	plan := twoRidePlan(base)
+	plan.Legs[0].ToStop.StopLat, plan.Legs[0].ToStop.StopLon = -36.85, 174.76
+	live := liveFor(map[string]legLive{
+		"trip-a": {HasTripUpdate: true},
+		"trip-b": {HasTripUpdate: true, Cancelled: true},
+	})
+	state := computeJourneyActivityState(plan, base.Add(5*time.Minute), live, noHint)
+	if state.Status != "missedConnection" || state.SecondaryText != "The B at 9:14am has been cancelled" {
+		t.Fatalf("status=%s secondary=%q", state.Status, state.SecondaryText)
+	}
+	if state.alert == nil || state.alert.Key != "cancel-2" || state.alert.replan == nil || state.alert.replan.avoid != "trip-b" {
+		t.Fatalf("alert = %+v", state.alert)
+	}
+
+	// Skipping the stop they'd board at is just as lost.
+	live = liveFor(map[string]legLive{"trip-b": {HasTripUpdate: true, BoardSkipped: true}})
+	state = computeJourneyActivityState(plan, base.Add(5*time.Minute), live, noHint)
+	if state.alert == nil || state.alert.Title != "The B won't stop at Three" {
+		t.Fatalf("skipped: alert = %+v", state.alert)
 	}
 }

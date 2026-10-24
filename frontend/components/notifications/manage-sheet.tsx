@@ -85,6 +85,7 @@ function subscriptionDetail(causes: string[] | null, minSeverity: string, notify
 // When to leave and when you'll arrive - never the ride's departure.
 function journeyReminderDetail(r: JourneyReminder): string {
     const parts: string[] = [weekdayMaskLabel(r.recurrence)]
+    if (r.alert_mode === "changes") parts.push("only if something changes")
     if (r.status === "pending_resolve") {
         parts.push("finding your trip…")
     } else if (r.status === "scheduled") {

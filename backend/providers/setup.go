@@ -60,7 +60,7 @@ func ResponseDetails(pairs ...any) map[string]any {
 // SetupProvider registers one region's routes. An already-built cache set may be
 // passed in (main.go warms them per-region in parallel); otherwise they're built
 // here synchronously.
-func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, gtfsName string, localTimeZone *time.Location, prebuilt ...cachespkg.Caches) {
+func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, gtfsName, dbName string, localTimeZone *time.Location, prebuilt ...cachespkg.Caches) {
 	primaryRouter.Use(middleware.GzipWithConfig(gzipConfig))
 
 	var caches cachespkg.Caches
@@ -75,6 +75,8 @@ func SetupProvider(primaryRouter *echo.Group, gtfsData gtfs.Database, realtime r
 	setupStopsRoutes(primaryRouter, gtfsData, caches.GetParentStopsCache, caches.GetAllStopsCache, caches.GetStopsForTripCache)
 	setupRealtimeRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetStopsForTripCache, caches.GetRouteCache, caches.GetParentStopsByChildCache)
 	setupNavigationRoutes(primaryRouter, gtfsData)
+	setupReliabilityRoutes(primaryRouter, gtfsData, realtime, gtfsName, dbName, localTimeZone, caches.GetParentStopsByChildCache, caches.GetRouteCache, caches.GetAllStopsCache)
+	setupFaresRoutes(primaryRouter, gtfsData, gtfsName, dbName, localTimeZone)
 
 	notifications.SetupNotificationsRoutes(primaryRouter, gtfsData, realtime, localTimeZone, caches.GetParentStopsByChildCache, caches.GetStopsForTripCache, gtfsName, GetCachedPlan, StorePlan)
 

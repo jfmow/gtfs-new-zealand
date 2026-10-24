@@ -239,7 +239,11 @@ export interface JourneyReminder {
     board_stop_name: string
     next_leave_unix?: number
     next_leave_local?: string
+    /** "leave" = the leave-by pushes; "changes" = only when something's wrong. Absent on older backends. */
+    alert_mode?: JourneyReminderAlertMode
 }
+
+export type JourneyReminderAlertMode = "leave" | "changes"
 
 export interface JourneyReminderInput {
     kind?: "fixed_trip" | "journey_request"
@@ -255,7 +259,9 @@ export interface JourneyReminderInput {
     onlyRoutes?: string[]
     /** "bus,train,ferry" subset - empty/absent means any transport. */
     modes?: string
+    /** Leave-by heads-up minutes - or, for alertMode "changes", [minutes before leaving to start watching]. */
     offsets: number[]
+    alertMode?: JourneyReminderAlertMode
     recurrence?: string
     recurrenceUntil?: string
     boardTripId?: string
@@ -305,6 +311,7 @@ export async function addJourneyReminder(
     if (p.onlyRoutes && p.onlyRoutes.length > 0) form.set("onlyRoutes", JSON.stringify(p.onlyRoutes))
     if (p.modes) form.set("modes", p.modes)
     form.set("offsets", JSON.stringify(p.offsets))
+    if (p.alertMode) form.set("alertMode", p.alertMode)
     if (p.recurrence) form.set("recurrence", p.recurrence)
     if (p.recurrenceUntil) form.set("recurrenceUntil", p.recurrenceUntil)
     if (p.boardTripId) form.set("boardTripId", p.boardTripId)

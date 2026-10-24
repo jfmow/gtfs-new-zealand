@@ -45,6 +45,9 @@ import { useJourneyAlerts, boardProximityThreshold } from "./use-journey-alerts"
 import { JourneyAlertOverlay } from "./journey-alert-overlay"
 import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getFirstTransitLeg, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { useActiveJourney } from "./use-active-journey"
+import { reliabilityTone, useConnectionOdds, useRidesReliability, type ReliabilityConnection, type ReliabilityStat } from "@/lib/reliability"
+import { useFares } from "@/lib/fares"
+import { recordJourney } from "@/lib/travel-history"
 import { useHideResumePrompt, useImmersive } from "@/lib/immersive"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
@@ -621,6 +624,8 @@ export function RouteDetailSheet({
         if (!open || !journeyStarted) dismissAlerts()
     }, [open, journeyStarted, dismissAlerts])
 
+    const fare = useFares(route ? [route.ID] : [])[route?.ID ?? ""]
+
     if (!route || !shownRoute) return null
 
     const handleShare = async () => {
@@ -676,6 +681,19 @@ export function RouteDetailSheet({
     )
 
     const itinerary = (
+        <>
+        {fare && (
+            <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
+                <div className="flex items-baseline justify-between gap-3">
+                    <span className="text-muted-foreground">Fare</span>
+                    <span className="font-semibold tabular-nums">{fare.label}</span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                    {fare.detail}
+                    {fare.note && <> · {fare.note}</>}
+                </p>
+            </div>
+        )}
         <RouteItinerary
             route={shownRoute}
             currentLegIndex={progressLegIndex}
@@ -688,6 +706,7 @@ export function RouteDetailSheet({
             platform={trackedPlatform}
             liveVehicleTripIds={journeyStarted && !connectionLost ? vehiclesByTripId : undefined}
         />
+        </>
     )
 
     const canRemindToLeave =
@@ -703,7 +722,10 @@ export function RouteDetailSheet({
             onOpenInApp={handleOpenInApp}
             onRemindToLeave={canRemindToLeave ? () => onRemindToLeave!(route) : undefined}
             journeyStarted={journeyStarted}
-            onGo={() => setJourneyStarted(true)}
+            onGo={() => {
+                setJourneyStarted(true)
+                recordJourney(route, { from: startLocation?.label ?? "Start", to: endLocation?.label ?? "Destination" }, fare)
+            }}
             onStopTracking={() => { setJourneyStarted(false); clearActiveJourney() }}
             currentLegIndex={progressLegIndex}
             currentPhase={currentPhase}
@@ -1121,6 +1143,8 @@ function RouteItinerary({
     /** While tracking: the trips with a vehicle in the live feed. Otherwise each leg's own vehicle_tracked from planning. */
     liveVehicleTripIds?: Record<string, unknown>
 }) {
+    const reliability = useRidesReliability(route.Legs)
+    const odds = useConnectionOdds(route.Legs)
     return (
         <div>
             {route.Legs.map((leg, legIndex) => {
@@ -1156,6 +1180,8 @@ function RouteItinerary({
                         progress={progress}
                         liveInfo={isLiveLeg && trackingLevel === "live" ? { stopsAway, occupancy, platform } : undefined}
                         tracked={liveVehicleTripIds ? !!liveVehicleTripIds[leg.TripID] : leg.vehicle_tracked}
+                        reliability={status === "done" ? null : reliability[legIndex]}
+                        connectionOdds={status === "done" ? undefined : odds.get(legIndex)}
                     />
                 )
             })}
@@ -1165,7 +1191,7 @@ function RouteItinerary({
 
 type LegStatus = "done" | "current" | "upcoming"
 
-function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo, tracked: vehicleTracked }: {
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo, tracked: vehicleTracked, reliability, connectionOdds }: {
     leg: Leg
     isLast: boolean
     nextLeg?: Leg
@@ -1177,6 +1203,10 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
     liveInfo?: { stopsAway?: number; occupancy?: number; platform?: string }
     /** Whether this ride's vehicle is reporting its position - undefined shows no icon. */
     tracked?: boolean
+    /** How this ride usually runs from where it's boarded. */
+    reliability?: ReliabilityStat | null
+    /** How often the change onto this ride works out. */
+    connectionOdds?: ReliabilityConnection
 }) {
     const isWalk = leg.Mode === 'walk'
     const isDelayed = leg.realtime_status === RealtimeStatus.Delayed
@@ -1239,6 +1269,12 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                 </div>
             )}
 
+            {!isWalk && connectionOdds && !connectionRisk && (
+                <p className="mb-1 text-xs text-muted-foreground">
+                    <span className={`font-medium ${reliabilityTone(connectionOdds.level)}`}>Change: {connectionOdds.summary.toLowerCase()}</span>
+                    {" "}from how both usually run
+                </p>
+            )}
             {!isWalk && (
                 <div className="flex items-center gap-2 py-1 flex-wrap sm:flex-nowrap">
                     <span
@@ -1278,6 +1314,17 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                         {stopCount > 0 && ` · ${stopCount} stop${stopCount !== 1 ? 's' : ''}`}
                     </span>
                 </div>
+            )}
+            {!isWalk && reliability && leg.trip_usable !== false && (
+                <p className="pb-1 text-xs text-muted-foreground">
+                    <span className={`font-medium ${reliabilityTone(reliability.level)}`}>{reliability.summary}</span>
+                    {" from here · "}
+                    {reliability.detail}
+                    {" · "}
+                    <a href={`/reliability?route=${encodeURIComponent(leg.RouteID)}`} className="underline-offset-2 hover:underline">
+                        More
+                    </a>
+                </p>
             )}
 
             {isWalk ? (

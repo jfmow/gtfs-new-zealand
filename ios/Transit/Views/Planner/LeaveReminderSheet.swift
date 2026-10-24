@@ -17,7 +17,9 @@ struct PlannerSearchContext {
 
 /// "Remind me when to leave" - `components/journey/leave-reminder-dialog.tsx`.
 /// Heads-up chips (30/15/5 min before, and the "when to leave" go signal),
-/// repeat once / weekdays / custom days with an optional end date.
+/// repeat once / weekdays / custom days with an optional end date. Or
+/// "only if something changes": no routine pushes, just delays,
+/// cancellations and service alerts, from a chosen time before leaving.
 struct LeaveReminderSheet: View {
     let plan: JourneyPlan
     let context: PlannerSearchContext
@@ -29,10 +31,15 @@ struct LeaveReminderSheet: View {
     private static let offsetChoices: [(value: Int, label: String)] = [
         (30, "30 min before"), (15, "15 min before"), (5, "5 min before"), (0, "When to leave"),
     ]
+    private static let watchChoices: [(value: Int, label: String)] = [
+        (30, "30 minutes before"), (60, "1 hour before"), (120, "2 hours before"),
+    ]
     private static let dayLabels = ["M", "T", "W", "T", "F", "S", "S"]
     private static let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
     @State private var offsets: Set<Int> = [30, 15, 5, 0]
+    @State private var alertMode: JourneyReminderRequest.AlertMode = .leave
+    @State private var watchFrom = 60
     @State private var repeatMode: Repeat = .once
     @State private var customDays = Array(repeating: false, count: 7)
     @State private var hasUntil = false
@@ -46,8 +53,17 @@ struct LeaveReminderSheet: View {
         return leaveTime.addingTimeInterval(-Double(minutes) * 60) <= Date().addingTimeInterval(15)
     }
 
+    private var watching: Bool { alertMode == .changes }
+
+    /// A watch that would already have started just starts now.
     private var usableOffsets: [Int] {
-        offsets.filter { !offsetPassed($0) }.sorted(by: >)
+        if watching { return [watchFrom] }
+        return offsets.filter { !offsetPassed($0) }.sorted(by: >)
+    }
+
+    private var leftAlready: Bool {
+        guard repeatMode == .once, let leaveTime else { return false }
+        return leaveTime <= Date().addingTimeInterval(15)
     }
 
     private var recurrenceMask: String {
@@ -99,15 +115,43 @@ struct LeaveReminderSheet: View {
                 }
 
                 Section {
-                    ForEach(Self.offsetChoices.reversed(), id: \.value) { choice in
-                        offsetRow(choice.value)
+                    Picker("Tell me", selection: $alertMode) {
+                        Text("When to leave").tag(JourneyReminderRequest.AlertMode.leave)
+                        Text("If something changes").tag(JourneyReminderRequest.AlertMode.changes)
                     }
-                } header: {
-                    Text("Notify me")
-                } footer: {
-                    Text(repeatMode == .once && usableOffsets.isEmpty && !offsets.isEmpty
-                         ? "This journey leaves too soon to set a reminder. Try repeating it, or an earlier trip."
-                         : "\"When it's time to leave\" is the go signal; the others are early nudges.")
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Theme.card)
+                    .onChange(of: alertMode) { _, mode in
+                        // Watching is mostly for a regular trip.
+                        if mode == .changes && repeatMode == .once { repeatMode = .weekdays }
+                    }
+                }
+
+                if watching {
+                    Section {
+                        Picker("Start watching", selection: $watchFrom) {
+                            ForEach(Self.watchChoices, id: \.value) { choice in
+                                Text(choice.label).tag(choice.value)
+                            }
+                        }
+                        .listRowBackground(Theme.card)
+                    } footer: {
+                        Text(leftAlready
+                             ? "This journey has already left."
+                             : "No notifications on a normal day. We'll tell you if your service is running late or early, cancelled (with the next way to go), or has a service alert.")
+                    }
+                } else {
+                    Section {
+                        ForEach(Self.offsetChoices.reversed(), id: \.value) { choice in
+                            offsetRow(choice.value)
+                        }
+                    } header: {
+                        Text("Notify me")
+                    } footer: {
+                        Text(repeatMode == .once && usableOffsets.isEmpty && !offsets.isEmpty
+                             ? "This journey leaves too soon to set a reminder. Try repeating it, or an earlier trip."
+                             : "\"When it's time to leave\" is the go signal; the others are early nudges.")
+                    }
                 }
 
                 Section {
@@ -130,7 +174,7 @@ struct LeaveReminderSheet: View {
                         }
                     }
                 } footer: {
-                    if !recurrenceMask.isEmpty {
+                    if !recurrenceMask.isEmpty && !watching {
                         Text("Each day we'll find the best journey with these settings and tell you when to leave. Up to 90 days ahead.")
                     }
                 }
@@ -138,7 +182,7 @@ struct LeaveReminderSheet: View {
             .scrollContentBackground(.hidden)
             .groupedPageBackground()
             .tint(Theme.primary)
-            .navigationTitle("Remind me")
+            .navigationTitle(watching ? "Watch journey" : "Remind me")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
@@ -149,11 +193,11 @@ struct LeaveReminderSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         if isSubmitting { ProgressView().tint(Theme.primaryForeground) }
-                        Text(isSubmitting ? "Setting…" : "Set reminder")
+                        Text(isSubmitting ? "Setting…" : watching ? "Watch journey" : "Set reminder")
                     }
                 }
                 .buttonStyle(.shad(.default, size: .pill, fullWidth: true))
-                .disabled(isSubmitting || usableOffsets.isEmpty || (repeatMode == .custom && recurrenceMask.isEmpty))
+                .disabled(isSubmitting || usableOffsets.isEmpty || (repeatMode == .custom && recurrenceMask.isEmpty) || (watching && leftAlready))
                 .padding(16)
                 .background(Theme.background)
             }
@@ -217,7 +261,7 @@ struct LeaveReminderSheet: View {
             return f.string(from: until)
         }() : nil
 
-        guard let request = JourneyReminderRequest.make(
+        guard var request = JourneyReminderRequest.make(
             plan: plan, start: startPlace, end: endPlace, arriveBy: context.arriveBy,
             maxWalkKm: context.maxWalkKm, walkSpeed: context.walkSpeed, maxTransfers: context.maxTransfers,
             onlyRoutes: context.onlyRoutes.map(\.routeID),
@@ -227,6 +271,7 @@ struct LeaveReminderSheet: View {
             environment.toasts.show("This journey has no ride to remind you about.", .error)
             return
         }
+        request.alertMode = alertMode
 
         if !environment.push.isAuthorized {
             await environment.push.requestPermission()
@@ -236,7 +281,9 @@ struct LeaveReminderSheet: View {
         defer { isSubmitting = false }
         do {
             let created = try await environment.api.addJourneyReminder(request)
-            if let local = created.nextLeaveLocal, let leave = Self.localTime(local) {
+            if watching {
+                environment.toasts.show("Watching this journey. We'll only tell you if something changes.")
+            } else if let local = created.nextLeaveLocal, let leave = Self.localTime(local) {
                 environment.toasts.show("Reminder set, leave around \(leave)")
             } else {
                 environment.toasts.show("Reminder set. We'll work out your leave time on the day.")

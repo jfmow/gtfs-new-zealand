@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Bell, Check, LocateFixed, MapPinned, Route as RouteIcon, X } from "lucide-react"
+import { Bell, Check, LocateFixed, MapPinned, Route as RouteIcon, Ticket, X } from "lucide-react"
+import { FareTypeSelect } from "@/components/fare-type-select"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { groupByCountry } from "@/lib/url-store"
@@ -25,8 +26,8 @@ function hasUsedBefore() {
 }
 
 /**
- * First visit - the iOS first-launch setup (region, location, notifications,
- * planner style), as a card on Schedule rather than a screen in the way.
+ * First visit - the iOS first-launch setup (region, fare type, location,
+ * notifications, planner style), as a card on Schedule rather than a screen in the way.
  * Each ask says why, instead of a cold browser prompt. Shown once.
  */
 export function FirstVisitCard() {
@@ -95,6 +96,10 @@ export function FirstVisitCard() {
                             ))}
                         </SelectContent>
                     </Select>
+                </Row>
+
+                <Row icon={<Ticket className="h-4 w-4" />} title="Your fare" detail="So journeys show what you'll pay">
+                    <FareTypeSelect className="h-8 w-[170px] text-xs" />
                 </Row>
 
                 <Row icon={<LocateFixed className="h-4 w-4" />} title="Stops near you" detail={location === "denied" ? "Location is blocked for this site" : "Uses your location to show nearby departures"}>

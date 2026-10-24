@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
-import { addJourneyReminder } from "@/lib/notifications"
+import { addJourneyReminder, type JourneyReminderAlertMode } from "@/lib/notifications"
 import type { JourneyType, Location } from "./types"
 import type { RouteOption } from "./route-filter"
 import {
@@ -53,6 +53,13 @@ const OFFSET_CHOICES: { value: number; label: string }[] = [
     { value: 15, label: "15 min before" },
     { value: 5, label: "5 min before" },
     { value: 0, label: "When to leave" },
+]
+
+// "Only if something changes": how long before leaving to start watching.
+const WATCH_CHOICES: { value: number; label: string }[] = [
+    { value: 30, label: "30 min before" },
+    { value: 60, label: "1 hour before" },
+    { value: 120, label: "2 hours before" },
 ]
 
 const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
@@ -98,6 +105,8 @@ export function LeaveReminderDialog({
     deeplink,
 }: LeaveReminderDialogProps) {
     const [offsets, setOffsets] = useState<number[]>([30, 15, 5, 0])
+    const [alertMode, setAlertMode] = useState<JourneyReminderAlertMode>("leave")
+    const [watchFrom, setWatchFrom] = useState(60)
     const [repeat, setRepeat] = useState<RepeatMode>("once")
     const [customDays, setCustomDays] = useState<boolean[]>([false, false, false, false, false, false, false])
     const [until, setUntil] = useState("")
@@ -106,6 +115,8 @@ export function LeaveReminderDialog({
     useEffect(() => {
         if (open) {
             setOffsets([30, 15, 5, 0])
+            setAlertMode("leave")
+            setWatchFrom(60)
             setRepeat("once")
             setCustomDays([false, false, false, false, false, false, false])
             setUntil("")
@@ -156,9 +167,22 @@ export function LeaveReminderDialog({
         label: "Destination",
     }
 
-    const usableOffsets = offsets.filter((o) => !offsetPassed(o))
+    const watching = alertMode === "changes"
+    // A watch that would already have started just starts now.
+    const usableOffsets = watching ? [watchFrom] : offsets.filter((o) => !offsetPassed(o))
+    const leftAlready = repeat === "once" && leaveMs !== null && leaveMs <= Date.now() + 15_000
+
+    const chooseMode = (mode: JourneyReminderAlertMode) => {
+        setAlertMode(mode)
+        // Watching is mostly for a regular trip.
+        if (mode === "changes" && repeat === "once") setRepeat("weekdays")
+    }
 
     const handleSubmit = async () => {
+        if (watching && leftAlready) {
+            toast.error("This journey has already left")
+            return
+        }
         if (usableOffsets.length === 0) {
             toast.error(offsets.length === 0 ? "Pick at least one alert time" : "Those alert times have already passed")
             return
@@ -188,6 +212,7 @@ export function LeaveReminderDialog({
             onlyRoutes: requestContext.onlyRoutes.map((r) => r.route_id),
             modes,
             offsets: usableOffsets,
+            alertMode,
         }
 
         let res
@@ -227,7 +252,9 @@ export function LeaveReminderDialog({
             toast.error(res.message || "Couldn't set the reminder")
             return
         }
-        if (res.nextLeaveLocal) {
+        if (watching) {
+            toast.success("Watching this journey — we'll only message you if something changes")
+        } else if (res.nextLeaveLocal) {
             toast.success(`Reminder set — leave around ${formatTime(`1970-01-01T${res.nextLeaveLocal}:00`)}`)
         } else {
             toast.success("Reminder set — we'll work out your leave time on the day")
@@ -239,7 +266,7 @@ export function LeaveReminderDialog({
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Remind me when to leave</DialogTitle>
+                    <DialogTitle>{watching ? "Watch this journey" : "Remind me when to leave"}</DialogTitle>
                     <DialogDescription>
                         {start.label} → {end.label}
                         {" · "}
@@ -250,25 +277,49 @@ export function LeaveReminderDialog({
 
                 <div className="space-y-4 py-1">
                     <div className="space-y-2">
-                        <Label className="text-xs text-muted-foreground">Heads-up before you leave</Label>
+                        <Label className="text-xs text-muted-foreground">Tell me</Label>
                         <div className="flex flex-wrap gap-1.5">
-                            {OFFSET_CHOICES.map((o) => (
-                                <Chip
-                                    key={o.value}
-                                    active={offsets.includes(o.value)}
-                                    disabled={offsetPassed(o.value)}
-                                    onClick={() => toggleOffset(o.value)}
-                                >
-                                    {o.label}
-                                </Chip>
-                            ))}
+                            <Chip active={!watching} onClick={() => chooseMode("leave")}>When to leave</Chip>
+                            <Chip active={watching} onClick={() => chooseMode("changes")}>Only if something changes</Chip>
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
-                            {repeat === "once" && usableOffsets.length === 0
-                                ? "This journey leaves too soon to set a reminder — try repeating it, or an earlier trip."
-                                : `"When to leave" is the go signal; the others are advance nudges.`}
-                        </p>
                     </div>
+
+                    {watching ? (
+                        <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">Start watching</Label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {WATCH_CHOICES.map((o) => (
+                                    <Chip key={o.value} active={watchFrom === o.value} onClick={() => setWatchFrom(o.value)}>
+                                        {o.label}
+                                    </Chip>
+                                ))}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                No messages on a normal day. We&apos;ll tell you if your service is running late or early, cancelled (with the next way to go), or has a service alert.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">Heads-up before you leave</Label>
+                            <div className="flex flex-wrap gap-1.5">
+                                {OFFSET_CHOICES.map((o) => (
+                                    <Chip
+                                        key={o.value}
+                                        active={offsets.includes(o.value)}
+                                        disabled={offsetPassed(o.value)}
+                                        onClick={() => toggleOffset(o.value)}
+                                    >
+                                        {o.label}
+                                    </Chip>
+                                ))}
+                            </div>
+                            <p className="text-[11px] text-muted-foreground">
+                                {repeat === "once" && usableOffsets.length === 0
+                                    ? "This journey leaves too soon to set a reminder — try repeating it, or an earlier trip."
+                                    : `"When to leave" is the go signal; the others are advance nudges.`}
+                            </p>
+                        </div>
+                    )}
 
                     <div className="space-y-2">
                         <Label className="text-xs text-muted-foreground">Repeat</Label>
@@ -313,7 +364,7 @@ export function LeaveReminderDialog({
                         )}
                     </div>
 
-                    {recurrenceMask !== "" && (
+                    {recurrenceMask !== "" && !watching && (
                         <p className="text-[11px] text-muted-foreground">
                             We&apos;ll find the best journey matching your settings on each day and tell you when to leave.
                         </p>
@@ -324,8 +375,8 @@ export function LeaveReminderDialog({
                     <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={submitting}>
                         Cancel
                     </Button>
-                    <Button onClick={handleSubmit} disabled={submitting || usableOffsets.length === 0}>
-                        {submitting ? "Setting…" : "Set reminder"}
+                    <Button onClick={handleSubmit} disabled={submitting || usableOffsets.length === 0 || (watching && leftAlready)}>
+                        {submitting ? "Setting…" : watching ? "Watch journey" : "Set reminder"}
                     </Button>
                 </DialogFooter>
             </DialogContent>

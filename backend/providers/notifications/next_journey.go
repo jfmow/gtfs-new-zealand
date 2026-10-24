@@ -141,6 +141,9 @@ func leaveMovedEarlier(plan gtfs.JourneyPlan, live liveLegLookup) bool {
 //   - "you'll miss the first ride": whatever arrives soonest, from where
 //     the rider is heading (the stop, once they've set off) or where
 //     they're starting from;
+//   - a connection that no longer works (the rider will get off too late
+//     for it, or it's been cancelled): whatever arrives soonest from the
+//     stop they get off at, once they're there;
 //   - "leave now" when a ride running early has moved the leave time
 //     earlier than planned (movedEarlier): a way that still leaves when they
 //     planned to, if it arrives close to the planned time - they may not be
@@ -153,7 +156,8 @@ func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPl
 	}
 	missed := strings.HasPrefix(alert.Key, missedFirstPrefix)
 	keepTime := strings.HasPrefix(alert.Key, "leave-") && movedEarlier
-	if !missed && !keepTime {
+	spot := alert.replan
+	if !missed && !keepTime && spot == nil {
 		return
 	}
 	nextJourneyOffersMu.Lock()
@@ -170,12 +174,24 @@ func offerNextJourney(alert *activityAlert, cacheKey string, plan gtfs.JourneyPl
 	}
 
 	offer := nextJourneyOffer{body: alert.Body, at: now}
-	if missed {
+	if missed || spot != nil {
 		offer.tapHint = "Tap to find another way."
 	}
 	first := firstTransitLeg(plan)
 	switch {
-	case find == nil || first == nil:
+	case find == nil:
+	case spot != nil:
+		// A connection that's gone: the next way from where they get off.
+		at := spot.at
+		if soonest := now.Add(time.Minute); at.Before(soonest) {
+			at = soonest
+		}
+		if next, found := find(plan, spot.lat, spot.lon, at, spot.avoid); found {
+			offer.body = alert.Body + " " + nextJourneySummary(next, plan.ArrivalTime, tz)
+			offer.tapHint = "Tap to switch to it."
+			offer.url = journeyTrackURL(next.ID, region)
+		}
+	case first == nil:
 	case missed:
 		fromLat, fromLon, at := plan.StartLat, plan.StartLon, now.Add(time.Minute)
 		if hint.LeftUnix > 0 && first.FromStop != nil {

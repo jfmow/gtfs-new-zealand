@@ -1,7 +1,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/router"
-import { Info, MapPin, Search, X } from "lucide-react"
+import { Info, MapPin, Palette, Search, X } from "lucide-react"
 import { Header } from "@/components/nav"
 import LoadingSpinner from "@/components/loading-spinner"
 import ErrorScreen from "@/components/ui/error-screen"
@@ -21,7 +21,7 @@ import { RouteMultiSelect, type RouteOption } from "@/components/journey/route-f
 import { ApiError, ApiFetch, useUrl } from "@/lib/url-context"
 import { hasRealtime } from "@/lib/url-store"
 import { useUserLocation } from "@/lib/userLocation"
-import { haversineDistance, useIsMobile } from "@/lib/utils"
+import { cn, haversineDistance, useIsMobile } from "@/lib/utils"
 import { useUrlOverlay } from "@/lib/url-overlay"
 
 const MapComp = dynamic(() => import("../components/map/map"), { ssr: false })
@@ -300,6 +300,84 @@ function useUntrackedTrains(enabled: boolean): number {
     return untracked
 }
 
+// ── Colouring vehicles ──────────────────────────────────────────────────────
+
+type ColorBy = "route" | "late" | "crowd"
+
+const COLOR_BY: { value: ColorBy; label: string }[] = [
+    { value: "route", label: "Route" },
+    { value: "late", label: "Lateness" },
+    { value: "crowd", label: "Crowding" },
+]
+
+// Status palette, as on the reliability page's map.
+const LATENESS_KEY = [
+    { color: "2a78d6", label: "Early", test: (d: number) => d < -60 },
+    { color: "0ca30c", label: "On time", test: (d: number) => d < 180 },
+    { color: "fab219", label: "3–5 min late", test: (d: number) => d < 300 },
+    { color: "ec835a", label: "5–10 min late", test: (d: number) => d < 600 },
+    { color: "d03b3b", label: "10+ min late", test: () => true },
+]
+
+// GTFS-RT occupancy: 0 empty, 1 many seats, 2 few seats, 3 standing, 4
+// crushed, 5 full, 6 not boarding.
+const CROWDING_KEY = [
+    { color: "0ca30c", label: "Seats free", test: (o: number) => o <= 1 },
+    { color: "fab219", label: "Few seats", test: (o: number) => o === 2 },
+    { color: "ec835a", label: "Standing", test: (o: number) => o === 3 },
+    { color: "d03b3b", label: "Full", test: (o: number) => o >= 4 && o <= 6 },
+]
+
+const UNKNOWN_COLOR = "9ca3af"
+
+function vehicleColor(v: VehiclesResponse, by: ColorBy): string {
+    if (by === "late") {
+        return v.delay_seconds == null ? UNKNOWN_COLOR : LATENESS_KEY.find((k) => k.test(v.delay_seconds!))!.color
+    }
+    if (by === "crowd") {
+        return CROWDING_KEY.find((k) => k.test(v.occupancy))?.color ?? UNKNOWN_COLOR
+    }
+    return v.route.color
+}
+
+interface NetworkStatus {
+    vehicles: number
+    measured: number
+    on_time_pct: number
+    early_pct: number
+    late_pct: number
+    latest_routes: { route_id: string; name: string; average_min: number; vehicles: number }[]
+}
+
+/** How the network's running right now - while vehicles are coloured by lateness. */
+function useNetworkStatus(enabled: boolean): NetworkStatus | null {
+    const [status, setStatus] = useState<NetworkStatus | null>(null)
+    useEffect(() => {
+        if (!enabled) return
+        let cancelled = false
+        const load = () => ApiFetch<NetworkStatus>("realtime/network").then((res) => { if (!cancelled && res.ok) setStatus(res.data) })
+        load()
+        const id = setInterval(load, 30_000)
+        return () => { cancelled = true; clearInterval(id) }
+    }, [enabled])
+    return enabled ? status : null
+}
+
+function ColorKey({ by }: { by: ColorBy }) {
+    if (by === "route") return null
+    const key = by === "late" ? LATENESS_KEY : CROWDING_KEY
+    return (
+        <ul className="pointer-events-auto absolute bottom-4 left-3 z-10 space-y-1 rounded-xl border border-border bg-background/95 px-3 py-2 text-xs shadow-sm backdrop-blur" aria-label="Colour key">
+            {[...key, { color: UNKNOWN_COLOR, label: by === "late" ? "Not known" : "Not reported" }].map((k) => (
+                <li key={k.label} className="flex items-center gap-2">
+                    <span aria-hidden className="h-2.5 w-2.5 rounded-full" style={{ background: `#${k.color}` }} />
+                    {k.label}
+                </li>
+            ))}
+        </ul>
+    )
+}
+
 function VehiclesMode() {
     const isMobile = useIsMobile({ immediate: true })
     const { currentUrl } = useUrl()
@@ -310,6 +388,8 @@ function VehiclesMode() {
     const [showStops, setShowStops] = useState(false)
     const [allStops, setAllStops] = useState<Stop[]>([])
     const [routes, setRoutes] = useState<RouteOption[]>([])
+    const [colorBy, setColorBy] = useState<ColorBy>("route")
+    const network = useNetworkStatus(colorBy === "late")
     const tracked = useUrlOverlay("tripId")
     const selectedTrip = tracked.value
 
@@ -379,7 +459,7 @@ function VehiclesMode() {
                 opacity: focused && !isSelected ? 0.35 : 1,
                 id: vehicle.trip_id,
                 routeID: vehicle.route.id,
-                color: vehicle.route.color,
+                color: vehicleColor(vehicle, colorBy),
                 visibleLabel: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
                 zIndex: isSelected ? 10 : 1,
                 type: "vehicle",
@@ -428,7 +508,7 @@ function VehiclesMode() {
         return [...vehicleItems, ...stopItems, ...tripItems]
         // `tracked.open` is recreated each render but only reads the router.
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [shownVehicles, nearbyStops, trackedVehicle, tripStops, selectedTrip])
+    }, [shownVehicles, nearbyStops, trackedVehicle, tripStops, selectedTrip, colorBy])
 
     const panelOpen = !isMobile && selectedTrip !== ""
 
@@ -465,7 +545,13 @@ function VehiclesMode() {
                 <MapTopBar
                     switcher={<MapModeSwitch mode="vehicles" />}
                     insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}
-                    note={untrackedTrains >= UNTRACKED_TRAINS_NOTE_MIN && (
+                    note={network && network.measured > 0 ? (
+                        <span>
+                            <span className="font-medium text-foreground">{network.on_time_pct}% on time right now</span>
+                            {` · ${network.late_pct}% late · ${network.early_pct}% early`}
+                            {network.latest_routes[0] && ` · latest: ${network.latest_routes[0].name} (+${network.latest_routes[0].average_min} min)`}
+                        </span>
+                    ) : untrackedTrains >= UNTRACKED_TRAINS_NOTE_MIN && (
                         <>
                             <Info className="h-3.5 w-3.5 shrink-0" />
                             <span>{untrackedTrains} trains aren&apos;t shown - {currentUrl.displayName} isn&apos;t reporting their routes right now</span>
@@ -497,8 +583,30 @@ function VehiclesMode() {
                     <MapChip active={showStops} onClick={() => setShowStops(!showStops)} icon={<MapPin className="h-3.5 w-3.5" />} aria-label="Show stops">
                         Stops
                     </MapChip>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <MapChip active={colorBy !== "route"} icon={<Palette className="h-3.5 w-3.5" />} aria-label={`Colour vehicles by ${COLOR_BY.find((c) => c.value === colorBy)!.label.toLowerCase()}`}>
+                                {colorBy === "route" ? "Colour" : COLOR_BY.find((c) => c.value === colorBy)!.label}
+                            </MapChip>
+                        </PopoverTrigger>
+                        <PopoverContent align="end" className="w-48 p-1">
+                            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Colour vehicles by</p>
+                            {COLOR_BY.map((c) => (
+                                <button
+                                    key={c.value}
+                                    type="button"
+                                    onClick={() => setColorBy(c.value)}
+                                    className={cn("flex w-full items-center justify-between rounded px-2 py-1.5 text-sm hover:bg-accent", colorBy === c.value && "font-medium")}
+                                >
+                                    {c.label}
+                                    {colorBy === c.value && <span aria-hidden>✓</span>}
+                                </button>
+                            ))}
+                        </PopoverContent>
+                    </Popover>
                 </MapTopBar>
             )}
+            {!(isMobile && selectedTrip !== "") && <ColorKey by={colorBy} />}
 
             {routes.length > 0 && shownVehicles.length === 0 && vehicles.length > 0 && (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">

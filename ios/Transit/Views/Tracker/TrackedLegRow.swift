@@ -19,6 +19,11 @@ struct JourneyTimeline: View {
     /// Whether leg `i`'s vehicle is reporting its position right now - nil
     /// shows no icon. Defaults to what the plan recorded when it was made.
     var tracked: ((Int) -> Bool?)?
+    /// How leg `i`'s ride usually runs from where it's boarded - nil shows
+    /// nothing.
+    var reliability: ((Int) -> ReliabilityStat?)?
+    /// How often the change onto leg `i` works out - nil shows nothing.
+    var connectionOdds: ((Int) -> ReliabilityConnection?)?
 
     /// A wait right before a ride that follows another ride is a transfer.
     private func isTransfer(before index: Int) -> Bool {
@@ -40,6 +45,8 @@ struct JourneyTimeline: View {
                     status: status(index),
                     progress: progress(index),
                     tracked: tracked?(index) ?? leg.vehicleTracked,
+                    reliability: reliability?(index),
+                    connectionOdds: connectionOdds?(index),
                     destinationName: index == legs.count - 1 ? destinationName : nil,
                     accent: accent
                 )
@@ -76,6 +83,8 @@ struct TrackedLegRow: View {
     /// Whether this ride's vehicle is reporting its position - nil shows
     /// no tracking icon either way.
     let tracked: Bool?
+    var reliability: ReliabilityStat?
+    var connectionOdds: ReliabilityConnection?
     /// For the final leg: what to call where it ends when it isn't a stop.
     var destinationName: String?
     let accent: Color
@@ -172,6 +181,19 @@ struct TrackedLegRow: View {
                     } else if let delay = leg.delaySeconds, abs(delay) >= 60 {
                         Text(delay > 0 ? "\(delay / 60) min late" : "\(-delay / 60) min early")
                             .font(.metaMedium).foregroundStyle(delay > 0 ? Theme.warning : Theme.success)
+                    }
+                    if let connectionOdds, leg.tripUsable, status != .done {
+                        (Text("Change: \(connectionOdds.summary.lowercased())").fontWeight(.medium)
+                            .foregroundColor(ReliabilityStyle.tint(connectionOdds.level))
+                            + Text(" from how both usually run").foregroundColor(Theme.mutedForeground))
+                            .font(.meta)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let reliability, leg.tripUsable, status != .done {
+                        (Text(reliability.summary).fontWeight(.medium).foregroundColor(ReliabilityStyle.tint(reliability.level))
+                            + Text(" from here · \(reliability.detail)").foregroundColor(Theme.mutedForeground))
+                            .font(.meta)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(.vertical, 10)
