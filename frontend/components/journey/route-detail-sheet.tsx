@@ -47,7 +47,6 @@ import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, ge
 import { useActiveJourney } from "./use-active-journey"
 import { reliabilityTone, useConnectionOdds, useRidesReliability, type ReliabilityConnection, type ReliabilityStat } from "@/lib/reliability"
 import { useFares } from "@/lib/fares"
-import { recordJourney } from "@/lib/travel-history"
 import { useHideResumePrompt, useImmersive } from "@/lib/immersive"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
 
@@ -682,30 +681,30 @@ export function RouteDetailSheet({
 
     const itinerary = (
         <>
-        {fare && (
-            <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
-                <div className="flex items-baseline justify-between gap-3">
-                    <span className="text-muted-foreground">Fare</span>
-                    <span className="font-semibold tabular-nums">{fare.label}</span>
+            {fare && (
+                <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
+                    <div className="flex items-baseline justify-between gap-3">
+                        <span className="text-muted-foreground">Fare</span>
+                        <span className="font-semibold tabular-nums">{fare.label}</span>
+                    </div>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                        {fare.detail}
+                        {fare.note && <> · {fare.note}</>}
+                    </p>
                 </div>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                    {fare.detail}
-                    {fare.note && <> · {fare.note}</>}
-                </p>
-            </div>
-        )}
-        <RouteItinerary
-            route={shownRoute}
-            currentLegIndex={progressLegIndex}
-            currentPhase={currentPhase}
-            nowMs={now.getTime()}
-            liveLegIndex={journeyStarted ? trackedLegIndex : -1}
-            trackingLevel={trackingLevel}
-            stopsAway={trackedStopsAway}
-            occupancy={trackedOccupancy}
-            platform={trackedPlatform}
-            liveVehicleTripIds={journeyStarted && !connectionLost ? vehiclesByTripId : undefined}
-        />
+            )}
+            <RouteItinerary
+                route={shownRoute}
+                currentLegIndex={progressLegIndex}
+                currentPhase={currentPhase}
+                nowMs={now.getTime()}
+                liveLegIndex={journeyStarted ? trackedLegIndex : -1}
+                trackingLevel={trackingLevel}
+                stopsAway={trackedStopsAway}
+                occupancy={trackedOccupancy}
+                platform={trackedPlatform}
+                liveVehicleTripIds={journeyStarted && !connectionLost ? vehiclesByTripId : undefined}
+            />
         </>
     )
 
@@ -724,7 +723,6 @@ export function RouteDetailSheet({
             journeyStarted={journeyStarted}
             onGo={() => {
                 setJourneyStarted(true)
-                recordJourney(route, { from: startLocation?.label ?? "Start", to: endLocation?.label ?? "Destination" }, fare)
             }}
             onStopTracking={() => { setJourneyStarted(false); clearActiveJourney() }}
             currentLegIndex={progressLegIndex}

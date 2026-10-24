@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { Activity, BarChart3, Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Activity, Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
 import { cn, useIsMobile } from '@/lib/utils'
 import { useUrl } from '@/lib/url-context'
 import { hasRealtime } from '@/lib/url-store'
@@ -51,7 +51,6 @@ function useNavTabs(): NavTab[] {
 /** Titles for pages that aren't a tab (reached from the menu). */
 const PAGE_TITLES: Record<string, string> = {
     '/settings': 'Settings',
-    '/history': 'History',
     '/privacy': 'Privacy',
 }
 
@@ -212,10 +211,6 @@ function AppMenu() {
                             Route reliability
                         </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onSelect={() => router.push('/recap')}>
-                        <BarChart3 className="w-4 h-4" />
-                        Your travel
-                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem onSelect={() => router.push('/settings')}>
                         <Settings2Icon className="w-4 h-4" />
