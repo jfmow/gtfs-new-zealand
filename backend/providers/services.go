@@ -35,6 +35,14 @@ type cachedJourneyPlan struct {
 // The durable plan_store is the real backing, so a small L1 is fine.
 const planCacheMaxEntries = 400
 
+// planMaxPast / planMaxAhead bound the date a plan may be requested for. Feeds
+// publish a few weeks of timetable, so 60 days ahead never refuses a real
+// journey, but it stops anonymous requests pinning far-future plans in plans.db.
+const (
+	planMaxPast  = 2 * 24 * time.Hour
+	planMaxAhead = 60 * 24 * time.Hour
+)
+
 func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realtime rt.Realtime, localTimeZone *time.Location, getStopsForTripCache caches.StopsForTripCache, gtfsName string) {
 	servicesRoute := primaryRoute.Group("/services")
 
@@ -325,6 +333,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			// Convert to local timezone if needed
 			leaveTime = t.In(localTimeZone)
 		}
+		// Every plan is persisted until its arrival, so bound how far out a
+		// caller can push that (the apps only plan a few weeks ahead).
+		if now := time.Now(); leaveTime.Before(now.Add(-planMaxPast)) || leaveTime.After(now.Add(planMaxAhead)) {
+			return JsonApiResponse(c, http.StatusBadRequest, "date out of range", nil,
+				ResponseDetails("date", date, "details", "date must be within the planning window"))
+		}
 
 		maxWalkKm, err := queryFloat(c, "maxWalkKm", 1.0)
 		if err != nil {
@@ -344,6 +358,8 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusBadRequest, "invalid maxTransfers", nil,
 				ResponseDetails("maxTransfers", c.QueryParam("maxTransfers"), "error", err.Error()))
 		}
+		maxWalkKm = notifications.ClampMaxWalkKm(maxWalkKm)
+		maxTransfers = notifications.ClampMaxTransfers(maxTransfers)
 
 		// minResults is really "how many journeys to show" from the UI's single
 		// "Show: N journeys" selector - there's no separate max control, so it

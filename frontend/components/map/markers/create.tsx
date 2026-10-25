@@ -101,7 +101,7 @@ function iconInnerHtml(item: MapItem): string {
                 box-shadow: 0 2px 6px rgba(15, 23, 42, 0.2);
               "
             >
-              ${visibleLabel}
+              ${escapeHtml(visibleLabel)}
             </span>`
         : "";
 

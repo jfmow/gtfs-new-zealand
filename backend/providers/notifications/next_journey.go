@@ -1,7 +1,6 @@
 package notifications
 
 import (
-	"context"
 	"fmt"
 	"math"
 	"net/url"
@@ -45,7 +44,7 @@ func newNextJourneyFinder(gtfsData gtfs.Database, rt *realtime.Realtime, osrmURL
 			Realtime:        rt,
 		}
 		plans, err := func() (*[]gtfs.JourneyPlan, error) {
-			planlimit.Acquire(context.Background())
+			planlimit.AcquireBackground()
 			defer planlimit.Release()
 			return gtfsData.PlanJourneyRaptor(req)
 		}()

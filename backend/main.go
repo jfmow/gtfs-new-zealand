@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -109,8 +110,12 @@ func main() {
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 
 	e := echo.New()
+	// Client IP for the rate limiter and logs: only believe X-Forwarded-For
+	// when the request came through a trusted proxy (loopback/private ranges,
+	// plus TRUSTED_PROXIES), otherwise use the TCP peer. echo's default trusts
+	// any client-supplied header, which let callers pick their own limiter key.
+	e.IPExtractor = echo.ExtractIPFromXFFHeader(trustedProxyOptions()...)
 
-	//Enables rate limiter middleware for the following routes
 	e.Use(TraceIDMiddleware())
 	e.Use(RequestLoggerMiddleware())
 
@@ -120,10 +125,17 @@ func main() {
 		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization, "X-Trace-ID"},
 	}))
 
+	// Every endpoint takes small form/query input; nothing legitimate is near this.
+	e.Use(middleware.BodyLimit(64 << 10))
+
+	// One shared per-client limiter for every region: the regions share the
+	// planner slots, notifications DB and host, so limiting only /at left the
+	// rest open.
+	e.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
+
 	//e.GET("/logs", GetLogsHandler)
 
 	atApi := e.Group("/at")
-	atApi.Use(middleware.RateLimiterWithConfig(rateLimiterConfig))
 	mlApi := e.Group("/wel")
 	seqAPI := e.Group("/seq")
 	christchurchApi := e.Group("/christ")
@@ -256,10 +268,35 @@ func main() {
 
 	// Start server using the extracted IP and port
 	fmt.Println("Server is running on: http://" + ip + ":" + port + "/")
-	s := http.Server{Addr: ip + ":" + port, Handler: e}
+	s := http.Server{
+		Addr:              ip + ":" + port,
+		Handler:           e,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	if err := s.ListenAndServe(); err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+}
+
+// trustedProxyOptions trusts loopback, link-local and private ranges (the
+// Docker bridge / a local reverse proxy) plus any CIDRs in TRUSTED_PROXIES
+// (comma separated) - set that if the proxy in front of the API connects from
+// a public or CGNAT address (e.g. Tailscale's 100.64.0.0/10).
+func trustedProxyOptions() []echo.TrustOption {
+	opts := []echo.TrustOption{echo.TrustLoopback(true), echo.TrustLinkLocal(true), echo.TrustPrivateNet(true)}
+	for _, cidr := range strings.Split(os.Getenv("TRUSTED_PROXIES"), ",") {
+		if cidr = strings.TrimSpace(cidr); cidr == "" {
+			continue
+		}
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			log.Fatalf("invalid TRUSTED_PROXIES entry %q: %v", cidr, err)
+		}
+		opts = append(opts, echo.TrustIPRange(ipNet))
+	}
+	return opts
 }
 
 // getWorkDir is where logs/ and the notification DB live: DATA_DIR when set

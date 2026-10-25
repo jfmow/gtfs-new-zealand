@@ -25,6 +25,9 @@ UUIDs are globally unique so there's no need to scope by region.
 
 const planStoreTTL = 6 * time.Hour
 
+// planStoreMaxRows caps plans.db (rows are 5-50 KB, so roughly 0.1-1 GB at most).
+const planStoreMaxRows = 20000
+
 // planStoreWorkDir mirrors main.go's package-private getWorkDir (also copied in
 // providers/notifications/help.go).
 func planStoreWorkDir() string {
@@ -79,6 +82,7 @@ func getPlanStore() *planStore {
 			return
 		}
 		db.Exec(`CREATE INDEX IF NOT EXISTS idx_plans_arrival ON plans(arrival_unix);`)
+		db.Exec(`CREATE INDEX IF NOT EXISTS idx_plans_created ON plans(created);`)
 		planStoreInst = &planStore{db: db}
 	})
 	return planStoreInst
@@ -142,6 +146,10 @@ func (s *planStore) gc(now time.Time) {
 		return
 	}
 	s.db.Exec(`DELETE FROM plans WHERE arrival_unix < ?`, now.Add(-planStoreTTL).Unix())
+	// Arrival-based expiry alone lets future-dated plans pile up, so also keep
+	// only the newest planStoreMaxRows (anonymous callers create these freely).
+	s.db.Exec(`DELETE FROM plans WHERE id IN (
+		SELECT id FROM plans ORDER BY created DESC LIMIT -1 OFFSET ?)`, planStoreMaxRows)
 	// Nothing else checkpoints this WAL - fold it back into the main file so it
 	// doesn't drift up to SQLite's auto-checkpoint threshold and stay there.
 	s.db.Exec(`PRAGMA wal_checkpoint(TRUNCATE)`)

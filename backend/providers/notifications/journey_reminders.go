@@ -212,14 +212,22 @@ func (v *Database) HasAnyActiveJourneyReminders(region string) (bool, error) {
 // GetJourneyRemindersToResolve returns journey_request rows that need a
 // PlanJourneyRaptor run: either explicitly pending_resolve, or scheduled and now
 // within resolveLead of their target. Throttled to rows not touched in 10 min.
+//
+// The per-tick budget is shared by every client in the region, so rows are
+// taken round-robin by client (each client's earliest target first, then each
+// client's second, ...) - one client's backlog can't fill every slot and
+// starve everyone else's reminders.
 func (v *Database) GetJourneyRemindersToResolve(region string, now time.Time, resolveLeadSeconds int64, limit int) ([]JourneyReminder, error) {
 	return v.queryJourneyReminders(
-		`SELECT `+jrColumns+` FROM journey_reminders
-		 WHERE region = ? AND kind = 'journey_request'
-		   AND ( status = 'pending_resolve'
-		         OR (status = 'scheduled' AND ? >= target_unix - ?) )
-		   AND ? >= updated + 600
-		 ORDER BY target_unix ASC
+		`SELECT `+jrColumns+` FROM (
+		   SELECT *, ROW_NUMBER() OVER (PARTITION BY clientId ORDER BY target_unix ASC) AS client_rank
+		   FROM journey_reminders
+		   WHERE region = ? AND kind = 'journey_request'
+		     AND ( status = 'pending_resolve'
+		           OR (status = 'scheduled' AND ? >= target_unix - ?) )
+		     AND ? >= updated + 600
+		 )
+		 ORDER BY client_rank ASC, target_unix ASC
 		 LIMIT ?`,
 		region, now.Unix(), resolveLeadSeconds, now.Unix(), limit,
 	)

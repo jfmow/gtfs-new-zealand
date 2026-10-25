@@ -138,6 +138,9 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	// Location search (autocomplete) using self-hosted Nominatim
 	navigationRoute.GET("/search", func(c echo.Context) error {
 		query := strings.TrimSpace(c.QueryParam("q"))
+		if searchQueryTooLarge(query) {
+			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", "Search is limited to 8 words / 100 characters"))
+		}
 		if query == "" {
 			return JsonApiResponse(
 				c,
@@ -355,45 +358,9 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 		return JsonApiResponse(c, http.StatusOK, "", ReverseGeocodeResponse{Name: locationName})
 	})
 
-	navigationRoute.GET("/osrm/*", func(c echo.Context) error {
-		osrmURL := os.Getenv("OSRM_URL")
-		if osrmURL == "" {
-			return JsonApiResponse(c, http.StatusInternalServerError, "osrm not configured", nil, ResponseDetails("details", "OSRM_URL env var is not set"))
-		}
-
-		parsed, err := url.Parse(osrmURL)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "invalid osrm config", nil, ResponseDetails("error", err.Error()))
-		}
-		baseURL := parsed.Scheme + "://" + parsed.Host
-
-		proxyPath := c.PathParam("*")
-		if proxyPath == "" {
-			return JsonApiResponse(c, http.StatusBadRequest, "missing path", nil, ResponseDetails("details", "OSRM service path is required, e.g. /route/v1/foot/lon,lat;lon,lat"))
-		}
-
-		targetURL := baseURL + "/" + proxyPath
-		if c.QueryString() != "" {
-			targetURL += "?" + c.QueryString()
-		}
-
-		req, err := http.NewRequestWithContext(c.Request().Context(), http.MethodGet, targetURL, nil)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("error", err.Error()))
-		}
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			return JsonApiResponse(c, http.StatusBadGateway, "osrm request failed", nil, ResponseDetails("error", err.Error()))
-		}
-		defer resp.Body.Close()
-
-		c.Response().Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-		c.Response().WriteHeader(resp.StatusCode)
-		io.Copy(c.Response(), resp.Body)
-		return nil
-	})
+	// (The former public /osrm/* pass-through was removed: nothing used it,
+	// and it let anyone relay arbitrary OSRM requests through this server.
+	// Walking routes go through getRouteFromOSRM on the server.)
 
 }
 

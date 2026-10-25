@@ -294,15 +294,8 @@ parentStopId can be blank to just create a client
 func (v *Database) CreateNotificationClient(endpoint, p256dh, auth string, gtfsDB gtfs.Database) (*NotificationClient, error) {
 	_ = gtfsDB // kept for signature compatibility
 
-	// Validate input parameters
-	if len(endpoint) < 2 || !isValidURL(endpoint) {
-		return nil, errors.New("invalid endpoint url")
-	}
-	if len(p256dh) < 10 || !isBase64Url(p256dh) {
-		return nil, errors.New("invalid p256dh")
-	}
-	if len(auth) < 8 || !isBase64Url(auth) {
-		return nil, errors.New("invalid auth")
+	if err := validateWebPushSubscription(endpoint, p256dh, auth); err != nil {
+		return nil, err
 	}
 	created := int(time.Now().In(v.timeZone).Unix())
 
@@ -1341,6 +1334,9 @@ Basically just retains the client (is the point of this)
 func (oldClient *NotificationClient) RefreshSubscription(newClient Notification) error {
 	if oldClient.Notification.Endpoint == newClient.Endpoint && oldClient.Notification.Keys.Auth == newClient.Auth && oldClient.Notification.Keys.P256dh == newClient.P256dh {
 		return errors.New("can't update subscription to same thing")
+	}
+	if err := validateWebPushSubscription(newClient.Endpoint, newClient.P256dh, newClient.Auth); err != nil {
+		return err
 	}
 
 	if _, err := oldClient.db.execContext(
