@@ -1,7 +1,6 @@
 package notifications
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -118,7 +117,7 @@ func jrCronResolve(
 
 		req := buildJourneyRequest(r, osrmURL, rt, tz)
 		plans, planErr := func() (*[]gtfs.JourneyPlan, error) {
-			planlimit.Acquire(context.Background())
+			planlimit.AcquireBackground()
 			defer planlimit.Release()
 			return gtfsData.PlanJourneyRaptor(req)
 		}()

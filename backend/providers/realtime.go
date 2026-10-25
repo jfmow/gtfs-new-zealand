@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -266,10 +267,16 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 					continue
 				}
 
-				// Ensure stops are ordered by sequence
-				sort.Slice(stopsData.Stops, func(i, j int) bool {
+				// Ensure stops are ordered by sequence. stopsData.Stops is the
+				// shared cache's slice, so sort a copy rather than mutating it
+				// under concurrent readers.
+				if !sort.SliceIsSorted(stopsData.Stops, func(i, j int) bool {
 					return stopsData.Stops[i].Sequence < stopsData.Stops[j].Sequence
-				})
+				}) {
+					sorted := slices.Clone(stopsData.Stops)
+					sort.Slice(sorted, func(i, j int) bool { return sorted[i].Sequence < sorted[j].Sequence })
+					stopsData.Stops = sorted
+				}
 
 				// Determine next stop and trip state (in-transit, stopped, etc.)
 				nextSeq, _, state := vehiclestate.GetNextStopSequence(
@@ -325,6 +332,11 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			if id = strings.TrimSpace(id); id != "" {
 				tripIDs[id] = true
 			}
+		}
+		// Each listed trip runs the per-vehicle detail path (trip + shape
+		// queries), so apply the same cap as /journey.
+		if len(tripIDs) > maxJourneyTrips {
+			return JsonApiResponse(c, http.StatusBadRequest, "too many trips", nil, ResponseDetails("count", len(tripIDs)))
 		}
 
 		vehicleTypeFilter, err := url.PathUnescape(c.QueryParam("type"))

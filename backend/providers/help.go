@@ -4,12 +4,25 @@ import (
 	"math"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jfmow/at-trains-api/providers/vehiclestate"
 	"github.com/jfmow/gtfs"
 	realtime "github.com/jfmow/gtfs/realtime"
 	"github.com/jfmow/gtfs/realtime/proto"
 )
+
+// Search queries become one set of LIKE predicates per word over the ngram
+// join, so bound them before they reach the database.
+const (
+	maxSearchQueryRunes = 100
+	maxSearchQueryWords = 8
+)
+
+// searchQueryTooLarge reports whether a stop/route/place search is over the limits.
+func searchQueryTooLarge(q string) bool {
+	return utf8.RuneCountInString(q) > maxSearchQueryRunes || len(strings.Fields(q)) > maxSearchQueryWords
+}
 
 func pointInBounds(lat, lng float64, sw, ne LatLng) bool {
 	// Allow sw/ne to be provided in any order: normalize bounds

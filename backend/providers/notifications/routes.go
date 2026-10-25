@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"regexp"
@@ -220,7 +221,9 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "unregistered", Data: nil})
 	})
 
-	c := cron.New(cron.WithLocation(localTimeZone))
+	// robfig/cron v3's New() installs an empty job chain, so without Recover a
+	// panic in any job would take down every region's process.
+	c := cron.New(cron.WithLocation(localTimeZone), cron.WithChain(cron.Recover(cron.DefaultLogger)))
 
 	//Check trip updates, for cancellations
 	c.AddFunc("@every 00h0m30s", func() {
@@ -955,7 +958,11 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid subscription data"})
 		}
 
-		if count, cErr := notificationDB.CountActiveJourneyReminders(client.Id); cErr == nil && count >= jrMaxActivePerClient {
+		count, cErr := notificationDB.CountActiveJourneyReminders(client.Id)
+		if cErr != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to check journey reminders"})
+		}
+		if count >= jrMaxActivePerClient {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "you already have the maximum number of journey reminders"})
 		}
 
@@ -963,7 +970,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		startLon, e2 := strconv.ParseFloat(c.FormValue("startLon"), 64)
 		endLat, e3 := strconv.ParseFloat(c.FormValue("endLat"), 64)
 		endLon, e4 := strconv.ParseFloat(c.FormValue("endLon"), 64)
-		if e1 != nil || e2 != nil || e3 != nil || e4 != nil {
+		if e1 != nil || e2 != nil || e3 != nil || e4 != nil ||
+			!validLatLon(startLat, startLon) || !validLatLon(endLat, endLon) {
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid start/end coordinates"})
 		}
 
@@ -1063,20 +1071,22 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 
 		deeplink := c.FormValue("deeplink")
-		if !strings.HasPrefix(deeplink, "/") {
+		if !isAppPath(deeplink) {
 			deeplink = "/plan"
 		}
 
 		maxWalkKm, _ := strconv.ParseFloat(c.FormValue("maxWalkKm"), 64)
-		if maxWalkKm <= 0 {
+		if maxWalkKm <= 0 || math.IsNaN(maxWalkKm) {
 			maxWalkKm = 1.0
 		}
+		maxWalkKm = ClampMaxWalkKm(maxWalkKm)
 		walkSpeed, _ := strconv.ParseFloat(c.FormValue("walkSpeed"), 64)
 		walkSpeed = NormalizeWalkSpeed(walkSpeed)
 		maxTransfers, mtErr := strconv.Atoi(c.FormValue("maxTransfers"))
 		if mtErr != nil || maxTransfers < 0 {
 			maxTransfers = 5
 		}
+		maxTransfers = ClampMaxTransfers(maxTransfers)
 
 		onlyRouteIDs, oErr := parseJourneyReminderRouteIDs(c.FormValue("onlyRoutes"))
 		if oErr != nil {
@@ -1095,10 +1105,10 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			Status:          "scheduled",
 			StartLat:        startLat,
 			StartLon:        startLon,
-			StartLabel:      c.FormValue("startLabel"),
+			StartLabel:      truncateRunes(c.FormValue("startLabel"), maxReminderLabelRunes),
 			EndLat:          endLat,
 			EndLon:          endLon,
-			EndLabel:        c.FormValue("endLabel"),
+			EndLabel:        truncateRunes(c.FormValue("endLabel"), maxReminderLabelRunes),
 			TimeType:        timeType,
 			TargetHHMM:      targetHHMM,
 			MaxWalkKm:       maxWalkKm,
@@ -1177,8 +1187,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			reminder.ScheduledDepartureUnix = nullInt64(schedUnix)
 			reminder.AccessSeconds = nullInt64(int64(access))
 			reminder.BaselineLeaveUnix = nullInt64(leaveUnix)
-			reminder.RouteShortName = c.FormValue("routeShortName")
-			reminder.BoardStopName = c.FormValue("boardStopName")
+			reminder.RouteShortName = truncateRunes(c.FormValue("routeShortName"), maxReminderLabelRunes)
+			reminder.BoardStopName = truncateRunes(c.FormValue("boardStopName"), maxReminderLabelRunes)
 			reminder.ServiceDate = boardServiceDate
 			reminder.TargetUnix = schedUnix
 		}
@@ -1286,7 +1296,10 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			"error":    "",
 		}
 		if sendErr := client.SendNotification("Notifications are working on this device.", "Test notification", map[string]string{"url": "/settings"}, "high"); sendErr != nil {
-			status["error"] = sendErr.Error()
+			// Transport errors can describe the far end - keep them in our log
+			// and give the caller a fixed message.
+			fmt.Printf("test notification for client %d failed: %v\n", client.Id, sendErr)
+			status["error"] = "delivery failed"
 		} else {
 			status["sent"] = true
 		}

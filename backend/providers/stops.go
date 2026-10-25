@@ -128,6 +128,9 @@ func setupStopsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getParen
 		if err != nil {
 			return JsonApiResponse(c, http.StatusBadRequest, "invalid stop", nil, ResponseDetails("stopName", stopNameEncoded, "details", "Invalid stop name format", "error", err.Error()))
 		}
+		if searchQueryTooLarge(stopName) {
+			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", "Search is limited to 8 words / 100 characters"))
+		}
 		children := c.QueryParam("children")
 
 		stops, err := gtfsData.SearchForStopsByNameOrCode(stopName, children == "true")

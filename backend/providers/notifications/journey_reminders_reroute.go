@@ -1,7 +1,6 @@
 package notifications
 
 import (
-	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -232,7 +231,7 @@ func jrFindFasterJourney(gtfsData gtfs.Database, rt *realtime.Realtime, r Journe
 	}
 	req := buildJourneyRequest(q, osrmURL, rt, tz)
 	plans, err := func() (*[]gtfs.JourneyPlan, error) {
-		planlimit.Acquire(context.Background())
+		planlimit.AcquireBackground()
 		defer planlimit.Release()
 		return gtfsData.PlanJourneyRaptor(req)
 	}()

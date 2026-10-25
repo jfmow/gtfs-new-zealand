@@ -319,7 +319,7 @@ func TestResolveClientAndResolveOrCreateClient_IOSVsWeb(t *testing.T) {
 
 	// The web path is unaffected: ResolveOrCreateClient still creates on
 	// first use.
-	webIdentity := ClientIdentity{Endpoint: "https://push.example/xyz", P256dh: "p256dh-value-2", Auth: "auth-value-2"}
+	webIdentity := ClientIdentity{Endpoint: "https://fcm.googleapis.com/fcm/send/xyz", P256dh: "p256dh-value-2", Auth: "auth-value-2"}
 	client, err := db.ResolveOrCreateClient(webIdentity, gtfs.Database{})
 	if err != nil {
 		t.Fatalf("ResolveOrCreateClient(web): %v", err)

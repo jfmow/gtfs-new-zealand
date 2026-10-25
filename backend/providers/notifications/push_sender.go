@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -92,11 +93,25 @@ func sharedAPNsSender() *apnsSender {
 
 type webPushSender struct{}
 
+// webPushHTTPClient bounds each delivery and never follows a redirect, so a
+// push request only ever reaches the subscription's own push-service host.
+var webPushHTTPClient = &http.Client{
+	Timeout: 10 * time.Second,
+	CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+}
+
 func (s *webPushSender) Send(client NotificationClient, p Payload) error {
 	publicKey, foundPub := os.LookupEnv("WP_PUB")
 	privateKey, foundPriv := os.LookupEnv("WP_PRIV")
 	if !foundPub || !foundPriv {
 		return errors.New("web push not configured (WP_PUB/WP_PRIV missing)")
+	}
+	// Rows stored before endpoint validation was tightened may still point
+	// somewhere other than a push service - never deliver to those.
+	if !isValidPushEndpoint(client.Notification.Endpoint) {
+		return errors.New("subscription endpoint is not a recognised push service")
 	}
 
 	payloadBytes, err := json.Marshal(map[string]any{
@@ -114,6 +129,7 @@ func (s *webPushSender) Send(client NotificationClient, p Payload) error {
 		VAPIDPrivateKey: privateKey,
 		TTL:             30,
 		Urgency:         p.Urgency,
+		HTTPClient:      webPushHTTPClient,
 	})
 	if err != nil {
 		if resp != nil && resp.StatusCode == 410 {
