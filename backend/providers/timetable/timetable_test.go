@@ -49,16 +49,12 @@ func fixture(t *testing.T) *Timetable {
 	return tt
 }
 
-func TestTripsByHourAndHeadway(t *testing.T) {
+func TestTripsByHour(t *testing.T) {
 	tt := fixture(t)
 	tz := tt.tz
 	wed := time.Date(2026, 10, 21, 8, 20, 0, 0, tz)
 	if got := tt.TripsByHour("R", wed); got[8] != 6 || got[9] != 0 {
 		t.Errorf("trips by hour = %v", got)
-	}
-	if h, ok := tt.Headway("R", "B", wed); !ok || h != 20*time.Minute {
-		// 6 trips in the 2 hours around 8:20.
-		t.Errorf("headway = %v ok=%t", h, ok)
 	}
 	sat := time.Date(2026, 10, 24, 8, 20, 0, 0, tz)
 	if got := tt.TripsByHour("R", sat); got[8] != 0 {

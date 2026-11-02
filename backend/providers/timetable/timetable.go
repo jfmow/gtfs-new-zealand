@@ -154,31 +154,6 @@ func (t *Timetable) TripsByHour(route string, at time.Time) []int {
 	return out
 }
 
-// Headway is the timetable's average gap between route's services at a
-// station (any of its platforms) in the hour either side of at - false if
-// fewer than two run.
-func (t *Timetable) Headway(route, station string, at time.Time) (time.Duration, bool) {
-	if t == nil {
-		return 0, false
-	}
-	date, origin := t.serviceDay(at)
-	services := t.activeServices(date)
-	if len(services) == 0 {
-		return 0, false
-	}
-	now := int(at.Sub(origin).Seconds())
-	marks, args := inList(services)
-	q := append([]any{route, station, station, clock(max(0, now-3600)), clock(now + 3600)}, args...)
-	var n int
-	err := t.db.QueryRow(`SELECT COUNT(*) FROM stop_times st JOIN trips t ON t.trip_id = st.trip_id
-		WHERE t.route_id = ? AND st.stop_id IN (SELECT stop_id FROM stops WHERE stop_id = ? OR parent_station = ?)
-		  AND st.departure_time BETWEEN ? AND ? AND t.service_id IN (`+marks+`)`, q...).Scan(&n)
-	if err != nil || n < 2 {
-		return 0, false
-	}
-	return time.Duration(float64(2*time.Hour) / float64(n)), true
-}
-
 // LongestTrip is the route's trip with the most stops on at's service day
 // (any day if none run then) - the one to draw the route with.
 func (t *Timetable) LongestTrip(route string, at time.Time) (string, bool) {

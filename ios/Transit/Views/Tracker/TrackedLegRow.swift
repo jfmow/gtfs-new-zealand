@@ -19,9 +19,6 @@ struct JourneyTimeline: View {
     /// Whether leg `i`'s vehicle is reporting its position right now - nil
     /// shows no icon. Defaults to what the plan recorded when it was made.
     var tracked: ((Int) -> Bool?)?
-    /// How leg `i`'s ride usually runs from where it's boarded - nil shows
-    /// nothing.
-    var reliability: ((Int) -> ReliabilityStat?)?
     /// How often the change onto leg `i` works out - nil shows nothing.
     var connectionOdds: ((Int) -> ReliabilityConnection?)?
 
@@ -45,7 +42,6 @@ struct JourneyTimeline: View {
                     status: status(index),
                     progress: progress(index),
                     tracked: tracked?(index) ?? leg.vehicleTracked,
-                    reliability: reliability?(index),
                     connectionOdds: connectionOdds?(index),
                     destinationName: index == legs.count - 1 ? destinationName : nil,
                     accent: accent
@@ -83,7 +79,6 @@ struct TrackedLegRow: View {
     /// Whether this ride's vehicle is reporting its position - nil shows
     /// no tracking icon either way.
     let tracked: Bool?
-    var reliability: ReliabilityStat?
     var connectionOdds: ReliabilityConnection?
     /// For the final leg: what to call where it ends when it isn't a stop.
     var destinationName: String?
@@ -186,12 +181,6 @@ struct TrackedLegRow: View {
                         (Text("Change: \(connectionOdds.summary.lowercased())").fontWeight(.medium)
                             .foregroundColor(ReliabilityStyle.tint(connectionOdds.level))
                             + Text(" from how both usually run").foregroundColor(Theme.mutedForeground))
-                            .font(.meta)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let reliability, leg.tripUsable, status != .done {
-                        (Text(reliability.summary).fontWeight(.medium).foregroundColor(ReliabilityStyle.tint(reliability.level))
-                            + Text(" from here · \(reliability.detail)").foregroundColor(Theme.mutedForeground))
                             .font(.meta)
                             .fixedSize(horizontal: false, vertical: true)
                     }
