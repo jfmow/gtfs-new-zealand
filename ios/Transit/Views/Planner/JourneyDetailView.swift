@@ -27,8 +27,6 @@ struct JourneyDetailView: View {
     /// Trip ids with a vehicle in the live feed - nil until the first
     /// fetch, when the timeline falls back to the plan's own answer.
     @State private var liveTripIDs: Set<String>?
-    /// How each ride usually runs, aligned with `plan.legs`.
-    @State private var reliability: [ReliabilityStat?] = []
     @State private var fare: FareEstimate?
     /// How often each change works out, by the index of the ride changed to.
     @State private var odds: [Int: ReliabilityConnection] = [:]
@@ -51,14 +49,6 @@ struct JourneyDetailView: View {
             if let c = result.changes[n] { out[entry.key] = c }
         }
         odds = out
-    }
-
-    private func loadReliability() async {
-        let keys = JourneyReliability.rideKeys(plan.legs)
-        let asked = keys.compactMap { $0 }
-        guard !asked.isEmpty, let result = try? await environment.api.reliability(rides: asked) else { return }
-        var answers = result.rides.makeIterator()
-        reliability = keys.map { key in key == nil ? nil : (answers.next() ?? nil) }
     }
 
     /// Keeps the tracking icons current while the preview is open (polled
@@ -150,7 +140,6 @@ struct JourneyDetailView: View {
                                   let depart = leg.departureTime.date, depart.timeIntervalSinceNow < 3 * 3600 else { return nil }
                             return liveTripIDs.contains(leg.tripID)
                         },
-                        reliability: { index in reliability[safe: index] ?? nil },
                         connectionOdds: { index in odds[index] }
                     )
                 }
@@ -184,11 +173,7 @@ struct JourneyDetailView: View {
             if router.visibleJourneyDetailPlanID == plan.id { router.visibleJourneyDetailPlanID = nil }
         }
         .foregroundPoll(every: .seconds(30), id: plan.id) { await refreshLiveVehicles() }
-        .task(id: plan.id) {
-            async let r: Void = loadReliability()
-            async let o: Void = loadOdds()
-            _ = await (r, o)
-        }
+        .task(id: plan.id) { await loadOdds() }
         .task(id: "\(plan.id)|\(fareTypes)|\(showFares)") { await loadFare() }
         .navigationDestination(isPresented: $isTracking) {
             JourneyTrackingView(plan: plan, presentedFromLink: presentedFromLink)

@@ -110,19 +110,6 @@ final class JourneyReminderRequestTests: XCTestCase {
         XCTAssertEqual(request.formFields["offsets"], "[60]")
     }
 
-    func testReliabilityRideKeysAndDecoding() throws {
-        // The walk has no key; the ride is route|stop|scheduled departure.
-        XCTAssertEqual(JourneyReliability.rideKeys(plan.legs),
-                       [nil, "70-201|s1|\(Int(base.addingTimeInterval(480).timeIntervalSince1970))"])
-
-        let json = #"{"rides":[{"samples":40,"on_time_pct":82,"early_pct":3,"late_pct":15,"typical_min":2,"cancelled_pct":10,"summary":"Usually 1–3 min late","detail":"82% on time · 1 in 10 cancelled","level":"poor"},null]}"#
-        let decoded = try JSONDecoder().decode(RidesReliability.self, from: Data(json.utf8))
-        XCTAssertEqual(decoded.rides.count, 2)
-        XCTAssertEqual(decoded.rides[0]?.level, .poor)
-        XCTAssertEqual(decoded.rides[0]?.cancelledPct, 10)
-        XCTAssertNil(decoded.rides[1])
-    }
-
     func testChangeKeysOnlyBetweenRides() {
         // One ride: no change.
         XCTAssertTrue(JourneyReliability.changeKeys(plan.legs).isEmpty)

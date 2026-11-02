@@ -29,28 +29,6 @@ public struct ReliabilityStat: Codable, Hashable, Sendable {
     }
 }
 
-/// The real wait at a frequent service against the timetable's -
-/// `reliability.Wait`.
-public struct ReliabilityWait: Codable, Hashable, Sendable {
-    public let headwayMin: Double
-    public let timetableWaitMin: Double
-    public let realWaitMin: Double
-
-    enum CodingKeys: String, CodingKey {
-        case headwayMin = "headway_min"
-        case timetableWaitMin = "timetable_wait_min"
-        case realWaitMin = "real_wait_min"
-    }
-}
-
-/// `GET reliability/stop`.
-public struct StopReliability: Codable, Sendable {
-    /// Route id -> stat.
-    public let routes: [String: ReliabilityStat]
-    /// Route id -> real wait, for frequent routes. Absent from older servers.
-    public let waits: [String: ReliabilityWait]?
-}
-
 /// How often a change between two rides works out -
 /// `reliability.Connection`.
 public struct ReliabilityConnection: Codable, Hashable, Sendable {
@@ -64,12 +42,6 @@ public struct ReliabilityConnection: Codable, Hashable, Sendable {
 /// `GET reliability/connections`.
 public struct ConnectionsReliability: Codable, Sendable {
     public let changes: [ReliabilityConnection?]
-}
-
-/// `GET reliability/rides`.
-public struct RidesReliability: Codable, Sendable {
-    /// Aligned with the rides asked for; nil where there's too little data.
-    public let rides: [ReliabilityStat?]
 }
 
 public enum JourneyReliability {
@@ -92,16 +64,5 @@ public enum JourneyReliability {
                       leg.routeID, board.stopID, String(Int(depart.timeIntervalSince1970)), String(slack)].joined(separator: "|")
         }
         return out
-    }
-
-    /// "route|stop|unix" for each leg - nil for walks (and rides missing a
-    /// route or stop), so results line up with `legs`.
-    public static func rideKeys(_ legs: [JourneyLeg]) -> [String?] {
-        legs.map { leg in
-            guard leg.mode != "walk", !leg.routeID.isEmpty, let stop = leg.fromStop,
-                  let departs = leg.scheduledDepartureTime.date ?? leg.departureTime.date
-            else { return nil }
-            return "\(leg.routeID)|\(stop.stopID)|\(Int(departs.timeIntervalSince1970))"
-        }
     }
 }

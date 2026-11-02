@@ -20,18 +20,10 @@ func openTest(t *testing.T) *Store {
 	return s
 }
 
-func TestVarianceAndWait(t *testing.T) {
+func TestVariance(t *testing.T) {
 	a := aggOf(-120, 120, -120, 120, -120, 120, -120, 120, -120, 120)
 	if v := a.variance(); math.Abs(v-14400) > 1 {
 		t.Fatalf("variance = %v", v)
-	}
-	// Every 10 min, delays +-2 min: wait 5 + 14400/600 s = 5.4 min.
-	w, ok := waitFor(10*time.Minute, a)
-	if !ok || w.TimetableWaitMin != 5 || w.RealWaitMin != 5.4 || w.HeadwayMin != 10 {
-		t.Errorf("wait = %+v ok=%t", w, ok)
-	}
-	if _, ok := waitFor(30*time.Minute, a); ok {
-		t.Error("an infrequent service gets no wait figure")
 	}
 }
 

@@ -41,10 +41,6 @@ struct StopBoardView: View {
     /// refreshes start failing, so a frozen board doesn't pass for live.
     @State private var lastUpdated: Date?
     @State private var reminderDeparture: Departure?
-    /// Route id -> how it usually runs here (today's board only).
-    @State private var reliability: [String: ReliabilityStat] = [:]
-    @State private var waits: [String: ReliabilityWait] = [:]
-    @State private var reliabilityStop: String?
 
     init(stopQuery: String, title: String, embedding: Embedding? = nil) {
         self.stopQuery = stopQuery
@@ -203,12 +199,6 @@ struct StopBoardView: View {
                         }
                     }
                     if filterOptions.values.count > 1 { platformChips }
-                    if selectedDate == nil, let realWaitsText {
-                        Text(realWaitsText)
-                            .font(.meta)
-                            .foregroundStyle(Theme.mutedForeground)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
 
                     VStack(spacing: 0) {
                         ForEach(Array(visibleDepartures.enumerated()), id: \.element.id) { index, departure in
@@ -230,9 +220,7 @@ struct StopBoardView: View {
     @ViewBuilder
     private func row(for departure: Departure) -> some View {
         let preview = selectedDate != nil
-        let rowView = DepartureRow(departure: departure, isSchedulePreview: preview,
-                                   reliability: preview ? nil : reliability[departure.route.id],
-                                   bunchedNextIn: preview ? nil : bunched[departure.tripID])
+        let rowView = DepartureRow(departure: departure, isSchedulePreview: preview)
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
             .background(departure.departed && !preview ? Theme.warning.opacity(0.06) : .clear)
@@ -351,20 +339,6 @@ struct StopBoardView: View {
         return (true, routes.sorted { $0.localizedStandardCompare($1) == .orderedAscending })
     }
 
-    private var bunched: [String: Int] { DepartureBoard.bunched(departures) }
-
-    /// "70 about 6 min (timetable says 4)" for frequent routes that run
-    /// unevenly enough to matter - the web board's real-waits line.
-    private var realWaitsText: String? {
-        let lines = waits.compactMap { routeID, w -> (String, String)? in
-            guard w.realWaitMin - w.timetableWaitMin >= 0.5 else { return nil }
-            let name = departures.first { $0.route.id == routeID }?.route.name ?? routeID
-            return (name, "\(name) about \(Int(w.realWaitMin.rounded())) min (timetable says \(Int(w.timetableWaitMin.rounded())))")
-        }
-        guard !lines.isEmpty else { return nil }
-        return "Real waits here: " + lines.sorted { $0.0.localizedStandardCompare($1.0) == .orderedAscending }.map(\.1).joined(separator: " · ")
-    }
-
     private var visibleDepartures: [Departure] {
         let sorted = DepartureBoard.filterAndSort(departures)
         guard let platformFilter else { return sorted }
@@ -387,7 +361,6 @@ struct StopBoardView: View {
             loadError = nil
             isNotFound = false
             if selectedDate == nil { lastUpdated = Date() }
-            await loadReliability()
         } catch let APIError.server(code, _, _) where code == 404 {
             departures = []
             isNotFound = true
@@ -395,16 +368,6 @@ struct StopBoardView: View {
             errorMessage = error.localizedDescription
             loadError = error
         }
-    }
-
-    /// Once per stop - the figures move over weeks, not minutes. A missing
-    /// endpoint (older server) just means no tags.
-    private func loadReliability() async {
-        guard let stop = departures.first?.stop.parentStopID, !stop.isEmpty, stop != reliabilityStop else { return }
-        reliabilityStop = stop
-        let result = try? await environment.api.reliability(stop: stop)
-        reliability = result?.routes ?? [:]
-        waits = result?.waits ?? [:]
     }
 
     private func setReminder(_ kind: ReminderKind, offset: Int, for departure: Departure) async -> Bool {
@@ -450,11 +413,6 @@ struct StopBoardView: View {
 struct DepartureRow: View {
     let departure: Departure
     var isSchedulePreview: Bool = false
-    /// How this route usually runs here - shown only when it's worth
-    /// knowing (not "good"), like the web board.
-    var reliability: ReliabilityStat?
-    /// Running right behind another of its route: minutes until the next.
-    var bunchedNextIn: Int?
 
     private var routeColor: Color { Color(hex: departure.route.color.isEmpty ? "424242" : departure.route.color) }
     private var railColor: Color { Color(hex: departure.route.color.isEmpty ? "9ca3af" : departure.route.color) }
@@ -573,18 +531,6 @@ struct DepartureRow: View {
             }
             if isLive, let cars = departure.cars {
                 Text("\(cars) cars").font(.caption2).foregroundStyle(Theme.mutedForeground)
-            }
-            if let bunchedNextIn, isLive {
-                Text("Bunched · next after in \(bunchedNextIn) min")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(Theme.warning)
-                    .accessibilityLabel("Arriving just behind the one ahead. The next one after isn't for \(bunchedNextIn) minutes")
-            }
-            if let reliability, reliability.level != .good, !departure.canceled, !departure.skipped {
-                Text(reliability.summary)
-                    .font(.caption2)
-                    .foregroundStyle(ReliabilityStyle.tint(reliability.level))
-                    .accessibilityLabel("\(reliability.summary), \(reliability.detail)")
             }
 
             Spacer()

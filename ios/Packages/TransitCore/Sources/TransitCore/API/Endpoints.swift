@@ -133,21 +133,6 @@ extension APIClient {
 
     // MARK: - Reliability
 
-    /// How each route usually runs at `stop` (or its station) around `at`.
-    public func reliability(stop: String, at: Date = Date()) async throws -> StopReliability {
-        try await get("reliability/stop", query: [
-            .init(name: "stop", value: stop),
-            .init(name: "at", value: String(Int(at.timeIntervalSince1970))),
-        ])
-    }
-
-    /// How each of a journey's rides usually runs - `rides` from
-    /// `JourneyReliability.rideKeys` (nils dropped); results come back in
-    /// the same order.
-    public func reliability(rides: [String]) async throws -> RidesReliability {
-        try await get("reliability/rides", query: [.init(name: "rides", value: rides.joined(separator: ","))])
-    }
-
     /// How often each change works out - `changes` from
     /// `JourneyReliability.changeKeys`; results in the same order.
     public func reliability(changes: [String]) async throws -> ConnectionsReliability {

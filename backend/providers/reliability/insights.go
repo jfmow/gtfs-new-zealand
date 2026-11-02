@@ -314,45 +314,6 @@ func (s *Store) ForRouteAlerts(region, route string) AlertHistory {
 	return h
 }
 
-// ── Waiting ──────────────────────────────────────────────────────────────────
-
-// Wait compares the timetable's average wait with what it really is, for a
-// rider turning up at random at a frequent service.
-type Wait struct {
-	// HeadwayMin is the timetable's gap between services.
-	HeadwayMin float64 `json:"headway_min"`
-	// TimetableWaitMin is half that - the wait if every service ran to time.
-	TimetableWaitMin float64 `json:"timetable_wait_min"`
-	// RealWaitMin allows for services running unevenly.
-	RealWaitMin float64 `json:"real_wait_min"`
-}
-
-// Only worth saying for a service frequent enough to turn up for.
-const maxWaitHeadway = 15 * time.Minute
-
-// waitFor: with services every H on the timetable and delays of variance
-// v, the gaps between them have variance ~2v (delays independent), and a
-// rider turning up at random waits E[gap^2] / 2E[gap] = H/2 + v/H on
-// average.
-func waitFor(headway time.Duration, a stopAgg) (Wait, bool) {
-	if headway <= 0 || headway > maxWaitHeadway || a.n < minSamples {
-		return Wait{}, false
-	}
-	h := headway.Seconds()
-	real := h/2 + a.variance()/h
-	round := func(sec float64) float64 { return math.Round(sec/6) / 10 }
-	return Wait{HeadwayMin: round(h), TimetableWaitMin: round(h / 2), RealWaitMin: round(real)}, true
-}
-
-// WaitAt is route's wait at station around at, given the timetable headway.
-func (s *Store) WaitAt(region, route, station string, at time.Time, headway time.Duration) (Wait, bool) {
-	a, ok := s.stopStats(stopKey{region, route, station, bandFor(at)})
-	if !ok {
-		return Wait{}, false
-	}
-	return waitFor(headway, a)
-}
-
 // ── Making a connection ──────────────────────────────────────────────────────
 
 // Connection is how often a change between two rides works out.

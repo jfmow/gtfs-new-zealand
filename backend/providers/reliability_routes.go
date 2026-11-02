@@ -18,21 +18,12 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-// Caps on one request's list (a journey has a handful of rides and changes;
-// a board asks per stop instead).
-const (
-	maxReliabilityRides = 12
-	maxConnections      = 8
-)
+// Cap on one request's list (a journey has a handful of changes).
+const maxConnections = 8
 
 // setupReliabilityRoutes starts the region's reliability recorder and
 // serves what it has learnt:
 //
-//	GET /reliability/stop?stop=<id>&at=<unix>
-//	    every route at a stop (or its station) -> how it usually runs then,
-//	    and the real wait for frequent ones
-//	GET /reliability/rides?rides=<route>|<stop>|<unix>,...
-//	    the same for a journey's rides, in order (null where unknown)
 //	GET /reliability/connections?changes=<routeA>|<stopA>|<unixA>|<routeB>|<stopB>|<unixB>|<slack s>,...
 //	    how often each change works out, in order (null where unknown)
 //	GET /reliability/route?route=<id>&day=wd|sat|sun
@@ -63,46 +54,6 @@ func setupReliabilityRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, re
 	}
 
 	group := primaryRoute.Group("/reliability")
-
-	group.GET("/stop", func(c echo.Context) error {
-		stop := c.QueryParam("stop")
-		if stop == "" {
-			return JsonApiResponse(c, http.StatusBadRequest, "missing stop", nil)
-		}
-		when := at(c.QueryParam("at"))
-		station := stationOf(stop)
-		routes := store.ForStop(region, station, when)
-		waits := map[string]reliability.Wait{}
-		for route := range routes {
-			if headway, ok := tt.Headway(route, station, when); ok {
-				if w, ok := store.WaitAt(region, route, station, when, headway); ok {
-					waits[route] = w
-				}
-			}
-		}
-		return JsonApiResponse(c, http.StatusOK, "", map[string]any{"routes": routes, "waits": waits})
-	})
-
-	group.GET("/rides", func(c echo.Context) error {
-		raw := strings.Split(c.QueryParam("rides"), ",")
-		if len(raw) > maxReliabilityRides {
-			raw = raw[:maxReliabilityRides]
-		}
-		out := make([]*reliability.Stat, 0, len(raw))
-		for _, ride := range raw {
-			parts := strings.Split(ride, "|")
-			if len(parts) != 3 || parts[0] == "" || parts[1] == "" {
-				out = append(out, nil)
-				continue
-			}
-			if st, ok := store.ForRide(region, parts[0], stationOf(parts[1]), at(parts[2])); ok {
-				out = append(out, &st)
-			} else {
-				out = append(out, nil)
-			}
-		}
-		return JsonApiResponse(c, http.StatusOK, "", map[string]any{"rides": out})
-	})
 
 	group.GET("/connections", func(c echo.Context) error {
 		raw := strings.Split(c.QueryParam("changes"), ",")

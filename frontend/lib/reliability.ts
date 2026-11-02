@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { ApiFetch } from "@/lib/url-context"
-import { getRegionSlug, urlStore } from "@/lib/url-store"
 import type { Leg } from "@/components/journey/types"
 
 /** How a route usually runs at a stop at that time of the week - `reliability.Stat` on the backend. */
@@ -30,84 +29,6 @@ export function reliabilityTone(level: ReliabilityStat["level"]): string {
         default:
             return "text-red-700 dark:text-red-400"
     }
-}
-
-/** The real wait at a frequent service, against the timetable's - `reliability.Wait`. */
-export interface ReliabilityWait {
-    headway_min: number
-    timetable_wait_min: number
-    real_wait_min: number
-}
-
-/** A stop's figures, by route id. */
-export interface StopReliability {
-    routes: Record<string, ReliabilityStat>
-    waits: Record<string, ReliabilityWait>
-}
-
-const NO_STOP_DATA: StopReliability = { routes: {}, waits: {} }
-
-// The figures move over weeks, not minutes - one fetch per stop (or
-// journey) per page is plenty.
-const stopCache = new Map<string, Promise<StopReliability>>()
-
-async function fetchStop(stopId: string): Promise<StopReliability> {
-    const res = await ApiFetch<StopReliability>(
-        `reliability/stop?stop=${encodeURIComponent(stopId)}&at=${Math.floor(Date.now() / 1000)}`,
-    )
-    return res.ok ? { routes: res.data.routes ?? {}, waits: res.data.waits ?? {} } : NO_STOP_DATA
-}
-
-/** How each route usually runs at this stop around now, and the real wait for frequent ones. Empty until loaded, or with no data. */
-export function useStopReliability(stopId: string | undefined): StopReliability {
-    const [stats, setStats] = useState<StopReliability>(NO_STOP_DATA)
-    useEffect(() => {
-        if (!stopId) return
-        let cancelled = false
-        // Stop ids aren't unique across regions.
-        const key = `${getRegionSlug(urlStore.currentUrl)}:${stopId}`
-        let pending = stopCache.get(key)
-        if (!pending) {
-            pending = fetchStop(stopId).catch(() => NO_STOP_DATA)
-            stopCache.set(key, pending)
-        }
-        pending.then((s) => { if (!cancelled) setStats(s) })
-        return () => { cancelled = true }
-    }, [stopId])
-    return stopId ? stats : NO_STOP_DATA
-}
-
-/** "route|stop|unix" for each ride in a journey - "" for walks. */
-function rideKeys(legs: Leg[]): string[] {
-    return legs.map((leg) => {
-        if (leg.Mode === "walk" || !leg.RouteID || !leg.FromStop) return ""
-        const departs = new Date(leg.scheduled_departure_time ?? leg.DepartureTime).getTime()
-        return `${leg.RouteID}|${leg.FromStop.stop_id}|${Math.floor(departs / 1000)}`
-    })
-}
-
-/** Per leg (aligned with `legs`): how that ride usually runs from where it's boarded, or null. */
-export function useRidesReliability(legs: Leg[]): (ReliabilityStat | null)[] {
-    const keys = rideKeys(legs)
-    const query = keys.filter(Boolean).join(",")
-    const [byKey, setByKey] = useState<Record<string, ReliabilityStat | null>>({})
-
-    useEffect(() => {
-        if (!query) return
-        let cancelled = false
-        const rides = query.split(",")
-        ApiFetch<{ rides: (ReliabilityStat | null)[] }>(`reliability/rides?rides=${encodeURIComponent(query)}`)
-            .then((res) => {
-                if (cancelled || !res.ok) return
-                const out: Record<string, ReliabilityStat | null> = {}
-                rides.forEach((k, i) => { out[k] = res.data.rides?.[i] ?? null })
-                setByKey(out)
-            })
-            .catch(() => {})
-        return () => { cancelled = true }
-    }, [query])
-
-    return keys.map((k) => (k ? byKey[k] ?? null : null))
 }
 
 /** How a route runs in one time-of-week band - `reliability.BandStat`. */

@@ -45,7 +45,7 @@ import { useJourneyAlerts, boardProximityThreshold } from "./use-journey-alerts"
 import { JourneyAlertOverlay } from "./journey-alert-overlay"
 import { buildLiveJourney, connectionRisk, findStopSequence, hasDepartedStop, getFirstTransitLeg, getTransitTripIds, getWaitingTimeNs, formatDuration, formatTime, replanChoices, type ConnectionRisk, type ReplanChoice } from "./helpers"
 import { useActiveJourney } from "./use-active-journey"
-import { reliabilityTone, useConnectionOdds, useRidesReliability, type ReliabilityConnection, type ReliabilityStat } from "@/lib/reliability"
+import { reliabilityTone, useConnectionOdds, type ReliabilityConnection } from "@/lib/reliability"
 import { useFares } from "@/lib/fares"
 import { useHideResumePrompt, useImmersive } from "@/lib/immersive"
 import { RealtimeStatus, type JourneyType, type Leg, type Location } from "./types"
@@ -1141,7 +1141,6 @@ function RouteItinerary({
     /** While tracking: the trips with a vehicle in the live feed. Otherwise each leg's own vehicle_tracked from planning. */
     liveVehicleTripIds?: Record<string, unknown>
 }) {
-    const reliability = useRidesReliability(route.Legs)
     const odds = useConnectionOdds(route.Legs)
     return (
         <div>
@@ -1178,7 +1177,6 @@ function RouteItinerary({
                         progress={progress}
                         liveInfo={isLiveLeg && trackingLevel === "live" ? { stopsAway, occupancy, platform } : undefined}
                         tracked={liveVehicleTripIds ? !!liveVehicleTripIds[leg.TripID] : leg.vehicle_tracked}
-                        reliability={status === "done" ? null : reliability[legIndex]}
                         connectionOdds={status === "done" ? undefined : odds.get(legIndex)}
                     />
                 )
@@ -1189,7 +1187,7 @@ function RouteItinerary({
 
 type LegStatus = "done" | "current" | "upcoming"
 
-function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo, tracked: vehicleTracked, reliability, connectionOdds }: {
+function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, connectionRisk, progress, liveInfo, tracked: vehicleTracked, connectionOdds }: {
     leg: Leg
     isLast: boolean
     nextLeg?: Leg
@@ -1201,8 +1199,6 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
     liveInfo?: { stopsAway?: number; occupancy?: number; platform?: string }
     /** Whether this ride's vehicle is reporting its position - undefined shows no icon. */
     tracked?: boolean
-    /** How this ride usually runs from where it's boarded. */
-    reliability?: ReliabilityStat | null
     /** How often the change onto this ride works out. */
     connectionOdds?: ReliabilityConnection
 }) {
@@ -1313,18 +1309,6 @@ function LegRow({ leg, isLast, nextLeg, status = "upcoming", currentLabel, conne
                     </span>
                 </div>
             )}
-            {!isWalk && reliability && leg.trip_usable !== false && (
-                <p className="pb-1 text-xs text-muted-foreground">
-                    <span className={`font-medium ${reliabilityTone(reliability.level)}`}>{reliability.summary}</span>
-                    {" from here · "}
-                    {reliability.detail}
-                    {" · "}
-                    <a href={`/reliability?route=${encodeURIComponent(leg.RouteID)}`} className="underline-offset-2 hover:underline">
-                        More
-                    </a>
-                </p>
-            )}
-
             {isWalk ? (
                 // Walk legs don't need the full two-row board/alight timeline
                 // (no platform/headsign to show at either end) - a single line
