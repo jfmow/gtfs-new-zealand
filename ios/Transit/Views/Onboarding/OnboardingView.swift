@@ -15,6 +15,9 @@ struct OnboardingView: View {
     @State private var fareTypeOptions = FareTypeOption.adultOnly
     @State private var step = Step.region
     @State private var isLocating = false
+    /// The location prompt is up; move on once it's answered, so the
+    /// notifications prompt never stacks on top of it.
+    @State private var awaitingLocationAnswer = false
 
     enum Step: Int, CaseIterable { case region, fare, location, notifications, sync, planner }
 
@@ -55,6 +58,10 @@ struct OnboardingView: View {
         }
         .onChange(of: environment.location.authorizationStatus) { _, status in
             if status == .denied || status == .restricted { isLocating = false }
+            if awaitingLocationAnswer, status != .notDetermined {
+                awaitingLocationAnswer = false
+                if step == .location { advance() }
+            }
         }
     }
 
@@ -172,32 +179,30 @@ struct OnboardingView: View {
             case .region, .fare:
                 Button("Continue") { advance() }
                     .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
+            // App Review (5.1.1(iv)): a screen explaining a permission must
+            // lead straight to the system prompt - one neutral "Continue",
+            // no way to skip or delay it, and no "Allow" wording.
             case .location:
-                if environment.location.isAuthorized {
-                    Button("Continue") { advance() }
-                        .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
-                } else {
-                    Button("Allow location") {
+                Button("Continue") {
+                    if environment.location.authorizationStatus == .notDetermined {
+                        awaitingLocationAnswer = true
                         environment.location.requestPermission()
+                    } else {
                         advance()
                     }
-                    .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
-                    Button("Not now") { advance() }.buttonStyle(.shad(.ghost, size: .default, fullWidth: true))
                 }
+                .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
+                .disabled(awaitingLocationAnswer)
             case .notifications:
-                if environment.push.isAuthorized {
-                    Button("Continue") { advance() }
-                        .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
-                } else {
-                    Button("Allow notifications") {
-                        Task {
+                Button("Continue") {
+                    Task {
+                        if !environment.push.isAuthorized {
                             _ = await environment.push.requestPermission()
-                            advance()
                         }
+                        advance()
                     }
-                    .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
-                    Button("Not now") { advance() }.buttonStyle(.shad(.ghost, size: .default, fullWidth: true))
                 }
+                .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
             case .sync:
                 Button("Continue") { advance() }
                     .buttonStyle(.shad(.default, size: .lg, fullWidth: true))
