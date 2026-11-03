@@ -17,6 +17,9 @@ struct StopsMapView: View {
     var opensStopDirectly = false
     /// Room kept clear on the leading edge (an open side panel).
     var leadingInset: CGFloat = 0
+    /// The tab's Stops / Vehicles switch, drawn on the map with the other
+    /// controls.
+    var mode: Binding<DeepLinkRouter.MapMode>?
 
     @Environment(AppEnvironment.self) private var environment
     @State private var stops: [Stop] = []
@@ -47,54 +50,7 @@ struct StopsMapView: View {
     @State private var recenterTrigger = 0
 
     var body: some View {
-        ZStack(alignment: .top) {
-            TransitMapView(
-                stops: visibleStops.map(StopAnnotation.init),
-                camera: mapCenter.map { .region(center: $0, radiusMeters: 800) }
-                    ?? .region(center: environment.region.defaultMapCenter, radiusMeters: 6000),
-                showsUserLocation: environment.location.isAuthorized,
-                onSelectStop: { id in
-                    guard let stop = stops.first(where: { $0.stopID == id }) else { return }
-                    if opensStopDirectly {
-                        previewStop = nil
-                        onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
-                    } else {
-                        withAnimation(.spring(duration: 0.3)) { previewStop = stop }
-                    }
-                },
-                onVisibleRegionChange: { visibleRegion = $0 },
-                centerOnUserLocationTrigger: recenterTrigger
-            )
-            .ignoresSafeArea(edges: .bottom)
-
-            // Not an overlay on the map: the map runs under the bottom safe
-            // area (tab bar, resume pill), and these must sit above it.
-            VStack(alignment: .trailing, spacing: 12) {
-                Map3DButton()
-                RecenterButton(isAuthorized: environment.location.isAuthorized) {
-                    recenterTrigger += 1
-                }
-                if let previewStop {
-                    previewCard(previewStop)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-
-            // Mode filters float on the map as pills, as on the web.
-            MapModeFilterBar(modes: StopType.filterCases, label: \.label, selection: $typeFilter)
-                .padding(.leading, leadingInset)
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .padding(8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .padding(.top, 44)
-            }
-        }
+        floatingLayout
         .if(!embedded) { view in
             view.navigationTitle("Stops").navigationBarTitleDisplayMode(.inline)
         }
@@ -108,39 +64,132 @@ struct StopsMapView: View {
         }
     }
 
-    private func previewCard(_ stop: Stop) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            Button {
-                onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
-            } label: {
-                HomeStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: stop.stopCode.isEmpty ? nil : "Stop \(stop.stopCode)") {
-                    StopModeTile(stopType: stop.stopType)
+    private var map: some View {
+        TransitMapView(
+            stops: visibleStops.map(StopAnnotation.init),
+            camera: mapCenter.map { .region(center: $0, radiusMeters: 800) }
+                ?? .region(center: environment.region.defaultMapCenter, radiusMeters: 6000),
+            showsUserLocation: environment.location.isAuthorized,
+            onSelectStop: { id in
+                guard let stop = stops.first(where: { $0.stopID == id }) else { return }
+                if opensStopDirectly {
+                    previewStop = nil
+                    onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+                } else {
+                    withAnimation(.spring(duration: 0.3)) { previewStop = stop }
+                }
+            },
+            // Applied on the next turn: the map reports the region its
+            // camera lands on during a SwiftUI update, and a state write
+            // there is dropped - the list stayed on the starting region.
+            onVisibleRegionChange: { region in Task { @MainActor in visibleRegion = region } },
+            centerOnUserLocationTrigger: recenterTrigger
+        )
+    }
+
+    // MARK: - Layout
+
+    /// Mode filter as a menu on a round button.
+    private var filterMenu: some View {
+        Menu {
+            Picker("Show", selection: $typeFilter) {
+                ForEach(StopType.filterCases, id: \.self) { Text($0 == .all ? "All stops" : "\($0.label) stops").tag($0) }
+            }
+        } label: {
+            Image(systemName: mapFilterIcon(active: typeFilter != .all))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(typeFilter != .all ? Theme.primary : Theme.foreground)
+                .frame(width: 40, height: 40)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+        }
+        .accessibilityLabel(typeFilter == .all ? "Filter stops" : "Showing \(typeFilter.label) stops")
+    }
+
+    private var mapButtons: some View {
+        VStack(spacing: 10) {
+            Map3DButton()
+            RecenterButton(isAuthorized: environment.location.isAuthorized) { recenterTrigger += 1 }
+        }
+    }
+
+    /// The map full height with one floating bar on top (Stops / Vehicles,
+    /// filter, Settings); a tapped stop's board card at the bottom
+    /// (2026-11-03, replacing a top bar + a row of filter pills).
+    private var floatingLayout: some View {
+        ZStack(alignment: .top) {
+            map.ignoresSafeArea()
+            HStack(spacing: 8) {
+                if let mode { MapModeSwitch(mode: mode) }
+                Spacer()
+                filterMenu
+                MapSettingsButton()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            // Clear of an open side panel (iPad).
+            .padding(.leading, leadingInset)
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.meta)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.top, 56)
+            }
+
+            VStack(alignment: .trailing, spacing: 12) {
+                mapButtons
+                if let previewStop {
+                    boardCard(previewStop, lines: 3)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("stop-preview")
-            .accessibilityHint("Opens departures")
-
-            // Inside the card (not hanging off its corner) so it's always
-            // tappable.
-            Button {
-                withAnimation(.spring(duration: 0.3)) { previewStop = nil }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.mutedForeground)
-                    .frame(width: 26, height: 26)
-                    .background(Theme.muted, in: Circle())
-                    .frame(width: 40, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.top, 2)
-            .accessibilityLabel("Close")
+            .padding(.horizontal, 16)
+            .padding(.bottom, 12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
         }
-        .background(Theme.card, in: RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: Theme.radiusXL, style: .continuous).strokeBorder(Theme.border, lineWidth: 1))
-        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    private func boardCard(_ stop: Stop, lines: Int, closable: Bool = true) -> some View {
+        Button {
+            onOpenStop(BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName))
+        } label: {
+            HomeBoardCard(stopQuery: stop.boardQuery, title: stop.stopName, detail: walkLabel(to: stop), lines: lines) {
+                HomeModeTile(stopType: stop.stopType)
+            }
+            .overlay(alignment: .topTrailing) {
+                if closable {
+                    Button {
+                        withAnimation(.spring(duration: 0.3)) { previewStop = nil }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.foreground)
+                            .frame(width: 28, height: 28)
+                            .background(Theme.card, in: Circle())
+                            .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
+                            .shadow(color: .black.opacity(0.15), radius: 4, y: 1)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .offset(x: 14, y: -14)
+                    .accessibilityLabel("Close")
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .shadow(color: .black.opacity(closable ? 0.18 : 0), radius: 12, y: 4)
+        .accessibilityIdentifier("stop-preview")
+    }
+
+    private func walkLabel(to stop: Stop) -> String? {
+        guard let here = environment.location.coordinate else { return nil }
+        let minutes = max(1, Int((Geo.haversineDistanceMeters(here, stop.coordinate) / 80).rounded()))
+        return "\(minutes) min walk"
     }
 
     /// A hard ceiling on live annotations, independent of the viewport
@@ -254,6 +303,12 @@ struct StopsMapView: View {
         do {
             stops = try await environment.api.stops(includeChildren: false, type: typeFilter)
             errorMessage = nil
+            #if DEBUG
+            // `-mapPreviewStop <name>`: open with that stop picked, for screenshots.
+            if previewStop == nil, let name = UserDefaults.standard.string(forKey: "mapPreviewStop") {
+                previewStop = stops.first { $0.stopName == name }
+            }
+            #endif
         } catch {
             errorMessage = error.localizedDescription
         }

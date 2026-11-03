@@ -18,6 +18,8 @@ struct VehiclesMapView: View {
     /// "Where's my 70?" - only these routes' vehicles, when set.
     @State private var routeFilter: [RouteSearchResult] = []
     @State private var isPickingRoutes = false
+    /// The tab's Stops / Vehicles switch, on the map in the new layouts.
+    var mode: Binding<DeepLinkRouter.MapMode>?
 
     private var shownVehicles: [Vehicle] {
         guard !routeFilter.isEmpty else { return vehicles }
@@ -27,48 +29,7 @@ struct VehiclesMapView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            TransitMapView(
-                stops: showStops ? nearbyStops.map(StopAnnotation.init) : [],
-                vehicles: shownVehicles.map(VehicleAnnotation.init),
-                camera: .region(center: environment.region.defaultMapCenter, radiusMeters: 15000),
-                showsUserLocation: environment.location.isAuthorized,
-                onSelectVehicle: { onOpenVehicle($0) },
-                centerOnUserLocationTrigger: recenterTrigger
-            )
-            .ignoresSafeArea(edges: .bottom)
-
-            // Above the bottom safe area (tab bar, resume pill), not in it.
-            VStack(spacing: 12) {
-                Map3DButton()
-                RecenterButton(isAuthorized: environment.location.isAuthorized) {
-                    recenterTrigger += 1
-                }
-            }
-            .padding(.trailing, 16)
-            .padding(.bottom, 12)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-
-            // Same floating pills as the Stops map, then the route search
-            // and "Stops" as chips of their own.
-            MapModeFilterBar(modes: VehicleFilterType.filterCases, label: \.label, selection: $typeFilter) {
-                Rectangle().fill(Theme.border).frame(width: 1, height: 20).padding(.horizontal, 2)
-                routeFilterChips
-                Chip(label: "Stops", isActive: showStops, systemImage: "mappin") { showStops.toggle() }
-                    .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                    .accessibilityLabel("Show stops")
-            }
-        }
-        .overlay {
-            if !routeFilter.isEmpty, shownVehicles.isEmpty, !vehicles.isEmpty {
-                Text("None of these routes are running right now")
-                    .font(.meta)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Theme.popover, in: Capsule())
-                    .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
-            }
-        }
+        floatingLayout
         .sheet(isPresented: $isPickingRoutes) {
             RouteSearchSheet(title: "Show routes", selected: $routeFilter)
                 .shadSheet(detents: [.medium, .large])
@@ -82,18 +43,105 @@ struct VehiclesMapView: View {
         }
     }
 
-    /// "Route" until routes are picked, then their names and a clear chip.
-    @ViewBuilder
-    private var routeFilterChips: some View {
-        Chip(label: routeFilterLabel, isActive: !routeFilter.isEmpty, systemImage: "magnifyingglass") {
-            isPickingRoutes = true
+    private var map: some View {
+        TransitMapView(
+            stops: showStops ? nearbyStops.map(StopAnnotation.init) : [],
+            vehicles: shownVehicles.map(VehicleAnnotation.init),
+            camera: .region(center: environment.location.coordinate ?? environment.region.defaultMapCenter,
+                            radiusMeters: environment.location.coordinate == nil ? 15000 : 3000),
+            showsUserLocation: environment.location.isAuthorized,
+            onSelectVehicle: { onOpenVehicle($0) },
+            centerOnUserLocationTrigger: recenterTrigger
+        )
+    }
+
+    // MARK: - Layout
+
+    /// Mode, a route search and "show stops" in one menu.
+    private var filterMenu: some View {
+        let active = typeFilter != .all || !routeFilter.isEmpty || showStops
+        return Menu {
+            Picker("Show", selection: $typeFilter) {
+                ForEach(VehicleFilterType.filterCases, id: \.self) { Text($0 == .all ? "All vehicles" : "\($0.label)es".replacingOccurrences(of: "Trainses", with: "Trains")).tag($0) }
+            }
+            Section {
+                Button { isPickingRoutes = true } label: { Label(routeFilter.isEmpty ? "Find a route…" : "Routes: \(routeFilterLabel)", systemImage: "magnifyingglass") }
+                if !routeFilter.isEmpty {
+                    Button { routeFilter = [] } label: { Label("Show all routes", systemImage: "xmark") }
+                }
+                Toggle(isOn: $showStops) { Label("Show stops", systemImage: "mappin") }
+            }
+        } label: {
+            Image(systemName: mapFilterIcon(active: active))
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(active ? Theme.primary : Theme.foreground)
+                .frame(width: 40, height: 40)
+                .background(.regularMaterial, in: Circle())
+                .overlay(Circle().strokeBorder(Theme.border, lineWidth: 1))
         }
-        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-        .accessibilityLabel(routeFilter.isEmpty ? "Find a route" : "Routes: \(routeFilterLabel)")
+        .accessibilityLabel("Filter vehicles")
+    }
+
+    /// "Routes: 70 ✕" under the bar while a route filter is on.
+    @ViewBuilder
+    private var routeChip: some View {
         if !routeFilter.isEmpty {
-            Chip(label: "Clear", isActive: false, systemImage: "xmark") { routeFilter = [] }
-                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
-                .accessibilityLabel("Show all routes")
+            Button { routeFilter = [] } label: {
+                HStack(spacing: 6) {
+                    Text("Routes: \(routeFilterLabel)")
+                    Image(systemName: "xmark").font(.system(size: 10, weight: .bold))
+                }
+                .font(.metaMedium)
+                .foregroundStyle(Theme.primaryForeground)
+                .padding(.horizontal, 12)
+                .frame(height: 30)
+                .background(Theme.primary, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Showing routes \(routeFilterLabel). Clear")
+        }
+    }
+
+    private var mapButtons: some View {
+        VStack(spacing: 10) {
+            Map3DButton()
+            RecenterButton(isAuthorized: environment.location.isAuthorized) { recenterTrigger += 1 }
+        }
+    }
+
+    private var floatingLayout: some View {
+        ZStack(alignment: .top) {
+            map.ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    if let mode { MapModeSwitch(mode: mode) }
+                    Spacer()
+                    filterMenu
+                    MapSettingsButton()
+                }
+                routeChip
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 4)
+            mapButtons
+                .padding(.trailing, 16)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            emptyRoutesNote
+        }
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    @ViewBuilder
+    private var emptyRoutesNote: some View {
+        if !routeFilter.isEmpty, shownVehicles.isEmpty, !vehicles.isEmpty {
+            Text("None of these routes are running right now")
+                .font(.meta)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background(Theme.popover, in: Capsule())
+                .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
+                .frame(maxHeight: .infinity)
         }
     }
 

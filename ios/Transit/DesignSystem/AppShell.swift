@@ -396,45 +396,6 @@ struct MapTabView: View {
     }
 }
 
-/// The Stops / Vehicles segmented control at the top of the Map tab.
-private struct MapModePicker: ToolbarContent {
-    @Binding var mode: DeepLinkRouter.MapMode
-    @Environment(AppEnvironment.self) private var environment
-
-    var body: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            // Hidden for a timetable-only region - nothing to switch to.
-            if environment.region.hasRealtime {
-                // Plain buttons, not a segmented Picker: in the glass nav bar
-                // the Picker's first tap after the tab appears was dropped.
-                HStack(spacing: 2) {
-                    segment("Stops", .stops)
-                    segment("Vehicles", .vehicles)
-                }
-                .padding(3)
-                .background(Theme.muted, in: Capsule())
-                .accessibilityElement(children: .contain)
-            }
-        }
-    }
-
-    private func segment(_ title: String, _ value: DeepLinkRouter.MapMode) -> some View {
-        Button {
-            mode = value
-        } label: {
-            Text(title)
-                .font(.geist(14, .medium, relativeTo: .subheadline))
-                .foregroundStyle(mode == value ? Theme.foreground : Theme.mutedForeground)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 30)
-                .background(mode == value ? Theme.card : .clear, in: Capsule())
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(mode == value ? .isSelected : [])
-    }
-}
-
 /// Regular width (iPad): a tapped stop's board opens in a side panel beside
 /// the map instead of being pushed over it, and a departure from there
 /// pushes its service tracker full screen.
@@ -454,7 +415,8 @@ private struct StopsTabView: View {
                         if usesSidePanel { panelStop = destination } else { path.append(destination) }
                     },
                     opensStopDirectly: usesSidePanel,
-                    leadingInset: usesSidePanel && panelStop != nil ? MapSidePanelMetrics.occupiedWidth : 0
+                    leadingInset: usesSidePanel && panelStop != nil ? MapSidePanelMetrics.occupiedWidth : 0,
+                    mode: $mode
                 )
                 if usesSidePanel, let panelStop {
                     MapSidePanel {
@@ -473,10 +435,7 @@ private struct StopsTabView: View {
                 }
             }
             .animation(.spring(duration: 0.3), value: panelStop?.stopQuery)
-            .appToolbar()
-            .toolbar { MapModePicker(mode: $mode) }
-            .toolbarBackground(Theme.background, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
+
             .navigationDestination(for: BoardDestination.self) { destination in
                 StopBoardView(stopQuery: destination.stopQuery, title: destination.title)
             }
@@ -500,10 +459,7 @@ private struct VehiclesTabView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            VehiclesMapView(onOpenVehicle: { path.append(TripDestination(tripID: $0)) }).appToolbar()
-                .toolbar { MapModePicker(mode: $mode) }
-                .toolbarBackground(Theme.background, for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
+            VehiclesMapView(onOpenVehicle: { path.append(TripDestination(tripID: $0)) }, mode: $mode)
                 .navigationDestination(for: TripDestination.self) { destination in
                     VehicleQuickLookView(tripID: destination.tripID)
                 }

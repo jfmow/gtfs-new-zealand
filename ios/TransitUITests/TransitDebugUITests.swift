@@ -155,7 +155,10 @@ final class TransitDebugUITests: XCTestCase {
         app.buttons["Vehicles"].firstMatch.tap()
         sleep(4)
         attach("ux07-map-vehicles")
-        let route = app.buttons["Find a route"]
+        // Route search lives in the map's filter menu.
+        let filter = app.buttons["Filter vehicles"]
+        if filter.waitForExistence(timeout: 3) { filter.tap() }
+        let route = app.buttons["Find a route…"]
         if route.waitForExistence(timeout: 3) {
             route.tap()
             sleep(1)

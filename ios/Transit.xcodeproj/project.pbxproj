@@ -56,6 +56,7 @@
 		83E880DF8B286B11AB3606DC /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */; };
 		86AAED6C91303B009700C735 /* EasyResultsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37FCFDD5B1FBA315536F8BB9 /* EasyResultsView.swift */; };
 		874EE8B5732E67809BE7F1B8 /* TransitWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5511DDFD6BC79AFB5E1871D4 /* TransitWidgetsBundle.swift */; };
+		8BEC86E3E35C90ED21FCF42B /* MapChrome.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA7A172104173EB64BB7F957 /* MapChrome.swift */; };
 		8E92E9603EAFBD523F6C953F /* GeistMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E10A6DB2C79C6AB677468519 /* GeistMono-Regular.ttf */; };
 		9348DA750CE028B395FDE171 /* SharedStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3084ED761F944CE8CDC2E9C6 /* SharedStore.swift */; };
 		99F0ADFB689EBCA653650D82 /* Geist-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 630B2BCCDCCEC4171093151E /* Geist-Regular.ttf */; };
@@ -190,6 +191,7 @@
 		C078B9BE4C49BE5FF57277B9 /* JourneyDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyDetailView.swift; sourceTree = "<group>"; };
 		C14185BF31545DB22D5AB205 /* AppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShell.swift; sourceTree = "<group>"; };
 		C7B5FEA401D5F0CFFE22BEFD /* JourneyActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JourneyActivityAttributes.swift; sourceTree = "<group>"; };
+		CA7A172104173EB64BB7F957 /* MapChrome.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MapChrome.swift; sourceTree = "<group>"; };
 		D0A2E1A880225E7007A21FA6 /* SavedStopIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedStopIntents.swift; sourceTree = "<group>"; };
 		D2DD162B883DBFFCFC218A88 /* StopBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StopBoardView.swift; sourceTree = "<group>"; };
 		D7E20B0112BBE90FAC71DB94 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -429,6 +431,7 @@
 			isa = PBXGroup;
 			children = (
 				FDBF602A69FD73D1C0D82358 /* MapAnnotations.swift */,
+				CA7A172104173EB64BB7F957 /* MapChrome.swift */,
 				59E8800859E3E6FF0485748F /* MapControls.swift */,
 				97361DD773747781B3551E93 /* TransitMapView.swift */,
 			);
@@ -699,6 +702,7 @@
 				5A25392A5932D553B0AA9EAA /* LocationField.swift in Sources */,
 				BCFEC684F0EFA25BCC94F0CC /* LocationProvider.swift in Sources */,
 				5415BB646E0FFF3395E6330D /* MapAnnotations.swift in Sources */,
+				8BEC86E3E35C90ED21FCF42B /* MapChrome.swift in Sources */,
 				EA987E588AB7E725036D9225 /* MapControls.swift in Sources */,
 				55613541D06874817DB6E3B6 /* MapLocationPickerView.swift in Sources */,
 				6E5BAC87473234D52F5EF395 /* MapSidePanel.swift in Sources */,

@@ -1133,8 +1133,12 @@ struct TransitMapView: UIViewRepresentable {
                     for: cluster
                 ) as! MKMarkerAnnotationView
 
-                view.markerTintColor = .systemGray
+                view.markerTintColor = UIColor(Theme.primary)
                 view.glyphText = "\(cluster.memberAnnotations.count)"
+                // MapKit's own "917 +26 more" caption under every cluster
+                // cluttered the map - the count is enough.
+                view.titleVisibility = .hidden
+                view.subtitleVisibility = .hidden
                 view.annotation = cluster
                 let kind = cluster.memberAnnotations.first is VehicleAnnotation ? "vehicles" : "stops"
                 view.accessibilityLabel = "Group of \(cluster.memberAnnotations.count) \(kind)"
