@@ -1,22 +1,11 @@
 import Link from 'next/link'
 import { useRouter } from 'next/router'
-import { Activity, Map, Settings2Icon, MenuIcon, CalendarDays, Route, BellRing, Locate, TriangleAlert, type LucideIcon } from 'lucide-react'
+import { Map, Settings, CalendarDays, Route, Bell, type LucideIcon } from 'lucide-react'
 import { cn, useIsMobile } from '@/lib/utils'
-import { useUrl } from '@/lib/url-context'
-import { hasRealtime } from '@/lib/url-store'
 import { useTheme } from 'next-themes'
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect } from 'react'
 import Head from 'next/head'
-import FindCurrentVehicle from './services/assistance/find-closest-vehicle'
-import { NotificationsBell } from './notifications/bell'
-import { ManageNotificationsSheet } from './notifications/manage-sheet'
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuSeparator,
-    DropdownMenuTrigger,
-} from './ui/dropdown-menu'
+import { useNotificationFeed } from './notifications/bell'
 
 interface NavTab {
     href: string
@@ -24,34 +13,34 @@ interface NavTab {
     icon: LucideIcon
     /** Path prefixes that count as this tab ("/" matches only itself). */
     match: string[]
-    /** Needs the region's realtime feed. */
-    realtime?: boolean
+    /** Shows the unread-notification count. */
+    badge?: boolean
 }
 
 /**
  * The four tabs, in the iOS app's order (Home/Schedule, Planner, Map,
- * Alerts). Settings, My reminders and Find my vehicle live in the menu, as
- * on iOS. Map is /map, whose Stops/Vehicles switch replaced the old /stops
- * and /vehicles pages (they redirect there).
+ * Updates). Updates (/alerts) holds your notifications and reminders ("For
+ * you") and service alerts - it replaced the bell and the ☰ menu on every
+ * page (2026-11-03, as on iOS), leaving just Settings up top. Map is /map,
+ * whose Stops/Vehicles switch replaced the old /stops and /vehicles pages.
  */
 const NAV_TABS: NavTab[] = [
     { href: '/', label: 'Schedule', icon: CalendarDays, match: ['/'] },
     { href: '/plan', label: 'Planner', icon: Route, match: ['/plan', '/journey'] },
     { href: '/map', label: 'Map', icon: Map, match: ['/map', '/stops', '/vehicles'] },
-    { href: '/alerts', label: 'Alerts', icon: TriangleAlert, match: ['/alerts'], realtime: true },
+    { href: '/alerts', label: 'Updates', icon: Bell, match: ['/alerts'], badge: true },
 ]
 
-/** The tabs for the current region - Alerts only where the region has realtime. */
+/** Every region gets all four - a timetable-only one's Updates is just "For you". */
 function useNavTabs(): NavTab[] {
-    const { currentUrl } = useUrl()
-    const realtime = hasRealtime(currentUrl)
-    return NAV_TABS.filter((tab) => realtime || !tab.realtime)
+    return NAV_TABS
 }
 
 /** Titles for pages that aren't a tab (reached from the menu). */
 const PAGE_TITLES: Record<string, string> = {
     '/settings': 'Settings',
     '/privacy': 'Privacy',
+    '/reliability': 'Route reliability',
 }
 
 function useActiveTab(): NavTab | undefined {
@@ -67,6 +56,7 @@ export default function NavBar() {
     const router = useRouter()
     const activeTab = useActiveTab()
     const tabs = useNavTabs()
+    const { unread } = useNotificationFeed()
 
     const logo = theme === "dark" ? "/branding/nav-logo-dark.png" : "/branding/nav-logo.png"
     const title = PAGE_TITLES[router.pathname] ?? activeTab?.label ?? ''
@@ -89,13 +79,10 @@ export default function NavBar() {
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={logo} alt="Home" className="w-7 h-7" />
                         </Link>
-                        <span className="flex-1 min-w-0 truncate font-display text-sm font-semibold uppercase tracking-wide">
+                        <span className="flex-1 min-w-0 truncate text-[15px] font-semibold">
                             {title}
                         </span>
-                        <div className="flex items-center gap-1">
-                            <NotificationsBell />
-                            <AppMenu />
-                        </div>
+                        <SettingsLink />
                     </div>
                 ) : (
                     <nav className="max-w-[1400px] mx-auto px-4 h-12 flex items-center gap-4">
@@ -113,12 +100,13 @@ export default function NavBar() {
                                             href={tab.href}
                                             aria-current={active ? 'page' : undefined}
                                             className={cn(
-                                                "relative flex items-center gap-1.5 px-3 h-full font-display text-sm font-medium uppercase tracking-wide transition-colors",
+                                                "relative flex items-center gap-1.5 px-3 h-full text-sm font-medium transition-colors",
                                                 active ? "text-foreground" : "text-muted-foreground hover:text-foreground"
                                             )}
                                         >
                                             <tab.icon className="w-4 h-4 shrink-0" />
                                             {tab.label}
+                                            {tab.badge && <UnreadBadge count={unread} />}
                                             {active && (
                                                 <span className="absolute inset-x-3 -bottom-px h-0.5 bg-primary rounded-full" />
                                             )}
@@ -128,21 +116,18 @@ export default function NavBar() {
                             })}
                         </ul>
 
-                        <div className="flex items-center gap-1">
-                            <NotificationsBell />
-                            <AppMenu />
-                        </div>
+                        <SettingsLink />
                     </nav>
                 )}
             </div>
 
-            {isMobile && <TabBar tabs={tabs} activeTab={activeTab} />}
+            {isMobile && <TabBar tabs={tabs} activeTab={activeTab} unread={unread} />}
         </>
     )
 }
 
 /** The iOS tab bar: fixed to the bottom on phones, above the home indicator. */
-function TabBar({ tabs, activeTab }: { tabs: NavTab[]; activeTab: NavTab | undefined }) {
+function TabBar({ tabs, activeTab, unread }: { tabs: NavTab[]; activeTab: NavTab | undefined; unread: number }) {
     return (
         <nav
             data-hide-immersive
@@ -162,7 +147,12 @@ function TabBar({ tabs, activeTab }: { tabs: NavTab[]; activeTab: NavTab | undef
                                     active ? "text-foreground" : "text-muted-foreground"
                                 )}
                             >
-                                <tab.icon className="h-5 w-5" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                                <span className="relative">
+                                    <tab.icon className="h-5 w-5" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
+                                    {tab.badge && unread > 0 && (
+                                        <span className="absolute -top-1.5 -right-2.5"><UnreadBadge count={unread} /></span>
+                                    )}
+                                </span>
                                 {tab.label}
                             </Link>
                         </li>
@@ -173,55 +163,29 @@ function TabBar({ tabs, activeTab }: { tabs: NavTab[]; activeTab: NavTab | undef
     )
 }
 
-/** ☰ - what the iOS app's menu holds: My reminders, Find my vehicle, Settings - plus Route reliability and Your travel. */
-function AppMenu() {
-    const router = useRouter()
-    const [remindersOpen, setRemindersOpen] = useState(false)
-    const [findVehicleOpen, setFindVehicleOpen] = useState(false)
-    const { currentUrl } = useUrl()
-    const realtime = hasRealtime(currentUrl)
-
+/** New notifications, on the Updates tab. */
+function UnreadBadge({ count }: { count: number }) {
+    if (count <= 0) return null
     return (
-        <>
-            {/* Non-modal: a modal menu that opens a dialog from an item
-                strands pointer-events:none on <body>. */}
-            <DropdownMenu modal={false}>
-                <DropdownMenuTrigger asChild>
-                    <button
-                        aria-label="Menu"
-                        className="w-9 h-9 flex items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors"
-                    >
-                        <MenuIcon className="w-5 h-5" />
-                    </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem onSelect={() => setRemindersOpen(true)}>
-                        <BellRing className="w-4 h-4" />
-                        My reminders
-                    </DropdownMenuItem>
-                    {realtime && (
-                        <DropdownMenuItem onSelect={() => setFindVehicleOpen(true)}>
-                            <Locate className="w-4 h-4" />
-                            Find my vehicle
-                        </DropdownMenuItem>
-                    )}
-                    {realtime && (
-                        <DropdownMenuItem onSelect={() => router.push('/reliability')}>
-                            <Activity className="w-4 h-4" />
-                            Route reliability
-                        </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => router.push('/settings')}>
-                        <Settings2Icon className="w-4 h-4" />
-                        Settings
-                    </DropdownMenuItem>
-                </DropdownMenuContent>
-            </DropdownMenu>
+        <span
+            aria-label={`${count} unread`}
+            className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
+        >
+            {count > 9 ? '9+' : count}
+        </span>
+    )
+}
 
-            <ManageNotificationsSheet open={remindersOpen} onOpenChange={setRemindersOpen} />
-            <FindCurrentVehicle open={findVehicleOpen} onOpenChange={setFindVehicleOpen} />
-        </>
+/** Settings - all that's left in the top bar (the bell and ☰ menu went into the Updates tab). */
+function SettingsLink() {
+    return (
+        <Link
+            href="/settings"
+            aria-label="Settings"
+            className="w-9 h-9 flex items-center justify-center rounded-full text-foreground hover:bg-accent transition-colors shrink-0"
+        >
+            <Settings className="w-[18px] h-[18px]" />
+        </Link>
     )
 }
 
@@ -250,8 +214,8 @@ function HeaderMeta() {
             <meta name="apple-mobile-web-app-capable" content="yes" />
             <meta name="application-name" content="Trains" />
             <meta name="apple-mobile-web-app-title" content="Trains" />
-            <meta name="theme-color" content="#ffffff" />
-            <meta name="msapplication-navbutton-color" content="#ffffff" />
+            <meta name="theme-color" content="#F6F9F6" />
+            <meta name="msapplication-navbutton-color" content="#F6F9F6" />
             <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
             <meta name="msapplication-starturl" content="/" />
             <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no, viewport-fit=cover" />

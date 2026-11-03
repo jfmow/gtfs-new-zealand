@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { ApiFetch } from "@/lib/url-context"
 import { getUserLocation } from "@/lib/userLocation"
-import { formatDistance, haversineDistance } from "@/lib/utils"
+import { haversineDistance } from "@/lib/utils"
 import type { Stop } from "@/components/map/stops-map"
 import { saveStop, useIsSaved } from "@/components/stops/favourites"
 import { HomeHint, HomeSection } from "./home-section"
@@ -125,20 +125,21 @@ export function NearbySection({ className }: { className?: string }) {
         content = <HomeHint icon={SearchX} text="No stops found nearby." />
     } else {
         content = (
-            <div className="flex flex-col gap-2.5">
+            <div className="grid gap-2.5 lg:grid-cols-2">
                 {stops.slice(0, expanded ? SHOWN_EXPANDED : SHOWN).map((stop) => (
                     <HomeStopRow
                         key={stop.stop_id}
                         stopQuery={stopQueryOf(stop)}
                         title={stop.stop_name}
-                        detail={formatDistance(haversineDistance(state.lat, state.lon, stop.stop_lat, stop.stop_lon))}
+                        detail={`${Math.max(1, Math.round(haversineDistance(state.lat, state.lon, stop.stop_lat, stop.stop_lon) / 80))} min walk`}
+                        lines={2}
                         href={`/?s=${encodeURIComponent(stopQueryOf(stop))}`}
                         tile={<StopModeTile stopType={stop.stop_type} />}
                         menu={<NearbyStopMenu stop={stop} />}
                     />
                 ))}
                 {stops.length > SHOWN && (
-                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => setExpanded(!expanded)}>
+                    <Button variant="ghost" size="sm" className="w-full text-muted-foreground lg:col-span-2" onClick={() => setExpanded(!expanded)}>
                         {expanded ? <><ChevronUp className="h-4 w-4" /> Show fewer</> : <><ChevronDown className="h-4 w-4" /> Show more nearby stops</>}
                     </Button>
                 )}
@@ -148,7 +149,7 @@ export function NearbySection({ className }: { className?: string }) {
 
     return (
         <HomeSection
-            title="Nearby"
+            title="Near you"
             liveDot={state.status === "found"}
             className={className}
             actions={<Link href="/map" className="flex items-center gap-1"><MapIcon className="h-3.5 w-3.5" /> Map</Link>}

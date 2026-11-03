@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { useRouter } from "next/router"
-import { Bell, X } from "lucide-react"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { BellRing, ChevronRight, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
     getMySubscriptions,
@@ -14,32 +13,41 @@ import {
 import { ManageNotificationsSheet } from "./manage-sheet"
 
 const LAST_SEEN_KEY = "notifications_last_seen"
+const LAST_SEEN_EVENT = "notificationsSeen"
 const UPDATED_EVENT = "notificationsUpdated"
 const POLL_MS = 60000
 
-/** Nav bell + unread badge + recent-notification history - the only in-app surface for pushes, which otherwise only ever show as native OS notifications. Entries are tappable (open their deeplink) and dismissable. Read state lives in localStorage (no backend "read" tracking), same as saved trips/favourites elsewhere in this app. */
-export function NotificationsBell() {
-    const router = useRouter()
+/**
+ * The recent-notification history (the only in-app surface for pushes,
+ * which otherwise only show as native OS notifications) and how many are
+ * new. Read state lives in localStorage - there's no backend "read"
+ * tracking. Shared by the Updates tab's badge and its "For you" list.
+ */
+export function useNotificationFeed() {
     const [entries, setEntries] = useState<RecentNotificationEntry[]>([])
     const [lastSeen, setLastSeen] = useState(0)
-    const [manageOpen, setManageOpen] = useState(false)
-    const [open, setOpen] = useState(false)
 
     useEffect(() => {
-        try {
-            setLastSeen(Number(localStorage.getItem(LAST_SEEN_KEY) ?? "0"))
-        } catch {
-            // localStorage unavailable (private mode etc) - badge just won't persist across reloads
+        const read = () => {
+            try {
+                setLastSeen(Number(localStorage.getItem(LAST_SEEN_KEY) ?? "0"))
+            } catch {
+                // localStorage unavailable (private mode etc) - the badge just won't persist
+            }
         }
+        read()
+        window.addEventListener(LAST_SEEN_EVENT, read)
+        return () => window.removeEventListener(LAST_SEEN_EVENT, read)
     }, [])
 
     const load = useCallback(() => {
         getMySubscriptions().then((data) => {
             if (!data) return
-            const sorted = [...(data.recent_notifications ?? [])]
-                .filter((e) => !e.dismissed)
-                .sort((a, b) => (b.seen_at ?? 0) - (a.seen_at ?? 0))
-            setEntries(sorted)
+            setEntries(
+                [...(data.recent_notifications ?? [])]
+                    .filter((e) => !e.dismissed)
+                    .sort((a, b) => (b.seen_at ?? 0) - (a.seen_at ?? 0))
+            )
         })
     }, [])
 
@@ -53,111 +61,117 @@ export function NotificationsBell() {
         }
     }, [load])
 
-    const unread = entries.filter((e) => (e.seen_at ?? 0) > lastSeen).length
-
-    const markSeen = () => {
-        const now = Math.floor(Date.now() / 1000)
-        setLastSeen(now)
+    const markSeen = useCallback(() => {
         try {
-            localStorage.setItem(LAST_SEEN_KEY, String(now))
+            localStorage.setItem(LAST_SEEN_KEY, String(Math.floor(Date.now() / 1000)))
         } catch {
             // ignore - see above
         }
-    }
+        window.dispatchEvent(new CustomEvent(LAST_SEEN_EVENT))
+    }, [])
 
-    const handleOpen = (next: string | undefined) => {
-        setOpen(false)
-        if (next) router.push(next)
-    }
-
-    const handleDismiss = (id: string) => {
+    const dismiss = (id: string) => {
         setEntries((prev) => prev.filter((e) => e.id !== id))
         dismissNotification(id).finally(() => window.dispatchEvent(new CustomEvent(UPDATED_EVENT)))
     }
 
-    const handleClearAll = () => {
+    const clearAll = () => {
         setEntries([])
         clearNotifications().finally(() => window.dispatchEvent(new CustomEvent(UPDATED_EVENT)))
     }
 
+    return {
+        entries,
+        unread: entries.filter((e) => (e.seen_at ?? 0) > lastSeen).length,
+        markSeen,
+        dismiss,
+        clearAll,
+    }
+}
+
+/**
+ * The Updates tab's "For you": a way into your alerts and reminders, then
+ * recent notifications by day - tap one to open it. Marks them seen.
+ */
+export function NotificationsInbox() {
+    const router = useRouter()
+    const { entries, markSeen, dismiss, clearAll } = useNotificationFeed()
+    const [manageOpen, setManageOpen] = useState(false)
+
+    useEffect(() => {
+        markSeen()
+    }, [markSeen, entries.length])
+
+    const startOfDay = new Date().setHours(0, 0, 0, 0) / 1000
+    const groups = [
+        { title: "Today", items: entries.filter((e) => (e.seen_at ?? 0) >= startOfDay) },
+        { title: "Earlier", items: entries.filter((e) => (e.seen_at ?? 0) < startOfDay) },
+    ].filter((g) => g.items.length > 0)
+
     return (
-        <>
-            <Popover
-                open={open}
-                onOpenChange={(o) => {
-                    setOpen(o)
-                    if (o) markSeen()
-                }}
+        <div className="flex flex-col gap-5">
+            <button
+                type="button"
+                onClick={() => setManageOpen(true)}
+                className="flex items-center gap-3 rounded-xl border bg-card px-4 py-3 text-left hover:bg-accent/50 transition-colors"
             >
-                <PopoverTrigger asChild>
-                    <button
-                        aria-label="Notifications"
-                        className="relative w-9 h-9 flex items-center justify-center rounded-md text-foreground hover:bg-accent transition-colors shrink-0"
-                    >
-                        <Bell className="w-4 h-4" />
-                        {unread > 0 && (
-                            <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-destructive text-[9px] font-medium text-destructive-foreground">
-                                {unread > 9 ? "9+" : unread}
-                            </span>
-                        )}
-                    </button>
-                </PopoverTrigger>
-                <PopoverContent align="end" className="w-80 max-h-96 overflow-y-auto overscroll-contain p-0">
-                    <div className="p-3 border-b flex items-center justify-between sticky top-0 bg-popover z-10">
-                        <p className="text-sm font-medium">Notifications</p>
-                        <div className="flex items-center gap-1">
-                            {entries.length > 0 && (
-                                <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleClearAll}>
-                                    Clear all
-                                </Button>
-                            )}
-                            <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setOpen(false); setManageOpen(true) }}>
-                                Manage
-                            </Button>
-                        </div>
-                    </div>
-                    {entries.length === 0 ? (
-                        <p className="p-4 text-sm text-muted-foreground text-center">No notifications yet.</p>
-                    ) : (
-                        <div className="divide-y">
-                            {entries.slice(0, 30).map((entry, i) => (
-                                <div key={`${entry.id}-${i}`} className="flex items-start gap-1 pr-1.5">
-                                    <button
-                                        type="button"
-                                        disabled={!entry.url}
-                                        onClick={() => handleOpen(entry.url)}
-                                        className="flex-1 min-w-0 p-3 text-left enabled:hover:bg-accent/50 disabled:cursor-default transition-colors"
-                                    >
-                                        <p className="text-sm font-medium">{entry.title || "Notification"}</p>
-                                        {entry.body && (
-                                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{entry.body}</p>
-                                        )}
-                                        {!!entry.seen_at && (
-                                            <p className="text-[10px] text-muted-foreground/70 mt-1">
-                                                {new Date(entry.seen_at * 1000).toLocaleString("en-NZ", {
-                                                    day: "numeric",
-                                                    month: "short",
-                                                    hour: "numeric",
-                                                    minute: "2-digit",
-                                                })}
-                                            </p>
-                                        )}
-                                    </button>
-                                    <button
-                                        type="button"
-                                        aria-label="Dismiss notification"
-                                        onClick={() => handleDismiss(entry.id)}
-                                        className="mt-2.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                                    >
-                                        <X className="h-3.5 w-3.5" />
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </PopoverContent>
-            </Popover>
+                <BellRing className="h-4 w-4 shrink-0" />
+                <span className="flex-1 text-sm font-medium">Alerts &amp; reminders</span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {entries.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-16 text-center">
+                    <BellRing className="h-6 w-6 text-muted-foreground" />
+                    <p className="font-medium">No notifications yet</p>
+                    <p className="max-w-xs text-sm text-muted-foreground">
+                        Stop and route alerts, and leave-by reminders, show up here.
+                    </p>
+                </div>
+            ) : (
+                <>
+                    {groups.map((group) => (
+                        <section key={group.title} className="flex flex-col gap-2">
+                            <h2 className="text-sm font-medium text-muted-foreground">{group.title}</h2>
+                            <div className="divide-y rounded-xl border bg-card">
+                                {group.items.slice(0, 50).map((entry, i) => (
+                                    <div key={`${entry.id}-${i}`} className="flex items-start gap-1 pr-1.5">
+                                        <button
+                                            type="button"
+                                            disabled={!entry.url}
+                                            onClick={() => entry.url && router.push(entry.url)}
+                                            className="flex-1 min-w-0 px-4 py-3 text-left enabled:hover:bg-accent/50 disabled:cursor-default transition-colors"
+                                        >
+                                            <div className="flex items-baseline justify-between gap-2">
+                                                <p className="text-sm font-medium">{entry.title || "Notification"}</p>
+                                                {!!entry.seen_at && (
+                                                    <span className="shrink-0 text-xs text-muted-foreground">
+                                                        {new Date(entry.seen_at * 1000).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {entry.body && <p className="mt-0.5 text-sm text-muted-foreground line-clamp-3">{entry.body}</p>}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            aria-label="Dismiss notification"
+                                            onClick={() => dismiss(entry.id)}
+                                            className="mt-3 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                                        >
+                                            <X className="h-3.5 w-3.5" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        </section>
+                    ))}
+                    <Button variant="ghost" size="sm" className="self-center text-muted-foreground" onClick={clearAll}>
+                        Clear all
+                    </Button>
+                </>
+            )}
+
             <ManageNotificationsSheet open={manageOpen} onOpenChange={setManageOpen} />
-        </>
+        </div>
     )
 }

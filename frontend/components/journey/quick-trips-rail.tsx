@@ -211,7 +211,7 @@ function TripCard({
     )
 }
 
-export function QuickTripsRail({ trips, onLoadTrip, onUpdateTrip, onDeleteTrip, onReorderTrips }: QuickTripsRailProps) {
+export function QuickTripsRail({ trips, onLoadTrip, onUpdateTrip, onDeleteTrip, onReorderTrips, onManage, onUpdateAll }: QuickTripsRailProps & { onManage?: () => void; onUpdateAll?: () => void }) {
     const [order, setOrder] = useState<SavedTrip[]>(trips)
     const [renaming, setRenaming] = useState<SavedTrip | null>(null)
     const orderRef = useRef<SavedTrip[]>(trips)
@@ -225,7 +225,20 @@ export function QuickTripsRail({ trips, onLoadTrip, onUpdateTrip, onDeleteTrip, 
 
     return (
         <div className="space-y-1.5">
-            <h2 className="text-sm font-medium text-muted-foreground">Saved trips</h2>
+            <div className="flex items-center justify-between">
+                <h2 className="text-sm font-medium text-muted-foreground">Saved trips</h2>
+                {(onManage || onUpdateAll) && (
+                    <DropdownMenu modal={false}>
+                        <DropdownMenuTrigger asChild>
+                            <button type="button" className="text-[13px] font-medium text-muted-foreground hover:text-foreground">Manage</button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                            {onManage && <DropdownMenuItem onSelect={onManage}>Manage trips</DropdownMenuItem>}
+                            {onUpdateAll && <DropdownMenuItem onSelect={onUpdateAll}>Update all trips</DropdownMenuItem>}
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+                )}
+            </div>
             <Reorder.Group
                 as="ul"
                 axis="x"

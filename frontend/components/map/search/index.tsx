@@ -32,6 +32,9 @@ interface LocationSearchInputProps {
     searchParamKey?: string
     /** Off in the saved-place editor, where offering saved places would be circular. */
     showSavedPlaces?: boolean
+    /** No box of its own - for a field inside a card ("Where to?"). */
+    bare?: boolean
+    autoFocus?: boolean
 }
 
 export function LocationSearchInput({
@@ -44,6 +47,8 @@ export function LocationSearchInput({
     isLocating,
     searchParamKey,
     showSavedPlaces = true,
+    bare = false,
+    autoFocus = false,
 }: LocationSearchInputProps) {
     const { places: allPlaces } = useSavedPlaces()
     const places = showSavedPlaces ? allPlaces : []
@@ -201,8 +206,11 @@ export function LocationSearchInput({
                             setIsOpen(true)
                         }
                     }}
+                    autoFocus={autoFocus}
                     className={cn(
-                        "flex h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors",
+                        bare
+                            ? "flex h-11 w-full bg-transparent pr-8 text-base"
+                            : "flex h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors",
                         "placeholder:text-muted-foreground",
                         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                         "disabled:cursor-not-allowed disabled:opacity-50"

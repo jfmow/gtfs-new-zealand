@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
-import { Loader2, Share2, TriangleAlert } from "lucide-react"
+import { Bus, Loader2, MapPin, Share2, Ship, TrainFront, TriangleAlert } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { formatTextToNiceLookingWords } from "@/lib/formating"
-import { cn } from "@/lib/utils"
+import { cleanStopName, headsignDisplay } from "@/lib/formating"
+import { RouteBadge } from "@/components/home/home-stop-row"
 import { OccupancyIcons, getOccupancyShort } from "../occupancy"
 import { useServiceTrackerContext } from "./use-service-tracker"
-import { findRiderStop, shareTrip } from "./helpers"
+import { findRiderStop, findRiderStopTime, shareTrip } from "./helpers"
 
 /** White or near-black text, whichever reads on the route colour. */
 function textOn(hex: string) {
@@ -15,9 +15,11 @@ function textOn(hex: string) {
 }
 
 /**
- * The top of a live-tracked service - the iOS tracker's header: route tile,
- * where it's heading, the next stop and a countdown to it, then live chips
- * (live, how far to your stop, occupancy, platform, off course).
+ * The top of a live-tracked service - the iOS trip tracker (2026-11-03):
+ * route and destination on one line; then a big countdown to YOUR stop
+ * (opened from its board) - or the next stop when there isn't one; a strip
+ * of the vehicle, a dot per stop still to go and a pin at your stop; then
+ * one quiet status line.
  */
 export function TrackerHero() {
     const { vehicle, stops, stopTimes, previewData, currentStop, tripId, refreshing } = useServiceTrackerContext()
@@ -29,102 +31,103 @@ export function TrackerHero() {
 
     const routeName = vehicle?.route.name ?? previewData?.route_name ?? ""
     const hex = (vehicle?.route.color || previewData?.route_color || "525252").replace("#", "")
-    const headsign = formatTextToNiceLookingWords(vehicle?.trip.headsign || previewData?.tripHeadsign || routeName)
+    const headsign = headsignDisplay(vehicle?.trip.headsign || previewData?.tripHeadsign || routeName)
 
     const isAtStop = vehicle?.state === "AtStop"
     const liveUsable = !!vehicle && vehicle.state !== "Unknown" && !vehicle.off_course
-    const nextStopLine = vehicle
-        ? isAtStop ? `At ${vehicle.trip.current_stop.name}` : `Next: ${vehicle.trip.next_stop.name}`
-        : undefined
 
-    // Countdown to the stop it's at / heading to.
-    const target = vehicle ? (isAtStop ? vehicle.trip.current_stop : vehicle.trip.next_stop) : undefined
-    const targetTime = target
-        ? stopTimes?.find((st) => st.child_stop_id === target.child_stop_id) ?? stopTimes?.find((st) => st.parent_stop_id === target.parent_stop_id)
-        : undefined
-    const etaMinutes = liveUsable && targetTime?.arrival_time ? Math.max(0, Math.ceil((targetTime.arrival_time - now) / 60_000)) : null
-
-    // Stops still to reach, up to and including the rider's: 0 only while it's
-    // stopped there, 1 when it's next.
+    // The stop the countdown counts to: yours while it's still ahead, else
+    // the one it's at or heading to.
     const riderStop = findRiderStop(stops, currentStop)
-    let stopsToYours: number | null = null
-    if (vehicle && riderStop && stops) {
-        if (isAtStop) {
-            const cur = vehicle.trip.current_stop.sequence
-            if (riderStop.sequence >= cur) stopsToYours = stops.filter((s) => s.sequence > cur && s.sequence <= riderStop.sequence).length
-        } else {
-            const next = vehicle.trip.next_stop.sequence
-            if (riderStop.sequence >= next) stopsToYours = stops.filter((s) => s.sequence >= next && s.sequence <= riderStop.sequence).length
-        }
-    }
+    const startSeq = vehicle ? (isAtStop ? vehicle.trip.current_stop.sequence : vehicle.trip.next_stop.sequence) : undefined
+    const yoursAhead = !!riderStop && (startSeq === undefined || riderStop.sequence >= startSeq)
+    const target = yoursAhead && riderStop
+        ? { name: riderStop.name, parent_stop_id: riderStop.parent_stop_id, child_stop_id: riderStop.child_stop_id }
+        : vehicle ? (isAtStop ? vehicle.trip.current_stop : vehicle.trip.next_stop) : undefined
+    const targetTime = yoursAhead && currentStop
+        ? findRiderStopTime(stopTimes, currentStop)
+        : target ? stopTimes?.find((st) => st.child_stop_id === target.child_stop_id) ?? stopTimes?.find((st) => st.parent_stop_id === target.parent_stop_id) : undefined
+    const minutes = targetTime?.arrival_time ? Math.max(0, Math.ceil((targetTime.arrival_time - now) / 60_000)) : null
+    const caption = yoursAhead ? "To your stop" : isAtStop ? "At" : "Next stop"
 
+    // Stops still to go, counting the target itself.
+    const toGo = vehicle && stops && target && startSeq !== undefined
+        ? stops.filter((s) => s.sequence >= startSeq && s.sequence <= (yoursAhead && riderStop ? riderStop.sequence : startSeq)).length
+        : null
+
+    const VehicleIcon = vehicle?.type?.toLowerCase() === "train" ? TrainFront : vehicle?.type?.toLowerCase() === "ferry" ? Ship : Bus
     const platform = vehicle?.trip.next_stop.platform
 
     return (
-        <div className="space-y-2.5">
-            <div className="flex items-center gap-3.5">
-                <span
-                    className="flex h-[52px] w-[52px] shrink-0 items-center justify-center overflow-hidden rounded-[14px] px-1 text-center font-display text-lg font-bold leading-none"
-                    style={{ background: `#${hex}`, color: textOn(hex) }}
-                    aria-hidden
-                >
-                    <span className={cn(routeName.length > 4 && "text-sm")}>{routeName}</span>
-                </span>
-                <div className="min-w-0 flex-1">
-                    <h1 className="line-clamp-2 text-lg font-semibold leading-snug">
-                        <span className="sr-only">{routeName} to </span>{headsign}
-                    </h1>
-                    {nextStopLine && <p className="line-clamp-2 text-xs text-muted-foreground">{nextStopLine}</p>}
-                </div>
-                {etaMinutes !== null && (
-                    <div className="shrink-0 text-right leading-tight">
-                        <p className="whitespace-nowrap font-mono text-xl font-semibold tabular-nums">{etaMinutes === 0 ? "Now" : `${etaMinutes} min`}</p>
-                        <p className="text-xs text-muted-foreground">{isAtStop ? "at stop" : "to next stop"}</p>
-                    </div>
-                )}
-                <div className="flex shrink-0 flex-col items-center">
-                    <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Share this trip" onClick={() => shareTrip(tripId, vehicle)}>
-                        <Share2 className="h-4 w-4" />
-                    </Button>
-                    {refreshing && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" aria-label="Updating" />}
-                </div>
+        <div className="space-y-3">
+            <div className="flex items-center gap-2.5">
+                <RouteBadge name={routeName} color={hex} className="text-[13px]" />
+                <h1 className="min-w-0 flex-1 truncate text-base font-semibold">
+                    <span className="sr-only">{routeName} to </span>{headsign}
+                </h1>
+                {refreshing && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Updating" />}
+                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Share this trip" onClick={() => shareTrip(tripId, vehicle)}>
+                    <Share2 className="h-4 w-4" />
+                </Button>
             </div>
 
-            {vehicle && (
-                <div className="flex flex-wrap gap-1.5">
-                    {liveUsable && (
-                        <Chip>
-                            <span className="live-dot h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400" aria-hidden /> Live
-                        </Chip>
-                    )}
-                    {stopsToYours !== null && (
-                        <Chip className="border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300">
-                            {stopsToYours === 0 ? "At your stop" : stopsToYours === 1 ? "Your stop is next" : `${stopsToYours} stops to your stop`}
-                        </Chip>
-                    )}
-                    {vehicle.occupancy >= 0 && (
-                        <Chip>
-                            <OccupancyIcons occupancy={vehicle.occupancy} />
-                            {getOccupancyShort(vehicle.occupancy)}
-                        </Chip>
-                    )}
-                    {!!vehicle.cars && <Chip>{vehicle.cars} cars</Chip>}
-                    {platform && <Chip>Platform {platform}</Chip>}
-                    {vehicle.off_course && (
-                        <Chip className="border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300">
-                            <TriangleAlert className="h-3 w-3" /> Off course
-                        </Chip>
+            {target && (
+                <div className="flex items-baseline gap-3">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-[13px] text-muted-foreground">{caption}</p>
+                        <p className="truncate text-xl font-semibold">{cleanStopName(target.name)}</p>
+                    </div>
+                    {minutes !== null && targetTime && (
+                        <div className="shrink-0 text-right">
+                            <p className="font-mono text-[26px] font-medium leading-none tabular-nums text-blue-600 dark:text-blue-400">
+                                {minutes === 0 ? "Now" : `${minutes} min`}
+                            </p>
+                            <p className="mt-1 text-[13px] text-muted-foreground">
+                                {new Date(targetTime.arrival_time).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                            </p>
+                        </div>
                     )}
                 </div>
             )}
-        </div>
-    )
-}
 
-function Chip({ className, children }: { className?: string; children: React.ReactNode }) {
-    return (
-        <span className={cn("inline-flex h-6 items-center gap-1.5 rounded-full border border-border bg-muted/50 px-2.5 text-xs font-medium", className)}>
-            {children}
-        </span>
+            {vehicle && toGo !== null && toGo > 0 && yoursAhead && (
+                <div className="space-y-1.5" aria-label={toGo === 1 ? "Your stop is next" : `${toGo} stops to go`}>
+                    <div className="flex items-center" aria-hidden>
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: `#${hex}`, color: textOn(hex) }}>
+                            <VehicleIcon className="h-3 w-3" strokeWidth={2.5} />
+                        </span>
+                        {Array.from({ length: Math.min(toGo - 1, 14) }).map((_, i) => (
+                            <span key={i} className="flex flex-1 items-center">
+                                <span className="h-[3px] flex-1" style={{ background: `#${hex}` }} />
+                                <span className="h-2.5 w-2.5 shrink-0 rounded-full border-[2.5px] bg-background" style={{ borderColor: `#${hex}` }} />
+                            </span>
+                        ))}
+                        <span className="h-[3px] flex-1" style={{ background: `#${hex}` }} />
+                        <MapPin className="h-5 w-5 shrink-0 fill-red-500 text-background" strokeWidth={1.5} />
+                    </div>
+                    <p className="text-[13px] font-medium text-muted-foreground">
+                        {isAtStop && toGo <= 1 ? "At the stop" : toGo === 1 ? "Your stop is next" : `${toGo} stops to go`}
+                    </p>
+                </div>
+            )}
+
+            {vehicle && (
+                <div className="flex h-5 flex-wrap items-center gap-x-3.5 overflow-hidden text-[13px] leading-5 text-muted-foreground">
+                    {liveUsable && (
+                        <span className="inline-flex items-center gap-1.5">
+                            <span className="live-dot h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400" aria-hidden /> Live
+                        </span>
+                    )}
+                    {vehicle.off_course && (
+                        <span className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400"><TriangleAlert className="h-3 w-3" /> Off course</span>
+                    )}
+                    {vehicle.occupancy >= 0 && (
+                        <span className="inline-flex items-center gap-1"><OccupancyIcons occupancy={vehicle.occupancy} />{getOccupancyShort(vehicle.occupancy)}</span>
+                    )}
+                    {!!vehicle.cars && <span>{vehicle.cars} cars</span>}
+                    {platform && <span>Platform {platform}</span>}
+                </div>
+            )}
+        </div>
     )
 }

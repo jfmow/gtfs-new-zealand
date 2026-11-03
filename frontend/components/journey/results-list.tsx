@@ -62,7 +62,7 @@ export function ResultsList({
     return (
         <div id="journey-results" className="mt-6 space-y-2 scroll-mt-20">
             <div className="flex min-h-8 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <h2>{routes.length} route{routes.length !== 1 ? "s" : ""} found</h2>
+                <h2>{routes.length} route{routes.length !== 1 ? "s" : ""}</h2>
                 {stale && plannedAt && (
                     <>
                         <span>· planned {formatTime(plannedAt)}</span>

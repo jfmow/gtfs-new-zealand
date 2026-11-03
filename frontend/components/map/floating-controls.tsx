@@ -37,18 +37,22 @@ export const MapChip = forwardRef<HTMLButtonElement, {
  * `insetLeft` keeps it clear of an open side panel; `note` is a small line of
  * status text under the pills.
  */
-export function MapTopBar({ switcher, children, insetLeft = 0, note }: { switcher: ReactNode; children: ReactNode; insetLeft?: number; note?: ReactNode }) {
+export function MapTopBar({ switcher, children, insetLeft = 0, note, below }: { switcher: ReactNode; children: ReactNode; insetLeft?: number; note?: ReactNode; below?: ReactNode }) {
+    // One floating row, as on iOS (2026-11-03): the switch on the left, the
+    // filter (and anything else) on the right; an active filter's chip below.
     return (
         <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 pt-3 transition-[padding] duration-300"
-            style={{ paddingLeft: insetLeft }}
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 px-3 pt-3 transition-[padding] duration-300"
+            style={{ paddingLeft: insetLeft + 12 }}
         >
-            <div className="pointer-events-auto">{switcher}</div>
-            <div className="pointer-events-auto flex max-w-full gap-1.5 overflow-x-auto px-3 pb-2 scrollbar-hide">
-                {children}
+            <div className="flex items-center gap-2">
+                <div className="pointer-events-auto">{switcher}</div>
+                <div className="flex-1" />
+                <div className="pointer-events-auto flex items-center gap-2">{children}</div>
             </div>
+            {below && <div className="pointer-events-auto flex">{below}</div>}
             {note && (
-                <div className="pointer-events-auto mx-3 -mt-1 flex max-w-sm items-center gap-1.5 rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
+                <div className="pointer-events-auto flex max-w-sm items-center gap-1.5 self-center rounded-full border border-border bg-background/95 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur">
                     {note}
                 </div>
             )}

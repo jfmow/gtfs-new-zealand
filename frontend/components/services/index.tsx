@@ -1,19 +1,14 @@
 import { useEffect, useRef, useState } from "react"
-import { Badge } from "@/components/ui/badge"
 import {
     AccessibilityIcon,
     Bell,
     BikeIcon,
     ChevronDown,
-    ChevronRight,
     ChevronUp,
-    ClockIcon,
     History,
-    InfoIcon,
-    MapPinIcon,
-    WaypointsIcon,
+    Rss,
 } from "lucide-react"
-import { convert24hTo12h, formatTextToNiceLookingWords } from "@/lib/formating"
+import { convert24hTo12h, formatTextToNiceLookingWords, headsignDisplay } from "@/lib/formating"
 import { getOccupancyShort } from "./occupancy"
 import ServiceTrackerView from "./tracker/panel"
 import type { PreviewData } from "./tracker"
@@ -365,7 +360,6 @@ export default function Services({ stopName, filterDate, onOpenService, openTrip
                     )}
                 </section>
 
-                <IconKey />
             </div>
 
             <StopReminderDialog
@@ -480,98 +474,54 @@ function ServiceRow({
                 ? "limited"
                 : "scheduled"
 
+    // Most useful first. The line is one row tall and wraps, so whatever
+    // doesn't fit drops off whole rather than being cut mid-word - the
+    // iOS row's ViewThatFits.
+    const details: React.ReactNode[] = []
+    if (hasPlatform) {
+        details.push(service.platform_changed
+            ? <span key="pl" className="font-medium text-destructive">Now platform {service.platform}</span>
+            : <span key="pl">Platform {service.platform}</span>)
+    }
+    if (isLive && service.stops_away === -1 && service.stop_state === "AtStop") {
+        details.push(<span key="at" className="text-blue-600 dark:text-blue-400">At the stop</span>)
+    } else if (isLive && service.stops_away > 0) {
+        details.push(<span key="away">{service.stops_away} {service.stops_away === 1 ? "stop" : "stops"} away</span>)
+    }
+    if (!displayingSchedulePreview && tracking === "scheduled") details.push(<span key="tt">Timetable only</span>)
+    if (!displayingSchedulePreview && !isCanceled) details.push(<span key="time" className="tabular-nums">{convert24hTo12h(service.arrival_time)}</span>)
+    if (isLive && !!service.cars) details.push(<span key="cars">{service.cars} cars</span>)
+    if (showOccupancy) details.push(<span key="occ">{getOccupancyShort(service.occupancy)}</span>)
+    if (service.bikes_allowed === 1) details.push(<BikeIcon key="bike" aria-label="Bikes allowed" className="h-3.5 w-3.5 self-center" />)
+    if (service.wheelchairs_allowed === 1) details.push(<AccessibilityIcon key="wc" aria-label="Wheelchair accessible" className="h-3.5 w-3.5 self-center" />)
+
+    // A board line, like Home's: route, destination and the countdown on
+    // the right, the details under the destination (2026-11-03, iOS).
     const inner = (
-        <div className={cn("flex w-full items-start gap-3 px-3 py-3 text-left", tint)}>
-            {/* Route-colour rail: the one place agency colour lives */}
-            <span
-                aria-hidden
-                className="mt-0.5 w-1 shrink-0 self-stretch rounded-full"
-                style={{ background: "#" + (service.route.color || "9ca3af") }}
-            />
-
+        <div className={cn("flex w-full items-center gap-3 px-3.5 py-2.5 text-left", tint)}>
+            <span className="min-w-[44px] shrink-0">
+                <span
+                    className="inline-block rounded px-1.5 py-0.5 text-xs font-semibold leading-4 text-white"
+                    style={{ background: "#" + (service.route.color || "424242") }}
+                >
+                    {service.route.name}
+                </span>
+            </span>
             <div className="min-w-0 flex-1">
-                <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5">
-                            <span
-                                className="rounded px-1.5 py-0.5 text-[11px] font-bold leading-4 tracking-wide text-white"
-                                style={{ background: "#" + (service.route.color || "424242") }}
-                            >
-                                {service.route.name}
-                            </span>
-                            {service.platform_changed && (
-                                <Badge className="h-4 border-red-200 bg-red-100 px-1.5 py-0 text-[10px] text-red-700 dark:border-red-800 dark:bg-red-900/40 dark:text-red-300">
-                                    Platform changed
-                                </Badge>
-                            )}
-                            {!displayingSchedulePreview && tracking === "limited" && (
-                                <Badge
-                                    variant="outline"
-                                    className="h-4 border-amber-300 px-1.5 py-0 text-[10px] font-medium text-amber-700 dark:border-amber-700/70 dark:text-amber-400"
-                                >
-                                    Limited tracking
-                                </Badge>
-                            )}
-                            {!displayingSchedulePreview && tracking === "scheduled" && (
-                                <Badge
-                                    variant="outline"
-                                    className="h-4 px-1.5 py-0 text-[10px] font-medium text-muted-foreground"
-                                >
-                                    Timetable only
-                                </Badge>
-                            )}
-                        </div>
-
-                        <p className="mt-1 line-clamp-2 text-[15px] font-semibold leading-snug text-foreground">
-                            {formatTextToNiceLookingWords(service.headsign)}
-                        </p>
+                <p className={cn("truncate text-[15px] font-medium leading-snug", isCanceled || isSkipped ? "text-muted-foreground" : "text-foreground", isCanceled && "line-through")}>
+                    {headsignDisplay(service.headsign)}
+                </p>
+                {details.length > 0 && (
+                    <div className="mt-0.5 flex h-[18px] flex-wrap items-center gap-x-2.5 overflow-hidden text-[13px] leading-[18px] text-muted-foreground">
+                        {details}
                     </div>
-
-                    <div className="shrink-0 pt-0.5 text-right">
-                        <BoardTime service={service} displayingSchedulePreview={displayingSchedulePreview} />
-                    </div>
-                </div>
-
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                    {!displayingSchedulePreview && (
-                        <span className="inline-flex items-center gap-1 tabular-nums">
-                            <ClockIcon className="h-3 w-3 shrink-0" />
-                            {convert24hTo12h(service.arrival_time)}
-                        </span>
-                    )}
-                    {hasPlatform && (
-                        <span
-                            className={cn(
-                                "inline-flex items-center gap-1",
-                                service.platform_changed && "font-medium text-destructive",
-                            )}
-                        >
-                            <MapPinIcon className="h-3 w-3 shrink-0" />
-                            Platform {service.platform}
-                        </span>
-                    )}
-                    {isLive && service.stops_away > 0 && (
-                        <span className="inline-flex items-center gap-1">
-                            <WaypointsIcon className="h-3 w-3 shrink-0" />
-                            {service.stops_away} {service.stops_away === 1 ? "stop" : "stops"} away
-                        </span>
-                    )}
-                    {isLive && service.stops_away === -1 && service.stop_state === "AtStop" && (
-                        <span className="font-medium text-blue-600 dark:text-blue-400">At this stop</span>
-                    )}
-                    {showOccupancy && <span>{getOccupancyShort(service.occupancy)}</span>}
-                    {isLive && !!service.cars && <span>{service.cars} cars</span>}
-
-                    <span className="ml-auto inline-flex items-center gap-1.5">
-                        <BikeIcon className={cn("h-3.5 w-3.5", allowedColor(service.bikes_allowed))} />
-                        <AccessibilityIcon
-                            className={cn("h-3.5 w-3.5", allowedColor(service.wheelchairs_allowed))}
-                        />
-                        {trackable && (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground/60" aria-hidden />
-                        )}
-                    </span>
-                </div>
+                )}
+            </div>
+            {tracking === "live" && !isDeparted && !displayingSchedulePreview && (
+                <Rss className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+            )}
+            <div className="shrink-0 text-right">
+                <BoardTime service={service} displayingSchedulePreview={displayingSchedulePreview} />
             </div>
         </div>
     )
@@ -620,7 +570,7 @@ function BoardTime({
         )
     }
     if (service.canceled) {
-        return <span className="text-sm font-bold uppercase tracking-wide text-destructive">Cancelled</span>
+        return <span className="text-sm font-semibold text-destructive">Cancelled</span>
     }
     if (service.skipped) {
         return (
@@ -631,65 +581,17 @@ function BoardTime({
         return <span className="text-sm font-bold text-amber-600 dark:text-amber-400">Departed</span>
     }
 
-    const now = service.stops_away === 0 && service.time_till_arrival <= 1
-    if (now) {
-        return (
-            <span className="live-dot text-xl font-bold leading-none text-blue-600 dark:text-blue-400">
-                Now
-            </span>
-        )
-    }
-
-    const imminent = service.time_till_arrival <= 2
+    const tracked = service.location_tracking || service.trip_update_tracking
     return (
         <span
             className={cn(
-                "text-xl font-bold leading-none tabular-nums",
-                imminent ? "text-blue-600 dark:text-blue-400" : "text-foreground",
+                "font-mono text-base font-medium leading-none tabular-nums",
+                tracked ? "text-blue-600 dark:text-blue-400" : "text-foreground",
             )}
         >
             {boardCountdown(service.time_till_arrival)}
         </span>
     )
-}
-
-function IconKey() {
-    return (
-        <details className="mt-4 text-xs text-muted-foreground">
-            <summary className="inline-flex cursor-pointer list-none items-center gap-1.5 hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <InfoIcon className="h-3.5 w-3.5" />
-                What the icons mean
-            </summary>
-            <div className="mt-2 space-y-1.5 border-l-2 border-border pl-3">
-                <p className="flex items-center gap-1.5">
-                    <BikeIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> bikes allowed
-                    <span className="mx-1 text-border">|</span>
-                    <BikeIcon className="h-3.5 w-3.5 text-amber-500" /> ask the operator
-                    <span className="mx-1 text-border">|</span>
-                    <BikeIcon className="h-3.5 w-3.5 text-red-500" /> no bikes
-                </p>
-                <p className="flex items-center gap-1.5">
-                    <AccessibilityIcon className="h-3.5 w-3.5 text-green-600 dark:text-green-400" /> step-free
-                    <span className="mx-1 text-border">|</span>
-                    <AccessibilityIcon className="h-3.5 w-3.5 text-amber-500" /> unknown
-                    <span className="mx-1 text-border">|</span>
-                    <AccessibilityIcon className="h-3.5 w-3.5 text-red-500" /> not step-free
-                </p>
-                <p>
-                    <span className="font-medium text-amber-700 dark:text-amber-400">Limited tracking</span>{" "}
-                    means we have arrival updates but no live position on the map.{" "}
-                    <span className="font-medium">Timetable only</span> means this service isn&apos;t
-                    reporting at all &mdash; times are scheduled.
-                </p>
-            </div>
-        </details>
-    )
-}
-
-function allowedColor(value: number): string {
-    if (value === 1) return "text-green-600 dark:text-green-400"
-    if (value === 2) return "text-red-500"
-    return "text-amber-500"
 }
 
 function boardCountdown(minutes: number): string {

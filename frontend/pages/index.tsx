@@ -3,17 +3,18 @@ import SavedStopsSection from "@/components/stops/favourites";
 import { StopBoardPage } from "@/components/stops/stop-board";
 import { Header } from "@/components/nav";
 import { NearbySection } from "@/components/home/nearby-stops";
-import { SavedTripsSection } from "@/components/home/saved-trips-section";
-import { SavedPlacesRow } from "@/components/places/places";
+import { HomeGreeting, HomeLauncher } from "@/components/home/launcher";
 import { useUrlOverlay } from "@/lib/url-overlay";
 import { useOnlineStatus } from "@/lib/utils";
 import { WifiOff } from "lucide-react";
 import { FirstVisitCard } from "@/components/home/first-visit-card";
 
 /**
- * The Schedule tab - the iOS Home tab: stop search, then Places, Saved
- * stops, Saved trips and Nearby (two columns on wide screens). A stop's
- * board (`?s=`) takes over the tab, with a back button to here.
+ * The Schedule tab - the iOS Home tab ("Boards", 2026-11-03): stop search,
+ * a greeting, a row of round shortcuts (find my vehicle, your places and
+ * trips), then your stops and the stops near you as small departure boards
+ * (two to a row on wide screens). A stop's board (`?s=`) takes over the
+ * tab, with a back button to here.
  */
 export default function Home() {
   const board = useUrlOverlay("s");
@@ -31,8 +32,11 @@ export default function Home() {
   return (
     <>
       <Header title="Train, Bus, Ferry — Find your next journey" />
-      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-7 px-4 pb-8">
+      <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-8">
         <SearchForStop />
+
+        <HomeGreeting />
+        <HomeLauncher />
 
         <FirstVisitCard />
 
@@ -42,15 +46,8 @@ export default function Home() {
           </p>
         )}
 
-        {/* Your things on the left, what's around you on the right. */}
-        <div className="grid gap-7 lg:grid-cols-2 lg:gap-8">
-          <div className="flex min-w-0 flex-col gap-7">
-            <SavedPlacesRow />
-            <SavedStopsSection />
-            <SavedTripsSection />
-          </div>
-          <NearbySection className="min-w-0" />
-        </div>
+        <SavedStopsSection />
+        <NearbySection />
       </div>
     </>
   );

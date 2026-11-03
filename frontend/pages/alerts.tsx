@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import SearchForStop from "@/components/stops/search"
-import { BellDot, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Loader2, LocateFixed, MessageCircleWarning, Star, X } from "lucide-react"
+import { BellDot, CheckCircle2, ChevronDown, ChevronRight, ChevronUp, Clock, Loader2, MessageCircleWarning, X } from "lucide-react"
 import { useFavorites } from "@/components/stops/favourites"
 import type { Stop } from "@/components/map/stops-map"
 import { getUserLocation } from "@/lib/userLocation"
@@ -10,7 +10,10 @@ import { causeSeverityMap, type AlertResponseData } from "@/lib/alert-causes"
 import LoadingSpinner from "@/components/loading-spinner"
 import { Button } from "@/components/ui/button"
 import StopNotifications from "@/components/notifications"
-import { ApiFetch } from "@/lib/url-context"
+import { ApiFetch, useUrl } from "@/lib/url-context"
+import { hasRealtime } from "@/lib/url-store"
+import { NotificationsInbox } from "@/components/notifications/bell"
+import { ModeTile, SavedTile } from "@/components/home/tiles"
 import { useQueryParams } from "@/lib/url-params"
 import { Header } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
@@ -50,15 +53,56 @@ export function useStopAlerts(stopName: string, enabled = true) {
 }
 
 /**
- * The Alerts tab - the iOS Alerts tab: before a search, your saved stops and
- * the nearest few, each with a one-line summary of its alerts; a chosen stop
- * shows its alerts, with "Get alerts" and a way back. Two columns on wide
- * screens (stops left, alerts right).
+ * The Updates tab - the iOS Updates tab: "For you" (your notifications, and
+ * a way into your alerts and reminders) and "Service alerts". Service
+ * alerts, before a search: your saved stops and the nearest few, each with
+ * a one-line summary; a chosen stop shows its alerts, with "Get alerts" and
+ * a way back. Two columns on wide screens. A timetable-only region has no
+ * service alerts, so just For you.
  */
 export default function Alerts() {
     const stop = useUrlOverlay("s")
     const legacy = useQueryParams({ r: { type: "string", default: "", keys: ["r"] } }).r
     const selected = stop.value || (legacy.found ? legacy.value : "")
+    const { currentUrl } = useUrl()
+    const realtime = hasRealtime(currentUrl)
+    // A link to a stop's alerts (`/alerts?s=`) opens on Service alerts.
+    const [view, setView] = useState<"inbox" | "alerts">(selected ? "alerts" : "inbox")
+    useEffect(() => { if (selected) setView("alerts") }, [selected])
+    const showsAlerts = realtime && view === "alerts"
+
+    return (
+        <>
+            <Header title="Updates" />
+            <div className="mx-auto w-full max-w-[1400px] px-4 pb-8">
+                {realtime && (
+                    <div className="mb-4 flex gap-2" role="tablist">
+                        {([["inbox", "For you"], ["alerts", "Service alerts"]] as const).map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                role="tab"
+                                aria-selected={view === value}
+                                onClick={() => setView(value)}
+                                className={cn(
+                                    "h-8 rounded-full border px-3.5 text-sm font-medium transition-colors",
+                                    view === value ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-accent",
+                                )}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </div>
+                )}
+                {showsAlerts ? <ServiceAlerts selected={selected} stop={stop} /> : (
+                    <div className="mx-auto max-w-2xl"><NotificationsInbox /></div>
+                )}
+            </div>
+        </>
+    )
+}
+
+function ServiceAlerts({ selected, stop }: { selected: string; stop: { open: (v: string) => void; close: () => void } }) {
     const isWide = useMediaQuery("(min-width: 1024px)")
 
     const overview = (
@@ -78,20 +122,13 @@ export default function Alerts() {
         </div>
     )
 
-    return (
-        <>
-            <Header title="Travel Alerts" />
-            {isWide ? (
-                <div className="mx-auto grid w-full max-w-[1400px] grid-cols-[400px_1fr] gap-8 px-4 pb-8">
-                    {overview}
-                    <div className="min-w-0">{detail}</div>
-                </div>
-            ) : (
-                <div className="mx-auto w-full max-w-2xl px-4 pb-8">
-                    {selected ? detail : overview}
-                </div>
-            )}
-        </>
+    return isWide ? (
+        <div className="grid grid-cols-[400px_1fr] gap-8">
+            {overview}
+            <div className="min-w-0">{detail}</div>
+        </div>
+    ) : (
+        <div className="mx-auto max-w-2xl">{selected ? detail : overview}</div>
     )
 }
 
@@ -146,39 +183,47 @@ function AlertsOverview({ selected, onSelect }: { selected: string; onSelect: (s
         return () => { cancelled = true }
     }, [])
 
-    const entries: { query: string; title: string; saved: boolean }[] = []
+    type Entry = { query: string; title: string; color?: string; stopType?: string }
+    const saved: Entry[] = []
     const seen = new Set<string>()
     for (const f of favourites) {
         if (seen.has(f.stop)) continue
         seen.add(f.stop)
-        entries.push({ query: f.stop, title: f.displayName, saved: true })
+        saved.push({ query: f.stop, title: f.displayName, color: f.color })
     }
-    const names = new Set(entries.map((e) => e.title))
-    let nearbyCount = 0
+    const names = new Set(saved.map((e) => e.title))
+    const near: Entry[] = []
     for (const stop of nearby) {
         const query = `${stop.stop_name} ${stop.stop_code}`
-        if (nearbyCount === 3 || names.has(stop.stop_name) || seen.has(query)) continue
+        if (near.length === 3 || names.has(stop.stop_name) || seen.has(query)) continue
         names.add(stop.stop_name)
         seen.add(query)
-        entries.push({ query, title: stop.stop_name, saved: false })
-        nearbyCount++
+        near.push({ query, title: stop.stop_name, stopType: stop.stop_type })
     }
 
-    if (entries.length === 0) {
-        return <p className="py-8 text-center text-sm text-muted-foreground">Search for a stop to view alerts. Saved and nearby stops show up here.</p>
+    if (saved.length + near.length === 0) {
+        return <p className="py-8 text-center text-sm text-muted-foreground">Search for a stop to see its alerts. Your saved and nearby stops show up here.</p>
     }
-    return (
-        <section className="space-y-2.5" aria-labelledby="alerts-your-stops">
-            <h2 id="alerts-your-stops" className="font-display text-xs uppercase tracking-wide text-muted-foreground">Your stops</h2>
-            {entries.map((entry) => (
-                <StopAlertsSummaryRow key={entry.query} {...entry} selected={entry.query === selected} onSelect={() => onSelect(entry.query)} />
-            ))}
+    const section = (title: string, entries: Entry[]) => entries.length > 0 && (
+        <section className="space-y-2.5">
+            <h2 className="text-base font-semibold">{title}</h2>
+            <div className="divide-y overflow-hidden rounded-2xl border bg-card">
+                {entries.map((entry) => (
+                    <StopAlertsSummaryRow key={entry.query} {...entry} selected={entry.query === selected} onSelect={() => onSelect(entry.query)} />
+                ))}
+            </div>
         </section>
+    )
+    return (
+        <div className="space-y-5">
+            {section("Your stops", saved)}
+            {section("Near you", near)}
+        </div>
     )
 }
 
-/** "2 active, 1 upcoming" with the affected routes. */
-function StopAlertsSummaryRow({ query, title, saved, selected, onSelect }: { query: string; title: string; saved: boolean; selected: boolean; onSelect: () => void }) {
+/** "All clear", "2 happening now" (red) or "5 planned" (calm), with the affected routes. */
+function StopAlertsSummaryRow({ query, title, color, stopType, selected, onSelect }: { query: string; title: string; color?: string; stopType?: string; selected: boolean; onSelect: () => void }) {
     const { alerts, routes, loading } = useStopAlerts(query)
     const [loadedOnce, setLoadedOnce] = useState(false)
     useEffect(() => { if (!loading) setLoadedOnce(true) }, [loading])
@@ -192,30 +237,29 @@ function StopAlertsSummaryRow({ query, title, saved, selected, onSelect }: { que
         upcoming += kinds.filter((k) => k === "soon").length
         if (kinds.some((k) => k !== "inactive")) affected.push(shortRouteName(route))
     }
-    const counts = [active && `${active} active`, upcoming && `${upcoming} upcoming`].filter(Boolean).join(", ")
+    const counts = [active && `${active} happening now`, upcoming && `${upcoming} planned`].filter(Boolean).join(", ")
 
     return (
         <button
             type="button"
             onClick={onSelect}
             aria-current={selected || undefined}
-            className={cn(
-                "flex w-full items-start gap-3 rounded-xl border bg-card p-3.5 text-left shadow-sm transition-colors hover:bg-accent/40",
-                selected ? "border-primary ring-1 ring-primary" : "border-border",
-            )}
+            className={cn("flex w-full items-start gap-3 px-3.5 py-3 text-left transition-colors hover:bg-accent/40", selected && "bg-accent/60")}
         >
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] bg-muted text-muted-foreground" aria-hidden>
-                {saved ? <Star className="h-3.5 w-3.5 fill-current" /> : <LocateFixed className="h-3.5 w-3.5" />}
-            </span>
-            <span className="min-w-0 flex-1 space-y-1.5">
-                <span className="block text-sm font-medium">{title}</span>
+            {color ? <SavedTile color={color} /> : <ModeTile stopType={stopType} />}
+            <span className="min-w-0 flex-1 space-y-1">
+                <span className="block text-[15px] font-medium">{title}</span>
                 {!loadedOnce || loading ? (
-                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Checking alerts</span>
+                    <span className="flex items-center gap-1.5 text-[13px] text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" /> Checking alerts</span>
                 ) : !counts ? (
-                    <span className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" /> No current alerts</span>
+                    <span className="flex items-center gap-1.5 text-[13px] text-green-700 dark:text-green-400"><CheckCircle2 className="h-3.5 w-3.5" /> All clear</span>
                 ) : (
                     <>
-                        <span className={cn("block text-xs font-medium", active ? "text-destructive" : "text-amber-600 dark:text-amber-400")}>{counts}</span>
+                        {/* Only something happening now is red - planned work ahead is worth knowing, not alarming. */}
+                        <span className={cn("flex items-center gap-1.5 text-[13px]", active ? "font-medium text-destructive" : "text-muted-foreground")}>
+                            {active > 0 && <span className="h-[7px] w-[7px] rounded-full bg-destructive" />}
+                            {counts}
+                        </span>
                         <span className="flex flex-wrap gap-1">
                             {affected.slice(0, 8).map((r) => (
                                 <span key={r} className="rounded bg-foreground/85 px-1.5 py-0.5 text-[11px] font-bold leading-4 text-background">{r}</span>
@@ -224,7 +268,7 @@ function StopAlertsSummaryRow({ query, title, saved, selected, onSelect }: { que
                     </>
                 )}
             </span>
-            <ChevronRight className="mt-2 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+            <ChevronRight className="mt-1 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
         </button>
     )
 }

@@ -1,12 +1,12 @@
 "use client"
 
-import { Button } from "@/components/ui/button"
+import { useEffect, useState } from "react"
 import { LocationSearchInput } from "@/components/map/search"
 import { Spinner } from "@/components/ui/spinner"
-import { Bookmark, BookmarkCheck, Search, ArrowUpDown } from "lucide-react"
+import { Circle, Navigation } from "lucide-react"
 import type { Location } from "./types"
 import type { RouteOption } from "./route-filter"
-import { PlannerOptionsRow, type TravelMode } from "./planner-options"
+import { PlannerOptionsChips, type TravelMode } from "./planner-options"
 
 interface SearchFormProps {
     startLocation: Location | null
@@ -16,7 +16,6 @@ interface SearchFormProps {
     onSelectFromMap: (mode: 'start' | 'end') => void
     onUseCurrentLocation: (mode: 'start' | 'end') => void
     isLocating: 'start' | 'end' | null
-    onSwap: () => void
     locationError: string | null
 
     timeType: "now" | "leaveat" | "arriveat"
@@ -37,12 +36,15 @@ interface SearchFormProps {
     onModesChange: (modes: TravelMode[]) => void
 
     isSearching: boolean
-    canSave: boolean
-    justSaved: boolean
-    onPlan: () => void
-    onSaveClick: () => void
 }
 
+/**
+ * "Where to?" first - most trips start from where you are, so From is "My
+ * location" and tucked into a line under it you can change. Planning
+ * starts as soon as both ends are set (the page does that - no Plan
+ * button); time and options are chips. The iOS planner (2026-11-03),
+ * replacing From/To boxes + "Plan journey".
+ */
 export function SearchForm({
     startLocation,
     endLocation,
@@ -51,76 +53,63 @@ export function SearchForm({
     onSelectFromMap,
     onUseCurrentLocation,
     isLocating,
-    onSwap,
     locationError,
-    timeType,
-    onTimeTypeChange,
-    selectedDate,
-    onDateChange,
-    maxWalkKm,
-    onMaxWalkKmChange,
-    walkSpeed,
-    onWalkSpeedChange,
-    maxTransfers,
-    onMaxTransfersChange,
-    minResults,
-    onMinResultsChange,
-    onlyRoutes,
-    onOnlyRoutesChange,
-    modes,
-    onModesChange,
     isSearching,
-    canSave,
-    justSaved,
-    onPlan,
-    onSaveClick,
+    ...options
 }: SearchFormProps) {
+    const [editingFrom, setEditingFrom] = useState(false)
+    // A start picked (or found) puts the line back.
+    useEffect(() => {
+        if (startLocation) setEditingFrom(false)
+    }, [startLocation])
+
+    const fromIsHere = startLocation?.label === "My location"
+
     return (
-        <div className="space-y-4">
-            {/* Location inputs */}
-            <div className="flex items-stretch gap-2">
-                <div className="flex flex-col justify-center shrink-0">
-                    <div className="flex flex-col items-center gap-1">
-                        <span className="h-2 w-2 rounded-full bg-primary" />
-                        <span className="h-6 w-px bg-border" />
-                        <span className="h-2 w-2 rounded-full bg-destructive" />
-                    </div>
-                </div>
-                <div className="flex-1 flex flex-col gap-1.5 min-w-0">
-                    <LocationSearchInput
-                        placeholder="From"
-                        value={startLocation}
-                        onSelect={onSelectStart}
-                        storageKey="recentStartLocations"
-                        onSelectFromMap={() => onSelectFromMap('start')}
-                        onUseCurrentLocation={() => onUseCurrentLocation('start')}
-                        isLocating={isLocating === 'start'}
-                        searchParamKey='start'
-                    />
-                    <LocationSearchInput
-                        placeholder="To"
-                        value={endLocation}
-                        onSelect={onSelectEnd}
-                        storageKey="recentEndLocations"
-                        onSelectFromMap={() => onSelectFromMap('end')}
-                        onUseCurrentLocation={() => onUseCurrentLocation('end')}
-                        isLocating={isLocating === 'end'}
-                        searchParamKey='end'
-                    />
-                </div>
-                <div className="flex flex-col justify-center shrink-0">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9"
-                        onClick={onSwap}
-                        disabled={!startLocation && !endLocation}
-                        aria-label="Swap locations"
-                    >
-                        <ArrowUpDown className="h-4 w-4" />
-                    </Button>
-                </div>
+        <div className="space-y-2.5">
+            {editingFrom && (
+                <LocationSearchInput
+                    placeholder="From"
+                    value={startLocation}
+                    onSelect={onSelectStart}
+                    storageKey="recentStartLocations"
+                    onSelectFromMap={() => onSelectFromMap('start')}
+                    onUseCurrentLocation={() => onUseCurrentLocation('start')}
+                    isLocating={isLocating === 'start'}
+                    searchParamKey='start'
+                    autoFocus
+                />
+            )}
+
+            {/* The input draws its own search icon. */}
+            <div className="rounded-2xl border bg-card px-1.5 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+                <LocationSearchInput
+                    placeholder="Where to?"
+                    value={endLocation}
+                    onSelect={onSelectEnd}
+                    storageKey="recentEndLocations"
+                    onSelectFromMap={() => onSelectFromMap('end')}
+                    onUseCurrentLocation={() => onUseCurrentLocation('end')}
+                    isLocating={isLocating === 'end'}
+                    searchParamKey='end'
+                    bare
+                />
             </div>
+
+            {!editingFrom && (
+                <button
+                    type="button"
+                    onClick={() => setEditingFrom(true)}
+                    className="flex items-center gap-1.5 pl-1 text-[13px] text-muted-foreground"
+                    aria-label={`From ${startLocation?.label ?? "not set"}. Change`}
+                >
+                    {fromIsHere ? <Navigation className="h-3 w-3 fill-current" /> : <Circle className="h-2 w-2 fill-current" />}
+                    <span className="truncate">
+                        From {isLocating === 'start' ? "your location…" : startLocation?.label ?? "…choose a start"}
+                    </span>
+                    <span className="text-foreground underline underline-offset-2">Change</span>
+                </button>
+            )}
 
             {locationError && (
                 <p className="text-sm text-destructive" role="alert">
@@ -128,55 +117,10 @@ export function SearchForm({
                 </p>
             )}
 
-            <PlannerOptionsRow
-                timeType={timeType}
-                selectedDate={selectedDate}
-                maxWalkKm={maxWalkKm}
-                walkSpeed={walkSpeed}
-                maxTransfers={maxTransfers}
-                minResults={minResults}
-                onlyRoutes={onlyRoutes}
-                modes={modes}
-                onTimeTypeChange={onTimeTypeChange}
-                onDateChange={onDateChange}
-                onMaxWalkKmChange={onMaxWalkKmChange}
-                onWalkSpeedChange={onWalkSpeedChange}
-                onMaxTransfersChange={onMaxTransfersChange}
-                onMinResultsChange={onMinResultsChange}
-                onOnlyRoutesChange={onOnlyRoutesChange}
-                onModesChange={onModesChange}
+            <PlannerOptionsChips
+                {...options}
+                trailing={isSearching && <Spinner className="ml-auto" />}
             />
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-                <Button className="flex-1 h-11 gap-1.5 text-sm rounded-full" disabled={!canSave || isSearching} onClick={onPlan}>
-                    {isSearching ? (
-                        <>
-                            <Spinner />
-                            Planning
-                        </>
-                    ) : (
-                        <>
-                            <Search className="h-4 w-4" />
-                            Plan journey
-                        </>
-                    )}
-                </Button>
-                <Button
-                    variant="outline"
-                    size="icon"
-                    className="h-11 w-11 shrink-0 rounded-full"
-                    onClick={onSaveClick}
-                    disabled={!canSave}
-                    aria-label="Save trip"
-                >
-                    {justSaved ? (
-                        <BookmarkCheck className="h-4 w-4 text-green-500" />
-                    ) : (
-                        <Bookmark className="h-4 w-4" />
-                    )}
-                </Button>
-            </div>
         </div>
     )
 }

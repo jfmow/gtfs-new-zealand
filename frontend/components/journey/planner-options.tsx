@@ -3,7 +3,8 @@ import { ChevronDownIcon } from "lucide-react"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Bus, ChevronRight, Ship, SlidersHorizontal, TrainFront } from "lucide-react"
+import { ArrowRightCircle, Bus, ChevronRight, Clock, Flag, Ship, SlidersHorizontal, TrainFront } from "lucide-react"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { format } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -80,6 +81,51 @@ export function PlannerOptionsRow(props: PlannerOptions & PlannerOptionsHandlers
             </button>
             <PlannerOptionsDialog open={open} onOpenChange={setOpen} {...props} />
         </>
+    )
+}
+
+/**
+ * When, then the rest - the iOS planner's chips (2026-11-03): a "Leave
+ * now ▾" menu (Leave at / Arrive by open the options for the time) and
+ * "Options · N" for anything changed from the defaults.
+ */
+export function PlannerOptionsChips(props: PlannerOptions & PlannerOptionsHandlers & { trailing?: ReactNode }) {
+    const [open, setOpen] = useState(false)
+    const when = format(props.selectedDate, "EEE h:mma").replace("AM", "am").replace("PM", "pm")
+    const timeLabel = props.timeType === "now" ? "Leave now" : props.timeType === "leaveat" ? `Leave ${when}` : `Arrive by ${when}`
+    let changed = 0
+    if (props.maxWalkKm !== "1") changed++
+    if (props.walkSpeed !== DEFAULT_WALK_SPEED) changed++
+    if (props.maxTransfers !== "5") changed++
+    if (props.onlyRoutes.length > 0) changed++
+    if (props.modes.length > 0) changed++
+    const chip = (active: boolean) => cn(
+        "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
+        active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-accent",
+    )
+    return (
+        <div className="flex items-center gap-2">
+            <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                    <button type="button" className={chip(props.timeType !== "now")}>
+                        <Clock className="h-3.5 w-3.5" />
+                        {timeLabel}
+                        <ChevronDownIcon className="h-3 w-3" />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                    <DropdownMenuItem onSelect={() => props.onTimeTypeChange("now")}><Clock className="h-4 w-4" /> Leave now</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => { props.onTimeTypeChange("leaveat"); setOpen(true) }}><ArrowRightCircle className="h-4 w-4" /> Leave at…</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => { props.onTimeTypeChange("arriveat"); setOpen(true) }}><Flag className="h-4 w-4" /> Arrive by…</DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+            <button type="button" className={chip(changed > 0)} onClick={() => setOpen(true)}>
+                <SlidersHorizontal className="h-3.5 w-3.5" />
+                {changed === 0 ? "Options" : `Options · ${changed}`}
+            </button>
+            {props.trailing}
+            <PlannerOptionsDialog open={open} onOpenChange={setOpen} {...props} />
+        </div>
     )
 }
 

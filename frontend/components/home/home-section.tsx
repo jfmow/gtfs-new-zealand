@@ -3,18 +3,18 @@ import type { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 /**
- * A Home section - the iOS `HomeSection`: a small-caps label with an
- * optional count and a live dot, text actions on the right, then content.
+ * A Home section - the iOS `HomeHeading`: a sentence-case heading, an
+ * optional live dot, text actions on the right, then content.
  */
 export function HomeSection({
     title,
-    count = 0,
     liveDot = false,
     actions,
     children,
     className,
 }: {
     title: string
+    /** Ignored - kept so existing callers compile; iOS dropped the count pill. */
     count?: number
     liveDot?: boolean
     actions?: ReactNode
@@ -25,16 +25,11 @@ export function HomeSection({
     return (
         <section aria-labelledby={id} className={cn("flex flex-col gap-2.5", className)}>
             <div className="flex min-h-6 items-center gap-2">
-                {liveDot && <span className="live-dot h-1.5 w-1.5 rounded-full bg-primary" aria-hidden />}
-                <h2 id={id} className="font-display text-xs uppercase tracking-wide text-muted-foreground">
+                {liveDot && <span className="live-dot h-2 w-2 rounded-full bg-blue-600 dark:bg-blue-400" aria-hidden />}
+                <h2 id={id} className="text-base font-semibold text-foreground">
                     {title}
                 </h2>
-                {count > 0 && (
-                    <span className="rounded-full bg-muted px-1.5 font-mono text-[11px] font-medium text-muted-foreground" aria-label={`${count} saved`}>
-                        {count}
-                    </span>
-                )}
-                <div className="ml-auto flex items-center gap-3 text-xs font-medium text-muted-foreground [&_a:hover]:text-foreground [&_button:hover]:text-foreground">
+                <div className="ml-auto flex items-center gap-3 text-[13px] font-medium text-muted-foreground [&_a:hover]:text-foreground [&_button:hover]:text-foreground">
                     {actions}
                 </div>
             </div>

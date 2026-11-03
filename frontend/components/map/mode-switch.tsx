@@ -21,7 +21,7 @@ export function MapModeSwitch({ mode, className }: { mode: MapMode; className?: 
     return (
         <nav
             aria-label="Map mode"
-            className={cn("inline-flex items-center gap-0.5 rounded-full border border-border bg-muted p-[3px] shadow-sm", className)}
+            className={cn("inline-flex items-center gap-0.5 rounded-full border border-border bg-background/90 p-[3px] shadow-sm backdrop-blur-md", className)}
         >
             {MODES.map((item) => {
                 const active = item.mode === mode
@@ -34,7 +34,7 @@ export function MapModeSwitch({ mode, className }: { mode: MapMode; className?: 
                         aria-current={active ? "page" : undefined}
                         className={cn(
                             "flex min-h-[30px] items-center rounded-full px-4 text-sm font-medium transition-colors",
-                            active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                            active ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-accent"
                         )}
                     >
                         {item.label}

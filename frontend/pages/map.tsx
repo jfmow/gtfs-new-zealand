@@ -1,17 +1,28 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/router"
-import { MapPin, Search, X } from "lucide-react"
+import { ListFilter, MapPin, Search, X } from "lucide-react"
 import { Header } from "@/components/nav"
 import LoadingSpinner from "@/components/loading-spinner"
 import ErrorScreen from "@/components/ui/error-screen"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+    DropdownMenu,
+    DropdownMenuCheckboxItem,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { cn } from "@/lib/utils"
 import type { MapItem } from "@/components/map/markers/create"
 import type { Stop } from "@/components/map/stops-map"
 import { MapModeSwitch, type MapMode } from "@/components/map/mode-switch"
-import { MapChip, MapTopBar } from "@/components/map/floating-controls"
+import { MapTopBar } from "@/components/map/floating-controls"
 import { MAP_SIDE_PANEL_OCCUPIED_WIDTH } from "@/components/map/map-side-panel"
-import { StopPreviewCard } from "@/components/home/stop-preview-card"
+import { HomeStopRow, StopModeTile } from "@/components/home/home-stop-row"
 import { StopBoardPage, StopBoardPanel } from "@/components/stops/stop-board"
 import type { ServiceTrackerTarget } from "@/components/services"
 import type { VehiclesResponse } from "@/components/services/tracker"
@@ -81,15 +92,44 @@ function stopIcon(stop: Stop): MapItem["icon"] {
     }
 }
 
-function ModeFilterChips({ value, onChange }: { value: ModeFilter; onChange: (value: ModeFilter) => void }) {
+/**
+ * Mode (and, for vehicles, route search and "show stops") in one menu on a
+ * round button - the iOS map's filter (2026-11-03), replacing a row of
+ * pills that ran off the screen.
+ */
+function FilterMenu({ value, onChange, noun, active, children }: {
+    value: ModeFilter
+    onChange: (value: ModeFilter) => void
+    noun: "stops" | "vehicles"
+    active?: boolean
+    children?: React.ReactNode
+}) {
+    const highlighted = active || value !== "all"
     return (
-        <>
-            {MODE_FILTERS.map((filter) => (
-                <MapChip key={filter.value} active={value === filter.value} onClick={() => onChange(filter.value)}>
-                    {filter.label}
-                </MapChip>
-            ))}
-        </>
+        <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+                <button
+                    type="button"
+                    aria-label={`Filter ${noun}`}
+                    className={cn(
+                        "flex h-10 w-10 items-center justify-center rounded-full border border-border shadow-sm backdrop-blur-md transition-colors",
+                        highlighted ? "bg-primary text-primary-foreground" : "bg-background/90 text-foreground hover:bg-accent",
+                    )}
+                >
+                    <ListFilter className="h-[18px] w-[18px]" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuRadioGroup value={value} onValueChange={(v) => onChange(v as ModeFilter)}>
+                    {MODE_FILTERS.map((filter) => (
+                        <DropdownMenuRadioItem key={filter.value} value={filter.value}>
+                            {filter.value === "all" ? `All ${noun}` : noun === "stops" ? `${filter.label} stops` : filter.value === "bus" ? "Buses" : filter.value === "ferry" ? "Ferries" : "Trains"}
+                        </DropdownMenuRadioItem>
+                    ))}
+                </DropdownMenuRadioGroup>
+                {children}
+            </DropdownMenuContent>
+        </DropdownMenu>
     )
 }
 
@@ -183,7 +223,7 @@ function StopsMode() {
             </Suspense>
 
             <MapTopBar switcher={<MapModeSwitch mode="stops" />} insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}>
-                <ModeFilterChips value={filter} onChange={setFilter} />
+                <FilterMenu value={filter} onChange={setFilter} noun="stops" />
             </MapTopBar>
 
             {preview && (
@@ -237,28 +277,31 @@ function StopPreviewOverlay({ stop, onOpen, onClose }: { stop: Stop; onOpen: () 
             ref={ref}
             className="absolute inset-x-3 bottom-[calc(var(--resume-h,0px)+0.75rem)] z-20 animate-in fade-in slide-in-from-bottom-2 duration-200"
         >
-            <div className="relative rounded-xl shadow-xl" onClickCapture={(e) => {
+            <div className="relative rounded-2xl shadow-xl" onClickCapture={(e) => {
                 // The card is a link to the board - open it in this tab instead.
                 if ((e.target as HTMLElement).closest("[data-close]")) return
                 e.preventDefault()
                 onOpen()
             }}>
-                <StopPreviewCard
-                    stopId={query}
-                    label={stop.stop_name}
-                    code={stop.stop_code}
-                    meta={stop.stop_type !== "" ? stop.stop_type[0].toUpperCase() + stop.stop_type.slice(1) : undefined}
-                    className="rounded-xl pr-11"
+                {/* A Home-style board: the next three departures (iOS, 2026-11-03). */}
+                <HomeStopRow
+                    stopQuery={query}
+                    title={stop.stop_name}
+                    href={`/map?mode=stops&s=${encodeURIComponent(query)}`}
+                    tile={<StopModeTile stopType={stop.stop_type} />}
+                    lines={3}
+                    menu={
+                        <button
+                            type="button"
+                            data-close
+                            onClick={onClose}
+                            aria-label="Close"
+                            className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
+                        >
+                            <X className="h-3.5 w-3.5" />
+                        </button>
+                    }
                 />
-                <button
-                    type="button"
-                    data-close
-                    onClick={onClose}
-                    aria-label="Close"
-                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-muted text-muted-foreground hover:text-foreground"
-                >
-                    <X className="h-3.5 w-3.5" />
-                </button>
             </div>
         </div>
     )
@@ -281,6 +324,7 @@ function VehiclesMode() {
     const [showStops, setShowStops] = useState(false)
     const [allStops, setAllStops] = useState<Stop[]>([])
     const [routes, setRoutes] = useState<RouteOption[]>([])
+    const [pickingRoutes, setPickingRoutes] = useState(false)
     const tracked = useUrlOverlay("tripId")
     const selectedTrip = tracked.value
 
@@ -435,34 +479,42 @@ function VehiclesMode() {
                 <MapTopBar
                     switcher={<MapModeSwitch mode="vehicles" />}
                     insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}
-                >
-                    <ModeFilterChips value={filter} onChange={setFilter} />
-                    <span className="mx-0.5 w-px shrink-0 self-stretch bg-border" aria-hidden />
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <MapChip
-                                active={routes.length > 0}
-                                icon={<Search className="h-3.5 w-3.5" />}
-                                aria-label={routes.length === 0 ? "Find a route" : `Routes: ${routesLabel}`}
-                            >
-                                {routesLabel}
-                            </MapChip>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-72 space-y-2">
-                            <p className="text-sm font-medium">Show routes</p>
-                            <RouteMultiSelect label="" placeholder="Search routes, e.g. 70" selected={routes} onChange={setRoutes} />
-                        </PopoverContent>
-                    </Popover>
-                    {routes.length > 0 && (
-                        <MapChip active={false} onClick={() => setRoutes([])} icon={<X className="h-3.5 w-3.5" />} aria-label="Show all routes">
-                            Clear
-                        </MapChip>
+                    below={routes.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setRoutes([])}
+                            aria-label={`Showing routes ${routesLabel}. Clear`}
+                            className="inline-flex h-[30px] items-center gap-1.5 rounded-full bg-primary px-3 text-[13px] font-medium text-primary-foreground shadow-sm"
+                        >
+                            Routes: {routesLabel}
+                            <X className="h-3 w-3" />
+                        </button>
                     )}
-                    <MapChip active={showStops} onClick={() => setShowStops(!showStops)} icon={<MapPin className="h-3.5 w-3.5" />} aria-label="Show stops">
-                        Stops
-                    </MapChip>
+                >
+                    <FilterMenu value={filter} onChange={setFilter} noun="vehicles" active={routes.length > 0 || showStops}>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onSelect={() => setPickingRoutes(true)}>
+                            <Search className="h-4 w-4" />
+                            {routes.length === 0 ? "Find a route…" : `Routes: ${routesLabel}`}
+                        </DropdownMenuItem>
+                        {routes.length > 0 && (
+                            <DropdownMenuItem onSelect={() => setRoutes([])}>
+                                <X className="h-4 w-4" /> Show all routes
+                            </DropdownMenuItem>
+                        )}
+                        <DropdownMenuCheckboxItem checked={showStops} onCheckedChange={(v) => setShowStops(!!v)}>
+                            <MapPin className="h-4 w-4" /> Show stops
+                        </DropdownMenuCheckboxItem>
+                    </FilterMenu>
                 </MapTopBar>
             )}
+
+            <Dialog open={pickingRoutes} onOpenChange={setPickingRoutes}>
+                <DialogContent className="max-w-sm">
+                    <DialogHeader><DialogTitle>Show routes</DialogTitle></DialogHeader>
+                    <RouteMultiSelect label="" placeholder="Search routes, e.g. 70" selected={routes} onChange={setRoutes} />
+                </DialogContent>
+            </Dialog>
 
             {routes.length > 0 && shownVehicles.length === 0 && vehicles.length > 0 && (
                 <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">

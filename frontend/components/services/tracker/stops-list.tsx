@@ -6,6 +6,7 @@ import { useServiceTrackerContext } from "./use-service-tracker"
 import { findRiderStop } from "./helpers"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
 import { inRegion } from "@/lib/region-time"
+import { cleanStopName } from "@/lib/formating"
 
 interface StopsListProps {
     stops: ServicesStop[] | null
@@ -190,14 +191,10 @@ export default function StopsList({
 
     return (
         <div className="space-y-2">
-            {tripId && (
-                <p className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-                    <Bell className="h-3.5 w-3.5" /> Tap a stop to get a reminder
-                </p>
-            )}
+            {/* Full-bleed rows, a bell on each stop still ahead (iOS, 2026-11-03). */}
             <div
                 className={cn(
-                    "overflow-hidden rounded-xl border border-border bg-card py-1",
+                    "-mx-1 overflow-hidden",
                     !isPage && "max-h-[50vh] overflow-y-auto overscroll-contain sm:max-h-[440px]",
                 )}
             >
@@ -232,7 +229,6 @@ interface TimelineRowProps {
 
 const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function TimelineRow({ stop, stopTime, state, prevState, yours, isFirst, isLast, rail, reminded, onTap }, ref) {
     const highlighted = state === "next" || state === "current"
-    const accent = state === "current" ? "rgb(234 88 12)" : "rgb(37 99 235)"
     const arrival = stopTime?.arrival_time || 0
     const minutes = arrival > 0 ? Math.ceil((arrival - Date.now()) / 60_000) : null
     const showCountdown = state !== "passed" && minutes !== null && minutes >= 0 && minutes < 90
@@ -245,22 +241,30 @@ const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function Tim
     // The line into this stop is dim once the vehicle is past the previous one.
     const incomingDim = prevState === "passed" && (state === "passed" || state === "current")
 
-    const content = (
+    const detail = [
+        state === "current" ? { text: "At this stop", tone: "text-orange-600 dark:text-orange-400" } : null,
+        state === "next" ? { text: "Next stop", tone: "text-blue-600 dark:text-blue-400" } : null,
+        yours ? { text: "Your stop", tone: "text-red-600 dark:text-red-400" } : null,
+        stopTime?.skipped ? { text: "Skipped", tone: "text-red-600 dark:text-red-400" } : null,
+        stop.platform ? { text: `Platform ${stop.platform}`, tone: "" } : null,
+        delayLabel && state !== "passed" ? { text: delayLabel, tone: "text-orange-600 dark:text-orange-400" } : null,
+    ].filter((d): d is { text: string; tone: string } => d !== null)
+    const name = cleanStopName(stop.name)
+    const label = `${name}${state === "next" ? ", next stop" : state === "current" ? ", vehicle at this stop" : state === "passed" ? ", passed" : ""}${yours ? ", your stop" : ""}`
+
+    return (
         <div
+            role="listitem"
+            aria-label={label}
             className={cn(
-                "relative flex items-stretch gap-3 px-3 text-left",
-                highlighted && (state === "current" ? "bg-orange-500/[0.08]" : "bg-blue-500/[0.08]"),
-                state === "passed" && "opacity-60",
+                "relative flex min-h-[54px] items-stretch gap-3 pl-3 pr-1 text-left",
+                highlighted && (state === "current" ? "bg-orange-500/[0.07]" : "bg-blue-500/[0.07]"),
+                state === "passed" && "opacity-70",
                 stopTime?.skipped && "opacity-50",
             )}
         >
-            {/* Time */}
-            <span className="w-[4.5rem] shrink-0 self-center py-3 text-right font-mono text-xs tabular-nums text-muted-foreground">
-                {arrival > 0 ? new Date(arrival).toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" })) : ""}
-            </span>
-
             {/* Rail + marker */}
-            <span className="relative flex w-5 shrink-0 justify-center" aria-hidden>
+            <span className="relative flex w-6 shrink-0 justify-center" aria-hidden>
                 {!isFirst && (
                     <span className="absolute left-1/2 top-0 h-1/2 w-1 -translate-x-1/2" style={{ background: rail, opacity: incomingDim ? 0.3 : 1 }} />
                 )}
@@ -272,41 +276,47 @@ const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function Tim
                 </span>
             </span>
 
-            {/* Name, tags */}
-            <span className="min-w-0 flex-1 py-2.5">
-                <span className={cn("block text-sm leading-snug", (highlighted || yours) ? "font-semibold text-foreground" : state === "passed" ? "text-muted-foreground" : "text-foreground")}>
-                    {stop.name}
+            {/* Name, one detail line */}
+            <span className="min-w-0 flex-1 self-center py-2">
+                <span className={cn("block truncate text-[15px] leading-snug", (highlighted || yours) ? "font-medium text-foreground" : state === "passed" ? "text-muted-foreground" : "text-foreground")}>
+                    {name}
                 </span>
-                <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                    {state === "current" && <Tag className="bg-orange-500/15 text-orange-700 dark:text-orange-300">At this stop</Tag>}
-                    {state === "next" && <Tag className="bg-blue-500/15 text-blue-700 dark:text-blue-300">Next stop</Tag>}
-                    {yours && <Tag className="bg-red-500/15 text-red-700 dark:text-red-300">Your stop</Tag>}
-                    {stopTime?.skipped && <Tag className="bg-red-500/15 text-red-700 dark:text-red-300">Skipped</Tag>}
-                    {stop.platform && <span className="text-[11px] text-muted-foreground">Plat. {stop.platform}</span>}
-                    {delayLabel && state !== "passed" && <span className="text-[11px] font-medium text-orange-600 dark:text-orange-400">{delayLabel}</span>}
-                </span>
-            </span>
-
-            {/* Reminder, countdown */}
-            <span className="flex shrink-0 items-center gap-2">
-                {reminded && <Bell className="h-3.5 w-3.5 fill-current text-blue-600 dark:text-blue-400" aria-label="Reminder set" />}
-                {showCountdown && (
-                    <span className={cn("font-mono text-xs font-medium tabular-nums", state === "next" ? "text-blue-600 dark:text-blue-400" : "text-muted-foreground")}>
-                        {minutes! <= 0 ? "Now" : `${minutes} min`}
+                {detail.length > 0 && (
+                    <span className="flex h-[18px] flex-wrap gap-x-2 overflow-hidden text-[13px] leading-[18px] text-muted-foreground">
+                        {detail.map((d) => <span key={d.text} className={d.tone}>{d.text}</span>)}
                     </span>
                 )}
             </span>
 
-            {highlighted && <span className="absolute inset-y-0 left-0 w-0.5" style={{ background: accent }} aria-hidden />}
-        </div>
-    )
+            {/* "5 min" over its clock time */}
+            {arrival > 0 && (
+                <span className="flex shrink-0 flex-col items-end justify-center">
+                    {showCountdown && (
+                        <span className={cn("font-mono text-sm font-medium tabular-nums", state === "next" || yours ? "text-blue-600 dark:text-blue-400" : "text-foreground")}>
+                            {minutes! <= 0 ? "Now" : `${minutes} min`}
+                        </span>
+                    )}
+                    <span className="text-[13px] tabular-nums text-muted-foreground">
+                        {new Date(arrival).toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}
+                    </span>
+                </span>
+            )}
 
-    const label = `${stop.name}${state === "next" ? ", next stop" : state === "current" ? ", vehicle at this stop" : state === "passed" ? ", passed" : ""}${yours ? ", your stop" : ""}`
-    if (!onTap) return <div aria-label={label} role="listitem">{content}</div>
-    return (
-        <button ref={ref} type="button" onClick={onTap} aria-label={`${label}. Set a reminder`} className="block w-full transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring">
-            {content}
-        </button>
+            {/* A reminder for this stop */}
+            {onTap ? (
+                <button
+                    ref={ref}
+                    type="button"
+                    onClick={onTap}
+                    aria-label={reminded ? `Reminder set for ${name}` : `Remind me about ${name}`}
+                    className="flex w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                >
+                    <Bell className={cn("h-4 w-4", reminded && "fill-current text-blue-600 dark:text-blue-400")} />
+                </button>
+            ) : (
+                <span className="w-10 shrink-0" />
+            )}
+        </div>
     )
 })
 
@@ -318,10 +328,6 @@ function Marker({ state, yours, isLast, rail }: { state: StopState; yours: boole
     if (state === "current") return <span className="block h-3 w-3 rounded-full border-2 border-background bg-orange-500 ring-2 ring-orange-500" />
     if (state === "passed") return <span className="block h-2.5 w-2.5 rounded-full bg-border" />
     return <span className="block h-2.5 w-2.5 rounded-full border-2 bg-card" style={{ borderColor: rail }} />
-}
-
-function Tag({ className, children }: { className: string; children: React.ReactNode }) {
-    return <span className={cn("rounded-full px-1.5 text-[11px] font-medium leading-4", className)}>{children}</span>
 }
 
 /** A slim row that stands in for a run of folded stops (earlier, or far ahead). */

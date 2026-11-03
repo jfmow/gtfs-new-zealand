@@ -197,6 +197,15 @@ export default function Settings() {
                             </SelectContent>
                         </Select>
                     </div>
+
+                    {/* Was in the ☰ menu, which the Updates tab replaced (2026-11-03). */}
+                    <Link href="/reliability" className="flex items-center justify-between gap-6 px-4 py-3.5 hover:bg-accent/40 transition-colors">
+                        <div>
+                            <p className="text-sm font-medium">Route reliability</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">How often routes run on time and connections work</p>
+                        </div>
+                        <span className="text-muted-foreground" aria-hidden>›</span>
+                    </Link>
                 </div>
                 <p className="mt-4 max-w-lg text-center text-xs text-muted-foreground">
                     Version {process.env.NEXT_PUBLIC_APP_VERSION} · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link>

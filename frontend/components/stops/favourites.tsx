@@ -239,7 +239,7 @@ export default function SavedStopsSection({ className }: { className?: string })
 
     return (
         <HomeSection
-            title="Saved stops"
+            title="Your stops"
             count={favorites.length}
             className={className}
             actions={favorites.length > 0 && <button type="button" onClick={() => setManaging(true)}>Edit</button>}
@@ -247,7 +247,7 @@ export default function SavedStopsSection({ className }: { className?: string })
             {favorites.length === 0 ? (
                 <HomeHint icon={Star} text="Tap the star on any stop to keep its departures here." />
             ) : (
-                <div className="flex flex-col gap-2.5">
+                <div className="grid gap-2.5 lg:grid-cols-2">
                     {favorites.map((fav) => (
                         <HomeStopRow
                             key={fav.stop}

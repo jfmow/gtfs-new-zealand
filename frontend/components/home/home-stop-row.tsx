@@ -1,10 +1,11 @@
 import { useEffect, useState, type ReactNode } from "react"
 import Link from "next/link"
-import { Bus, ChevronRight, History, Loader2, Ship, Star, TrainFront } from "lucide-react"
+import { ChevronRight, History, Rss } from "lucide-react"
 import type { Service } from "@/components/services"
 import { ApiFetch } from "@/lib/url-context"
 import { cn, fullyEncodeURIComponent } from "@/lib/utils"
-import { formatTextToNiceLookingWords, timeTillArrivalString } from "@/lib/formating"
+import { headsignDisplay, timeTillArrivalString } from "@/lib/formating"
+import { ModeTile, SavedTile } from "./tiles"
 import { inRegion } from "@/lib/region-time"
 
 const REFRESH_MS = 30_000
@@ -76,7 +77,7 @@ export function DepartureLine({ service }: { service: Service }) {
             >
                 {service.route.name}
             </span>
-            <span className="min-w-0 truncate text-foreground">{formatTextToNiceLookingWords(service.headsign)}</span>
+            <span className="min-w-0 truncate text-foreground">{headsignDisplay(service.headsign)}</span>
             <span className="ml-auto flex shrink-0 items-center gap-2">
                 {hasPlatform && <span className="text-muted-foreground">Pl {service.platform}</span>}
                 <span
@@ -94,9 +95,9 @@ export function DepartureLine({ service }: { service: Service }) {
 }
 
 /**
- * One stop on Home (a saved stop or a nearby one) - the iOS `HomeStopRow`:
- * a tile, the name and a detail, then its next two departures, full width
- * so long names and several route badges fit.
+ * One stop on Home (a saved stop or a nearby one) as a small departure
+ * board - the iOS `HomeBoardCard`: a header (tile, name, detail), then a
+ * line per departure with its route, where it's going and the countdown.
  */
 export function HomeStopRow({
     stopQuery,
@@ -105,6 +106,7 @@ export function HomeStopRow({
     tile,
     href,
     menu,
+    lines = 3,
 }: {
     stopQuery: string
     title: string
@@ -113,60 +115,86 @@ export function HomeStopRow({
     href: string
     /** Options button, top right (sits over the row's link). */
     menu?: ReactNode
+    /** Departures shown. */
+    lines?: number
 }) {
-    const { services, failed, isStale, lastUpdated } = useLiveNextDepartures(stopQuery, 2)
+    const { services, failed, isStale, lastUpdated } = useLiveNextDepartures(stopQuery, lines)
 
     return (
-        <div className="relative rounded-xl border border-border bg-card shadow-sm transition-colors hover:bg-accent/40">
-            <Link href={href} className="absolute inset-0 z-0 rounded-xl" aria-label={`${title}${detail ? `, ${detail}` : ""} - departures`} />
-            <div className={cn("pointer-events-none relative flex items-start gap-3 px-3.5 py-3", menu && "pr-11")}>
-                <span className="shrink-0" aria-hidden>{tile}</span>
-                <div className="flex min-w-0 flex-1 flex-col gap-2.5">
-                    <div className="flex items-baseline gap-1.5">
-                        <span className="min-w-0 flex-1 text-sm font-medium text-foreground">{title}</span>
-                        {detail && <span className="shrink-0 font-mono text-xs text-muted-foreground">{detail}</span>}
-                        {!menu && <ChevronRight className="h-3.5 w-3.5 shrink-0 self-center text-muted-foreground/60" aria-hidden />}
-                    </div>
-                    {services === null && !failed && (
-                        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <Loader2 className="h-3 w-3 animate-spin" /> Loading departures
-                        </span>
-                    )}
-                    {failed && <span className="text-xs text-muted-foreground">Couldn&apos;t load departures</span>}
-                    {services && services.length === 0 && <span className="text-xs text-muted-foreground">No upcoming services</span>}
-                    {services && services.length > 0 && (
-                        <div className={cn("flex flex-col gap-2", isStale && "opacity-60")}>
-                            {services.map((service) => <DepartureLine key={service.trip_id + service.platform} service={service} />)}
-                            {isStale && lastUpdated && (
-                                <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400">
-                                    <History className="h-3 w-3" />
-                                    Times as of {lastUpdated.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}
-                                </span>
-                            )}
-                        </div>
-                    )}
+        <div className="relative overflow-hidden rounded-2xl border border-border bg-card shadow-sm transition-colors hover:bg-accent/30">
+            <Link href={href} className="absolute inset-0 z-0" aria-label={`${title}${detail ? `, ${detail}` : ""} - departures`} />
+            <div className="pointer-events-none relative">
+                <div className={cn("flex items-center gap-2.5 px-3.5 pb-2 pt-3", menu && "pr-11")}>
+                    <span className="shrink-0" aria-hidden>{tile}</span>
+                    <span className="min-w-0 flex-1 truncate text-base font-semibold text-foreground">{title}</span>
+                    {detail && <span className="shrink-0 text-[13px] text-muted-foreground">{detail}</span>}
+                    {!menu && <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/70" aria-hidden />}
                 </div>
+                {services === null && !failed && Array.from({ length: lines }).map((_, i) => (
+                    <div key={i} className="border-t border-border px-3.5 py-2.5">
+                        <div className="h-4 w-2/3 animate-pulse rounded bg-muted" />
+                    </div>
+                ))}
+                {failed && <p className="border-t border-border px-3.5 py-2.5 text-[13px] text-muted-foreground">Couldn&apos;t load departures</p>}
+                {services && services.length === 0 && <p className="border-t border-border px-3.5 py-2.5 text-[13px] text-muted-foreground">No more departures today</p>}
+                {services && services.length > 0 && (
+                    <div className={cn(isStale && "opacity-60")}>
+                        {services.map((service) => <BoardLine key={service.trip_id + service.platform} service={service} />)}
+                    </div>
+                )}
+                {isStale && lastUpdated && (
+                    <p className="flex items-center gap-1 border-t border-border px-3.5 py-2 text-xs text-amber-600 dark:text-amber-400">
+                        <History className="h-3 w-3" />
+                        Times as of {lastUpdated.toLocaleTimeString("en-NZ", inRegion({ hour: "numeric", minute: "2-digit" }))}
+                    </p>
+                )}
             </div>
             {menu && <div className="absolute right-2 top-2 z-10">{menu}</div>}
         </div>
     )
 }
 
-/** A saved stop's tile: its colour with a star. */
-export function FavouriteTile({ color }: { color: string }) {
+/** One line of a board: route badge, headsign, then the countdown (blue + a live icon when tracked). */
+export function BoardLine({ service }: { service: Service }) {
+    const isLive = !service.canceled && (service.location_tracking || service.trip_update_tracking)
+    const countdown = service.canceled ? "Cancelled" : timeTillArrivalString(service.arrival_time)
     return (
-        <span className="flex h-9 w-9 items-center justify-center rounded-[10px]" style={{ background: `${color}2e`, color }}>
-            <Star className="h-4 w-4" fill="currentColor" />
+        <div className="flex items-center gap-2.5 border-t border-border px-3.5 py-2.5">
+            <span className="min-w-[44px] shrink-0">
+                <RouteBadge name={service.route.name} color={service.route.color} />
+            </span>
+            <span className={cn("min-w-0 flex-1 truncate text-[15px]", service.canceled ? "text-muted-foreground line-through" : "text-foreground")}>
+                {headsignDisplay(service.headsign)}
+            </span>
+            {isLive && <Rss className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />}
+            <span
+                className={cn("shrink-0 font-mono text-[15px] font-medium tabular-nums", service.canceled ? "text-destructive" : isLive ? "text-blue-600 dark:text-blue-400" : "text-foreground")}
+                aria-label={isLive ? `Live, ${countdown}` : countdown}
+            >
+                {countdown}
+            </span>
+        </div>
+    )
+}
+
+/** A route's badge in its colour - iOS `RouteBadge`. */
+export function RouteBadge({ name, color, className }: { name: string; color?: string; className?: string }) {
+    return (
+        <span
+            className={cn("inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold leading-4 text-white", className)}
+            style={{ background: "#" + (color || "424242") }}
+        >
+            {name}
         </span>
     )
 }
 
+/** A saved stop's tile: its colour with a star. */
+export function FavouriteTile({ color }: { color: string }) {
+    return <SavedTile color={color} />
+}
+
 /** A nearby stop's tile: its mode on a muted square. */
 export function StopModeTile({ stopType }: { stopType: string }) {
-    const Icon = stopType === "train" ? TrainFront : stopType === "ferry" ? Ship : Bus
-    return (
-        <span className="flex h-9 w-9 items-center justify-center rounded-[10px] bg-muted text-foreground">
-            <Icon className="h-4 w-4" />
-        </span>
-    )
+    return <ModeTile stopType={stopType} />
 }

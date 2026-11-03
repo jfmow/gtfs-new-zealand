@@ -5,7 +5,10 @@ import { SaveTripDialog } from "@/components/trips/save-trip-dialog"
 import { ManageTripsSheet } from "@/components/trips/manage-trips-sheet"
 import { GlobalTripSettingsDialog } from "@/components/trips/global-trip-settings-dialog"
 import { Button } from "@/components/ui/button"
-import { AlarmClock, List, Route as RouteIcon, Settings2, Undo2 } from "lucide-react"
+import { AlarmClock, Bookmark, BookmarkCheck, ChevronRight, Route as RouteIcon, Undo2 } from "lucide-react"
+import { placeIcon, placeLocation, useSavedPlaces } from "@/components/places/use-saved-places"
+import { PlaceTile } from "@/components/places/places"
+import { getUserLocation } from "@/lib/userLocation"
 import { toast } from "sonner"
 import type { TravelMode } from "@/components/journey/planner-options"
 import { ApiFetch, useUrl } from "@/lib/url-context"
@@ -285,11 +288,6 @@ function StandardPlanner() {
         setManageOpen(false)
     }, [])
 
-    const swapLocations = useCallback(() => {
-        setStartLocation(endLocation)
-        setEndLocation(startLocation)
-    }, [startLocation, endLocation])
-
     const openLeaveReminder = useCallback((route: JourneyType) => {
         setLeaveReminderRoute(route)
         setLeaveReminderOpen(true)
@@ -431,6 +429,7 @@ function StandardPlanner() {
 
         const searchDate = timeType === "now" ? new Date() : selectedDate
         setSelectedDate(searchDate)
+        plannedKeyRef.current = planKey
 
         setIsSearching(true)
         setApiResponse([])
@@ -443,6 +442,44 @@ function StandardPlanner() {
         } else setPlanError(error)
         setIsSearching(false)
     }
+
+    // ── Plan as soon as both ends are set (iOS, 2026-11-03 - no Plan button) ──
+    // Keyed on the ends, the time and the options, so changing any of them
+    // plans again; set by every path that plans, so a saved trip, a link or a
+    // re-plan doesn't get planned twice.
+    const planKey = startLocation && endLocation
+        ? [startLocation.lat, startLocation.lon, endLocation.lat, endLocation.lon, timeType,
+            timeType === "now" ? "" : selectedDate.getTime(), maxWalkKm, walkSpeed, maxTransfers, minResults,
+            onlyRoutes.map((r) => r.route_id).join(","), modes.join(",")].join("|")
+        : null
+    const plannedKeyRef = useRef<string | null>(null)
+    useEffect(() => {
+        if (!planKey || planKey === plannedKeyRef.current || isSearching) return
+        // A shared journey or resume opens an exact plan - don't replace it
+        // with a fresh search for the same ends.
+        if ((shared.sharedId.found || shared.resume.found || autoOpenSignature || planFromHere) && plannedKeyRef.current === null) {
+            plannedKeyRef.current = planKey
+            return
+        }
+        plannedKeyRef.current = planKey
+        planJourney()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [planKey])
+
+    // From starts as "My location" when location's already allowed (no
+    // prompt here - "Change" -> My location asks).
+    useEffect(() => {
+        if (startLocation || shared.startLat.found || shared.fromHere.found) return
+        let cancelled = false
+        navigator.permissions?.query({ name: "geolocation" }).then((perm) => {
+            if (perm.state !== "granted") return
+            getUserLocation().then(([lat, lon]) => {
+                if (!cancelled) setStartLocation((current) => current ?? { lat, lon, label: "My location" })
+            }).catch(() => { })
+        }, () => { })
+        return () => { cancelled = true }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
 
     // "Later departures" - the next page after the latest departure (or,
     // arriving by, before the earliest arrival), appended so the rider can
@@ -505,6 +542,8 @@ function StandardPlanner() {
     const replanFromHere = useCallback(async (origin: { lat: number; lon: number; label: string }, departAt: Date) => {
         if (!endLocation) return
         setReplanSnapshot({ route: selectedRoute, results: apiResponse, start: startLocation, timeType, date: selectedDate })
+        plannedKeyRef.current = [origin.lat, origin.lon, endLocation.lat, endLocation.lon, "leaveat", departAt.getTime(),
+            maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes.map((r) => r.route_id).join(","), modes.join(",")].join("|")
         setStartLocation({ lat: origin.lat, lon: origin.lon, label: origin.label })
         setTimeType("leaveat")
         setSelectedDate(departAt)
@@ -520,7 +559,7 @@ function StandardPlanner() {
         } else setPlanError(error)
         setIsSearching(false)
         setTimeout(() => document.getElementById("journey-results")?.scrollIntoView({ behavior: "smooth" }), 100)
-    }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate])
+    }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate, maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, modes])
 
     // Bail out of a mid-journey re-plan: restore the route (and form) they were on.
     const restoreReplan = useCallback(() => {
@@ -566,36 +605,6 @@ function StandardPlanner() {
                 else on the page. */}
             <div className={isWide ? "mx-auto flex max-w-6xl gap-8 px-4" : undefined}>
             <main className={isWide ? "w-[440px] shrink-0 space-y-5 py-6" : "mx-auto max-w-2xl px-4 py-6 space-y-5"}>
-                <div className="flex items-center justify-between gap-2">
-                    <h1 className="text-lg font-semibold">Journey Planner</h1>
-                    <div className="flex items-center gap-1">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 gap-1.5 px-2.5 text-xs"
-                            onClick={() => setManageOpen(true)}
-                        >
-                            <List className="h-3.5 w-3.5" />
-                            Saved
-                            {trips.length > 0 && (
-                                <span className="ml-0.5 tabular-nums text-muted-foreground">
-                                    ({trips.length})
-                                </span>
-                            )}
-                        </Button>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={() => setGlobalSettingsOpen(true)}
-                            disabled={trips.length === 0}
-                            aria-label="Update all trips"
-                        >
-                            <Settings2 className="h-3.5 w-3.5" />
-                        </Button>
-                    </div>
-                </div>
-
                 <SearchForm
                     startLocation={startLocation}
                     endLocation={endLocation}
@@ -604,7 +613,6 @@ function StandardPlanner() {
                     onSelectFromMap={handleSelectFromMap}
                     onUseCurrentLocation={handleUseCurrentLocation}
                     isLocating={isLocating}
-                    onSwap={swapLocations}
                     locationError={locationError}
                     timeType={timeType}
                     onTimeTypeChange={setTimeType}
@@ -623,19 +631,21 @@ function StandardPlanner() {
                     modes={modes}
                     onModesChange={setModes}
                     isSearching={isSearching}
-                    canSave={canSave}
-                    justSaved={justSaved}
-                    onPlan={planJourney}
-                    onSaveClick={() => setSaveTripOpen(true)}
                 />
 
-                <QuickTripsRail
-                    trips={trips}
-                    onLoadTrip={handleLoadTrip}
-                    onUpdateTrip={updateTrip}
-                    onDeleteTrip={deleteTrip}
-                    onReorderTrips={reorderTrips}
-                />
+                {apiResponse.length === 0 && !isSearching && <YourPlaces onPick={setEndLocation} />}
+
+                {apiResponse.length === 0 && !isSearching && (
+                    <QuickTripsRail
+                        trips={trips}
+                        onLoadTrip={handleLoadTrip}
+                        onUpdateTrip={updateTrip}
+                        onDeleteTrip={deleteTrip}
+                        onReorderTrips={reorderTrips}
+                        onManage={() => setManageOpen(true)}
+                        onUpdateAll={() => setGlobalSettingsOpen(true)}
+                    />
+                )}
 
                 {replanSnapshot && (
                     <button
@@ -678,9 +688,24 @@ function StandardPlanner() {
                 })()}
 
                 {planError && !isSearching && (
-                    <p className="mt-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
-                        {planError}
-                    </p>
+                    <div className="mt-4 flex items-baseline gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-3.5 py-2.5 text-sm text-destructive">
+                        <span className="flex-1">{planError}</span>
+                        <button type="button" className="shrink-0 text-[13px] font-medium text-foreground" onClick={planJourney}>Try again</button>
+                    </div>
+                )}
+
+                {apiResponse.length > 0 && canSave && (
+                    <div className="-mb-3 flex justify-end">
+                        <button
+                            type="button"
+                            disabled={justSaved}
+                            onClick={() => setSaveTripOpen(true)}
+                            className="inline-flex items-center gap-1.5 text-[13px] font-medium text-foreground disabled:text-green-600"
+                        >
+                            {justSaved ? <BookmarkCheck className="h-3.5 w-3.5" /> : <Bookmark className="h-3.5 w-3.5" />}
+                            {justSaved ? "Saved" : "Save trip"}
+                        </button>
+                    </div>
                 )}
 
                 <ResultsList
@@ -701,7 +726,7 @@ function StandardPlanner() {
             </main>
 
             {isWide && (
-                <aside className="sticky top-16 max-h-[calc(100svh-5rem-var(--tabbar-h))] min-w-0 flex-1 self-start overflow-y-auto py-6">
+                <aside className="sticky top-16 max-h-[calc(100svh-5rem-var(--tabbar-h))] min-w-0 flex-1 self-start overflow-y-auto py-6 pr-3">
                     {selectedRoute ? (
                         <JourneyErrorBoundary resetKey={selectedRoute.ID}>
                             <RouteDetailSheet
@@ -797,5 +822,34 @@ function StandardPlanner() {
                 onApply={updateAllTrips}
             />
         </div>
+    )
+}
+
+/** Your saved places - one tap plans from here to there (iOS "Your places"). */
+function YourPlaces({ onPick }: { onPick: (location: Location) => void }) {
+    const { places } = useSavedPlaces()
+    if (places.length === 0) return null
+    return (
+        <section className="space-y-2">
+            <h2 className="text-sm font-medium text-muted-foreground">Your places</h2>
+            <div className="divide-y overflow-hidden rounded-xl border bg-card">
+                {places.map((place) => (
+                    <button
+                        key={place.id}
+                        type="button"
+                        onClick={() => onPick(placeLocation(place))}
+                        aria-label={`${place.name} - plans a journey there`}
+                        className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-accent/50 transition-colors"
+                    >
+                        <PlaceTile icon={place.icon} size={30} />
+                        <span className="min-w-0 flex-1">
+                            <span className="block text-[15px] font-medium">{place.name}</span>
+                            <span className="block truncate text-[13px] text-muted-foreground">{place.address || placeIcon(place.icon).label}</span>
+                        </span>
+                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+                    </button>
+                ))}
+            </div>
+        </section>
     )
 }

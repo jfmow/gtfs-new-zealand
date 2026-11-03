@@ -18,9 +18,9 @@ import {
     ArrowRight,
     Bus,
     CableCar,
-    ChevronLeft,
     Clock,
     Footprints,
+    MoreHorizontal,
     Navigation,
     RefreshCw,
     Share2,
@@ -36,7 +36,10 @@ import { isIOS, openInApp } from "@/lib/ios-app"
 import { haversineDistance, useIsMobile, useOnlineStatus } from "@/lib/utils"
 import type { LatLng } from "@/components/map/map"
 import { useRouteLine } from "@/components/services/tracker/use-service-tracker"
-import { getOccupancyLabel, OccupancyIcons } from "@/components/services/occupancy"
+import { getOccupancyLabel, getOccupancyShort, OccupancyIcons } from "@/components/services/occupancy"
+import { cleanStopName } from "@/lib/formating"
+import { cn } from "@/lib/utils"
+import { JourneyLegBar } from "./leg-bar"
 import { LiveMap } from "./live-map"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
@@ -105,9 +108,6 @@ const PHASE_LABEL: Record<JourneyPhase, string> = {
     onboard: "On board",
 }
 
-function journeyStopCount(route: JourneyType): number {
-    return route.Legs.reduce((sum, leg) => sum + legStopCount(leg), 0)
-}
 
 function legStopCount(leg: Leg): number {
     if (leg.Mode !== 'transit' || !leg.FromStop || !leg.ToStop) return 0
@@ -164,11 +164,6 @@ function journeyPoints(route: JourneyType): LatLng[] {
     return points.filter(([lat, lon]) => Number.isFinite(lat) && Number.isFinite(lon) && !(lat === 0 && lon === 0))
 }
 
-function journeyHeadsign(route: JourneyType): string | null {
-    const transitLegs = route.Legs.filter(l => l.Mode === 'transit')
-    const lastLeg = transitLegs[transitLegs.length - 1]
-    return lastLeg?.ToStop?.stop_headsign || null
-}
 
 /** Last transit leg's realtime delay (seconds, negative if early) - a plan-time snapshot, not itself live, but the best delay signal already on hand without a new fetch. */
 function journeyDelaySeconds(route: JourneyType): number {
@@ -681,18 +676,6 @@ export function RouteDetailSheet({
 
     const itinerary = (
         <>
-            {fare && (
-                <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 text-sm">
-                    <div className="flex items-baseline justify-between gap-3">
-                        <span className="text-muted-foreground">Fare</span>
-                        <span className="font-semibold tabular-nums">{fare.label}</span>
-                    </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                        {fare.detail}
-                        {fare.note && <> · {fare.note}</>}
-                    </p>
-                </div>
-            )}
             <RouteItinerary
                 route={shownRoute}
                 currentLegIndex={progressLegIndex}
@@ -736,6 +719,7 @@ export function RouteDetailSheet({
             onReplan={handleReplan}
             replanUrgent={replanUrgent}
             connectionLost={connectionLost}
+            fare={fare ?? undefined}
         />
     )
 
@@ -852,6 +836,7 @@ function JourneySummary({
     onReplan,
     replanUrgent,
     connectionLost,
+    fare,
 }: {
     route: JourneyType
     onShare: () => void
@@ -876,241 +861,222 @@ function JourneySummary({
     replanUrgent?: boolean
     /** Polling has been failing (or the browser itself is offline) for a while - what's on screen may be stale. */
     connectionLost?: boolean
+    fare?: { label: string; detail?: string; note?: string }
 }) {
     // Client-only (reads the UA), so it can't be computed during SSR.
     const [onIOS, setOnIOS] = useState(false)
     useEffect(() => setOnIOS(isIOS()), [])
-    const headsign = journeyHeadsign(route)
-    const stopCount = journeyStopCount(route)
+    const now = useNow(15000)
+    const clock = (d: Date | string) => formatTime(d)
+    const clean = (name?: string) => (name ? cleanStopName(name) : "")
+    const routeName = (l?: Leg) => l?.Route?.route_short_name || l?.RouteID || "service"
 
-    // The route shown in the header badge: the leg the rider is on now if it's
-    // transit, else the next transit leg they'll board, else the first.
     const currentLeg = currentLegIndex >= 0 ? route.Legs[currentLegIndex] : undefined
-    const badgeLeg =
-        (currentLeg?.Mode === "transit" ? currentLeg : undefined) ??
-        (currentLegIndex >= 0 ? route.Legs.slice(currentLegIndex).find((l) => l.Mode === "transit") : undefined) ??
-        route.Legs.find((l) => l.Mode === "transit")
-
-    // The next transit leg (for a "waiting for the X" status during a walk/gap).
     const nextTransit = currentLegIndex >= 0
         ? route.Legs.slice(currentLegIndex).find((l) => l.Mode === "transit")
-        : undefined
+        : route.Legs.find((l) => l.Mode === "transit")
+    const badgeLeg = (currentLeg?.Mode === "transit" ? currentLeg : undefined) ?? nextTransit ?? route.Legs.find((l) => l.Mode === "transit")
+    const walkingNow = journeyStarted && (currentPhase === "walking" || !nextTransit)
 
-    // A one-line "where are you in the journey" status, shown once tracking.
+    // What you're doing now - "Walking to X" / "Waiting for the 70" / "On the 70 → Y".
     let progress: string | null = null
     if (journeyStarted && currentLeg && currentPhase) {
-        const routeName = (l?: Leg) => l?.Route?.route_short_name || l?.RouteID || "service"
         const isLastLeg = currentLegIndex === route.Legs.length - 1
         switch (currentPhase) {
             case "walking":
-                progress = currentLeg.ToStop
-                    ? `Walking to ${currentLeg.ToStop.stop_name}`
-                    : isLastLeg ? "Almost there" : "Walking"
+                progress = currentLeg.ToStop ? `Walking to ${clean(currentLeg.ToStop.stop_name)}` : isLastLeg ? "Almost there" : "Walking"
                 break
             case "waiting":
-                progress = currentLeg.Mode === "transit"
-                    ? `Waiting for the ${routeName(currentLeg)}`
-                    : `Waiting for the ${routeName(nextTransit)}`
+                progress = `Waiting for the ${routeName(currentLeg.Mode === "transit" ? currentLeg : nextTransit)}`
                 break
             case "boarding":
                 progress = `Boarding the ${routeName(currentLeg.Mode === "transit" ? currentLeg : nextTransit)}`
                 break
             case "onboard":
-                progress = `On the ${routeName(currentLeg)}${currentLeg.ToStop?.stop_name ? ` → ${currentLeg.ToStop.stop_name}` : ""}`
+                progress = `On the ${routeName(currentLeg)}${currentLeg.ToStop?.stop_name ? ` → ${clean(currentLeg.ToStop.stop_name)}` : ""}`
                 break
         }
     }
 
-    // Delay-adjusted arrival, and a live "time remaining" countdown against it -
-    // ticks down as real time passes, and runs longer than the planned duration
-    // whenever the last transit leg is running late.
-    const now = useNow(30000)
-    const delaySeconds = journeyDelaySeconds(route)
-    // route.ArrivalTime is already realtime-adjusted by the backend; delaySeconds
-    // is kept only for the "(delayed)" hint below.
-    const adjustedArrival = new Date(route.ArrivalTime)
-    const remainingMs = adjustedArrival.getTime() - now.getTime()
-    const remainingLabel = remainingMs <= 30000 ? "Arrived" : formatDuration(remainingMs * 1_000_000)
+    // The countdown that matters now, and the line under the title saying
+    // what it counts to - iOS's journey header (2026-11-03).
+    let target: Date | null = null
+    let subline = ""
+    let countdownLabel: string | null = null
+    if (!journeyStarted) {
+        const depart = new Date(route.DepartureTime)
+        if (depart.getTime() - now.getTime() < 3 * 3600_000) {
+            target = depart
+            countdownLabel = depart.getTime() - now.getTime() <= 60_000 ? "Leave" : "Leave in"
+        }
+        subline = [
+            formatDuration(route.TotalDuration),
+            route.Transfers === 0 ? "direct" : `${route.Transfers} transfer${route.Transfers === 1 ? "" : "s"}`,
+            fare?.label,
+        ].filter(Boolean).join(", ")
+    } else if (currentPhase === "onboard" && currentLeg) {
+        target = new Date(currentLeg.ArrivalTime)
+        subline = `Get off at ${clean(currentLeg.ToStop?.stop_name) || "your stop"} at ${clock(currentLeg.ArrivalTime)}`
+    } else if (nextTransit) {
+        target = new Date(nextTransit.DepartureTime)
+        subline = `${routeName(nextTransit)} leaves ${clean(nextTransit.FromStop?.stop_name) || "the stop"} at ${clock(nextTransit.DepartureTime)}`
+        const plat = nextTransit.FromStop?.platform_number
+        if (plat) subline += `, platform ${plat}`
+    } else {
+        target = new Date(route.ArrivalTime)
+        subline = `Arrive at ${clock(route.ArrivalTime)}`
+    }
+    const minutesLeft = target ? Math.ceil((target.getTime() - now.getTime()) / 60_000) : null
+    const urgent = minutesLeft !== null && minutesLeft <= 2 && !(journeyStarted && currentPhase === "onboard")
+
+    const start = new Date(route.DepartureTime).getTime()
+    const end = new Date(route.ArrivalTime).getTime()
+    const fraction = Math.max(0, Math.min(1, (now.getTime() - start) / Math.max(end - start, 1)))
+
+    // One line of live facts - problems first, so they're never the ones dropped.
+    const status: { key: string; node: React.ReactNode }[] = []
+    if (journeyStarted) {
+        if (connectionLost) status.push({ key: "off", node: <span className="inline-flex items-center gap-1 font-medium text-destructive"><WifiOff className="h-3 w-3" /> Connection lost</span> })
+        const delay = journeyDelaySeconds(route)
+        if (delay >= 60) status.push({ key: "late", node: <span className="text-amber-600 dark:text-amber-400">{Math.round(delay / 60)} min late</span> })
+        if (trackingLevel === "live") status.push({ key: "live", node: <span className="inline-flex items-center gap-1.5"><span className="live-dot h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400" /> Live</span> })
+        else status.push({ key: "lvl", node: <span className="text-amber-600 dark:text-amber-400">{trackingLevel === "predicted" ? "Times are predicted" : "Timetable only"}</span> })
+        if (stopsAway !== undefined) status.push({ key: "away", node: <span>{badgeLeg ? `${routeName(badgeLeg)} is ` : ""}{stopsAway} {stopsAway === 1 ? "stop" : "stops"} away</span> })
+        if (occupancy !== undefined) status.push({ key: "occ", node: <span className="inline-flex items-center gap-1"><OccupancyIcons occupancy={occupancy} />{getOccupancyShort(occupancy)}</span> })
+        if (cars) status.push({ key: "cars", node: <span>{cars} cars</span> })
+        if (platform) status.push({ key: "plat", node: <span>Platform {platform}</span> })
+    }
 
     return (
-        <div className="space-y-3">
-            {connectionLost && (
-                <div className="flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
-                    <WifiOff className="h-3.5 w-3.5 shrink-0" />
-                    <span>Connection lost - showing the last known info. Still trying to reconnect...</span>
-                </div>
-            )}
-            <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                    {badgeLeg?.Route && (
-                        <span
-                            className="shrink-0 px-2 py-1 rounded text-sm font-semibold"
-                            style={{
-                                background: "#" + (badgeLeg.Route.route_color || "424242"),
-                                color: badgeLeg.Route.route_text_color ? `#${badgeLeg.Route.route_text_color}` : "#ffffff",
-                            }}
-                        >
-                            {badgeLeg.Route.route_short_name || badgeLeg.RouteID}
-                        </span>
-                    )}
-                    <div className="min-w-0">
-                        <p className="text-base font-semibold truncate">{progress ?? headsign ?? "Your journey"}</p>
-                        {journeyStarted && trackingLevel !== "live" ? (
-                            <p className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-500">
-                                <AlertTriangle className="h-3 w-3 shrink-0" />
-                                {trackingLevel === "predicted"
-                                    ? "No live vehicle - times are predicted"
-                                    : "No realtime - times are scheduled"}
-                            </p>
-                        ) : (
-                            <p className="text-xs text-muted-foreground">
-                                {stopCount > 0 ? `${stopCount} stop${stopCount !== 1 ? 's' : ''}` : `${route.Transfers} transfer${route.Transfers !== 1 ? 's' : ''}`}
-                            </p>
-                        )}
-                    </div>
-                </div>
-                <div className="text-right shrink-0">
-                    <p className="text-lg font-bold leading-none">{remainingLabel}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {formatTime(route.DepartureTime)} - {formatTime(adjustedArrival)}
-                        {delaySeconds > 30 && <span className="text-amber-500"> (delayed)</span>}
+        <div className="space-y-3.5">
+            {/* What you're doing (or when the trip runs), and the countdown that matters. */}
+            <div className="flex items-center gap-3">
+                {walkingNow ? (
+                    <span className="flex h-[22px] w-[30px] shrink-0 items-center justify-center rounded-[5px] bg-muted"><Footprints className="h-3.5 w-3.5" /></span>
+                ) : badgeLeg?.Route ? (
+                    <span
+                        className="shrink-0 rounded px-1.5 py-0.5 text-[13px] font-semibold leading-4"
+                        style={{ background: "#" + (badgeLeg.Route.route_color || "424242"), color: badgeLeg.Route.route_text_color ? `#${badgeLeg.Route.route_text_color}` : "#ffffff" }}
+                    >
+                        {badgeLeg.Route.route_short_name || badgeLeg.RouteID}
+                    </span>
+                ) : null}
+                <div className="min-w-0 flex-1">
+                    <p className="truncate text-base font-semibold">
+                        {progress ?? `${clock(route.DepartureTime)} → ${clock(route.ArrivalTime)}`}
                     </p>
+                    {subline && <p className="truncate text-[13px] text-muted-foreground">{subline}</p>}
                 </div>
+                {target && minutesLeft !== null && (
+                    <div className="shrink-0 text-right">
+                        {countdownLabel && <p className="text-[13px] leading-none text-muted-foreground">{countdownLabel}</p>}
+                        <p className={cn("font-mono text-2xl font-medium tabular-nums", urgent ? "text-amber-600 dark:text-amber-400" : "text-blue-600 dark:text-blue-400")}>
+                            {minutesLeft <= 0 ? "now" : minutesLeft >= 60 ? `${Math.floor(minutesLeft / 60)}h ${minutesLeft % 60}m` : `${minutesLeft} min`}
+                        </p>
+                    </div>
+                )}
             </div>
 
-            {journeyStarted && trackingLevel === "live" && (platform || occupancy !== undefined || !!cars || stopsAway !== undefined) && (
-                <div className="flex items-center justify-between gap-3 rounded-md border bg-muted/40 px-3 py-2">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        {platform && <span>Platform {platform}</span>}
-                        {occupancy !== undefined && (
-                            <span className="flex items-center gap-1.5">
-                                {platform && <span className="text-border">·</span>}
-                                <OccupancyIcons occupancy={occupancy} />
-                                <span className="text-xs">{getOccupancyLabel(occupancy)}</span>
-                            </span>
-                        )}
-                        {!!cars && (
-                            <span className="flex items-center gap-1.5">
-                                {(platform || occupancy !== undefined) && <span className="text-border">·</span>}
-                                <span>{cars} cars</span>
-                            </span>
-                        )}
+            {/* The trip as a labelled bar - where you are while tracking. */}
+            <div className="space-y-1.5">
+                <JourneyLegBar route={route} currentIndex={journeyStarted ? currentLegIndex : undefined} progress={journeyStarted ? fraction : undefined} />
+                {journeyStarted ? (
+                    <div className="flex justify-between text-[13px] font-medium text-muted-foreground">
+                        <span>Arrive {clock(route.ArrivalTime)}</span>
+                        <span>{formatDuration(route.TotalDuration)} trip</span>
                     </div>
-                    {stopsAway !== undefined && (
-                        <span className="flex items-center gap-1 text-sm font-medium shrink-0">
-                            <ChevronLeft className="h-3.5 w-3.5 text-muted-foreground" />
-                            {stopsAway} {stopsAway === 1 ? "stop" : "stops"} away
-                        </span>
-                    )}
+                ) : fare && (fare.detail || fare.note) ? (
+                    <p className="line-clamp-2 text-[13px] text-muted-foreground">{fare.detail || fare.note}</p>
+                ) : null}
+            </div>
+
+            {status.length > 0 && (
+                <div className="flex h-5 flex-wrap items-center gap-x-3.5 overflow-hidden text-[13px] leading-5 text-muted-foreground">
+                    {status.map((s) => <span key={s.key} className="inline-flex items-center">{s.node}</span>)}
                 </div>
             )}
 
-            <div className="flex items-center gap-2 rounded-md border bg-muted/40 pl-3 pr-1.5 py-1.5">
-                <div className="flex flex-1 items-center gap-1.5 min-w-0">
-                    {route.Legs.map((leg, i) => (
-                        <span key={i} className="shrink-0">
-                            {leg.Mode === 'walk'
-                                ? <Footprints className="h-4 w-4 text-muted-foreground" />
-                                : <Bus className="h-4 w-4 text-muted-foreground" />}
-                        </span>
-                    ))}
-                    <span className="text-sm text-muted-foreground ml-1 truncate">{formatDuration(route.TotalDuration)} total</span>
+            {!journeyStarted ? (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <Button className="h-11 flex-1 gap-1.5 rounded-full text-sm" onClick={onGo}>
+                            <Navigation className="h-4 w-4" /> Start this journey
+                        </Button>
+                        {onRemindToLeave && (
+                            <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full" onClick={onRemindToLeave} aria-label="Remind me when to leave">
+                                <AlarmClock className="h-4 w-4" />
+                            </Button>
+                        )}
+                        <Button variant="outline" size="icon" className="h-11 w-11 shrink-0 rounded-full" onClick={onShare} aria-label="Share this journey">
+                            <Share2 className="h-4 w-4" />
+                        </Button>
+                    </div>
+                    {onIOS && (
+                        <Button size="sm" variant="ghost" className="w-full gap-1.5 text-muted-foreground" onClick={onOpenInApp}>
+                            <Smartphone className="h-3.5 w-3.5" /> Open in app
+                        </Button>
+                    )}
                 </div>
-                {onRemindToLeave && (
-                    <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 shrink-0"
-                        onClick={onRemindToLeave}
-                        aria-label="Remind me when to leave"
-                    >
-                        <AlarmClock className="h-4 w-4" />
-                    </Button>
-                )}
-                <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-8 w-8 shrink-0"
-                    onClick={onShare}
-                    aria-label="Share this journey"
-                >
-                    <Share2 className="h-4 w-4" />
-                </Button>
-                {journeyStarted && onStopTracking ? (
+            ) : (
+                <div className="flex items-center gap-2">
+                    {onReplan && replanOptions.length > 0 ? (() => {
+                        const label = replanUrgent ? "You'll miss a connection - find another route" : "Find a better route"
+                        if (replanOptions.length === 1) {
+                            return (
+                                <Button variant={replanUrgent ? "destructive" : "outline"} className="flex-1 gap-1.5" onClick={() => onReplan(replanOptions[0])}>
+                                    <RefreshCw className="h-3.5 w-3.5" /> {label}
+                                </Button>
+                            )
+                        }
+                        return (
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                    <Button variant={replanUrgent ? "destructive" : "outline"} className="flex-1 gap-1.5">
+                                        <RefreshCw className="h-3.5 w-3.5" /> {label}
+                                    </Button>
+                                </PopoverTrigger>
+                                <PopoverContent align="center" className="w-[var(--radix-popover-trigger-width)] p-1">
+                                    <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Re-plan from…</p>
+                                    {replanOptions.map((c) => (
+                                        <button
+                                            key={c.key}
+                                            type="button"
+                                            onClick={() => onReplan(c)}
+                                            className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm hover:bg-accent transition-colors"
+                                        >
+                                            <span className="font-medium">{c.label}</span>
+                                            <span className="text-xs text-muted-foreground">{c.detail}</span>
+                                        </button>
+                                    ))}
+                                </PopoverContent>
+                            </Popover>
+                        )
+                    })() : <span className="flex-1" />}
+                    {/* Share, open in app and End in a menu - End beside everything else got mis-tapped. */}
                     <Popover>
                         <PopoverTrigger asChild>
-                            <Button size="sm" className="rounded-full gap-1.5 px-4 shrink-0" variant="secondary">
-                                <Navigation className="h-3.5 w-3.5" />
-                                Tracking
+                            <Button variant="outline" size="icon" className="h-9 w-9 shrink-0 rounded-full" aria-label="More">
+                                <MoreHorizontal className="h-4 w-4" />
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent align="end" className="w-48 p-1">
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="w-full justify-start gap-2 text-destructive hover:text-destructive"
-                                onClick={onStopTracking}
-                            >
-                                <X className="h-3.5 w-3.5" />
-                                Stop tracking
+                            <Button size="sm" variant="ghost" className="w-full justify-start gap-2" onClick={onShare}>
+                                <Share2 className="h-3.5 w-3.5" /> Share journey
                             </Button>
+                            {onIOS && (
+                                <Button size="sm" variant="ghost" className="w-full justify-start gap-2" onClick={onOpenInApp}>
+                                    <Smartphone className="h-3.5 w-3.5" /> Open in app
+                                </Button>
+                            )}
+                            {onStopTracking && (
+                                <Button size="sm" variant="ghost" className="w-full justify-start gap-2 text-destructive hover:text-destructive" onClick={onStopTracking}>
+                                    <X className="h-3.5 w-3.5" /> End journey
+                                </Button>
+                            )}
                         </PopoverContent>
                     </Popover>
-                ) : (
-                    <Button
-                        size="sm"
-                        className="rounded-full gap-1.5 px-4 shrink-0"
-                        variant={journeyStarted ? "secondary" : "default"}
-                        onClick={onGo}
-                    >
-                        <Navigation className="h-3.5 w-3.5" />
-                        {journeyStarted ? "Tracking" : "GO"}
-                    </Button>
-                )}
-            </div>
-
-            {onIOS && (
-                <Button size="sm" variant="outline" className="w-full gap-1.5" onClick={onOpenInApp}>
-                    <Smartphone className="h-3.5 w-3.5" />
-                    Open in app
-                </Button>
+                </div>
             )}
-
-            {journeyStarted && onReplan && replanOptions.length > 0 && (() => {
-                const label = replanUrgent ? "You'll miss a connection - find another route" : "Find a better route from here"
-                if (replanOptions.length === 1) {
-                    return (
-                        <Button size="sm" variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5" onClick={() => onReplan(replanOptions[0])}>
-                            <RefreshCw className="h-3.5 w-3.5" />
-                            {label}
-                        </Button>
-                    )
-                }
-                return (
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button size="sm" variant={replanUrgent ? "destructive" : "outline"} className="w-full gap-1.5">
-                                <RefreshCw className="h-3.5 w-3.5" />
-                                {label}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="center" className="w-[var(--radix-popover-trigger-width)] p-1">
-                            <p className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Re-plan from…</p>
-                            {replanOptions.map((c) => (
-                                <button
-                                    key={c.key}
-                                    type="button"
-                                    onClick={() => onReplan(c)}
-                                    className="flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-2 text-left text-sm hover:bg-accent transition-colors"
-                                >
-                                    <span className="font-medium">{c.label}</span>
-                                    <span className="text-xs text-muted-foreground">{c.detail}</span>
-                                </button>
-                            ))}
-                        </PopoverContent>
-                    </Popover>
-                )
-            })()}
         </div>
     )
 }
