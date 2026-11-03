@@ -62,7 +62,7 @@ struct VehiclesMapView: View {
         let active = typeFilter != .all || !routeFilter.isEmpty || showStops
         return Menu {
             Picker("Show", selection: $typeFilter) {
-                ForEach(VehicleFilterType.filterCases, id: \.self) { Text($0 == .all ? "All vehicles" : "\($0.label)es".replacingOccurrences(of: "Trainses", with: "Trains")).tag($0) }
+                ForEach(VehicleFilterType.filterCases, id: \.self) { Text($0.pluralLabel).tag($0) }
             }
             Section {
                 Button { isPickingRoutes = true } label: { Label(routeFilter.isEmpty ? "Find a route…" : "Routes: \(routeFilterLabel)", systemImage: "magnifyingglass") }
@@ -172,4 +172,14 @@ extension VehicleFilterType {
 
     /// The same labels as the Stops map's filter.
     var label: String { self == .all ? "All" : rawValue }
+
+    /// Plural label for the vehicle type menu.
+    var pluralLabel: String {
+        switch self {
+        case .all: return "All vehicles"
+        case .bus: return "Buses"
+        case .train: return "Trains"
+        case .ferry: return "Ferries"
+        }
+    }
 }
