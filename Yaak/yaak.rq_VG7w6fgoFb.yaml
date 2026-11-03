@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_VG7w6fgoFb
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_y52BfzfgPM
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: "Comma-separated list (max 8) of 7-field pipe-separated changes."
+headers: []
+method: GET
+name: Connections
+sortPriority: 0.001
+url: ${[ url ]}/${[ provider ]}/reliability/connections
+urlParameters:
+- enabled: true
+  name: "changes"
+  value: "routeA|stopA|unixA|routeB|stopB|unixB|slackSec"
+  id: TXHQIH0foE

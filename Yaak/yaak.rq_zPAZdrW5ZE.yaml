@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_zPAZdrW5ZE
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_KRbp3MKP4W
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Plan By ID
+sortPriority: 0.0012
+url: ${[ url ]}/${[ provider ]}/services/plan/:id
+urlParameters:
+- enabled: true
+  name: ":id"
+  value: ''
+  id: UB83WKTInu

@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_QLrx0OQMND
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: ''
+    value: ''
+    id: w5vPNp1UPK
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: 4plIjy4r4L
+method: POST
+name: "History: Clear"
+sortPriority: 0.014
+url: ${[ url ]}/${[ provider ]}/notifications/history/clear
+urlParameters: []

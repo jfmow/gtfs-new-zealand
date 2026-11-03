@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_ozfFEarwOv
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_FpYAmY69o9
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Place Search
+sortPriority: 0.0016
+url: ${[ url ]}/${[ provider ]}/map/search
+urlParameters:
+- enabled: true
+  name: "q"
+  value: "Britomart"
+  id: PwaUbsTLXC
+- enabled: false
+  name: "limit"
+  value: "10"
+  id: MVwNDF1WZD

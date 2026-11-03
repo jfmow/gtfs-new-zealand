@@ -20,6 +20,10 @@ urlParameters:
   name: :stopname
   value: Baldwin Ave Train Station
   id: 0EG3R2Wp6a
+- enabled: false
+  name: today
+  value: 'true'
+  id: PTyMw7eDZt
 - enabled: true
   name: ''
   value: ''

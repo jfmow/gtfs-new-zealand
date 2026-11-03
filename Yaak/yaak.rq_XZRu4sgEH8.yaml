@@ -32,7 +32,7 @@ urlParameters:
   name: endLon
   value: '174.7712914'
   id: mUTcw6MDXR
-- enabled: true
+- enabled: false
   name: date
   value: 2026-05-15T20:21:25.311Z
   id: DtqBp3xFrX
@@ -46,12 +46,28 @@ urlParameters:
   id: A8iUUgXIVq
 - enabled: true
   name: walkSpeed
-  value: '4.8'
+  value: '3.6'
   id: Jpm7I4FHIK
 - enabled: true
-  name: MaxTransfers
-  value: '5'
+  name: maxTransfers
+  value: '2'
   id: aH9qii4yvJ
+- enabled: false
+  name: minResults
+  value: '3'
+  id: g341UjR2lz
+- enabled: false
+  name: modes
+  value: 'bus,train,ferry'
+  id: vbr2sn6RQZ
+- enabled: false
+  name: onlyRoutes
+  value: ''
+  id: YFZ0IQ7Jws
+- enabled: false
+  name: minTransferSec
+  value: '0'
+  id: w0aaNSNRrZ
 - enabled: true
   name: ''
   value: ''

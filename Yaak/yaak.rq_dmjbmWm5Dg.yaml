@@ -14,7 +14,7 @@ headers: []
 method: GET
 name: Trip Route Line
 sortPriority: 0.0015
-url: ${[ url ]}/${[ provider ]}/map/gejson/shapes
+url: ${[ url ]}/${[ provider ]}/map/geojson/shapes
 urlParameters:
 - enabled: true
   name: tripId

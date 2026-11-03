@@ -20,6 +20,14 @@ urlParameters:
   name: children
   value: 'false'
   id: AzZURaHEya
+- enabled: false
+  name: stop_type
+  value: ''
+  id: t24cofYmLj
+- enabled: false
+  name: bounds
+  value: ''
+  id: xnCaP5xKig
 - enabled: true
   name: ''
   value: ''

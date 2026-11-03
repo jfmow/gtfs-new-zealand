@@ -1,0 +1,31 @@
+type: http_request
+model: http_request
+id: rq_8nKhyQnC5b
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_N2jv3t2vy1
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "activityId"
+    value: ''
+    id: OLSadbybBc
+  - enabled: true
+    name: "pushToken"
+    value: ''
+    id: 9nARGIHNEe
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: Fzehihx18J
+method: POST
+name: Update Token
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/live-activities/update-token
+urlParameters: []

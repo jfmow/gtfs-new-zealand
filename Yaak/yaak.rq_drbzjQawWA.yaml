@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_drbzjQawWA
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_cxhGB8EYeq
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Route Alerts
+sortPriority: 3000.0
+url: ${[ url ]}/${[ provider ]}/realtime/alerts/route/:routeId
+urlParameters:
+- enabled: true
+  name: ":routeId"
+  value: "WEST-201"
+  id: dYIDwD7J9c

@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_B0ZA9PgRxI
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_qHjzUEOXif
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "deviceId"
+    value: "${[ deviceId ]}"
+    id: cgS2JUSJwY
+  - enabled: true
+    name: "secret"
+    value: "${[ deviceSecret ]}"
+    id: 53ILkEcnia
+  - enabled: true
+    name: "apnsToken"
+    value: ''
+    id: irnCsJeVeX
+  - enabled: true
+    name: "env"
+    value: "development"
+    id: 4KCwioAPUG
+  - enabled: false
+    name: "pushToStartToken"
+    value: ''
+    id: q2jfA2yMHM
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: e4fmDtIkqo
+method: POST
+name: Register
+sortPriority: 0.001
+url: ${[ url ]}/${[ provider ]}/devices/register
+urlParameters: []

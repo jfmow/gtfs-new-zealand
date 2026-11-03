@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_yznoij87Qs
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_qHjzUEOXif
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "deviceId"
+    value: "${[ deviceId ]}"
+    id: UTarapegxD
+  - enabled: true
+    name: "secret"
+    value: "${[ deviceSecret ]}"
+    id: XIWI2joLqW
+  - enabled: true
+    name: "apnsToken"
+    value: ''
+    id: bJ4pCJUqe9
+  - enabled: true
+    name: "env"
+    value: "development"
+    id: keQPFmN2g3
+  - enabled: false
+    name: "pushToStartToken"
+    value: ''
+    id: ctEzmfvKE6
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: kwITzdusIJ
+method: POST
+name: Update Token
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/devices/update-token
+urlParameters: []

@@ -1,0 +1,31 @@
+type: http_request
+model: http_request
+id: rq_8ynHPqvfrt
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_qHjzUEOXif
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "deviceId"
+    value: "${[ deviceId ]}"
+    id: nwTfswsCj3
+  - enabled: true
+    name: "secret"
+    value: "${[ deviceSecret ]}"
+    id: AdPYRi8u8K
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: w8mGRqqL3m
+method: POST
+name: Unregister
+sortPriority: 0.003
+url: ${[ url ]}/${[ provider ]}/devices/unregister
+urlParameters: []

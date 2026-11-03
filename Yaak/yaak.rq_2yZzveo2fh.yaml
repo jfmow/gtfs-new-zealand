@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_2yZzveo2fh
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_N2jv3t2vy1
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "activityId"
+    value: ''
+    id: kG5I6TUWjP
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: HVOeGanC9E
+method: POST
+name: End
+sortPriority: 0.004
+url: ${[ url ]}/${[ provider ]}/live-activities/end
+urlParameters: []

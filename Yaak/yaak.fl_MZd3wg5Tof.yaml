@@ -8,6 +8,14 @@ folderId: fl_iapjBafuWa
 authentication: {}
 authenticationType: null
 description: ''
-headers: []
+headers:
+- enabled: true
+  name: X-Device-Id
+  value: '${[ deviceId ]}'
+  id: eU0rjoyXdF
+- enabled: true
+  name: X-Device-Secret
+  value: '${[ deviceSecret ]}'
+  id: iWuSXrx5Q3
 name: Notifications
 sortPriority: 0.0

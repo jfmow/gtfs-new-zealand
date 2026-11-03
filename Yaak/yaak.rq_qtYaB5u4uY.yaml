@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_qtYaB5u4uY
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_y52BfzfgPM
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: "day: wd|sat|sun (defaults to today's day type)"
+headers: []
+method: GET
+name: Route
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/reliability/route
+urlParameters:
+- enabled: true
+  name: "route"
+  value: "WEST-201"
+  id: GH2AD3azQX
+- enabled: false
+  name: "day"
+  value: "wd"
+  id: 76vfpgEC6W

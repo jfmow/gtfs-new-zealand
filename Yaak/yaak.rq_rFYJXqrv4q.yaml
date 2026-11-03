@@ -1,0 +1,30 @@
+type: http_request
+model: http_request
+id: rq_rFYJXqrv4q
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: "tripId, from and to are comma-separated and line up by index (one per leg)."
+headers: []
+method: GET
+name: Journey (live legs)
+sortPriority: 0.0021
+url: ${[ url ]}/${[ provider ]}/realtime/journey
+urlParameters:
+- enabled: true
+  name: "tripId"
+  value: "247-810057-30600-2-7013551-ae20bba6"
+  id: UX7hG3YSd8
+- enabled: false
+  name: "from"
+  value: ''
+  id: Og8whOLzMb
+- enabled: false
+  name: "to"
+  value: ''
+  id: gD3wY2TXLl

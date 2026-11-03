@@ -1,0 +1,39 @@
+type: http_request
+model: http_request
+id: rq_gcquVUVO1h
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "routeId"
+    value: "WEST-201"
+    id: c8GD7H7Kqm
+  - enabled: false
+    name: "causes"
+    value: "[\"CONSTRUCTION\"]"
+    id: kwNvzZ9s04
+  - enabled: false
+    name: "minSeverity"
+    value: "WARNING"
+    id: 0gMVlI4m0S
+  - enabled: false
+    name: "notifyCancellations"
+    value: "true"
+    id: f58TTQCOtW
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: O829fFWHYN
+method: POST
+name: "Route: Edit"
+sortPriority: 0.007
+url: ${[ url ]}/${[ provider ]}/notifications/route/edit
+urlParameters: []

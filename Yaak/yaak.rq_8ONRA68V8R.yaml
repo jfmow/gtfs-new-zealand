@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_8ONRA68V8R
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "stopIdOrName"
+    value: "Baldwin Ave Train Station"
+    id: 381cm4RU1Z
+  - enabled: false
+    name: "routes"
+    value: "[\"WEST-201\"]"
+    id: NYGTAGNME2
+  - enabled: false
+    name: "causes"
+    value: "[\"CONSTRUCTION\"]"
+    id: 7k3eiBNNLi
+  - enabled: false
+    name: "minSeverity"
+    value: "WARNING"
+    id: bdwLrsF6EF
+  - enabled: false
+    name: "notifyCancellations"
+    value: "true"
+    id: 9koojyQRge
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: 1HNp039uzD
+method: POST
+name: "Stop: Edit"
+sortPriority: 0.004
+url: ${[ url ]}/${[ provider ]}/notifications/edit
+urlParameters: []

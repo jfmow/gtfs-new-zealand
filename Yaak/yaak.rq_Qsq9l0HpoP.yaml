@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_Qsq9l0HpoP
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_y52BfzfgPM
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: League
+sortPriority: 0.003
+url: ${[ url ]}/${[ provider ]}/reliability/league
+urlParameters: []

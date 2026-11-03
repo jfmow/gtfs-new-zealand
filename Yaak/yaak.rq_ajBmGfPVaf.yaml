@@ -20,6 +20,10 @@ urlParameters:
   name: :stopName
   value: Bald
   id: AzZURaHEya
+- enabled: false
+  name: children
+  value: 'false'
+  id: 9S0pd3TlFi
 - enabled: true
   name: ''
   value: ''

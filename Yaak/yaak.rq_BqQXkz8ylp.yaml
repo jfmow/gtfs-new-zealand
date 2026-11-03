@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_BqQXkz8ylp
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_N2jv3t2vy1
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "activityId"
+    value: ''
+    id: dnGoMSl1bj
+  - enabled: true
+    name: "legIndex"
+    value: "0"
+    id: GG0uBKj1zy
+  - enabled: true
+    name: "phase"
+    value: ''
+    id: DehtD3GkbV
+  - enabled: false
+    name: "headphones"
+    value: "0"
+    id: l920DIDi2d
+  - enabled: false
+    name: "leftAt"
+    value: ''
+    id: ppzqQf8UBZ
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: n69lMTdurX
+method: POST
+name: Leg
+sortPriority: 0.003
+url: ${[ url ]}/${[ provider ]}/live-activities/leg
+urlParameters: []

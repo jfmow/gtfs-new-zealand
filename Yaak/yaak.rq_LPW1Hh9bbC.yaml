@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_LPW1Hh9bbC
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: ''
+    value: ''
+    id: 1tJOc7nULN
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: u9k8Ef7hlQ
+method: POST
+name: "Journey Reminders: List"
+sortPriority: 0.011
+url: ${[ url ]}/${[ provider ]}/notifications/journey-reminders
+urlParameters: []

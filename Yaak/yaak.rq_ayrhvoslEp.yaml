@@ -1,0 +1,47 @@
+type: http_request
+model: http_request
+id: rq_ayrhvoslEp
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "old_endpoint"
+    value: ''
+    id: iicAxTc9QB
+  - enabled: true
+    name: "old_p256dh"
+    value: ''
+    id: 4LKMvSa8iI
+  - enabled: true
+    name: "old_auth"
+    value: ''
+    id: UMSIEgyc3W
+  - enabled: true
+    name: "new_endpoint"
+    value: ''
+    id: JFbDo4A1vv
+  - enabled: true
+    name: "new_p256dh"
+    value: ''
+    id: AXGQUfs9z0
+  - enabled: true
+    name: "new_auth"
+    value: ''
+    id: yM9Y7wWT06
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: CUp2lsFZpA
+method: POST
+name: "Web Push: Refresh Subscription"
+sortPriority: 0.016
+url: ${[ url ]}/${[ provider ]}/notifications/refresh
+urlParameters: []

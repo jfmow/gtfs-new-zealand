@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_w6TNtQDCqN
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "stopIdOrName"
+    value: "Baldwin Ave Train Station"
+    id: OoWOxHiRxO
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: 7g9V2LotGb
+method: POST
+name: Find Client
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/notifications/find-client
+urlParameters: []

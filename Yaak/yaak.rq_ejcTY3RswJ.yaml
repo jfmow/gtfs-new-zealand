@@ -1,0 +1,39 @@
+type: http_request
+model: http_request
+id: rq_ejcTY3RswJ
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "tripId"
+    value: "247-810057-30600-2-7013551-ae20bba6"
+    id: ES69B4OgZY
+  - enabled: true
+    name: "stopId"
+    value: ''
+    id: aKALNG7N9j
+  - enabled: true
+    name: "type"
+    value: "n_stops_away"
+    id: tqFDOnDRDi
+  - enabled: true
+    name: "offset"
+    value: "1"
+    id: 7zlQsFd09F
+bodyType: application/x-www-form-urlencoded
+description: "type: get_off|arrival|n_stops_away (offset only used for n_stops_away)"
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: VwSetwJesQ
+method: POST
+name: Trip Reminder
+sortPriority: 0.009
+url: ${[ url ]}/${[ provider ]}/notifications/reminder
+urlParameters: []

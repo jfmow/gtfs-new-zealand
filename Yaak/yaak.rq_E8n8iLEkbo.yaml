@@ -1,0 +1,18 @@
+type: http_request
+model: http_request
+id: rq_E8n8iLEkbo
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_Dnquxyknm3
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Train Coverage
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/realtime/train-coverage
+urlParameters: []

@@ -18,4 +18,12 @@ variables:
   name: provider
   value: at
   id: v4bFwpDvTN
+- enabled: true
+  name: deviceId
+  value: ''
+  id: T1wTRjMP20
+- enabled: true
+  name: deviceSecret
+  value: ''
+  id: BoOsHExbnq
 color: null

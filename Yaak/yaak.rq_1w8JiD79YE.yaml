@@ -1,0 +1,135 @@
+type: http_request
+model: http_request
+id: rq_1w8JiD79YE
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "startLat"
+    value: "-36.88003"
+    id: s2fjLZhtEd
+  - enabled: true
+    name: "startLon"
+    value: "174.72243"
+    id: FORZ2UKFYc
+  - enabled: true
+    name: "endLat"
+    value: "-36.85310"
+    id: uY8ZJvDf95
+  - enabled: true
+    name: "endLon"
+    value: "174.77129"
+    id: TqAZbFx2XC
+  - enabled: true
+    name: "startLabel"
+    value: "Home"
+    id: nuTaN9OsOj
+  - enabled: true
+    name: "endLabel"
+    value: "Work"
+    id: 2mm0k9iGhL
+  - enabled: true
+    name: "timeType"
+    value: "arriveat"
+    id: cVXs6pSrtR
+  - enabled: true
+    name: "targetHHMM"
+    value: "08:30"
+    id: iMsexKbdLY
+  - enabled: true
+    name: "recurrence"
+    value: "1111100"
+    id: 2hHHa36dHk
+  - enabled: false
+    name: "recurrenceUntil"
+    value: ''
+    id: U99mmCfKtT
+  - enabled: false
+    name: "kind"
+    value: "journey_request"
+    id: yT5yNYldNo
+  - enabled: false
+    name: "alertMode"
+    value: ''
+    id: CjJWCBZW0X
+  - enabled: false
+    name: "offsets"
+    value: "[30,15,5,0]"
+    id: yfGw5DQ4am
+  - enabled: false
+    name: "targetUnix"
+    value: ''
+    id: lDJ1ZkfIMd
+  - enabled: false
+    name: "serviceDate"
+    value: ''
+    id: qAAEXbpLJw
+  - enabled: false
+    name: "deeplink"
+    value: ''
+    id: 3zmbk34IeN
+  - enabled: false
+    name: "maxWalkKm"
+    value: "1"
+    id: cAg83Dc0d7
+  - enabled: false
+    name: "walkSpeed"
+    value: "3.6"
+    id: ykhm0jRjgv
+  - enabled: false
+    name: "maxTransfers"
+    value: "2"
+    id: el6l1SGdhH
+  - enabled: false
+    name: "onlyRoutes"
+    value: ''
+    id: CjTlPHa9gd
+  - enabled: false
+    name: "modes"
+    value: "bus,train,ferry"
+    id: km7Kvk9zUh
+  - enabled: false
+    name: "minTransferSec"
+    value: ''
+    id: x1VnTD2YKK
+  - enabled: false
+    name: "boardTripId"
+    value: ''
+    id: KwLhyVCF8H
+  - enabled: false
+    name: "boardStopId"
+    value: ''
+    id: b1lVKN9AGb
+  - enabled: false
+    name: "scheduledDepartureIso"
+    value: ''
+    id: HzYrrhXLcW
+  - enabled: false
+    name: "accessSeconds"
+    value: ''
+    id: xfD2exnOIc
+  - enabled: false
+    name: "routeShortName"
+    value: ''
+    id: b4Ddi74hUz
+  - enabled: false
+    name: "boardStopName"
+    value: ''
+    id: dhwuE8GnGy
+bodyType: application/x-www-form-urlencoded
+description: "kind=fixed_trip (one-off, no recurrence) uses the board*/scheduledDepartureIso/accessSeconds fields."
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: Mjcj2FH7J7
+method: POST
+name: "Journey Reminder: Add"
+sortPriority: 0.01
+url: ${[ url ]}/${[ provider ]}/notifications/journey-reminder
+urlParameters: []

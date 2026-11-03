@@ -1,0 +1,27 @@
+type: http_request
+model: http_request
+id: rq_pIATWCZWUY
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_MZd3wg5Tof
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "stopIdOrName"
+    value: "Baldwin Ave Train Station"
+    id: 4ev4IHtywf
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: 7NREOQ50C1
+method: POST
+name: "Stop: Remove"
+sortPriority: 0.005
+url: ${[ url ]}/${[ provider ]}/notifications/remove
+urlParameters: []

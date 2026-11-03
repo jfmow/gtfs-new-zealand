@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_vqbG6LJ1pR
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_NDU6s3l1Eb
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: "plans = comma-separated plan IDs from /services/plan. concession: adult|child|youth|tertiary|community|supergold|accessible"
+headers: []
+method: GET
+name: Fare Estimates
+sortPriority: 0.002
+url: ${[ url ]}/${[ provider ]}/fares
+urlParameters:
+- enabled: true
+  name: "plans"
+  value: ''
+  id: OmVCZJB0AB
+- enabled: false
+  name: "concession"
+  value: "adult"
+  id: 3ZvGDlsslk

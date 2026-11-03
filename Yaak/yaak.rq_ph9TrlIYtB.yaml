@@ -1,0 +1,22 @@
+type: http_request
+model: http_request
+id: rq_ph9TrlIYtB
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_E2nE7MoiBm
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Stop By ID
+sortPriority: 0.003
+url: ${[ url ]}/${[ provider ]}/stops/stop/:stopId
+urlParameters:
+- enabled: true
+  name: ":stopId"
+  value: "133"
+  id: fi7uyf1Iyj

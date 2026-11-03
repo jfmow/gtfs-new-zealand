@@ -1,0 +1,43 @@
+type: http_request
+model: http_request
+id: rq_3NRW2n7dns
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_N2jv3t2vy1
+authentication: {}
+authenticationType: null
+body:
+  form:
+  - enabled: true
+    name: "planId"
+    value: ''
+    id: LJMTXscfvV
+  - enabled: true
+    name: "activityId"
+    value: ''
+    id: Kggj1o58cv
+  - enabled: true
+    name: "pushToken"
+    value: ''
+    id: 3lOw8jAbIo
+  - enabled: true
+    name: "region"
+    value: "at"
+    id: PV92NF6uZW
+  - enabled: true
+    name: "env"
+    value: "development"
+    id: 9wCwsg2WYe
+bodyType: application/x-www-form-urlencoded
+description: ''
+headers:
+- enabled: true
+  name: "Content-Type"
+  value: "application/x-www-form-urlencoded"
+  id: TAlvlUHGph
+method: POST
+name: Start
+sortPriority: 0.001
+url: ${[ url ]}/${[ provider ]}/live-activities
+urlParameters: []

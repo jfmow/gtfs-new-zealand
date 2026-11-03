@@ -1,0 +1,26 @@
+type: http_request
+model: http_request
+id: rq_rgZOWmK640
+createdAt: 2026-11-03T00:00:00.000000
+updatedAt: 2026-11-03T00:00:00.000000
+workspaceId: wk_bWMUdJqQEt
+folderId: fl_FpYAmY69o9
+authentication: {}
+authenticationType: null
+body: {}
+bodyType: null
+description: ''
+headers: []
+method: GET
+name: Reverse Geocode
+sortPriority: 0.0017
+url: ${[ url ]}/${[ provider ]}/map/reverse
+urlParameters:
+- enabled: true
+  name: "lat"
+  value: "-36.8443"
+  id: 7KhSQQnxjs
+- enabled: true
+  name: "lon"
+  value: "174.7676"
+  id: rfVRM0FIHc
