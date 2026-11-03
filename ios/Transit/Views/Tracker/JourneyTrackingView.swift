@@ -52,8 +52,12 @@ struct JourneyTrackingView: View {
     /// z-order bug fixed earlier). A real `.sheet` with detents gives it
     /// native drag-to-resize and correct gesture ownership, same as the
     /// web's own map-first bottom sheet.
-    @State private var sheetDetent: PresentationDetent = .height(JourneyTrackingView.compactDrawerHeight)
-    static let compactDrawerHeight: CGFloat = 320
+    @State private var sheetDetent: PresentationDetent = .height(JourneyTrackingView.defaultCompactHeight)
+    /// The middle detent: everything above the trip list (header, strip,
+    /// status, re-plan) and no more - measured, so it ends cleanly rather
+    /// than halfway through the first row of the list.
+    @State private var compactDrawerHeight: CGFloat = JourneyTrackingView.defaultCompactHeight
+    static let defaultCompactHeight: CGFloat = 320
     /// The lowest detent: just the grab handle and the hero row (what
     /// you're doing now + the countdown), so the map gets nearly the whole
     /// screen. Sized from the hero row's measured height - it's one or two
@@ -63,7 +67,7 @@ struct JourneyTrackingView: View {
     /// Capped under the compact detent so the two never collide at huge
     /// Dynamic Type sizes.
     private static func peekHeight(forHero hero: CGFloat) -> CGFloat {
-        min((28 + hero + 16).rounded(.up), compactDrawerHeight - 60)
+        min((28 + hero + 16).rounded(.up), defaultCompactHeight - 120)
     }
     /// Real, dismissible state - NOT `.constant(true)`. A constant binding
     /// can never tell the sheet it's going away, so when this whole view
@@ -79,6 +83,7 @@ struct JourneyTrackingView: View {
     /// "End" sits beside the recentre button - one mis-tap used to stop the
     /// tracking, alerts and Live Activity outright.
     @State private var isConfirmingEnd = false
+    @AppStorage(Map3D.storageKey) private var is3D = false
 
     /// Regular width (iPad, bar a narrow Split View window): the itinerary
     /// sits in a panel beside the map instead of the detent sheet - an iPad
@@ -145,14 +150,25 @@ struct JourneyTrackingView: View {
             set: { if !usesSidePanel { isTrackerSheetPresented = $0 } }
         )) {
             endConfirmation(itinerarySheetContent)
-                .presentationDetents([.height(peekDrawerHeight), .height(Self.compactDrawerHeight), .medium, .large], selection: $sheetDetent)
+                .presentationDetents([.height(peekDrawerHeight), .height(compactDrawerHeight), .medium, .large], selection: $sheetDetent)
                 .presentationDragIndicator(.visible)
                 .presentationBackgroundInteraction(.enabled(upThrough: .medium))
                 .presentationBackground(Theme.background)
                 .presentationCornerRadius(24)
                 .interactiveDismissDisabled()
         }
-        .task { start() }
+        .task {
+            start()
+            #if DEBUG
+            // `-journeyDetent peek|compact|medium|large`: open the drawer there, for screenshots.
+            switch UserDefaults.standard.string(forKey: "journeyDetent") {
+            case "peek": sheetDetent = .height(peekDrawerHeight)
+            case "medium": sheetDetent = .medium
+            case "large": sheetDetent = .large
+            default: break
+            }
+            #endif
+        }
         .foregroundPoll(every: .seconds(15), id: 0) { now = Date() }
         .onAppear {
             router.isTrackingVisible = true
@@ -213,16 +229,30 @@ struct JourneyTrackingView: View {
             Spacer()
             // Up here rather than the map's bottom corner, which the
             // drawer covers.
-            Map3DButton()
             RecenterButton(isAuthorized: environment.location.isAuthorized) { recenter() }
-            let endButton = FloatingBarButton {
-                Button("End", role: .destructive) { isConfirmingEnd = true }
-                    .padding(.horizontal, 12)
+            // End lives in the menu (behind a confirmation) - as its own
+            // button beside recentre, one mis-tap stopped everything.
+            let menu = FloatingBarButton {
+                Menu {
+                    if !PowerState.shared.isLowPower {
+                        Toggle(isOn: $is3D) { Label("3D map", systemImage: "view.3d") }
+                    }
+                    ShareLink(item: shareURL, subject: Text("My journey"), message: Text("Follow my journey")) {
+                        Label("Share journey", systemImage: "square.and.arrow.up")
+                    }
+                    Divider()
+                    Button(role: .destructive) { isConfirmingEnd = true } label: {
+                        Label("End journey", systemImage: "stop.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("More")
             }
             if usesSidePanel {
-                endConfirmation(endButton)
+                endConfirmation(menu)
             } else {
-                endButton
+                menu
             }
         }
         .padding(.horizontal, 16)
@@ -272,10 +302,10 @@ struct JourneyTrackingView: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(arrived ? "You've arrived" : step.instruction.prefix(1).uppercased() + step.instruction.dropFirst())
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .font(.cardTitle)
                     if !arrived, let distance = walkStep?.distanceToNextManeuver, distance > 0 {
                         Text(TimeFormatting.formatDistance(meters: distance))
-                            .font(.subheadline)
+                            .font(.meta)
                             .foregroundStyle(Theme.mutedForeground)
                     }
                 }
@@ -359,19 +389,21 @@ struct JourneyTrackingView: View {
     private var itinerarySheetContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                heroHeader
-                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { updatePeekHeight(hero: $0) }
-                statusChips
-                actionsRow
+                // Peek shows the header; compact shows down to the actions.
+                VStack(alignment: .leading, spacing: 16) {
+                    heroHeader
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { updatePeekHeight(hero: $0) }
+                    if let snapshot, !snapshot.journeyArrived {
+                        journeyStrip
+                    }
+                    statusLine
+                    actionsRow
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { updateCompactHeight(top: $0) }
 
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline) {
-                        SectionLabel(text: "Your trip")
-                        Spacer()
-                        Text("\(TimeFormatting.formatDuration(displayPlan.totalDuration)) total")
-                            .font(.meta)
-                            .foregroundStyle(Theme.mutedForeground)
-                    }
+                    // The total is on the strip above.
+                    SectionLabel(text: "Your trip")
                     JourneyTimeline(
                         legs: displayPlan.legs,
                         status: legStatus,
@@ -408,85 +440,120 @@ struct JourneyTrackingView: View {
         // (long stop names). Re-assert once the new set has landed.
         Task { @MainActor in
             if peekDrawerHeight == height, sheetDetent != .height(height),
-               sheetDetent != .height(Self.compactDrawerHeight), sheetDetent != .medium, sheetDetent != .large {
+               sheetDetent != .height(compactDrawerHeight), sheetDetent != .medium, sheetDetent != .large {
                 sheetDetent = .height(height)
             }
         }
     }
 
-    /// Mode tile, the one-line status ("Waiting for the 70"), a detail line
-    /// and the countdown that matters right now - to departure while
-    /// walking or waiting, to your stop while riding.
-    private var heroHeader: some View {
-        HStack(alignment: .center, spacing: 14) {
-            heroTile
+    /// Keeps the compact detent ending just below the actions as what's
+    /// above the list changes (a status line appearing, the re-plan button
+    /// going). Moves the selection with it, like `updatePeekHeight`.
+    private func updateCompactHeight(top: CGFloat) {
+        let height = max(peekDrawerHeight + 60, (28 + top + 6).rounded(.up))
+        guard abs(height - compactDrawerHeight) >= 1 else { return }
+        let wasCompact = sheetDetent == .height(compactDrawerHeight)
+        compactDrawerHeight = height
+        if wasCompact { sheetDetent = .height(height) }
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
+    /// What you're doing now on one line (route badge + "Waiting for the
+    /// 70"), then the countdown that matters and the place it counts to -
+    /// departure while walking or waiting, your stop while riding - like
+    /// the trip tracker's header (2026-11-03).
+    private var heroHeader: some View {
+        HStack(alignment: .center, spacing: 12) {
+            heroTile
+            VStack(alignment: .leading, spacing: 2) {
                 Text(snapshot.map(phaseLabel) ?? "Your journey")
-                    .font(.geist(19, .semibold, relativeTo: .title3))
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                if let heroDetail {
-                    Text(heroDetail)
+                    .font(.cardTitle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
+                if let subline = heroSubline {
+                    Text(subline)
                         .font(.meta)
                         .foregroundStyle(Theme.mutedForeground)
                         .lineLimit(1)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-
             if let countdown = heroCountdown {
                 TimelineView(.periodic(from: .now, by: 15)) { context in
-                    VStack(alignment: .trailing, spacing: 0) {
-                        // Width reserved for the widest usual value, so the
-                        // title beside it doesn't rewrap (and the hero - and
-                        // with it the peek detent - change height) as the
-                        // minutes tick from "10 min" to "9 min".
-                        ZStack(alignment: .trailing) {
-                            Text("88 min")
-                                .hidden()
-                            Text(Self.minutesText(until: countdown.target, now: context.date))
-                                .foregroundStyle(countdown.urgent ? Theme.warning : Theme.foreground)
-                        }
-                        .font(.number(26))
-                        Text(countdown.caption)
-                            .font(.geist(12, relativeTo: .caption))
-                            .foregroundStyle(Theme.mutedForeground)
+                    // Width kept for the widest usual value, so the text
+                    // beside it doesn't shift as "10 min" becomes "9 min".
+                    ZStack(alignment: .trailing) {
+                        Text("88 min").hidden()
+                        Text(Self.minutesText(until: countdown.target, now: context.date))
+                            .foregroundStyle(countdown.urgent ? Theme.warning : Theme.live)
                     }
+                    .font(.geistMono(24, medium: true, relativeTo: .title2))
                 }
-                .accessibilityElement(children: .combine)
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The line under the status: what the countdown counts to and when -
+    /// "25L leaves Ficino School at 4:47 PM", with the platform or next
+    /// stop where there's one.
+    private var heroSubline: String? {
+        guard let snapshot else { return nil }
+        if snapshot.journeyArrived { return "at \(destinationName)" }
+        guard let countdown = heroCountdown else { return heroExtra }
+        var text = "\(countdown.caption) \(countdown.place) at \(clock(countdown.target))"
+        if let heroExtra { text += ", \(heroExtra.prefix(1).lowercased() + heroExtra.dropFirst())" }
+        return text
+    }
+
+    /// What the countdown doesn't already say: the platform before boarding,
+    /// the next stop while riding.
+    private var heroExtra: String? {
+        guard let snapshot, !snapshot.journeyArrived else { return nil }
+        switch snapshot.phase {
+        case .onboard:
+            return heroDetail
+        case .walking, .waiting, .boarding:
+            guard let platform = currentOrNextTransitLeg?.fromStop?.platformNumber, !platform.isEmpty else { return nil }
+            return "Platform \(platform)"
+        case nil:
+            return nil
+        }
+    }
+
+    /// The journey as a labelled bar (`JourneyLegBar`) with where you are,
+    /// then when you'll arrive and how long it takes.
+    private var journeyStrip: some View {
+        let start = displayPlan.departureTime.date ?? now
+        let end = displayPlan.arrivalTime.date ?? now
+        let fraction = max(0, min(1, now.timeIntervalSince(start) / max(end.timeIntervalSince(start), 1)))
+        return VStack(alignment: .leading, spacing: 8) {
+            JourneyLegBar(plan: displayPlan, currentIndex: snapshot?.progressLegIndex, progress: fraction)
+            HStack {
+                Text("Arrive \(clock(displayPlan.arrivalTime.date))")
+                Spacer()
+                Text("\(TimeFormatting.formatDuration(displayPlan.totalDuration)) trip")
+            }
+            .font(.metaMedium)
+            .foregroundStyle(Theme.mutedForeground)
         }
     }
 
     @ViewBuilder
     private var heroTile: some View {
-        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
         if snapshot?.journeyArrived == true {
-            Image(systemName: "checkmark")
-                .font(.system(size: 22, weight: .bold))
-                .foregroundStyle(.white)
-                .frame(width: 52, height: 52)
-                .background(Theme.success, in: shape)
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 20))
+                .foregroundStyle(Theme.success)
                 .accessibilityHidden(true)
         } else if snapshot?.phase == .walking || currentOrNextTransitLeg == nil {
             Image(systemName: "figure.walk")
-                .font(.system(size: 22, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.foreground)
-                .frame(width: 52, height: 52)
-                .background(Theme.muted, in: shape)
-                .overlay(shape.strokeBorder(Theme.border, lineWidth: 1))
+                .frame(width: 30, height: 22)
+                .background(Theme.muted, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .accessibilityHidden(true)
         } else if let leg = currentOrNextTransitLeg {
-            let hex = leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252"
-            Text(routeName(leg))
-                .font(.geist(18, .bold, relativeTo: .title3))
-                .foregroundStyle(RouteColors.text(onHex: hex))
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-                .padding(.horizontal, 4)
-                .frame(width: 52, height: 52)
-                .background(Color(hex: hex), in: shape)
+            RouteBadge(name: routeName(leg), colorHex: leg.route?.routeColor ?? "", size: 14)
                 .accessibilityHidden(true)
         }
     }
@@ -499,7 +566,7 @@ struct JourneyTrackingView: View {
     /// The last stop's name, else the place the rider searched for (a
     /// final walk to an address has no stop).
     private var destinationName: String {
-        if let name = displayPlan.legs.last?.toStop?.stopName, !name.isEmpty { return name }
+        if let name = displayPlan.legs.last?.toStop?.stopName, !name.isEmpty { return VehicleQuickLookView.cleanStopName(name) }
         if let label = activeJourneys.first(where: { $0.planID == plan.id })?.endLabel, !label.isEmpty { return label }
         return "your destination"
     }
@@ -546,7 +613,14 @@ struct JourneyTrackingView: View {
     private struct Countdown {
         let target: Date
         let caption: String
+        /// Where it counts to.
+        let place: String
         let urgent: Bool
+    }
+
+    private func stopName(_ stop: Stop?) -> String? {
+        guard let name = stop?.stopName, !name.isEmpty else { return nil }
+        return VehicleQuickLookView.cleanStopName(name)
     }
 
     private var heroCountdown: Countdown? {
@@ -554,16 +628,18 @@ struct JourneyTrackingView: View {
         switch snapshot.phase {
         case .onboard:
             guard let arrival = currentLeg?.arrivalTime.date else { return nil }
-            let isLast = snapshot.progressLegIndex >= displayPlan.legs.count - 1
-                || !displayPlan.legs[(snapshot.progressLegIndex + 1)...].contains { $0.mode == "transit" }
-            return Countdown(target: arrival, caption: isLast ? "to your stop" : "to get off", urgent: false)
+            return Countdown(target: arrival, caption: "Get off at",
+                             place: stopName(currentLeg?.toStop) ?? "your stop", urgent: false)
         case .walking, .waiting, .boarding:
             if let ride = currentOrNextTransitLeg, let departure = ride.departureTime.date, currentLeg?.mode == "walk" || currentLeg?.tripID == ride.tripID {
-                return Countdown(target: departure, caption: "to departure", urgent: departure.timeIntervalSince(now) < 120)
+                return Countdown(target: departure, caption: "\(routeName(ride)) leaves", place: stopName(ride.fromStop) ?? "the stop",
+                                 urgent: departure.timeIntervalSince(now) < 120)
             }
-            return displayPlan.arrivalTime.date.map { Countdown(target: $0, caption: "to arrive", urgent: false) }
+            return displayPlan.arrivalTime.date.map { Countdown(target: $0, caption: "Arrive at", place: destinationName, urgent: false) }
         case nil:
-            return displayPlan.departureTime.date.map { Countdown(target: $0, caption: "to start", urgent: false) }
+            return displayPlan.departureTime.date.map {
+                Countdown(target: $0, caption: "Leave from", place: stopName(displayPlan.legs.first?.fromStop) ?? "your start", urgent: false)
+            }
         }
     }
 
@@ -574,88 +650,67 @@ struct JourneyTrackingView: View {
         return "\(minutes) min"
     }
 
-    /// Live/predicted, how far away, how full, running late - the facts the
-    /// web shows in its bordered strip under the header, as chips.
+    /// One line of live facts, problems first (they must never be the
+    /// ones that drop off): connection, running late, offline; then live
+    /// or predicted, how far away, how full.
     @ViewBuilder
-    private var statusChips: some View {
+    private var statusLine: some View {
         if let snapshot, !snapshot.journeyArrived, snapshot.phase != nil {
-            FlowLayout(spacing: 6, lineSpacing: 6) {
-                if isCurrent, session.isOffline {
-                    Label("Offline", systemImage: "wifi.slash")
-                        .modifier(StatusChipStyle(tint: Theme.warning))
-                } else if isCurrent, session.isOfflineReady, !hasBoardedFirstRide(snapshot) {
-                    // Reassurance before setting off without data: the
-                    // journey will carry on if the connection goes.
-                    Label("Saved for offline", systemImage: "arrow.down.circle")
-                        .modifier(StatusChipStyle())
-                }
-
-                // Where the times come from is about a ride - there's none
-                // left on the walk to the destination.
-                if currentOrNextTransitLeg != nil {
-                    switch snapshot.trackingLevel {
-                    case .live:
-                        HStack(spacing: 5) {
-                            if isLiveDataStale(now: now) {
-                                ProgressView().controlSize(.mini)
-                                Text("Updating")
-                            } else {
-                                LiveDot(color: Theme.success)
-                                Text("Live")
-                            }
-                        }
-                        .modifier(StatusChipStyle())
-                    case .estimated:
-                        Label("On board · from GPS", systemImage: "location.fill")
-                            .modifier(StatusChipStyle())
-                    case .predicted:
-                        if let asOf = predictionsAsOf(now: now) {
-                            Label("Times as of \(clock(asOf))", systemImage: "clock.arrow.circlepath")
-                                .modifier(StatusChipStyle())
-                        } else {
-                            Label("Predicted", systemImage: "waveform.path.ecg")
-                                .modifier(StatusChipStyle())
-                        }
-                    case .scheduled:
-                        Label("Timetable only", systemImage: "calendar")
-                            .modifier(StatusChipStyle())
-                    }
-                }
-
-                if let away = snapshot.trackedStopsAway, let toGo = snapshot.trackedStopsToGo {
-                    Text(stopsAwayText(away, atStop: toGo == 0, onboard: snapshot.phase == .onboard))
-                        .modifier(StatusChipStyle())
-                }
-
-                if let vehicle = trackedVehicle, vehicle.occupancy >= 0 {
-                    HStack(spacing: 4) {
-                        OccupancyIconsView(occupancy: vehicle.occupancy)
-                        Text(OccupancyText.label(vehicle.occupancy))
-                    }
-                    .modifier(StatusChipStyle())
-                }
-
-                if let cars = trackedVehicle?.cars {
-                    Label("\(cars) cars", systemImage: "train.side.front.car").modifier(StatusChipStyle())
-                }
-
-                if let ride = currentOrNextTransitLeg {
-                    if !ride.tripUsable {
-                        Label("Not running", systemImage: "exclamationmark.triangle.fill")
-                            .modifier(StatusChipStyle(tint: Theme.danger))
-                    } else if let delay = ride.delaySeconds, abs(delay) >= 60 {
-                        Text(delay > 0 ? "\(delay / 60) min late" : "\(-delay / 60) min early")
-                            .modifier(StatusChipStyle(tint: delay > 0 ? Theme.warning : Theme.success))
-                    }
-                }
-
-                if let risk = upcomingConnectionRisk {
-                    Label(risk.level == .missed ? "Connection missed" : "Tight connection",
-                          systemImage: risk.level == .missed ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-                        .modifier(StatusChipStyle(tint: risk.level == .missed ? Theme.danger : Theme.warning))
+            let items = statusItems(snapshot)
+            ViewThatFits(in: .horizontal) {
+                ForEach((1...max(items.count, 1)).reversed(), id: \.self) { count in
+                    HStack(spacing: 14) { ForEach(0..<min(count, items.count), id: \.self) { items[$0] } }.fixedSize()
                 }
             }
+            .font(.meta)
+            .foregroundStyle(Theme.mutedForeground)
         }
+    }
+
+    private func statusItems(_ snapshot: JourneyProgressModel.Snapshot) -> [AnyView] {
+        var items: [AnyView] = []
+        if let ride = currentOrNextTransitLeg, !ride.tripUsable {
+            items.append(AnyView(Label("Not running", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Theme.danger).fontWeight(.medium)))
+        }
+        if let risk = upcomingConnectionRisk {
+            items.append(AnyView(Label(risk.level == .missed ? "Connection missed" : "Tight connection",
+                                       systemImage: risk.level == .missed ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
+                .foregroundStyle(risk.level == .missed ? Theme.danger : Theme.warning).fontWeight(.medium)))
+        }
+        if isCurrent, session.isOffline {
+            items.append(AnyView(Label("Offline", systemImage: "wifi.slash").foregroundStyle(Theme.warning)))
+        }
+        if let ride = currentOrNextTransitLeg, ride.tripUsable, let delay = ride.delaySeconds, abs(delay) >= 60 {
+            items.append(AnyView(Text(delay > 0 ? "\(delay / 60) min late" : "\(-delay / 60) min early")
+                .foregroundStyle(delay > 0 ? Theme.warning : Theme.success)))
+        }
+        if currentOrNextTransitLeg != nil {
+            switch snapshot.trackingLevel {
+            case .live:
+                items.append(AnyView(HStack(spacing: 5) {
+                    if isLiveDataStale(now: now) { ProgressView().controlSize(.mini); Text("Updating") } else { LiveDot(color: Theme.success); Text("Live") }
+                }))
+            case .estimated: items.append(AnyView(Label("From GPS", systemImage: "location.fill")))
+            case .predicted:
+                if let asOf = predictionsAsOf(now: now) {
+                    items.append(AnyView(Label("Times as of \(clock(asOf))", systemImage: "clock.arrow.circlepath")))
+                } else {
+                    items.append(AnyView(Text("Predicted")))
+                }
+            case .scheduled: items.append(AnyView(Text("Timetable only")))
+            }
+        }
+        if let away = snapshot.trackedStopsAway, let toGo = snapshot.trackedStopsToGo {
+            items.append(AnyView(Text(stopsAwayText(away, atStop: toGo == 0, onboard: snapshot.phase == .onboard))))
+        }
+        if let vehicle = trackedVehicle, vehicle.occupancy >= 0 {
+            items.append(AnyView(HStack(spacing: 4) { OccupancyIconsView(occupancy: vehicle.occupancy); Text(OccupancyText.short(vehicle.occupancy)) }))
+        }
+        if let cars = trackedVehicle?.cars { items.append(AnyView(Text("\(cars) cars"))) }
+        if isCurrent, !session.isOffline, session.isOfflineReady, !hasBoardedFirstRide(snapshot) {
+            items.append(AnyView(Label("Saved offline", systemImage: "arrow.down.circle")))
+        }
+        return items
     }
 
     private func hasBoardedFirstRide(_ snapshot: JourneyProgressModel.Snapshot) -> Bool {
@@ -675,7 +730,7 @@ struct JourneyTrackingView: View {
         }
         let name = currentOrNextTransitLeg.map(routeName) ?? "Service"
         if atStop { return "\(name) at your stop" }
-        return away == 0 ? "\(name) arriving" : away == 1 ? "\(name) 1 stop away" : "\(name) \(away) stops away"
+        return away == 0 ? "\(name) arriving" : away == 1 ? "\(name) is 1 stop away" : "\(name) is \(away) stops away"
     }
 
     private var upcomingConnectionRisk: JourneyTracking.ConnectionRisk? {
@@ -687,35 +742,25 @@ struct JourneyTrackingView: View {
             .first
     }
 
-    /// "Find a better route" (the web's re-plan popover) beside Share.
+    /// "Find a better route" (the web's re-plan popover); sharing moved to
+    /// the top bar's menu.
+    @ViewBuilder
     private var actionsRow: some View {
-        HStack(spacing: 8) {
-            let choices = replanChoices
-            if !choices.isEmpty {
-                Menu {
-                    Section("Re-plan from…") {
-                        ForEach(choices) { choice in
-                            Button { startReplan(choice) } label: {
-                                Text(choice.label)
-                                Text(choice.detail)
-                            }
+        let choices = replanChoices
+        if !choices.isEmpty {
+            Menu {
+                Section("Re-plan from…") {
+                    ForEach(choices) { choice in
+                        Button { startReplan(choice) } label: {
+                            Text(choice.label)
+                            Text(choice.detail)
                         }
                     }
-                } label: {
-                    Label("Find a better route", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .buttonStyle(.shad(replanUrgent ? .destructive : .outline, size: .default, fullWidth: true))
+            } label: {
+                Label("Find a better route", systemImage: "arrow.triangle.2.circlepath")
             }
-
-            ShareLink(item: shareURL, subject: Text("My journey"), message: Text("Follow my journey")) {
-                if choices.isEmpty {
-                    Label("Share journey", systemImage: "square.and.arrow.up")
-                } else {
-                    Image(systemName: "square.and.arrow.up")
-                }
-            }
-            .buttonStyle(.shad(.outline, size: choices.isEmpty ? .default : .icon, fullWidth: choices.isEmpty))
-            .accessibilityLabel("Share journey")
+            .buttonStyle(.shad(replanUrgent ? .destructive : .outline, size: .default, fullWidth: true))
         }
     }
 
@@ -905,7 +950,7 @@ struct JourneyTrackingView: View {
                                 bottom: proxy.safeAreaInsets.bottom + 24, right: 24)
         }
         let drawer: CGFloat = sheetDetent == .height(peekDrawerHeight) ? peekDrawerHeight
-            : sheetDetent == .height(Self.compactDrawerHeight) ? Self.compactDrawerHeight
+            : sheetDetent == .height(compactDrawerHeight) ? compactDrawerHeight
             : fullHeight / 2
         return UIEdgeInsets(top: top, left: 0, bottom: min(drawer, fullHeight - top - 120), right: 0)
     }
@@ -1003,5 +1048,114 @@ private struct DisablesSwipeBack: UIViewControllerRepresentable {
 
     static func dismantleUIViewController(_ controller: UIViewController, coordinator: ()) {
         controller.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    }
+}
+
+/// A journey as one joined bar of labelled pieces - a walk (icon + minutes)
+/// or a ride (its route, in its colour) - each about as wide as its share
+/// of the trip, a wait folded into the piece it comes before so there are
+/// no gaps. While tracking (`currentIndex`), done pieces fade, the current
+/// one is outlined and a marker sits over `progress`. Used by the journey
+/// preview and the tracker.
+struct JourneyLegBar: View {
+    let plan: JourneyPlan
+    var currentIndex: Int?
+    /// 0...1 through the trip, for the "you are here" marker.
+    var progress: Double?
+
+    private enum PieceState { case done, current, upcoming }
+
+    var body: some View {
+        let legs = plan.legs
+        let start = plan.departureTime.date ?? .now
+        let end = plan.arrivalTime.date ?? .now
+        let shares: [Double] = legs.indices.map { index in
+            let from = legs[index].departureTime.date ?? start
+            let to = index + 1 < legs.count ? (legs[index + 1].departureTime.date ?? end) : end
+            return max(to.timeIntervalSince(from), 1)
+        }
+        GeometryReader { proxy in
+            let spacing: CGFloat = 3
+            let barWidth = proxy.size.width
+            let widths = Self.pieceWidths(shares: shares, minimums: legs.map { $0.mode == "walk" ? 40 : 48 },
+                                          available: barWidth - spacing * CGFloat(max(legs.count - 1, 0)))
+            VStack(alignment: .leading, spacing: 2) {
+                if let progress {
+                    Image(systemName: "arrowtriangle.down.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.live)
+                        .offset(x: max(0, min(barWidth - 9, barWidth * progress - 4.5)))
+                        .accessibilityHidden(true)
+                }
+                HStack(spacing: spacing) {
+                    ForEach(Array(legs.enumerated()), id: \.offset) { index, leg in
+                        piece(leg, state: state(of: index))
+                            .frame(width: widths[index])
+                    }
+                }
+            }
+        }
+        .frame(height: progress == nil ? 26 : 37)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Your trip: " + legs.map { $0.mode == "walk" ? "walk" : "the \(Self.routeName($0))" }.joined(separator: ", then "))
+    }
+
+    private func state(of index: Int) -> PieceState {
+        guard let currentIndex else { return .upcoming }
+        return index < currentIndex ? .done : index == currentIndex ? .current : .upcoming
+    }
+
+    private func piece(_ leg: JourneyLeg, state: PieceState) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let minutes = max(1, Int(((leg.arrivalTime.date ?? .now).timeIntervalSince(leg.departureTime.date ?? .now) / 60).rounded()))
+        return Group {
+            if leg.mode == "walk" {
+                HStack(spacing: 3) {
+                    Image(systemName: "figure.walk").font(.system(size: 11, weight: .semibold))
+                    Text("\(minutes)").font(.geist(12, .semibold, relativeTo: .caption))
+                }
+                .foregroundStyle(Theme.foreground)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Theme.muted, in: shape)
+            } else {
+                let hex = leg.route?.routeColor.isEmpty == false ? leg.route!.routeColor : "525252"
+                Text(Self.routeName(leg))
+                    .font(.geist(12, .bold, relativeTo: .caption))
+                    .foregroundStyle(RouteColors.text(onHex: hex))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .padding(.horizontal, 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(hex: hex), in: shape)
+            }
+        }
+        .frame(height: 26)
+        .overlay { if state == .current { shape.strokeBorder(Theme.live, lineWidth: 2) } }
+        .opacity(state == .done ? 0.4 : 1)
+    }
+
+    static func routeName(_ leg: JourneyLeg) -> String {
+        if let name = leg.route?.routeShortName, !name.isEmpty { return name }
+        return leg.routeID.isEmpty ? "Bus" : leg.routeID
+    }
+
+    /// Widths in proportion to `shares`, but never under each piece's
+    /// minimum (room for its label) - the rest shared out by size.
+    static func pieceWidths(shares: [Double], minimums: [CGFloat], available: CGFloat) -> [CGFloat] {
+        guard !shares.isEmpty else { return [] }
+        var widths = minimums
+        let spare = available - minimums.reduce(0, +)
+        guard spare > 0 else {
+            let scale = available / max(minimums.reduce(0, +), 1)
+            return minimums.map { $0 * scale }
+        }
+        let total = shares.reduce(0, +)
+        let ideal = shares.map { CGFloat($0 / total) * available }
+        let wants = zip(ideal, minimums).map { max(0, $0 - $1) }
+        let totalWant = wants.reduce(0, +)
+        for index in widths.indices {
+            widths[index] += totalWant > 0 ? spare * wants[index] / totalWant : spare / CGFloat(widths.count)
+        }
+        return widths
     }
 }

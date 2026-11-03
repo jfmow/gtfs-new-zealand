@@ -94,23 +94,6 @@ struct JourneyDetailView: View {
 
                 summary
 
-                if let fare {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(alignment: .firstTextBaseline) {
-                            Text("Fare").font(.meta).foregroundStyle(Theme.mutedForeground)
-                            Spacer()
-                            Text(fare.label).font(.number(17))
-                        }
-                        Text([fare.detail, fare.note].compactMap { $0 }.joined(separator: " · "))
-                            .font(.meta)
-                            .foregroundStyle(Theme.mutedForeground)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(14)
-                    .shadCardBackground()
-                    .accessibilityElement(children: .combine)
-                }
-
                 if hasDisruption {
                     Label("Service disruption on this route. Check alternative routes.", systemImage: "exclamationmark.triangle")
                         .font(.bodyText)
@@ -143,11 +126,21 @@ struct JourneyDetailView: View {
                         connectionOdds: { index in odds[index] }
                     )
                 }
-
-                actions
             }
             .padding(16)
             .readableContentWidth()
+        }
+        // Start (and the reminder) always in reach, not under the whole
+        // timeline.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            actions
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, 8)
+                .readableContentWidth()
+                .frame(maxWidth: .infinity)
+                .background(Theme.background.ignoresSafeArea(edges: .bottom))
+                .overlay(alignment: .top) { Rectangle().fill(Theme.border).frame(height: 1) }
         }
         .pageBackground()
         .if(!isEmbedded) { view in
@@ -196,36 +189,60 @@ struct JourneyDetailView: View {
         }
     }
 
+    /// When, how long, how many changes, what it costs and when to leave,
+    /// then the trip as a labelled bar - one card instead of three.
     private var summary: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Departs").font(.meta).foregroundStyle(Theme.mutedForeground)
-                if let date = plan.departureTime.date {
-                    Text(date, style: .time).font(.number(24)).lineLimit(1).minimumScaleFactor(0.6)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    if let depart = plan.departureTime.date, let arrive = plan.arrivalTime.date {
+                        (Text(depart, style: .time) + Text("  →  ").foregroundColor(Theme.mutedForeground) + Text(arrive, style: .time))
+                            .font(.geist(22, .semibold, relativeTo: .title2))
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    Text(summaryLine)
+                        .font(.meta)
+                        .foregroundStyle(Theme.mutedForeground)
+                }
+                Spacer(minLength: 8)
+                if let depart = plan.departureTime.date, depart.timeIntervalSinceNow < 3 * 3600 {
+                    TimelineView(.periodic(from: .now, by: 15)) { context in
+                        let minutes = Int((depart.timeIntervalSince(context.date) / 60).rounded(.down))
+                        VStack(alignment: .trailing, spacing: 1) {
+                            Text(minutes <= 0 ? "Leave" : "Leave in").font(.meta).foregroundStyle(Theme.mutedForeground)
+                            Text(minutes <= 0 ? "now" : JourneyTrackingView.minutesText(until: depart, now: context.date))
+                                .font(.geistMono(20, medium: true, relativeTo: .title3))
+                                .foregroundStyle(minutes <= 2 ? Theme.warning : Theme.live)
+                        }
+                    }
+                    .accessibilityElement(children: .combine)
                 }
             }
-            Spacer(minLength: 6)
-            VStack(spacing: 2) {
-                Text(TimeFormatting.formatDuration(plan.totalDuration)).font(.metaMedium).lineLimit(1)
-                ShadBadge(text: plan.transfers == 0 ? "Direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")",
-                          variant: plan.transfers == 0 ? .default : .secondary)
-                    .fixedSize()
-            }
-            .layoutPriority(1)
-            Spacer(minLength: 6)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("Arrives").font(.meta).foregroundStyle(Theme.mutedForeground)
-                if let date = plan.arrivalTime.date {
-                    Text(date, style: .time).font(.number(24)).lineLimit(1).minimumScaleFactor(0.6)
-                }
+            JourneyLegBar(plan: plan)
+            if let fare, let detail = [fare.detail, fare.note].compactMap({ $0 }).first {
+                Text(detail)
+                    .font(.meta)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-        .padding(14)
-        .shadCardBackground()
+        .padding(16)
+        .shadCardBackground(radius: 16)
+    }
+
+    /// "26 min, 1 transfer, $3".
+    private var summaryLine: String {
+        var parts = [TimeFormatting.formatDuration(plan.totalDuration)]
+        parts.append(plan.transfers == 0 ? "direct" : "\(plan.transfers) transfer\(plan.transfers == 1 ? "" : "s")")
+        if let fare { parts.append(fare.label) }
+        return parts.joined(separator: ", ")
     }
 
     private var actions: some View {
-        VStack(spacing: 8) {
+        HStack(spacing: 8) {
             Button {
                 if isActive { isTracking = true } else { startJourney() }
             } label: {
@@ -237,9 +254,11 @@ struct JourneyDetailView: View {
                 Button {
                     isShowingReminder = true
                 } label: {
-                    Label("Remind me when to leave", systemImage: "alarm")
+                    Image(systemName: "alarm")
                 }
-                .buttonStyle(.shad(.outline, size: .pill, fullWidth: true))
+                .buttonStyle(.shad(.outline, size: .pill))
+                .frame(width: 52)
+                .accessibilityLabel("Remind me when to leave")
             }
         }
     }
