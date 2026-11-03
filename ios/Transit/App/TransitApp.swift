@@ -123,7 +123,7 @@ private struct GoCommands: Commands {
             Button("Home") { router.select(.schedule) }.keyboardShortcut("1")
             Button("Planner") { router.select(.planner) }.keyboardShortcut("2")
             Button("Map") { router.select(.map) }.keyboardShortcut("3")
-            Button("Alerts") { router.select(.alerts) }.keyboardShortcut("4")
+            Button("Updates") { router.select(.alerts) }.keyboardShortcut("4")
             Divider()
             Button("Search Stops") { router.focusStopSearch() }.keyboardShortcut("f")
         }

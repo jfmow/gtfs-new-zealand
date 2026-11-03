@@ -36,6 +36,12 @@ struct PlannerView: View {
     @State private var modes: Set<TravelMode> = []
     @State private var minTransferSec = 0
     @State private var showsOptions = false
+    /// "Where to?" layout: the From field is tucked away until tapped.
+    @State private var isEditingFrom = false
+    /// Start/end/time of the last plan, so auto-planning doesn't repeat one
+    /// a saved trip, link or re-plan has just started.
+    @State private var plannedKey: String?
+    @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
 
     // Results
     @State private var results: [JourneyPlan] = []
@@ -108,22 +114,7 @@ struct PlannerView: View {
             .appToolbar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    if let onClose {
-                        Button("Close", action: onClose)
-                    } else {
-                        Menu {
-                            Button { isManaging = true } label: {
-                                Label(savedTrips.isEmpty ? "Saved trips" : "Saved trips (\(savedTrips.count))", systemImage: "bookmark")
-                            }
-                            Button { isUpdatingAll = true } label: {
-                                Label("Update all trips", systemImage: "slider.horizontal.3")
-                            }
-                            .disabled(savedTrips.isEmpty)
-                        } label: {
-                            Image(systemName: "bookmark")
-                        }
-                        .accessibilityLabel("Saved trips")
-                    }
+                    if let onClose { Button("Close", action: onClose) }
                 }
             }
             .sheet(isPresented: $showsOptions) {
@@ -160,6 +151,14 @@ struct PlannerView: View {
             Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
         }
         .task { await loadUpcomingReminders() }
+        // From starts as "My location" once there's a fix.
+        .task(id: environment.location.coordinate == nil) {
+            // Not while the rider is choosing a start themselves.
+            guard start == nil, !isEditingFrom, let here = environment.location.coordinate else { return }
+            start = PlannerLocation(label: "My location", coordinate: here)
+        }
+        .onChange(of: planKey) { _, _ in autoPlanIfReady() }
+        .onChange(of: showsOptions) { _, isOpen in if !isOpen { replanIfReady() } }
         // Back from a journey - a reminder may have just been set or removed.
         .onChange(of: path.count) { _, count in
             if count == 0 { Task { await loadUpcomingReminders() } }
@@ -197,7 +196,10 @@ struct PlannerView: View {
                 // Above everything below it, so the From/To dropdowns
                 // draw over the saved trips and results rather than
                 // behind them.
-                form.zIndex(1)
+                whereToForm.zIndex(1)
+                if results.isEmpty, !isPlanning {
+                    placesList
+                }
                 // Saved trips fill the page until there are results.
                 if !upcomingReminders.isEmpty, results.isEmpty, !isPlanning {
                     UpcomingRemindersList(reminders: upcomingReminders) { target in
@@ -205,7 +207,7 @@ struct PlannerView: View {
                     }
                 }
                 if !savedTrips.isEmpty, results.isEmpty, !isPlanning {
-                    SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true })
+                    SavedTripsList(trips: savedTrips, onLoad: { apply($0) }, onManage: { isManaging = true }, onUpdateAll: { isUpdatingAll = true })
                 }
                 // The step-by-step planner otherwise only lives in
                 // Settings, where the riders it's for won't look.
@@ -223,9 +225,15 @@ struct PlannerView: View {
                 replanBanner
                 latestLeaveBanner
                 if let planError, !isPlanning {
-                    Text(planError)
-                        .font(.bodyText)
-                        .foregroundStyle(Theme.danger)
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(planError)
+                            .font(.bodyText)
+                            .foregroundStyle(Theme.danger)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Try again") { Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) } }
+                            .font(.metaMedium)
+                            .foregroundStyle(Theme.foreground)
+                    }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -274,111 +282,148 @@ struct PlannerView: View {
         }
     }
 
-    // MARK: - Form (search-form.tsx)
+    // MARK: - Form
 
-    private var form: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 10) {
-                VStack(spacing: 4) {
-                    Circle().fill(Theme.primary).frame(width: 8, height: 8)
-                    Rectangle().fill(Theme.border).frame(width: 1, height: 28)
-                    Circle().fill(Theme.danger).frame(width: 8, height: 8)
-                }
-                .accessibilityHidden(true)
-
-                VStack(spacing: 8) {
-                    LocationField(placeholder: "From", storageKey: "recentStartLocations", location: $start)
-                        .zIndex(2)
-                    LocationField(placeholder: "To", storageKey: "recentEndLocations", location: $end)
-                        .zIndex(1)
-                }
-                .zIndex(1)
-
-                Button {
-                    swap(&start, &end)
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down").font(.system(size: 14, weight: .medium))
-                }
-                .buttonStyle(.shad(.ghost, size: .icon))
-                .disabled(start == nil && end == nil)
-                .accessibilityLabel("Swap locations")
+    /// "Where to?" first - most trips start from where you are, so From is
+    /// "My location" and tucked into a line under it you can change.
+    /// Planning starts as soon as both ends are set; time and options are
+    /// chips (2026-11-03, replacing From/To boxes + a Plan button).
+    private var whereToForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if isEditingFrom {
+                LocationField(placeholder: "From", storageKey: "recentStartLocations", location: $start, focusesOnAppear: true)
+                    .zIndex(2)
             }
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.mutedForeground)
+                LocationField(placeholder: "Where to?", storageKey: "recentEndLocations", location: $end, isBorderless: true)
+            }
+            .padding(.horizontal, 14)
+            .shadCardBackground(radius: 16)
             .zIndex(1)
-
-            optionsSection
-
-            HStack(spacing: 8) {
-                Button {
-                    Task { await plan() }
-                } label: {
+            if !isEditingFrom {
+                Button { isEditingFrom = true } label: {
                     HStack(spacing: 6) {
-                        if isPlanning {
-                            ProgressView().tint(Theme.primaryForeground)
-                            Text("Planning")
-                        } else {
-                            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold))
-                            Text("Plan journey")
+                        Image(systemName: start?.label == "My location" ? "location.fill" : "circle.fill")
+                            .font(.system(size: start?.label == "My location" ? 11 : 7))
+                        Text("From \(start?.label ?? "…choose a start")")
+                            .lineLimit(1)
+                        Text("Change").foregroundStyle(Theme.foreground).underline()
+                    }
+                    .font(.meta)
+                    .foregroundStyle(Theme.mutedForeground)
+                    .padding(.leading, 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("planner-change-from")
+                .accessibilityLabel("From \(start?.label ?? "not set"). Change")
+            }
+            chipsRow
+        }
+        .onChange(of: start) { _, new in if new != nil { isEditingFrom = false } }
+    }
+
+    /// When, then the rest of the options.
+    private var chipsRow: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button { timeType = .now; date = Date(); replanIfReady() } label: { Label("Leave now", systemImage: "clock") }
+                Button { timeType = .departat; showsOptions = true } label: { Label("Leave at…", systemImage: "arrow.right.circle") }
+                Button { timeType = .arriveat; showsOptions = true } label: { Label("Arrive by…", systemImage: "flag.checkered") }
+            } label: {
+                chip(icon: "clock", text: timeSummary, active: timeType != .now, showsChevron: true)
+            }
+            Button { showsOptions = true } label: {
+                chip(icon: "slider.horizontal.3", text: changedOptions == 0 ? "Options" : "Options · \(changedOptions)", active: changedOptions > 0)
+            }
+            .buttonStyle(.plain)
+            Spacer()
+            if isPlanning { ProgressView().controlSize(.small) }
+        }
+    }
+
+    private func chip(icon: String, text: String, active: Bool, showsChevron: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 12, weight: .semibold))
+            Text(text).lineLimit(1)
+            if showsChevron { Image(systemName: "chevron.down").font(.system(size: 9, weight: .bold)) }
+        }
+        .font(.metaMedium)
+        .foregroundStyle(active ? Theme.primaryForeground : Theme.foreground)
+        .padding(.horizontal, 12)
+        .frame(height: 32)
+        .background(active ? Theme.primary : Theme.card, in: Capsule())
+        .overlay(Capsule().strokeBorder(active ? .clear : Theme.border, lineWidth: 1))
+        .contentShape(Capsule())
+    }
+
+    private var timeSummary: String {
+        switch timeType {
+        case .now: "Leave now"
+        case .departat: "Leave \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+        case .arriveat: "Arrive by \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))"
+        }
+    }
+
+    /// How many options differ from the defaults (time aside).
+    private var changedOptions: Int {
+        var count = 0
+        if maxWalkKm != 1.0 { count += 1 }
+        if walkSpeed != WalkSpeed.normal { count += 1 }
+        if maxTransfers != 5 { count += 1 }
+        if !onlyRoutes.isEmpty { count += 1 }
+        if !modes.isEmpty { count += 1 }
+        return count
+    }
+
+    private var planKey: String? {
+        guard let start, let end else { return nil }
+        return "\(start.coordinate.latitude),\(start.coordinate.longitude)>\(end.coordinate.latitude),\(end.coordinate.longitude)@\(timeType)\(timeType == .now ? "" : "\(date.timeIntervalSince1970)")"
+    }
+
+    /// Plans as soon as both ends are set - there's no Plan button.
+    private func autoPlanIfReady() {
+        guard let key = planKey, key != plannedKey, !isPlanning else { return }
+        Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
+    }
+
+    /// Options or time changed: plan again if there's a journey to plan.
+    private func replanIfReady() {
+        guard canPlan else { return }
+        Task { await plan(keepingReplanSnapshot: replanSnapshot != nil) }
+    }
+
+    /// Your saved places - one tap plans from here to there.
+    @ViewBuilder
+    private var placesList: some View {
+        let places = allPlaces.filter { $0.regionSlug == environment.region.slug }
+        if !places.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                SectionLabel(text: "Your places")
+                VStack(spacing: 0) {
+                    ForEach(Array(places.enumerated()), id: \.element.persistentModelID) { index, place in
+                        if index > 0 { RowDivider() }
+                        Button { end = place.plannerLocation } label: {
+                            HStack(spacing: 12) {
+                                SavedPlaceTile(icon: place.placeIcon, size: 30)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(place.name).font(.bodyMedium).foregroundStyle(Theme.foreground)
+                                    Text(place.address).font(.meta).foregroundStyle(Theme.mutedForeground).lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.mutedForeground.opacity(0.6))
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 10)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Plans a journey there")
                     }
                 }
-                .buttonStyle(.shad(.default, size: .pill, fullWidth: true))
-                .disabled(!canPlan || isPlanning)
-                .accessibilityLabel(isPlanning ? "Planning" : "Plan journey")
-
-                Button {
-                    isSaving = true
-                } label: {
-                    Image(systemName: justSaved ? "bookmark.fill" : "bookmark")
-                        .foregroundStyle(justSaved ? Theme.success : Theme.foreground)
-                }
-                .buttonStyle(.shad(.outline, size: .pill))
-                .frame(width: 44)
-                .disabled(!canPlan)
-                .accessibilityLabel("Save trip")
+                .shadCardBackground()
             }
         }
-    }
-
-    /// One row that always says what the search will use, and opens the
-    /// options sheet - rather than a wall of pickers in the page.
-    private var optionsSection: some View {
-        Button {
-            showsOptions = true
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "slider.horizontal.3").font(.system(size: 13, weight: .medium))
-                Text(optionsSummary)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold))
-            }
-            .font(.meta)
-            .foregroundStyle(Theme.mutedForeground)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Theme.muted.opacity(0.5), in: RoundedRectangle(cornerRadius: Theme.radiusMD, style: .continuous))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Options: \(optionsSummary)")
-    }
-
-    /// Every option in a few words - "Leave now · 1 km walk · Normal ·
-    /// up to 5 transfers".
-    private var optionsSummary: String {
-        var parts: [String] = []
-        switch timeType {
-        case .now: parts.append("Leave now")
-        case .departat: parts.append("Leave \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))")
-        case .arriveat: parts.append("Arrive by \(date.formatted(.dateTime.weekday(.abbreviated).hour().minute()))")
-        }
-        parts.append("\(maxWalkKm == maxWalkKm.rounded() ? String(Int(maxWalkKm)) : String(maxWalkKm)) km walk")
-        parts.append(walkSpeedLabel(walkSpeed))
-        parts.append(maxTransfers == 0 ? "Direct only" : "up to \(maxTransfers) transfer\(maxTransfers == 1 ? "" : "s")")
-        if !onlyRoutes.isEmpty { parts.append("\(onlyRoutes.count) route\(onlyRoutes.count == 1 ? "" : "s") only") }
-        if !modes.isEmpty { parts.append(TravelMode.allCases.filter(modes.contains).map(\.label).joined(separator: "/") + " only") }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: - Re-plan mid-journey
@@ -520,7 +565,7 @@ struct PlannerView: View {
     /// "3 routes found · planned 8:02am", and a refresh once they've aged.
     private func resultsHeader(now: Date) -> some View {
         HStack(spacing: 8) {
-            Text("\(results.count) route\(results.count == 1 ? "" : "s") found")
+            Text("\(results.count) route\(results.count == 1 ? "" : "s")")
             if let resultsPlannedAt, now.timeIntervalSince(resultsPlannedAt) > 120 {
                 Text("· planned \(resultsPlannedAt.formatted(date: .omitted, time: .shortened))")
                 Spacer(minLength: 8)
@@ -530,6 +575,15 @@ struct PlannerView: View {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.shad(.ghost, size: .sm))
+            }
+            Group {
+                Spacer(minLength: 8)
+                Button { isSaving = true } label: {
+                    Label(justSaved ? "Saved" : "Save trip", systemImage: justSaved ? "bookmark.fill" : "bookmark")
+                        .labelStyle(.titleAndIcon)
+                }
+                .foregroundStyle(justSaved ? Theme.success : Theme.foreground)
+                .disabled(justSaved)
             }
         }
         .font(.metaMedium)
@@ -598,6 +652,7 @@ struct PlannerView: View {
     private func plan(keepingReplanSnapshot: Bool = false, refreshing: Bool = false) async {
         guard let start, let end else { return }
         if timeType == .now { date = Date() }
+        plannedKey = planKey
         if !keepingReplanSnapshot { replanSnapshot = nil }
         planError = nil
         if !refreshing {

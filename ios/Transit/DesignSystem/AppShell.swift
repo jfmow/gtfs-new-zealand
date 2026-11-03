@@ -149,70 +149,26 @@ final class NotificationFeed {
     }
 }
 
-// MARK: - Toolbar (bell + menu)
+// MARK: - Toolbar (settings)
 
+/// A tab root's top bar: just Settings. Notifications and reminders live in
+/// the Updates tab (2026-11-03 - it replaced the bell + menu on every tab).
 private struct AppToolbar: ViewModifier {
-    @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var appRouter
-    @State private var sheet: AppSheet?
-
-    enum AppSheet: String, Identifiable {
-        case notifications, reminders, settings, findVehicle
-        var id: String { rawValue }
-    }
+    @State private var isShowingSettings = false
 
     func body(content: Content) -> some View {
         content
             .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        environment.notificationFeed.markSeen()
-                        sheet = .notifications
-                    } label: {
-                        Image(systemName: "bell")
-                            .overlay(alignment: .topTrailing) {
-                                let unread = environment.notificationFeed.unreadCount
-                                if unread > 0 {
-                                    Text(unread > 9 ? "9+" : "\(unread)")
-                                        .font(.geist(9, .semibold, relativeTo: .caption2))
-                                        .foregroundStyle(Theme.destructiveForeground)
-                                        .padding(.horizontal, 3)
-                                        .frame(minWidth: 15, minHeight: 15)
-                                        .background(Theme.danger, in: Capsule())
-                                        .offset(x: 8, y: -7)
-                                }
-                            }
-                    }
-                    .accessibilityLabel(environment.notificationFeed.unreadCount > 0 ? "Notifications, \(environment.notificationFeed.unreadCount) unread" : "Notifications")
-
-                    Menu {
-                        Button { sheet = .reminders } label: { Label("My reminders", systemImage: "bell.badge") }
-                        if environment.region.hasRealtime {
-                            Button { sheet = .findVehicle } label: { Label("Find my vehicle", systemImage: "location.viewfinder") }
-                        }
-                        Button { sheet = .settings } label: { Label("Settings", systemImage: "gearshape") }
-                    } label: {
-                        Image(systemName: "line.3.horizontal")
-                    }
-                    .accessibilityLabel("Menu")
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { isShowingSettings = true } label: { Image(systemName: "gearshape") }
+                        .accessibilityLabel("Settings")
                 }
             }
-            .sheet(item: $sheet) { sheet in
-                Group {
-                    switch sheet {
-                    case .notifications:
-                        NotificationsBellSheet()
-                    case .reminders:
-                        NavigationStack { ManageNotificationsView().toolbar { DoneButton() } }
-                    case .settings:
-                        NavigationStack { SettingsView() }
-                    case .findVehicle:
-                        FindMyVehicleSheet()
-                    }
-                }
-                .shadSheet(detents: sheet == .notifications ? [.medium, .large] : [.large])
+            .sheet(isPresented: $isShowingSettings) {
+                NavigationStack { SettingsView() }.shadSheet(detents: [.large])
             }
-            .onChange(of: appRouter.closeSheetsRequest) { sheet = nil }
+            .onChange(of: appRouter.closeSheetsRequest) { isShowingSettings = false }
     }
 }
 
@@ -225,7 +181,7 @@ struct DoneButton: ToolbarContent {
 }
 
 extension View {
-    /// Adds the bell + menu to a tab root's navigation bar.
+    /// Adds Settings to a tab root's navigation bar.
     func appToolbar() -> some View { modifier(AppToolbar()) }
 }
 

@@ -36,21 +36,31 @@ struct RootView: View {
                 .tabItem { Label("Map", systemImage: "map") }
                 .tag(DeepLinkRouter.Tab.map)
 
-            // Alerts come from the realtime feed - a timetable-only region
-            // (Otago) has none.
-            if environment.region.hasRealtime {
-                AlertsTabView()
-                    .resumeJourneyInset()
-                    .tabItem { Label("Alerts", systemImage: "exclamationmark.triangle") }
-                    .tag(DeepLinkRouter.Tab.alerts)
-            }
+            // Your notifications, plus service alerts where the region has
+            // a realtime feed (Otago doesn't).
+            AlertsTabView()
+                .resumeJourneyInset()
+                .tabItem { Label("Updates", systemImage: "bell") }
+                .badge(environment.notificationFeed.unreadCount)
+                .tag(DeepLinkRouter.Tab.alerts)
         }
         .onChange(of: environment.region, initial: true) { _, region in
             if !region.hasRealtime {
-                if router.selectedTab == .alerts { router.selectedTab = .schedule }
                 router.mapMode = .stops
             }
         }
+        #if DEBUG
+        // `-startTab planner|map|vehicles|alerts`: open on a tab, for screenshots.
+        .task {
+            switch UserDefaults.standard.string(forKey: "startTab") {
+            case "planner": router.selectedTab = .planner
+            case "map": router.selectedTab = .map
+            case "vehicles": router.mapMode = .vehicles; router.selectedTab = .map
+            case "alerts": router.selectedTab = .alerts
+            default: break
+            }
+        }
+        #endif
         .resumeJourneyAccessory()
         .tint(Theme.primary)
         .font(.bodyText)

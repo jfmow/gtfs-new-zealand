@@ -2,14 +2,16 @@ import SwiftData
 import SwiftUI
 import TransitCore
 
-/// The Alerts tab - `pages/alerts.tsx`: stop search and a "Notifications"
-/// button for that stop's alert subscription, with the stop's alerts shown
-/// right on the page (the web keeps them on the same route via `?s=`).
+/// The Updates tab: "For you" (your notifications, and a way into your
+/// alerts and reminders) and "Service alerts" - `pages/alerts.tsx`: stop
+/// search and "Get alerts" for a stop, with its alerts on the page.
 struct AlertsTabView: View {
     @Environment(AppEnvironment.self) private var environment
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var selectedStop: String?
     @State private var isShowingSubscription = false
+    /// Your notifications ("For you") or service alerts.
+    @State private var showsInbox = true
 
     /// Regular width (iPad): your stops listed on the left, the chosen
     /// stop's alerts on the right, instead of one replacing the other.
@@ -18,6 +20,39 @@ struct AlertsTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Timetable-only regions (Otago) have no service alerts.
+                if environment.region.hasRealtime {
+                    HStack(spacing: 8) {
+                        Chip(label: "For you", isActive: showsInbox) { showsInbox = true }
+                        Chip(label: "Service alerts", isActive: !showsInbox) { showsInbox = false }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                }
+                if showsInbox || !environment.region.hasRealtime {
+                    NotificationsInbox()
+                } else {
+                    alertsContent
+                }
+            }
+            // Grouped, like Home - and the same colour as the inbox list.
+            .groupedPageBackground()
+            .navigationTitle("Updates")
+            .navigationBarTitleDisplayMode(.inline)
+            .appToolbar()
+            .sheet(isPresented: $isShowingSubscription) {
+                if let selectedStop {
+                    AlertSubscriptionSheet(target: .stop(query: selectedStop, title: selectedStop)).shadSheet(detents: [.large])
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var alertsContent: some View {
+        VStack(spacing: 0) {
                 if !usesSplit {
                     searchField.readableContentWidth()
                 }
@@ -49,16 +84,6 @@ struct AlertsTabView: View {
                     // page asking for a search.
                     AlertsOverview { selectedStop = $0 }
                 }
-            }
-            .pageBackground()
-            .navigationTitle("Alerts")
-            .navigationBarTitleDisplayMode(.inline)
-            .appToolbar()
-            .sheet(isPresented: $isShowingSubscription) {
-                if let selectedStop {
-                    AlertSubscriptionSheet(target: .stop(query: selectedStop, title: selectedStop)).shadSheet(detents: [.large])
-                }
-            }
         }
     }
 
@@ -115,42 +140,37 @@ private struct AlertsOverview: View {
     private struct Entry: Identifiable {
         let query: String
         let title: String
-        let isSaved: Bool
+        let colorHex: String?
+        let stopType: String
         var id: String { query }
     }
 
-    private var entries: [Entry] {
+    private var saved: [Entry] {
         var seen = Set<String>()
-        var out: [Entry] = []
-        for favourite in favourites where seen.insert(favourite.stopID).inserted {
-            out.append(Entry(query: favourite.stopID, title: favourite.displayName, isSaved: true))
-        }
-        var names = Set(out.map(\.title))
-        for stop in nearby where names.insert(stop.stopName).inserted && seen.insert(stop.boardQuery).inserted {
-            out.append(Entry(query: stop.boardQuery, title: stop.stopName, isSaved: false))
-            if out.filter({ !$0.isSaved }).count == 3 { break }
-        }
-        return out
+        return favourites.filter { seen.insert($0.stopID).inserted }
+            .map { Entry(query: $0.stopID, title: $0.displayName, colorHex: $0.colorHex, stopType: "") }
+    }
+
+    private var near: [Entry] {
+        var seen = Set(favourites.map(\.stopID))
+        var names = Set(favourites.map(\.displayName))
+        return Array(nearby.filter { names.insert($0.stopName).inserted && seen.insert($0.boardQuery).inserted }
+            .prefix(3)
+            .map { Entry(query: $0.boardQuery, title: $0.stopName, colorHex: nil, stopType: $0.stopType) })
     }
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                let all = entries
-                if all.isEmpty {
+            VStack(alignment: .leading, spacing: 20) {
+                if saved.isEmpty && near.isEmpty {
                     EmptyState(systemImage: "exclamationmark.bubble", title: "Travel alerts",
-                               message: "Search for a stop to view alerts. Saved and nearby stops show up here.")
-                } else {
-                    SectionLabel(text: "Your stops")
-                    ForEach(all) { entry in
-                        Button { onSelect(entry.query) } label: {
-                            StopAlertsSummaryRow(query: entry.query, title: entry.title, isSaved: entry.isSaved)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                               message: "Search for a stop to see its alerts. Your saved and nearby stops show up here.")
                 }
+                section("Your stops", saved)
+                section("Near you", near)
             }
-            .padding(16)
+            .padding(.top, 4)
+            .padding(.bottom, 24)
             .readableContentWidth()
         }
         .task(id: environment.location.coordinate == nil) {
@@ -158,13 +178,35 @@ private struct AlertsOverview: View {
             nearby = (try? await environment.api.closestStops(to: here)) ?? []
         }
     }
+
+    @ViewBuilder
+    private func section(_ title: String, _ entries: [Entry]) -> some View {
+        if !entries.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HomeHeading(title: title) { EmptyView() }
+                VStack(spacing: 0) {
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 { Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 48) }
+                        Button { onSelect(entry.query) } label: {
+                            StopAlertsSummaryRow(query: entry.query, title: entry.title) {
+                                if let hex = entry.colorHex { HomeSavedTile(colorHex: hex) } else { HomeModeTile(stopType: entry.stopType) }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .shadCardBackground(radius: 16)
+                .padding(.horizontal, 16)
+            }
+        }
+    }
 }
 
 /// "Britomart · 2 active, 1 upcoming" with the affected routes.
-private struct StopAlertsSummaryRow: View {
+private struct StopAlertsSummaryRow<Tile: View>: View {
     let query: String
     let title: String
-    let isSaved: Bool
+    @ViewBuilder var tile: Tile
 
     @Environment(AppEnvironment.self) private var environment
     @State private var summary: Summary?
@@ -178,13 +220,8 @@ private struct StopAlertsSummaryRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: isSaved ? "star.fill" : "location")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Theme.mutedForeground)
-                .frame(width: 32, height: 32)
-                .background(Theme.muted, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
+            tile.frame(width: 24, height: 24).accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(.bodyMedium).foregroundStyle(Theme.foreground)
                 status
             }
@@ -194,9 +231,9 @@ private struct StopAlertsSummaryRow: View {
                 .foregroundStyle(Theme.mutedForeground.opacity(0.6))
                 .accessibilityHidden(true)
         }
-        .padding(14)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .shadCardBackground()
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .task(id: query) { await load() }
@@ -206,14 +243,19 @@ private struct StopAlertsSummaryRow: View {
     private var status: some View {
         if let summary {
             if summary.active == 0 && summary.upcoming == 0 {
-                Label("No current alerts", systemImage: "checkmark.circle")
+                Label("All clear", systemImage: "checkmark.circle.fill")
                     .font(.meta)
                     .foregroundStyle(Theme.success)
             } else {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(countText(summary))
-                        .font(.metaMedium)
-                        .foregroundStyle(summary.active > 0 ? Theme.danger : Theme.warning)
+                    // Only something happening now is red - planned work
+                    // ahead is worth knowing, not alarming.
+                    HStack(spacing: 6) {
+                        if summary.active > 0 { Circle().fill(Theme.danger).frame(width: 7, height: 7) }
+                        Text(countText(summary))
+                            .font(summary.active > 0 ? .metaMedium : .meta)
+                            .foregroundStyle(summary.active > 0 ? Theme.danger : Theme.mutedForeground)
+                    }
                     FlowLayout(spacing: 4, lineSpacing: 4) {
                         ForEach(summary.routes.prefix(8), id: \.self) { route in
                             RouteBadge(name: shortName(route), colorHex: "", size: 11)
@@ -242,8 +284,8 @@ private struct StopAlertsSummaryRow: View {
 
     private func countText(_ summary: Summary) -> String {
         var parts: [String] = []
-        if summary.active > 0 { parts.append("\(summary.active) active") }
-        if summary.upcoming > 0 { parts.append("\(summary.upcoming) upcoming") }
+        if summary.active > 0 { parts.append("\(summary.active) happening now") }
+        if summary.upcoming > 0 { parts.append("\(summary.upcoming) planned") }
         return parts.joined(separator: ", ")
     }
 

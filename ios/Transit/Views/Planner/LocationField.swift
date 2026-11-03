@@ -25,6 +25,10 @@ struct LocationField: View {
     /// Off in the saved-place editor, where offering saved places to pick
     /// a saved place's location would be circular.
     var showsSavedPlaces = true
+    /// No box of its own - for fields stacked inside one card.
+    var isBorderless = false
+    /// Focus the field as soon as it appears.
+    var focusesOnAppear = false
 
     @Environment(AppEnvironment.self) private var environment
     @Query(sort: \SavedPlace.sortOrder) private var allPlaces: [SavedPlace]
@@ -79,12 +83,12 @@ struct LocationField: View {
                 .accessibilityLabel("Clear \(placeholder)")
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, isBorderless ? 0 : 12)
         .frame(height: 44)
-        .background(Theme.background, in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
+        .background(isBorderless ? .clear : Theme.background, in: RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: Theme.radiusLG, style: .continuous)
-                .strokeBorder(isFocused ? Theme.ring.opacity(0.6) : Theme.input, lineWidth: 1)
+                .strokeBorder(isBorderless ? .clear : isFocused ? Theme.ring.opacity(0.6) : Theme.input, lineWidth: 1)
         )
         .overlay(alignment: .topLeading) {
             if isFocused {
@@ -95,6 +99,7 @@ struct LocationField: View {
             suppressNextQueryChange = !(location?.label ?? "").isEmpty
             query = location?.label ?? ""
             recents = Self.loadRecents(storageKey)
+            if focusesOnAppear { isFocused = true }
         }
         .onChange(of: location) { _, newValue in
             guard newValue?.label != query else { return }
@@ -118,8 +123,7 @@ struct LocationField: View {
 
     private func groupHeader(_ title: String) -> some View {
         Text(title)
-            .font(.geist(11, .medium, relativeTo: .caption2))
-            .tracking(0.8)
+            .font(.metaMedium)
             .foregroundStyle(Theme.mutedForeground)
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
@@ -141,12 +145,12 @@ struct LocationField: View {
                 }
                 if !places.isEmpty {
                     RowDivider().padding(.vertical, 4)
-                    groupHeader("SAVED PLACES")
+                    groupHeader("Saved places")
                     ForEach(places) { placeRow($0) }
                 }
                 if !recents.isEmpty {
                     RowDivider().padding(.vertical, 4)
-                    groupHeader("RECENT")
+                    groupHeader("Recent")
                     ForEach(recents) { recent in
                         row(icon: "clock", label: recent.label) { apply(PlannerLocation(label: recent.label, coordinate: recent.coordinate)) }
                     }

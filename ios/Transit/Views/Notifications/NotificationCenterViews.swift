@@ -4,10 +4,14 @@ import TransitCore
 /// The bell's sheet - `components/notifications/bell.tsx` as a native list:
 /// Today / Earlier, tap to open, swipe to dismiss, Clear all, and the way
 /// into "Alerts & reminders".
-struct NotificationsBellSheet: View {
+/// The notifications list: a link to "Alerts & reminders", then recent
+/// notifications by day. `onOpen` runs before a tapped one's link opens
+/// (the sheet dismisses itself).
+struct NotificationsInbox: View {
+    var onOpen: () -> Void = {}
+
     @Environment(AppEnvironment.self) private var environment
     @Environment(DeepLinkRouter.self) private var router
-    @Environment(\.dismiss) private var dismiss
 
     private var feed: NotificationFeed { environment.notificationFeed }
 
@@ -22,56 +26,47 @@ struct NotificationsBellSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    NavigationLink {
-                        ManageNotificationsView()
-                    } label: {
-                        Label("Alerts & reminders", systemImage: "bell.badge")
-                    }
-                    .listRowBackground(Theme.card)
+        List {
+            Section {
+                NavigationLink {
+                    ManageNotificationsView()
+                } label: {
+                    Label("Alerts & reminders", systemImage: "bell.badge")
                 }
-                ForEach(groups, id: \.title) { group in
-                    Section(group.title) {
-                        ForEach(group.entries) { entry in
-                            row(entry)
-                                .listRowBackground(Theme.card)
-                                .swipeActions {
-                                    Button("Dismiss", role: .destructive) { Task { await feed.dismiss(entry) } }
-                                }
-                        }
+                .listRowBackground(Theme.card)
+            }
+            ForEach(groups, id: \.title) { group in
+                Section(group.title) {
+                    ForEach(group.entries) { entry in
+                        row(entry)
+                            .listRowBackground(Theme.card)
+                            .swipeActions {
+                                Button("Dismiss", role: .destructive) { Task { await feed.dismiss(entry) } }
+                            }
                     }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .groupedPageBackground()
-            .overlay {
-                if feed.entries.isEmpty {
-                    EmptyState(systemImage: "bell", title: "No notifications yet",
-                               message: "Stop and route alerts, and leave-by reminders, show up here.")
-                        .padding(.top, 80)
-                }
-            }
-            .navigationTitle("Notifications")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if !feed.entries.isEmpty {
-                        Button("Clear all") { Task { await feed.clearAll() } }
-                    }
-                }
-                DoneButton()
-            }
-            .task { await feed.refresh() }
-            .refreshable { await feed.refresh() }
         }
+        .scrollContentBackground(.hidden)
+        .groupedPageBackground()
+        .overlay {
+            if feed.entries.isEmpty {
+                EmptyState(systemImage: "bell", title: "No notifications yet",
+                           message: "Stop and route alerts, and leave-by reminders, show up here.")
+                    .padding(.top, 80)
+            }
+        }
+        .task {
+            await feed.refresh()
+            feed.markSeen()
+        }
+        .refreshable { await feed.refresh() }
     }
 
     private func row(_ entry: RecentNotificationEntry) -> some View {
         Button {
             guard let url = entry.url, !url.isEmpty else { return }
-            dismiss()
+            onOpen()
             router.handle(notificationURL: url)
         } label: {
             VStack(alignment: .leading, spacing: 3) {

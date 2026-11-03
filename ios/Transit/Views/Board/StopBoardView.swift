@@ -414,8 +414,6 @@ struct DepartureRow: View {
     let departure: Departure
     var isSchedulePreview: Bool = false
 
-    private var routeColor: Color { Color(hex: departure.route.color.isEmpty ? "424242" : departure.route.color) }
-    private var railColor: Color { Color(hex: departure.route.color.isEmpty ? "9ca3af" : departure.route.color) }
 
     private var hasPlatform: Bool { !departure.platform.isEmpty && departure.platform != "no platform" }
 
@@ -437,50 +435,33 @@ struct DepartureRow: View {
         return .scheduled
     }
 
+    /// A board line, like Home's: route, destination and the countdown on
+    /// the right; underneath, the details that fit on one line (lower
+    /// priority ones drop off rather than truncate).
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            RoundedRectangle(cornerRadius: 2).fill(railColor).frame(width: 3).padding(.vertical, 1)
+        HStack(alignment: .center, spacing: 12) {
+            RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 12)
+                .frame(minWidth: 44, alignment: .leading)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 5) {
-                            RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 12)
-
-                            if departure.platformChanged {
-                                pill("Platform changed", color: Theme.danger)
-                            }
-                            if !isSchedulePreview, tracking == .limited {
-                                pill("Limited tracking", color: Theme.warning)
-                            }
-                            if !isSchedulePreview, tracking == .scheduled {
-                                pill("Timetable only", color: Theme.mutedForeground)
-                            }
-                        }
-                        Text(TimeFormatting.niceLookingWords(departure.headsign))
-                            .font(.cardTitle)
-                            .foregroundStyle(Theme.foreground)
-                            .lineLimit(2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 8)
-
-                    boardTime
-                }
-
+            VStack(alignment: .leading, spacing: 3) {
+                Text(Headsign.display(departure.headsign))
+                    .font(.bodyMedium)
+                    .foregroundStyle(departure.canceled || departure.skipped ? Theme.mutedForeground : Theme.foreground)
+                    .strikethrough(departure.canceled)
+                    .lineLimit(1)
                 detailLine
             }
-        }
-    }
 
-    private func pill(_ text: String, color: Color) -> some View {
-        Text(text)
-            .font(.geist(10, .medium, relativeTo: .caption2))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .overlay(RoundedRectangle(cornerRadius: 4).strokeBorder(color.opacity(0.4), lineWidth: 1))
+            Spacer(minLength: 8)
+
+            if isLive, tracking == .live, !departure.departed {
+                Image(systemName: "dot.radiowaves.up.forward")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.live)
+                    .accessibilityHidden(true)
+            }
+            boardTime
+        }
     }
 
     /// `BoardTime` from the web: schedule-preview shows the plain time;
@@ -501,49 +482,57 @@ struct DepartureRow: View {
             // "Departed" in the big "due now" style otherwise.
             Text("Departed").font(.geist(14, .bold)).foregroundStyle(Theme.warning)
         } else {
-            let imminent = departure.timeTillArrival <= 2
             Text(TimeFormatting.timeTillArrivalString(minutes: departure.timeTillArrival))
-                .font(.number(19))
-                .foregroundStyle(imminent ? Theme.live : Theme.foreground)
+                .font(.geistMono(16, medium: true, relativeTo: .callout))
+                .foregroundStyle(tracking == .live || tracking == .limited ? Theme.live : Theme.foreground)
                 .lineLimit(1)
                 .fixedSize()
         }
     }
 
+    /// The details, most useful first; `ViewThatFits` drops from the end
+    /// until the rest fit on one line.
+    private var details: [AnyView] {
+        var items: [AnyView] = []
+        if departure.platformChanged, hasPlatform {
+            items.append(AnyView(Text("Now platform \(departure.platform)").foregroundStyle(Theme.danger).fontWeight(.medium)))
+        } else if hasPlatform {
+            items.append(AnyView(Text("Platform \(departure.platform)")))
+        }
+        if isLive, departure.stopsAway <= 0, departure.stopState == "AtStop" {
+            items.append(AnyView(Text("At the stop").foregroundStyle(Theme.live)))
+        } else if isLive, departure.stopsAway > 0 {
+            items.append(AnyView(Text("\(departure.stopsAway) \(departure.stopsAway == 1 ? "stop" : "stops") away")))
+        }
+        if !isSchedulePreview, tracking == .scheduled {
+            items.append(AnyView(Text("Timetable only")))
+        }
+        if !isSchedulePreview, !departure.canceled {
+            items.append(AnyView(Text(TimeFormatting.convert24hTo12h(departure.arrivalTime) ?? departure.arrivalTime)))
+        }
+        if isLive, let cars = departure.cars {
+            items.append(AnyView(Text("\(cars) cars")))
+        }
+        if showOccupancy, !OccupancyText.short(departure.occupancy).isEmpty {
+            items.append(AnyView(Text(OccupancyText.short(departure.occupancy))))
+        }
+        if departure.bikesAllowed == 1 {
+            items.append(AnyView(Image(systemName: "bicycle").accessibilityLabel("Bikes allowed")))
+        }
+        if departure.wheelchairsAllowed == 1 {
+            items.append(AnyView(Image(systemName: "figure.roll").accessibilityLabel("Wheelchair accessible")))
+        }
+        return items
+    }
+
     private var detailLine: some View {
-        HStack(spacing: 10) {
-            if !isSchedulePreview {
-                Label(TimeFormatting.convert24hTo12h(departure.arrivalTime) ?? departure.arrivalTime, systemImage: "clock").labelStyle(.detail)
-            }
-            if hasPlatform {
-                Label("Platform \(departure.platform)", systemImage: "mappin")
-                    .labelStyle(.detail)
-                    .foregroundStyle(departure.platformChanged ? Theme.danger : Theme.mutedForeground)
-            }
-            if isLive, departure.stopsAway > 0 {
-                Label("\(departure.stopsAway) \(departure.stopsAway == 1 ? "stop" : "stops") away", systemImage: "point.3.connected.trianglepath.dotted")
-                    .labelStyle(.detail)
-            } else if isLive, departure.stopsAway <= 0, departure.stopState == "AtStop" {
-                Text("At this stop").font(.caption2.weight(.medium)).foregroundStyle(Theme.live)
-            }
-            if showOccupancy {
-                Text(OccupancyText.short(departure.occupancy)).font(.caption2).foregroundStyle(Theme.mutedForeground)
-            }
-            if isLive, let cars = departure.cars {
-                Text("\(cars) cars").font(.caption2).foregroundStyle(Theme.mutedForeground)
-            }
-
-            Spacer()
-
-            // Only when the feed actually knows - an amber "unknown" pair on
-            // every row was noise across a whole board.
-            if departure.bikesAllowed == 1 || departure.bikesAllowed == 2 {
-                Image(systemName: "bicycle").font(.system(size: 11)).foregroundStyle(allowedColor(departure.bikesAllowed))
-                    .accessibilityLabel(departure.bikesAllowed == 1 ? "Bikes allowed" : "No bikes")
-            }
-            if departure.wheelchairsAllowed == 1 || departure.wheelchairsAllowed == 2 {
-                Image(systemName: "figure.roll").font(.system(size: 11)).foregroundStyle(allowedColor(departure.wheelchairsAllowed))
-                    .accessibilityLabel(departure.wheelchairsAllowed == 1 ? "Wheelchair accessible" : "Not wheelchair accessible")
+        let items = details
+        return ViewThatFits(in: .horizontal) {
+            ForEach((1...max(items.count, 1)).reversed(), id: \.self) { count in
+                HStack(spacing: 10) {
+                    ForEach(0..<min(count, items.count), id: \.self) { items[$0] }
+                }
+                .fixedSize()
             }
         }
         .font(.meta)
@@ -551,24 +540,6 @@ struct DepartureRow: View {
         .lineLimit(1)
     }
 
-    /// `allowedColor` from the web: 1 = allowed (green), 2 = not allowed
-    /// (red).
-    private func allowedColor(_ value: Int) -> Color {
-        value == 1 ? Theme.success : Theme.danger
-    }
-}
-
-private struct DetailLabelStyle: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 3) {
-            configuration.icon.font(.system(size: 9))
-            configuration.title
-        }
-    }
-}
-
-private extension LabelStyle where Self == DetailLabelStyle {
-    static var detail: DetailLabelStyle { DetailLabelStyle() }
 }
 
 /// `getOccupancyShort` from `components/services/occupancy.tsx`.

@@ -63,9 +63,9 @@ final class TransitDebugUITests: XCTestCase {
         app.launchArguments += ["-hasOnboarded", "YES"]
         app.launch()
         sleep(3)
-        app.navigationBars.buttons["Menu"].firstMatch.tap()
-        XCTAssertTrue(app.buttons["Settings"].waitForExistence(timeout: 3))
-        app.buttons["Settings"].tap()
+        let settings = app.navigationBars.buttons["Settings"].firstMatch
+        XCTAssertTrue(settings.waitForExistence(timeout: 3))
+        settings.tap()
         sleep(2)
         attach("icloud-settings")
     }
@@ -93,20 +93,20 @@ final class TransitDebugUITests: XCTestCase {
         fromField.tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch.tap()
         sleep(2)
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         toField.tap()
         toField.typeText("Newmarket")
         sleep(2)
         app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch.tap()
         sleep(1)
         attach("later-00-form")
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         let later = app.buttons["Later departures"]
         XCTAssertTrue(later.waitForExistence(timeout: 15))
-        let before = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'found'")).firstMatch.label
+        let before = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'routes' OR label ENDSWITH 'route'")).firstMatch.label
         later.tap()
         sleep(5)
-        let after = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'found'")).firstMatch.label
+        let after = app.staticTexts.matching(NSPredicate(format: "label ENDSWITH 'routes' OR label ENDSWITH 'route'")).firstMatch.label
         print("LATER:", before, "->", after)
         attach("later-01")
     }
@@ -169,8 +169,10 @@ final class TransitDebugUITests: XCTestCase {
             attach("ux09-vehicles-70")
         }
 
-        app.tabBars.buttons["Alerts"].tap()
-        sleep(5)
+        app.tabBars.buttons["Updates"].tap()
+        sleep(2)
+        app.buttons["Service alerts"].tap()
+        sleep(4)
         attach("ux10-alerts-overview")
 
         app.tabBars.buttons["Planner"].tap()
@@ -264,8 +266,8 @@ final class TransitDebugUITests: XCTestCase {
             }
         }
 
-        // Alerts tab.
-        let alertsTab = app.tabBars.buttons["Alerts"]
+        // Updates tab.
+        let alertsTab = app.tabBars.buttons["Updates"]
         if alertsTab.waitForExistence(timeout: 3) {
             alertsTab.tap()
             sleep(1)
@@ -510,11 +512,10 @@ final class TransitDebugUITests: XCTestCase {
             app.buttons["Done"].firstMatch.tap()
             sleep(1)
         }
-        let menu = app.navigationBars.buttons["Menu"]
-        if menu.waitForExistence(timeout: 2) {
-            menu.tap()
-            if app.buttons["Settings"].waitForExistence(timeout: 2) {
-                app.buttons["Settings"].tap()
+        let settingsButton = app.navigationBars.buttons["Settings"].firstMatch
+        if settingsButton.waitForExistence(timeout: 2) {
+            do {
+                settingsButton.tap()
                 sleep(2)
                 attach("cs-02f-settings")
                 app.buttons["Done"].firstMatch.tap()
@@ -534,17 +535,17 @@ final class TransitDebugUITests: XCTestCase {
             app.buttons["Done"].tap()
             sleep(1)
         }
-        let from = app.textFields["From"]
+        let from = plannerFromField()
         from.tap()
         if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
         sleep(3)
-        let to = app.textFields["To"]
+        let to = app.textFields["Where to?"]
         to.tap()
         to.typeText("Onehunga")
         sleep(3)
         let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Onehunga", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(8)
         attach("cs-05-results")
         let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
@@ -715,7 +716,7 @@ final class TransitDebugUITests: XCTestCase {
         // To: type a real, genuinely-far destination (far enough from
         // "current location" - Auckland CBD - that a real transit leg
         // comes back, not a walk-only plan) and pick the first result.
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         if toField.waitForExistence(timeout: 3) {
             toField.tap()
             toField.typeText("Newmarket")
@@ -735,9 +736,7 @@ final class TransitDebugUITests: XCTestCase {
         if returnKey.waitForExistence(timeout: 2) { returnKey.tap() }
         sleep(1)
 
-        let planButton = app.buttons["Plan journey"]
-        XCTAssertTrue(planButton.waitForExistence(timeout: 5))
-        planButton.tap()
+        // Plans on its own once both ends are set.
         sleep(4) // real planner round trip
         attach("journey-03-results")
         XCTAssertEqual(app.state, .runningForeground, "app died planning a journey")
@@ -802,7 +801,7 @@ final class TransitDebugUITests: XCTestCase {
         XCTAssertTrue(myLocation.waitForExistence(timeout: 5))
         myLocation.tap()
         sleep(1)
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         XCTAssertTrue(toField.waitForExistence(timeout: 3))
         toField.tap()
         toField.typeText("Newmarket")
@@ -811,7 +810,7 @@ final class TransitDebugUITests: XCTestCase {
         if result.waitForExistence(timeout: 5) { result.tap() }
         let returnKey = app.keyboards.buttons["Return"]
         if returnKey.waitForExistence(timeout: 2) { returnKey.tap() }
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(5)
         let direct = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "Direct")).firstMatch
         let anyResult = direct.exists ? direct
@@ -871,7 +870,7 @@ final class TransitDebugUITests: XCTestCase {
         useCurrentLocationButtons.firstMatch.tap()
         sleep(2)
 
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         if toField.waitForExistence(timeout: 3) {
             toField.tap()
             toField.typeText("Newmarket")
@@ -935,7 +934,7 @@ final class TransitDebugUITests: XCTestCase {
         useCurrentLocationButtons.firstMatch.tap()
         sleep(2)
 
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         if toField.waitForExistence(timeout: 3) {
             toField.tap()
             toField.typeText("Newmarket")
@@ -1070,16 +1069,25 @@ final class TransitDebugUITests: XCTestCase {
             }
         }
 
-        let menu = app.navigationBars.buttons["Menu"]
-        if menu.waitForExistence(timeout: 3) {
-            menu.tap()
-            let settings = app.buttons["Settings"]
-            if settings.waitForExistence(timeout: 3) {
+        let settings = app.navigationBars.buttons["Settings"].firstMatch
+        if settings.waitForExistence(timeout: 3) {
+            do {
                 settings.tap()
                 sleep(2)
                 attach("vp-08-settings")
             }
         }
+    }
+
+    /// The Planner's From field - tucked behind "From My location · Change"
+    /// until tapped.
+    func plannerFromField() -> XCUIElement {
+        let field = app.textFields["From"]
+        if !field.exists {
+            let change = app.buttons["planner-change-from"]
+            if change.waitForExistence(timeout: 3) { change.tap() }
+        }
+        return field
     }
 
     /// Just dismisses whatever alert is pending (an "Open in Transit?" from
@@ -1189,7 +1197,7 @@ final class TransitDebugUITests: XCTestCase {
         current.tap()
         sleep(3)
 
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         toField.tap()
         toField.typeText("Newmarket")
         sleep(3)
@@ -1197,7 +1205,7 @@ final class TransitDebugUITests: XCTestCase {
         if result.waitForExistence(timeout: 5) { result.tap() }
         sleep(1)
 
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(8)
         let firstResult = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ OR label CONTAINS[c] %@", "Direct", "transfer")).firstMatch
         XCTAssertTrue(firstResult.waitForExistence(timeout: 10), "no journey results")
@@ -1299,7 +1307,7 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 2)
 
         app.tabBars.buttons["Planner"].tap()
-        let fromField = app.textFields["From"]
+        let fromField = plannerFromField()
         XCTAssertTrue(fromField.waitForExistence(timeout: 5))
         fromField.tap()
         sleep(1)
@@ -1308,7 +1316,7 @@ final class TransitDebugUITests: XCTestCase {
         if myLocation.waitForExistence(timeout: 3) { myLocation.tap() }
         sleep(3)
 
-        let toField = app.textFields["To"]
+        let toField = app.textFields["Where to?"]
         toField.tap()
         toField.typeText("Newmarket")
         sleep(3)
@@ -1320,8 +1328,10 @@ final class TransitDebugUITests: XCTestCase {
         app.buttons["Options"].tap()
         sleep(1)
         attach("pl-03-options")
+        // Closing the options re-plans (there's no Plan button).
+        app.buttons["Done"].firstMatch.tap()
 
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(8)
         attach("pl-04-results")
 
@@ -1346,18 +1356,18 @@ final class TransitDebugUITests: XCTestCase {
         app.launch()
         dismissSystemAlertIfPresent(timeout: 4)
         app.tabBars.buttons["Planner"].tap()
-        let from = app.textFields["From"]
+        let from = plannerFromField()
         XCTAssertTrue(from.waitForExistence(timeout: 5))
         from.tap()
         if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
         sleep(3)
-        let to = app.textFields["To"]
+        let to = app.textFields["Where to?"]
         to.tap()
         to.typeText("Newmarket")
         sleep(3)
         let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(8)
         let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
         guard card.waitForExistence(timeout: 5) else { return XCTFail("no results") }
@@ -1395,18 +1405,18 @@ final class TransitDebugUITests: XCTestCase {
         app.launch()
         dismissSystemAlertIfPresent(timeout: 4)
         app.tabBars.buttons["Planner"].tap()
-        let from = app.textFields["From"]
+        let from = plannerFromField()
         XCTAssertTrue(from.waitForExistence(timeout: 5))
         from.tap()
         if app.buttons["My location"].waitForExistence(timeout: 3) { app.buttons["My location"].tap() }
         sleep(3)
-        let to = app.textFields["To"]
+        let to = app.textFields["Where to?"]
         to.tap()
         to.typeText("Newmarket")
         sleep(3)
         let result = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@ AND NOT label BEGINSWITH[c] %@", "Newmarket", "Resume")).firstMatch
         if result.waitForExistence(timeout: 5) { result.tap() }
-        app.buttons["Plan journey"].tap()
+        // Plans on its own once both ends are set.
         sleep(8)
         let card = app.buttons.matching(NSPredicate(format: "(label CONTAINS[c] %@ OR label CONTAINS[c] %@) AND NOT label BEGINSWITH[c] %@ AND NOT label BEGINSWITH[c] %@", "Direct", "transfer", "Transfers", "Options")).firstMatch
         guard card.waitForExistence(timeout: 5) else { XCTFail("no results"); return false }
@@ -1621,9 +1631,9 @@ final class TransitDebugUITests: XCTestCase {
         chip.tap()
         sleep(8)
         attach("sp-04-planner")
-        XCTAssertEqual(app.textFields["To"].value as? String, "Home")
+        XCTAssertEqual(app.textFields["Where to?"].value as? String, "Home")
 
-        app.textFields["From"].tap()
+        plannerFromField().tap()
         sleep(1)
         attach("sp-05-from-dropdown")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Home")).firstMatch.exists, "saved place not in dropdown")
@@ -1860,7 +1870,7 @@ final class TransitDebugUITests: XCTestCase {
             if origin.waitForExistence(timeout: 5) { origin.tap() }
         }
         sleep(1)
-        let toField = app.textFields.element(boundBy: 1)
+        let toField = app.textFields["Where to?"]
         if toField.waitForExistence(timeout: 3) {
             toField.tap()
             toField.typeText("Newmarket")
@@ -1869,9 +1879,8 @@ final class TransitDebugUITests: XCTestCase {
             if result.waitForExistence(timeout: 5) { result.tap() }
         }
         sleep(1)
-        let planButton = app.buttons["Plan journey"]
-        guard planButton.waitForExistence(timeout: 5) else { return false }
-        planButton.tap()
+        // Plans on its own once both ends are set.
+        guard app.buttons["Later departures"].waitForExistence(timeout: 15) else { return false }
         sleep(4)
         attach("\(tag)-05-results")
 

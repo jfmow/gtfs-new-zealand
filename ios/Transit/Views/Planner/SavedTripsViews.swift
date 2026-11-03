@@ -40,6 +40,7 @@ struct SavedTripsList: View {
     let trips: [SavedTrip]
     let onLoad: (SavedTrip) -> Void
     let onManage: () -> Void
+    var onUpdateAll: (() -> Void)?
 
     @Environment(\.modelContext) private var modelContext
     @Environment(AppEnvironment.self) private var environment
@@ -49,9 +50,16 @@ struct SavedTripsList: View {
             HStack {
                 SectionLabel(text: "Saved trips")
                 Spacer()
-                Button("Manage", action: onManage)
-                    .font(.metaMedium)
-                    .foregroundStyle(Theme.mutedForeground)
+                Menu {
+                    Button(action: onManage) { Label("Manage trips", systemImage: "slider.horizontal.3") }
+                    if let onUpdateAll {
+                        Button(action: onUpdateAll) { Label("Update all trips", systemImage: "arrow.triangle.2.circlepath") }
+                    }
+                } label: {
+                    Text("Manage")
+                }
+                .font(.metaMedium)
+                .foregroundStyle(Theme.mutedForeground)
             }
             VStack(spacing: 0) {
                 ForEach(Array(trips.enumerated()), id: \.element.persistentModelID) { index, trip in

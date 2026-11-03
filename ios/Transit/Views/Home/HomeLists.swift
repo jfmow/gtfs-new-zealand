@@ -302,7 +302,7 @@ struct HomeBoardCard<Tile: View>: View {
         HStack(spacing: 10) {
             RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 11)
                 .frame(minWidth: 40, alignment: .leading)
-            Text(departure.headsign)
+            Text(Headsign.display(departure.headsign))
                 .font(.bodyText)
                 .foregroundStyle(departure.canceled ? Theme.mutedForeground : Theme.foreground)
                 .strikethrough(departure.canceled)

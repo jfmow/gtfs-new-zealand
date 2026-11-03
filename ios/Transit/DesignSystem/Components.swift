@@ -30,7 +30,9 @@ struct ShadButtonStyle: ButtonStyle {
             .overlay { if variant == .outline { shape.strokeBorder(Theme.input, lineWidth: 1) } }
             .shadow(color: .black.opacity(variant == .default || variant == .outline ? 0.05 : 0), radius: 1, y: 1)
             .contentShape(shape)
-            .opacity(isEnabled ? 1 : 0.5)
+            // A disabled filled button goes flat grey-green rather than a
+            // half-faded primary (which read as muddy).
+            .opacity(isEnabled || variant == .default ? 1 : 0.5)
             .animation(.easeOut(duration: 0.12), value: pressed)
     }
 
@@ -60,7 +62,7 @@ struct ShadButtonStyle: ButtonStyle {
 
     private var foreground: Color {
         switch variant {
-        case .default: return Theme.primaryForeground
+        case .default: return isEnabled ? Theme.primaryForeground : Theme.mutedForeground
         case .destructive: return Theme.destructiveForeground
         case .link: return Theme.primary
         default: return Theme.foreground
@@ -69,7 +71,7 @@ struct ShadButtonStyle: ButtonStyle {
 
     private func background(pressed: Bool) -> Color {
         switch variant {
-        case .default: return Theme.primary.opacity(pressed ? 0.9 : 1)
+        case .default: return isEnabled ? Theme.primary.opacity(pressed ? 0.9 : 1) : Theme.muted
         case .destructive: return Theme.destructive.opacity(pressed ? 0.9 : 1)
         case .secondary: return Theme.secondary.opacity(pressed ? 0.8 : 1)
         case .outline: return pressed ? Theme.accent : Theme.background
@@ -318,9 +320,9 @@ struct SectionLabel: View {
     var body: some View {
         HStack(spacing: 6) {
             if liveDot { LiveDot() }
-            Text(text.uppercased())
-                .font(.geist(11, .medium, relativeTo: .caption))
-                .tracking(0.6)
+            // Sentence case, like Home's headings - no shouty caps.
+            Text(text)
+                .font(.metaMedium)
                 .foregroundStyle(Theme.mutedForeground)
         }
         .accessibilityAddTraits(.isHeader)
@@ -637,5 +639,28 @@ final class PowerState: NSObject {
     @objc nonisolated private func powerStateDidChange() {
         let isLowPower = ProcessInfo.processInfo.isLowPowerModeEnabled
         Task { @MainActor in PowerState.shared.isLowPower = isLowPower }
+    }
+}
+
+// MARK: - Headsigns
+
+/// A headsign as riders read it: feeds shout ("HILLSBORO", "ST LUKES") or
+/// title-case every word ("Pukekohe Via Grafton"). Title case, with the
+/// small joining words lower case.
+enum Headsign {
+    private static let small: Set<String> = ["via", "to", "and", "of", "the", "at"]
+
+    static func display(_ text: String) -> String {
+        let words = text.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespaces)
+            .split(separator: " ")
+        return words.enumerated().map { index, word in
+            let lower = word.lowercased()
+            if index > 0, small.contains(lower) { return lower }
+            // Keep codes like "NX1" or "CBD" as they are.
+            if word.count <= 3, word.contains(where: \.isNumber) { return String(word) }
+            return lower.prefix(1).uppercased() + lower.dropFirst()
+        }
+        .joined(separator: " ")
     }
 }
