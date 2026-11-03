@@ -20,11 +20,12 @@ import WidgetKit
 // MARK: - Tokens (Transit/DesignSystem/Theme.swift - the widget can't import the app)
 
 enum Tokens {
-    static let card = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
-    static let foreground = Color(light: 0x0A0A0A, dark: 0xF5F5F5)
-    static let mutedForeground = Color(light: 0x737373, dark: 0xA3A3A3)
-    static let muted = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
-    static let border = Color(light: 0xE5E5E5, dark: 0x2E2E2E)
+    // The "Bush" palette (ThemePalette.bush).
+    static let card = Color(light: 0xFFFFFF, dark: 0x142019)
+    static let foreground = Color(light: 0x0D1A12, dark: 0xEEF3EF)
+    static let mutedForeground = Color(light: 0x5E6F64, dark: 0x9DB0A3)
+    static let muted = Color(light: 0xE6EEE8, dark: 0x1C2A21)
+    static let border = Color(light: 0xD9E3DB, dark: 0x24352A)
     static let warning = Color(light: 0xD97706, dark: 0xF59E0B)
     static let danger = Color(light: 0xDC2626, dark: 0xF87171)
     static let success = Color(light: 0x16A34A, dark: 0x4ADE80)

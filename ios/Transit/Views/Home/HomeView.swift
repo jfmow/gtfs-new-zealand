@@ -49,6 +49,7 @@ struct HomeView: View {
                         // iPad lays each section's stops out as a two-column
                         // grid (`gridColumns`) rather than splitting the
                         // sections into columns, so both sides fill evenly.
+                        HomeGreeting(region: environment.region.displayName)
                         shortcutsSection
                         yourStopsSection
                         nearYouSection
@@ -61,7 +62,8 @@ struct HomeView: View {
                 .refreshable { await loadNearby() }
             }
             .groupedPageBackground()
-            .navigationTitle(environment.region.displayName)
+            // The greeting carries the region; an empty title keeps the bar clear.
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .appToolbar()
             .task {
@@ -175,9 +177,9 @@ struct HomeView: View {
                 HomeHeading(title: "Your stops") {
                     Button("Edit") { isManagingFavourites = true }
                 }
-                HomeGroup(items: favourites, columns: gridColumns) { favourite in
+                HomeBoardStack(items: favourites, columns: gridColumns) { favourite in
                     NavigationLink(value: BoardDestination(stopQuery: favourite.stopID, title: favourite.displayName)) {
-                        HomeCompactStopRow(stopQuery: favourite.stopID, title: favourite.displayName, departureCount: departureCount) {
+                        HomeBoardCard(stopQuery: favourite.stopID, title: favourite.displayName, lines: savedLines) {
                             HomeSavedTile(colorHex: favourite.colorHex)
                         }
                     }
@@ -218,9 +220,9 @@ struct HomeView: View {
                         Label("Map", systemImage: "map").labelStyle(.titleAndIcon)
                     }
                 }
-                HomeGroup(items: Array(stops.prefix(showsMoreNearby ? nearbyLimit * 2 : nearbyLimit)), columns: gridColumns) { stop in
+                HomeBoardStack(items: Array(stops.prefix(showsMoreNearby ? nearbyLimit * 2 : nearbyLimit)), columns: gridColumns) { stop in
                     NavigationLink(value: BoardDestination(stopQuery: stop.boardQuery, title: stop.stopName)) {
-                        HomeCompactStopRow(stopQuery: stop.boardQuery, title: stop.stopName, detail: distanceLabel(to: stop), departureCount: departureCount) {
+                        HomeBoardCard(stopQuery: stop.boardQuery, title: stop.stopName, detail: walkLabel(to: stop), lines: nearbyLines) {
                             HomeModeTile(stopType: stop.stopType)
                         }
                     }
@@ -261,7 +263,9 @@ struct HomeView: View {
     /// iPad: stops in a two-column grid, more of them, more departures each.
     private var gridColumns: Int { usesColumns ? 2 : 1 }
     private var nearbyLimit: Int { usesColumns ? 6 : 3 }
-    private var departureCount: Int { usesColumns ? 4 : 3 }
+    /// Departure lines per board: saved stops get more than nearby ones.
+    private var savedLines: Int { 3 }
+    private var nearbyLines: Int { usesColumns ? 3 : 2 }
 
     private var places: [SavedPlace] { allPlaces.filter { $0.regionSlug == environment.region.slug } }
 
@@ -313,9 +317,11 @@ struct HomeView: View {
         return nearbyStops.filter { seen.insert($0.stopName).inserted }
     }
 
-    private func distanceLabel(to stop: Stop) -> String? {
+    /// "3 min walk", at about 80 m a minute.
+    private func walkLabel(to stop: Stop) -> String? {
         guard let here = environment.location.coordinate else { return nil }
-        return TimeFormatting.formatDistance(meters: Geo.haversineDistanceMeters(here, stop.coordinate))
+        let minutes = max(1, Int((Geo.haversineDistanceMeters(here, stop.coordinate) / 80).rounded()))
+        return "\(minutes) min walk"
     }
 
     #if DEBUG

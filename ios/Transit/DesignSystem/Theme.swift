@@ -16,30 +16,56 @@ import TransitCore
 // be ported by reading its Tailwind classes: `bg-muted` -> Theme.muted,
 // `text-muted-foreground` -> Theme.mutedForeground, `border` ->
 // Theme.border, `rounded-md` -> Theme.radiusMD.
+//
+// 2026-11-03: the surfaces moved off shadcn grey to the "Bush" palette
+// below (the user picked it from four options). The web still uses grey.
+
+/// Surface colours, light and dark. "Bush" (2026-11-03): a faint green page
+/// with a dark green primary, forest-black in dark mode - replacing shadcn's
+/// grey. Status and route colours are unchanged.
+struct ThemePalette {
+    typealias Pair = (light: UInt32, dark: UInt32)
+    let background, grouped, card, foreground, mutedForeground, muted, accent, border, ring, primary, primaryForeground: Pair
+
+    func color(_ key: KeyPath<ThemePalette, Pair>) -> Color {
+        let pair = self[keyPath: key]
+        return Color(light: pair.light, dark: pair.dark)
+    }
+
+    /// Faintly green - bush; dark green primary, forest-black dark mode.
+    static let bush = ThemePalette(
+        background: (0xF6F9F6, 0x0C1410), grouped: (0xEDF2EE, 0x0C1410), card: (0xFFFFFF, 0x142019),
+        foreground: (0x0D1A12, 0xEEF3EF), mutedForeground: (0x5E6F64, 0x9DB0A3), muted: (0xE6EEE8, 0x1C2A21),
+        accent: (0xE6EEE8, 0x1F2E24), border: (0xD9E3DB, 0x24352A), ring: (0x173A2A, 0xCBD8CF),
+        primary: (0x173A2A, 0xE6F0E9), primaryForeground: (0xF6F9F6, 0x0C1410))
+}
+
 enum Theme {
     // MARK: Surfaces (globals.css :root / .dark)
 
-    static let background = Color(light: 0xFFFFFF, dark: 0x171717)
-    static let foreground = Color(light: 0x0A0A0A, dark: 0xF5F5F5)
-    static let card = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
+    static let background = palette.color(\.background)
+    static let foreground = palette.color(\.foreground)
+    static let card = palette.color(\.card)
     static let cardForeground = foreground
-    static let popover = Color(light: 0xFFFFFF, dark: 0x1F1F1F)
-    static let primary = Color(light: 0x171717, dark: 0xF5F5F5)
-    static let primaryForeground = Color(light: 0xFAFAFA, dark: 0x171717)
-    static let secondary = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
+    static let popover = palette.color(\.card)
+    static let primary = palette.color(\.primary)
+    static let primaryForeground = palette.color(\.primaryForeground)
+    static let secondary = palette.color(\.muted)
     static let secondaryForeground = foreground
-    static let muted = Color(light: 0xF5F5F5, dark: 0x2B2B2B)
+    static let muted = palette.color(\.muted)
     /// Behind grouped forms and lists, so white rows stand out in light
     /// mode (iOS's grouped background); the page colour in dark mode.
-    static let groupedBackground = Color(light: 0xF2F2F4, dark: 0x171717)
-    static let mutedForeground = Color(light: 0x737373, dark: 0xA3A3A3)
-    static let accent = Color(light: 0xF5F5F5, dark: 0x2E2E2E)
+    static let groupedBackground = palette.color(\.grouped)
+    static let mutedForeground = palette.color(\.mutedForeground)
+    static let accent = palette.color(\.accent)
     static let accentForeground = foreground
     static let destructive = Color(light: 0xEF4444, dark: 0x8D2020)
     static let destructiveForeground = Color(light: 0xFAFAFA, dark: 0xFAFAFA)
-    static let border = Color(light: 0xE5E5E5, dark: 0x2E2E2E)
-    static let input = Color(light: 0xE5E5E5, dark: 0x2E2E2E)
-    static let ring = Color(light: 0x0A0A0A, dark: 0xCCCCCC)
+    static let border = palette.color(\.border)
+    static let input = palette.color(\.border)
+    static let ring = palette.color(\.ring)
+
+    static let palette = ThemePalette.bush
 
     // MARK: Status (the web's Tailwind palette uses for these)
 

@@ -35,9 +35,53 @@ enum StopGlyph {
     }
 }
 
+// MARK: - Greeting
+
+/// "Good afternoon", then the date and region.
+struct HomeGreeting: View {
+    let region: String
+
+    var body: some View {
+        TimelineView(.everyMinute) { context in
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.greeting(for: context.date))
+                    .font(.geist(24, .semibold, relativeTo: .title2))
+                    .foregroundStyle(Theme.foreground)
+                    .accessibilityAddTraits(.isHeader)
+                Text("\(context.date.formatted(.dateTime.weekday(.wide).day().month(.wide))) · \(region)")
+                    .font(.meta)
+                    .foregroundStyle(Theme.mutedForeground)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 16)
+        }
+    }
+
+    static func greeting(for date: Date) -> String {
+        switch Calendar.current.component(.hour, from: date) {
+        case 5..<12: "Good morning"
+        case 12..<17: "Good afternoon"
+        case 17..<22: "Good evening"
+        default: "Late one?"
+        }
+    }
+}
+
+extension Departure {
+    var isLiveForHome: Bool { !canceled && (tripUpdateTracking || locationTracking) }
+
+    var homeCountdown: String {
+        if canceled { return "Cancelled" }
+        if timeTillArrival >= 60, let clock = TimeFormatting.convert24hTo12h(arrivalTime) { return clock }
+        return TimeFormatting.timeTillArrivalString(minutes: timeTillArrival)
+    }
+
+}
+
 // MARK: - Shortcuts
 
-/// Places and saved trips together - everything here plans a journey in one tap.
+/// Places and saved trips together - everything here plans a journey in one
+/// tap. Round icon buttons with a label underneath, like a dock.
 struct HomeShortcutsRow: View {
     let places: [SavedPlace]
     let trips: [SavedTrip]
@@ -55,15 +99,19 @@ struct HomeShortcutsRow: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
                 if let onFindVehicle {
-                    HomeFindVehicleChip(action: onFindVehicle)
+                    item("Find vehicle", action: onFindVehicle) {
+                        Circle().fill(Theme.primary)
+                            .overlay(glyph("location.viewfinder", color: Theme.primaryForeground))
+                    }
+                    .accessibilityLabel("Find my vehicle")
+                    .accessibilityHint("Finds the bus, train or ferry you're on from your location.")
                 }
                 ForEach(places, id: \.persistentModelID) { place in
-                    Button { onGo(place) } label: {
-                        chip { SavedPlaceTile(icon: place.placeIcon, size: 24) } text: { Text(place.name) }
+                    item(place.name, action: { onGo(place) }) {
+                        tinted(place.placeIcon.colorHex, symbol: place.placeIcon.systemImage)
                     }
-                    .buttonStyle(.plain)
                     .contextMenu {
                         Button { onEditPlace(place) } label: { Label("Edit", systemImage: "pencil") }
                         Button(action: onManagePlaces) { Label("Manage places", systemImage: "slider.horizontal.3") }
@@ -79,16 +127,9 @@ struct HomeShortcutsRow: View {
                 }
 
                 ForEach(trips, id: \.persistentModelID) { trip in
-                    Button { onPlanTrip(trip) } label: {
-                        chip {
-                            Image(systemName: "point.topleft.down.to.point.bottomright.curvepath")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(Color(hex: trip.colorHex))
-                                .frame(width: 24, height: 24)
-                                .background(Color(hex: trip.colorHex).opacity(0.18), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                        } text: { Text(trip.name) }
+                    item(trip.name, action: { onPlanTrip(trip) }) {
+                        tinted(trip.colorHex, symbol: "point.topleft.down.to.point.bottomright.curvepath", size: 18)
                     }
-                    .buttonStyle(.plain)
                     .contextMenu {
                         Button(action: onManageTrips) { Label("Manage trips", systemImage: "slider.horizontal.3") }
                         Divider()
@@ -101,49 +142,45 @@ struct HomeShortcutsRow: View {
                 }
 
                 if places.count < 2 {
-                    if !places.contains(where: { $0.placeIcon == .home }) { addChip("Home", icon: .home) }
-                    if !places.contains(where: { $0.placeIcon == .work }) { addChip("Work", icon: .work) }
+                    if !places.contains(where: { $0.placeIcon == .home }) { addItem("Home", icon: .home) }
+                    if !places.contains(where: { $0.placeIcon == .work }) { addItem("Work", icon: .work) }
                 }
-                addChip(nil, icon: .pin)
+                addItem(nil, icon: .pin)
             }
-            .padding(.vertical, 2)
         }
-        .contentMargins(.horizontal, 16, for: .scrollContent)
+        .contentMargins(.horizontal, 12, for: .scrollContent)
     }
 
-    private func addChip(_ name: String?, icon: SavedPlaceIcon) -> some View {
-        Button { onAddPlace(name ?? "", icon) } label: {
-            Group {
-                if let name {
-                    HStack(spacing: 6) {
-                        Image(systemName: "plus").font(.system(size: 11, weight: .semibold))
-                        Text("Add \(name.lowercased())").font(.bodyMedium)
-                    }
-                    .padding(.horizontal, 14)
-                } else {
-                    Image(systemName: "plus").font(.system(size: 13, weight: .semibold)).frame(width: 36)
-                }
-            }
-            .foregroundStyle(Theme.mutedForeground)
-            .frame(height: 36)
-            .overlay(Capsule().strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-            .contentShape(Capsule())
+    private func addItem(_ name: String?, icon: SavedPlaceIcon) -> some View {
+        item(name.map { "Add \($0.lowercased())" } ?? "Add", action: { onAddPlace(name ?? "", icon) }) {
+            Circle().strokeBorder(Theme.border, style: StrokeStyle(lineWidth: 1.5, dash: [4, 3]))
+                .overlay(glyph(name == nil ? "plus" : icon.systemImage, color: Theme.mutedForeground, size: 18))
         }
-        .buttonStyle(.plain)
         .accessibilityLabel(name.map { "Add \($0.lowercased())" } ?? "Add place")
     }
 
-    private func chip(@ViewBuilder icon: () -> some View, @ViewBuilder text: () -> some View) -> some View {
-        HStack(spacing: 8) {
-            icon()
-            text().font(.bodyMedium).foregroundStyle(Theme.foreground).lineLimit(1)
+    private func tinted(_ hex: String, symbol: String, size: CGFloat = 20) -> some View {
+        Circle().fill(Color(hex: hex).opacity(0.16))
+            .overlay(glyph(symbol, color: Color(hex: hex), size: size))
+    }
+
+    private func glyph(_ name: String, color: Color, size: CGFloat = 20) -> some View {
+        Image(systemName: name).font(.system(size: size, weight: .semibold)).foregroundStyle(color)
+    }
+
+    private func item(_ label: String, action: @escaping () -> Void, @ViewBuilder icon: () -> some View) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                icon().frame(width: 56, height: 56)
+                Text(label)
+                    .font(.geist(12, .medium, relativeTo: .caption))
+                    .foregroundStyle(Theme.foreground)
+                    .lineLimit(1)
+            }
+            .frame(width: 70)
+            .contentShape(Rectangle())
         }
-        .padding(.leading, 6)
-        .padding(.trailing, 14)
-        .frame(height: 36)
-        .background(Theme.card, in: Capsule())
-        .overlay(Capsule().strokeBorder(Theme.border, lineWidth: 1))
-        .contentShape(Capsule())
+        .buttonStyle(.plain)
     }
 }
 
@@ -188,111 +225,105 @@ struct HomeHeading<Action: View>: View {
     }
 }
 
-/// One surface around a list of rows, with hairlines between them - or,
-/// with `columns` > 1 (iPad), a grid of cards so both sides fill evenly.
-struct HomeGroup<Item: Identifiable, Row: View>: View {
+/// Board cards stacked, or on iPad (`columns` > 1) in a grid so both
+/// sides fill evenly.
+struct HomeBoardStack<Item: Identifiable, Card: View>: View {
     let items: [Item]
     var columns = 1
-    @ViewBuilder var row: (Item) -> Row
+    @ViewBuilder var card: (Item) -> Card
 
     var body: some View {
-        if columns > 1 {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), spacing: 12) {
-                ForEach(items) { item in
-                    row(item)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .shadCardBackground(radius: 14)
-                }
-            }
-            .padding(.horizontal, 16)
-        } else {
-            list
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: columns), spacing: 10) {
+            ForEach(items) { item in card(item) }
         }
-    }
-
-    private var list: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                if index > 0 {
-                    Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 46)
-                }
-                row(item)
-            }
-        }
-        .shadCardBackground(radius: 14)
         .padding(.horizontal, 16)
     }
 }
 
-/// A compact stop row: tile, name and distance, then the next departures
-/// as route + minutes pairs.
-struct HomeCompactStopRow<Tile: View>: View {
+/// A stop as a tiny departure board: a header, then a line per departure
+/// with its headsign and a right-aligned countdown.
+struct HomeBoardCard<Tile: View>: View {
     let stopQuery: String
     let title: String
     var detail: String?
-    var departureCount = 3
+    var lines = 3
     @ViewBuilder var tile: Tile
 
     @Environment(AppEnvironment.self) private var environment
     @State private var loader = NextDeparturesLoader()
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            tile
-                .frame(width: 22, height: 22)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(title)
-                        .font(.bodyMedium)
-                        .foregroundStyle(Theme.foreground)
-                        .lineLimit(1)
-                    Spacer(minLength: 6)
-                    if let detail {
-                        Text(detail).font(.meta).foregroundStyle(Theme.mutedForeground).fixedSize()
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                tile.frame(width: 24, height: 24).accessibilityHidden(true)
+                Text(title).font(.cardTitle).foregroundStyle(Theme.foreground).lineLimit(1)
+                Spacer(minLength: 6)
+                if let detail {
+                    Text(detail).font(.meta).foregroundStyle(Theme.mutedForeground).fixedSize()
+                }
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.mutedForeground.opacity(0.7))
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            if let list = loader.departures {
+                if list.isEmpty {
+                    note("No more departures today")
+                } else {
+                    ForEach(list) { departure in
+                        Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 14)
+                        line(departure)
                     }
                 }
-                departures
+            } else if loader.failed {
+                note("Couldn't load departures")
+            } else {
+                ForEach(0..<lines, id: \.self) { _ in
+                    Rectangle().fill(Theme.border).frame(height: 1).padding(.leading, 14)
+                    HStack { Text("NX1 Somewhere far away"); Spacer(); Text("10 min") }
+                        .font(.bodyText).padding(.horizontal, 14).padding(.vertical, 9)
+                        .redacted(reason: .placeholder)
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.bottom, 3)
+        .opacity(loader.isStale ? 0.6 : 1)
+        .shadCardBackground(radius: 16)
         .contentShape(Rectangle())
         .foregroundPoll(every: .seconds(30), id: stopQuery) {
-            await loader.load(stop: stopQuery, limit: departureCount, api: environment.api)
+            await loader.load(stop: stopQuery, limit: lines, api: environment.api)
         }
     }
 
-    @ViewBuilder
-    private var departures: some View {
-        if let list = loader.departures {
-            if list.isEmpty {
-                Text("No more departures today").font(.meta).foregroundStyle(Theme.mutedForeground)
-            } else {
-                // Always one line: drop departures from the end until the
-                // rest fit (stacking them made some rows very tall).
-                ViewThatFits(in: .horizontal) {
-                    ForEach([5, 4, 3, 2], id: \.self) { count in
-                        HStack(spacing: 12) { pairs(Array(list.prefix(count))) }
-                    }
-                    VStack(alignment: .leading, spacing: 6) { pairs(Array(list.prefix(2))) }
-                }
-                .opacity(loader.isStale ? 0.6 : 1)
+    private func line(_ departure: Departure) -> some View {
+        HStack(spacing: 10) {
+            RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 11)
+                .frame(minWidth: 40, alignment: .leading)
+            Text(departure.headsign)
+                .font(.bodyText)
+                .foregroundStyle(departure.canceled ? Theme.mutedForeground : Theme.foreground)
+                .strikethrough(departure.canceled)
+                .lineLimit(1)
+            Spacer(minLength: 8)
+            if departure.isLiveForHome {
+                Image(systemName: "dot.radiowaves.up.forward")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.live)
+                    .accessibilityHidden(true)
             }
-        } else if loader.failed {
-            Text("Couldn't load departures").font(.meta).foregroundStyle(Theme.mutedForeground)
-        } else {
-            Text("Loading").font(.meta).foregroundStyle(Theme.mutedForeground).redacted(reason: .placeholder)
+            HomeMinutes(departure: departure, size: 15)
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
     }
 
-    private func pairs(_ list: [Departure]) -> some View {
-        ForEach(list) { departure in
-            HStack(spacing: 4) {
-                RouteBadge(name: departure.route.name, colorHex: departure.route.color, size: 10)
-                HomeMinutes(departure: departure, size: 12)
-            }
-        }
+    private func note(_ text: String) -> some View {
+        Text(text).font(.meta).foregroundStyle(Theme.mutedForeground)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14).padding(.vertical, 10)
     }
 }
 
