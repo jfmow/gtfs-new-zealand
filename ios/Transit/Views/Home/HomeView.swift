@@ -31,9 +31,14 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                StopSearchField(onSelect: { query in
-                    path.append(BoardDestination(stopQuery: query, title: query))
-                }, focusRequest: router.stopSearchFocusRequest)
+                // Search and Settings on one row, in place of a navigation
+                // bar that held only the gear (a big empty gap up top).
+                HStack(spacing: 10) {
+                    StopSearchField(onSelect: { query in
+                        path.append(BoardDestination(stopQuery: query, title: query))
+                    }, focusRequest: router.stopSearchFocusRequest)
+                    MapSettingsButton()
+                }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .padding(.bottom, 12)
@@ -62,10 +67,10 @@ struct HomeView: View {
                 .refreshable { await loadNearby() }
             }
             .groupedPageBackground()
-            // The greeting carries the region; an empty title keeps the bar clear.
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .appToolbar()
+            // No bar on Home itself - the greeting carries the region and
+            // Settings sits beside the search. Pushed boards get their own.
+            .navigationTitle("Home")
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 #if DEBUG
                 seedDemoIfAsked()

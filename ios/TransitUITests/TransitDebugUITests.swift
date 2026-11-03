@@ -63,7 +63,7 @@ final class TransitDebugUITests: XCTestCase {
         app.launchArguments += ["-hasOnboarded", "YES"]
         app.launch()
         sleep(3)
-        let settings = app.navigationBars.buttons["Settings"].firstMatch
+        let settings = app.buttons["Settings"].firstMatch
         XCTAssertTrue(settings.waitForExistence(timeout: 3))
         settings.tap()
         sleep(2)
@@ -515,7 +515,7 @@ final class TransitDebugUITests: XCTestCase {
             app.buttons["Done"].firstMatch.tap()
             sleep(1)
         }
-        let settingsButton = app.navigationBars.buttons["Settings"].firstMatch
+        let settingsButton = app.buttons["Settings"].firstMatch
         if settingsButton.waitForExistence(timeout: 2) {
             do {
                 settingsButton.tap()
@@ -1092,7 +1092,7 @@ final class TransitDebugUITests: XCTestCase {
             }
         }
 
-        let settings = app.navigationBars.buttons["Settings"].firstMatch
+        let settings = app.buttons["Settings"].firstMatch
         if settings.waitForExistence(timeout: 3) {
             do {
                 settings.tap()

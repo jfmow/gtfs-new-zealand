@@ -20,17 +20,20 @@ struct AlertsTabView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Timetable-only regions (Otago) have no service alerts.
-                if environment.region.hasRealtime {
-                    HStack(spacing: 8) {
+                // The chips and Settings on one row, in place of a navigation
+                // bar (the tab bar already says "Updates"). Timetable-only
+                // regions (Otago) have no service alerts - just Settings.
+                HStack(spacing: 8) {
+                    if environment.region.hasRealtime {
                         Chip(label: "For you", isActive: showsInbox) { showsInbox = true }
                         Chip(label: "Service alerts", isActive: !showsInbox) { showsInbox = false }
-                        Spacer()
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .padding(.bottom, 8)
+                    Spacer()
+                    MapSettingsButton()
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
                 if showsInbox || !environment.region.hasRealtime {
                     NotificationsInbox()
                 } else {
@@ -41,7 +44,7 @@ struct AlertsTabView: View {
             .groupedPageBackground()
             .navigationTitle("Updates")
             .navigationBarTitleDisplayMode(.inline)
-            .appToolbar()
+            .toolbar(.hidden, for: .navigationBar)
             .sheet(isPresented: $isShowingSubscription) {
                 if let selectedStop {
                     AlertSubscriptionSheet(target: .stop(query: selectedStop, title: selectedStop)).shadSheet(detents: [.large])

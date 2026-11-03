@@ -110,8 +110,10 @@ struct PlannerView: View {
                 if selectedPlanID.map(ids.contains) != true { selectedPlanID = ids.first }
             }
             .navigationTitle("Planner")
+            // The tab's own screen has no bar (Settings is beside "Where
+            // to?"); opened over step-by-step it keeps one for Close.
+            .toolbar(onClose == nil ? .hidden : .visible, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
-            .appToolbar()
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     if let onClose { Button("Close", action: onClose) }
@@ -295,11 +297,16 @@ struct PlannerView: View {
                     .zIndex(2)
             }
             HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.mutedForeground)
-                LocationField(placeholder: "Where to?", storageKey: "recentEndLocations", location: $end, isBorderless: true)
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Theme.mutedForeground)
+                    LocationField(placeholder: "Where to?", storageKey: "recentEndLocations", location: $end, isBorderless: true)
+                }
+                .padding(.horizontal, 14)
+                .shadCardBackground(radius: 16)
+                // Settings beside the field, in place of a navigation bar
+                // (the tab bar already says "Planner").
+                if onClose == nil { MapSettingsButton() }
             }
-            .padding(.horizontal, 14)
-            .shadCardBackground(radius: 16)
             .zIndex(1)
             if !isEditingFrom {
                 Button { isEditingFrom = true } label: {
