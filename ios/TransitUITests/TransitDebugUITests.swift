@@ -584,7 +584,7 @@ final class TransitDebugUITests: XCTestCase {
         let row = app.buttons.matching(identifier: "departure-row").firstMatch
         guard row.waitForExistence(timeout: 10) else { throw XCTSkip("no services at this stop right now") }
         row.tap()
-        let nextTag = app.staticTexts["Next stop"]
+        let nextTag = app.descendants(matching: .any).matching(identifier: "tracker-next-stop").firstMatch
         guard nextTag.waitForExistence(timeout: 10) else { attach("dc-00-no-list"); throw XCTSkip("no live vehicle on this service") }
 
         // Expand: tap the drawer's header (half -> full).

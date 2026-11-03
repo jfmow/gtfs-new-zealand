@@ -654,6 +654,8 @@ enum Headsign {
         let words = text.replacingOccurrences(of: #"\s{2,}"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespaces)
             .split(separator: " ")
+            // Bare numbers ("Swanson 1 To Manukau 1") are feed noise.
+            .filter { !$0.allSatisfy(\.isNumber) }
         return words.enumerated().map { index, word in
             let lower = word.lowercased()
             if index > 0, small.contains(lower) { return lower }
