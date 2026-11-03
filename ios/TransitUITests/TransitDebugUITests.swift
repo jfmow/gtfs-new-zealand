@@ -88,7 +88,7 @@ final class TransitDebugUITests: XCTestCase {
     func testLaterDepartures() throws {
         app.launch()
         app.tabBars.buttons["Planner"].tap()
-        let fromField = app.textFields.element(boundBy: 0)
+        let fromField = plannerFromField()
         XCTAssertTrue(fromField.waitForExistence(timeout: 5))
         fromField.tap()
         app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch.tap()
@@ -707,13 +707,16 @@ final class TransitDebugUITests: XCTestCase {
         sleep(1)
 
         // From: current location (already set via simctl location) - the
-        // option shows in the field's dropdown once it's focused.
-        let fromField = app.textFields.element(boundBy: 0)
+        // option shows in the field's dropdown once it's focused. The field
+        // is tucked behind "From … Change" (the first text field is now
+        // "Where to?", which this used to type into by mistake).
+        let fromField = plannerFromField()
         if fromField.waitForExistence(timeout: 3) { fromField.tap() }
         let useCurrentLocationButtons = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location"))
         XCTAssertTrue(useCurrentLocationButtons.firstMatch.waitForExistence(timeout: 5))
         useCurrentLocationButtons.firstMatch.tap()
-        sleep(2)
+        // The field folds back to "From … Change" once the fix lands.
+        XCTAssertTrue(app.buttons["planner-change-from"].waitForExistence(timeout: 15), "From never got the current location")
         attach("journey-01-from-set")
 
         // To: type a real, genuinely-far destination (far enough from
@@ -770,9 +773,26 @@ final class TransitDebugUITests: XCTestCase {
                 // whatever screen came back into view underneath it. Tap
                 // End and confirm the Planner beneath is drawn cleanly, not
                 // still showing tracker content composited over it.
-                let endButton = app.buttons["End"]
-                if endButton.waitForExistence(timeout: 3) {
-                    endButton.tap()
+                // Share must open the share sheet. It used to sit in the top
+                // bar's menu, behind the always-presented itinerary sheet,
+                // where a share sheet can't be presented - the tap did nothing.
+                let share = app.buttons["Share journey"]
+                XCTAssertTrue(share.waitForExistence(timeout: 5), "no Share journey button in the tracker")
+                share.tap()
+                let shareSheet = app.otherElements["ActivityListView"]
+                XCTAssertTrue(shareSheet.waitForExistence(timeout: 5), "Share journey didn't open the share sheet")
+                attach("journey-05a-share-sheet")
+                let close = app.buttons["Close"].firstMatch
+                if close.waitForExistence(timeout: 2) { close.tap() } else { app.swipeDown() }
+                sleep(1)
+
+                // End lives in the top bar's ⋯ menu (behind a confirmation).
+                let more = app.buttons["More"].firstMatch
+                if more.waitForExistence(timeout: 3) {
+                    more.tap()
+                    let endItem = app.buttons["End journey"].firstMatch
+                    XCTAssertTrue(endItem.waitForExistence(timeout: 3), "no End journey in the ⋯ menu")
+                    endItem.tap()
                     let confirm = app.buttons["End journey"]
                     XCTAssertTrue(confirm.waitForExistence(timeout: 3), "End didn't ask for confirmation")
                     attach("journey-05b-end-confirm")
@@ -798,7 +818,7 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 2)
         app.tabBars.buttons["Planner"].tap()
         sleep(1)
-        let fromField = app.textFields.element(boundBy: 0)
+        let fromField = plannerFromField()
         if fromField.waitForExistence(timeout: 3) { fromField.tap() }
         let myLocation = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch
         XCTAssertTrue(myLocation.waitForExistence(timeout: 5))
@@ -1192,7 +1212,7 @@ final class TransitDebugUITests: XCTestCase {
         dismissSystemAlertIfPresent(timeout: 2)
 
         app.tabBars.buttons["Planner"].tap()
-        let fromField = app.textFields.element(boundBy: 0)
+        let fromField = plannerFromField()
         XCTAssertTrue(fromField.waitForExistence(timeout: 5))
         fromField.tap()
         let current = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "My location")).firstMatch
@@ -1864,7 +1884,7 @@ final class TransitDebugUITests: XCTestCase {
         sleep(1)
         // A named origin rather than "My location", which sometimes
         // wasn't offered in time.
-        let fromField = app.textFields.element(boundBy: 0)
+        let fromField = plannerFromField()
         if fromField.waitForExistence(timeout: 3) {
             fromField.tap()
             fromField.typeText("Britomart")

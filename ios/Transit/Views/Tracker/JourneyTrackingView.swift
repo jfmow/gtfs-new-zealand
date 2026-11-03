@@ -237,9 +237,10 @@ struct JourneyTrackingView: View {
                     if !PowerState.shared.isLowPower {
                         Toggle(isOn: $is3D) { Label("3D map", systemImage: "view.3d") }
                     }
-                    ShareLink(item: shareURL, subject: Text("My journey"), message: Text("Follow my journey")) {
-                        Label("Share journey", systemImage: "square.and.arrow.up")
-                    }
+                    // No Share here: this bar sits behind the always-presented
+                    // itinerary sheet, and a share sheet can only come from
+                    // the frontmost presentation - it silently did nothing.
+                    // Share is in the sheet's actions row.
                     Divider()
                     Button(role: .destructive) { isConfirmingEnd = true } label: {
                         Label("End journey", systemImage: "stop.circle")
@@ -742,25 +743,37 @@ struct JourneyTrackingView: View {
             .first
     }
 
-    /// "Find a better route" (the web's re-plan popover); sharing moved to
-    /// the top bar's menu.
-    @ViewBuilder
+    /// "Find a better route" (the web's re-plan popover) beside Share. Share
+    /// has to live in the sheet: from the map behind it (the top bar's
+    /// menu), the share sheet can't be presented and nothing happened.
     private var actionsRow: some View {
         let choices = replanChoices
-        if !choices.isEmpty {
-            Menu {
-                Section("Re-plan from…") {
-                    ForEach(choices) { choice in
-                        Button { startReplan(choice) } label: {
-                            Text(choice.label)
-                            Text(choice.detail)
+        return HStack(spacing: 8) {
+            if !choices.isEmpty {
+                Menu {
+                    Section("Re-plan from…") {
+                        ForEach(choices) { choice in
+                            Button { startReplan(choice) } label: {
+                                Text(choice.label)
+                                Text(choice.detail)
+                            }
                         }
                     }
+                } label: {
+                    Label("Find a better route", systemImage: "arrow.triangle.2.circlepath")
                 }
-            } label: {
-                Label("Find a better route", systemImage: "arrow.triangle.2.circlepath")
+                .buttonStyle(.shad(replanUrgent ? .destructive : .outline, size: .default, fullWidth: true))
             }
-            .buttonStyle(.shad(replanUrgent ? .destructive : .outline, size: .default, fullWidth: true))
+
+            ShareLink(item: shareURL, subject: Text("My journey"), message: Text("Follow my journey")) {
+                if choices.isEmpty {
+                    Label("Share journey", systemImage: "square.and.arrow.up")
+                } else {
+                    Image(systemName: "square.and.arrow.up")
+                }
+            }
+            .buttonStyle(.shad(.outline, size: choices.isEmpty ? .default : .icon, fullWidth: choices.isEmpty))
+            .accessibilityLabel("Share journey")
         }
     }
 
