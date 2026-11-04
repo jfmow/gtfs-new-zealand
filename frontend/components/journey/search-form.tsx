@@ -7,6 +7,7 @@ import { Circle, Navigation } from "lucide-react"
 import type { Location } from "./types"
 import type { RouteOption } from "./route-filter"
 import { PlannerOptionsChips, type TravelMode } from "./planner-options"
+import { MobileSettingsLink } from "@/components/nav"
 
 interface SearchFormProps {
     startLocation: Location | null
@@ -82,7 +83,8 @@ export function SearchForm({
             )}
 
             {/* The input draws its own search icon. */}
-            <div className="rounded-2xl border bg-card px-1.5 shadow-sm focus-within:ring-1 focus-within:ring-ring">
+            <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1 rounded-2xl border bg-card px-1.5 shadow-sm focus-within:ring-1 focus-within:ring-ring">
                 <LocationSearchInput
                     placeholder="Where to?"
                     value={endLocation}
@@ -94,6 +96,8 @@ export function SearchForm({
                     searchParamKey='end'
                     bare
                 />
+            </div>
+            <MobileSettingsLink />
             </div>
 
             {!editingFrom && (

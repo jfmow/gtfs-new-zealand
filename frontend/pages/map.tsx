@@ -2,7 +2,6 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import dynamic from "next/dynamic"
 import { useRouter } from "next/router"
 import { ListFilter, MapPin, Search, X } from "lucide-react"
-import { Header } from "@/components/nav"
 import LoadingSpinner from "@/components/loading-spinner"
 import ErrorScreen from "@/components/ui/error-screen"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -21,6 +20,7 @@ import type { MapItem } from "@/components/map/markers/create"
 import type { Stop } from "@/components/map/stops-map"
 import { MapModeSwitch, type MapMode } from "@/components/map/mode-switch"
 import { MapTopBar } from "@/components/map/floating-controls"
+import { Header, MobileSettingsLink } from "@/components/nav"
 import { MAP_SIDE_PANEL_OCCUPIED_WIDTH } from "@/components/map/map-side-panel"
 import { HomeStopRow, StopModeTile } from "@/components/home/home-stop-row"
 import { StopBoardPage, StopBoardPanel } from "@/components/stops/stop-board"
@@ -69,7 +69,7 @@ export default function MapPage() {
             <Header title={mode === "vehicles" ? "Vehicle tracker" : "Stops map"} />
             {/* Full bleed: cancels the header's bottom margin and fills the
                 screen down to the tab bar. */}
-            <div className="map-page relative -mt-4 h-[calc(100svh-3rem-1px-var(--tabbar-h))] overflow-hidden">
+            <div className="map-page relative -mt-[var(--header-mb)] h-[calc(100svh-var(--header-h)-var(--tabbar-h))] overflow-hidden">
                 {router.isReady && (mode === "vehicles" ? <VehiclesMode /> : <StopsMode />)}
             </div>
         </>
@@ -224,6 +224,7 @@ function StopsMode() {
 
             <MapTopBar switcher={<MapModeSwitch mode="stops" />} insetLeft={panelOpen ? MAP_SIDE_PANEL_OCCUPIED_WIDTH : 0}>
                 <FilterMenu value={filter} onChange={setFilter} noun="stops" />
+                <MobileSettingsLink />
             </MapTopBar>
 
             {preview && (
@@ -506,6 +507,7 @@ function VehiclesMode() {
                             <MapPin className="h-4 w-4" /> Show stops
                         </DropdownMenuCheckboxItem>
                     </FilterMenu>
+                    <MobileSettingsLink />
                 </MapTopBar>
             )}
 

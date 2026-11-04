@@ -36,6 +36,9 @@ function useNavTabs(): NavTab[] {
     return NAV_TABS
 }
 
+/** A tab's own page - on a phone these have no top bar (see `NavBar`). */
+const TAB_ROOTS = new Set(['/', '/plan', '/map', '/alerts'])
+
 /** Titles for pages that aren't a tab (reached from the menu). */
 const PAGE_TITLES: Record<string, string> = {
     '/settings': 'Settings',
@@ -68,6 +71,27 @@ export default function NavBar() {
         document.documentElement.setAttribute('data-tabbar', '')
         return () => document.documentElement.removeAttribute('data-tabbar')
     }, [isMobile])
+
+    // On a phone a tab's own page has no top bar: the tab bar already names
+    // it, and Settings sits beside the page's first row (`MobileSettingsLink`)
+    // - the bar was a big, nearly empty gap (as on iOS, 2026-11-03). Other
+    // pages (Settings, Privacy, a journey link) keep it for their title.
+    const hideHeader = isMobile && TAB_ROOTS.has(router.pathname)
+    useEffect(() => {
+        if (!hideHeader) return
+        document.documentElement.setAttribute('data-noheader', '')
+        return () => document.documentElement.removeAttribute('data-noheader')
+    }, [hideHeader])
+
+    if (hideHeader) {
+        return (
+            <>
+                {/* Clear of the status bar - except the map, which runs under it. */}
+                {router.pathname !== '/map' && <div aria-hidden className="h-[calc(env(safe-area-inset-top)+0.75rem)]" />}
+                <TabBar tabs={tabs} activeTab={activeTab} unread={unread} />
+            </>
+        )
+    }
 
     return (
         <>
@@ -172,6 +196,20 @@ function UnreadBadge({ count }: { count: number }) {
             className="flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
         >
             {count > 9 ? '9+' : count}
+        </span>
+    )
+}
+
+/**
+ * Settings beside a tab page's first row, on a phone only - where that page
+ * has no top bar (`NavBar`). Wider screens keep it in the top bar.
+ */
+export function MobileSettingsLink({ className }: { className?: string }) {
+    const isMobile = useIsMobile()
+    if (!isMobile) return null
+    return (
+        <span className={cn("shrink-0 [&>a]:border [&>a]:border-border [&>a]:bg-card [&>a]:shadow-sm", className)}>
+            <SettingsLink />
         </span>
     )
 }

@@ -15,7 +15,7 @@ import { hasRealtime } from "@/lib/url-store"
 import { NotificationsInbox } from "@/components/notifications/bell"
 import { ModeTile, SavedTile } from "@/components/home/tiles"
 import { useQueryParams } from "@/lib/url-params"
-import { Header } from "@/components/nav"
+import { Header, MobileSettingsLink } from "@/components/nav"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { formatTextToNiceLookingWords } from "@/lib/formating"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -75,8 +75,9 @@ export default function Alerts() {
         <>
             <Header title="Updates" />
             <div className="mx-auto w-full max-w-[1400px] px-4 pb-8">
+                <div className="mb-4 flex items-center gap-2">
                 {realtime && (
-                    <div className="mb-4 flex gap-2" role="tablist">
+                    <div className="flex gap-2" role="tablist">
                         {([["inbox", "For you"], ["alerts", "Service alerts"]] as const).map(([value, label]) => (
                             <button
                                 key={value}
@@ -94,6 +95,8 @@ export default function Alerts() {
                         ))}
                     </div>
                 )}
+                <MobileSettingsLink className="ml-auto" />
+                </div>
                 {showsAlerts ? <ServiceAlerts selected={selected} stop={stop} /> : (
                     <div className="mx-auto max-w-2xl"><NotificationsInbox /></div>
                 )}

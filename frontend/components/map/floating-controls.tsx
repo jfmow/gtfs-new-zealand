@@ -42,7 +42,7 @@ export function MapTopBar({ switcher, children, insetLeft = 0, note, below }: { 
     // filter (and anything else) on the right; an active filter's chip below.
     return (
         <div
-            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 px-3 pt-3 transition-[padding] duration-300"
+            className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col gap-2 px-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] transition-[padding] duration-300"
             style={{ paddingLeft: insetLeft + 12 }}
         >
             <div className="flex items-center gap-2">
