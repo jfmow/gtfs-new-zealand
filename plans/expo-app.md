@@ -336,7 +336,7 @@ Not done yet:
   `transit-expo` to `dev.suddsy.transit` / `transit`, then deleting `ios/`.
 - Android: builds and runs on the API 37 emulator (2026-11-04) - onboarding,
   Home boards with live data, Map (MapLibre tiles + clustered stops)
-  checked by tapping through. Package is already `dev.suddsy.transit`
+  checked by tapping through. Package is `dev.suddsy.transit.android`
   (Firebase project `transit-nz`); EAS project `@jfmow/transit` linked.
   Debug builds need Android 17's local-network permission to reach Metro.
 

@@ -50,3 +50,7 @@ example
 /modules/*/android/build
 /modules/*/android/.gradle
 /modules/*/android/.cxx
+
+# Firebase client config: supplied to EAS builds via the GOOGLE_SERVICES_JSON file env var
+google-services.json
+*service-account*.json

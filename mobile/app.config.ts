@@ -11,7 +11,7 @@ import type { ConfigContext, ExpoConfig } from "expo/config"
  *   profile): dev.suddsy.transit.expo and scheme `transit-expo`, so a dev
  *   build sits beside the store app on the same phone.
  *
- * Android's package is dev.suddsy.transit either way (it's new to the Play
+ * Android's package is dev.suddsy.transit.android either way (it's new to the Play
  * Store - nothing to coexist with).
  */
 const VARIANT = process.env.APP_VARIANT === "production" ? "production" : "development"
@@ -34,7 +34,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             infoPlist: { ...ios.infoPlist, UIBackgroundModes: uniq(ios.infoPlist?.UIBackgroundModes as string[] | undefined) },
             entitlements: { ...ios.entitlements, "com.apple.security.application-groups": ["group.dev.suddsy.transit"] },
         },
-        android: { ...config.android, permissions: uniq(config.android?.permissions) },
+        android: {
+            ...config.android,
+            permissions: uniq(config.android?.permissions),
+            // Not committed: EAS builds get it from the GOOGLE_SERVICES_JSON file env var,
+            // local builds read mobile/google-services.json.
+            googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? config.android?.googleServicesFile,
+        },
         extra: {
             ...config.extra,
             appVariant: VARIANT,
