@@ -163,21 +163,29 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	// only one region needs to run them.
 	primaryRegion := region == "at"
 
-	// ─────────────── native (iOS) device registration ───────────────
+	// ─────────────── native (iOS + Android) device registration ───────────────
 	//
 	// A device registers once (storing its own deviceId/secret pair, e.g. in
 	// the Keychain) and from then on authenticates every /notifications/*
 	// call with X-Device-Id/X-Device-Secret headers instead of the web push
 	// endpoint/p256dh/auth triple - see identityFromRequest.
 
+	// `platform=android` (the Expo app on Android) registers an FCM token
+	// instead; anything else is the iOS app, as before.
 	deviceRoute.POST("/register", func(c echo.Context) error {
-		client, err := notificationDB.RegisterIOSDevice(
-			c.FormValue("deviceId"),
-			c.FormValue("secret"),
-			c.FormValue("apnsToken"),
-			c.FormValue("env"),
-			c.FormValue("pushToStartToken"),
-		)
+		var client *NotificationClient
+		var err error
+		if c.FormValue("platform") == "android" {
+			client, err = notificationDB.RegisterAndroidDevice(c.FormValue("deviceId"), c.FormValue("secret"), c.FormValue("fcmToken"))
+		} else {
+			client, err = notificationDB.RegisterIOSDevice(
+				c.FormValue("deviceId"),
+				c.FormValue("secret"),
+				c.FormValue("apnsToken"),
+				c.FormValue("env"),
+				c.FormValue("pushToStartToken"),
+			)
+		}
 		if err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, ErrDeviceSecretMismatch) {
@@ -189,13 +197,19 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 	})
 
 	deviceRoute.POST("/update-token", func(c echo.Context) error {
-		client, err := notificationDB.UpdateIOSDeviceTokens(
-			c.FormValue("deviceId"),
-			c.FormValue("secret"),
-			c.FormValue("apnsToken"),
-			c.FormValue("env"),
-			c.FormValue("pushToStartToken"),
-		)
+		var client *NotificationClient
+		var err error
+		if c.FormValue("platform") == "android" {
+			client, err = notificationDB.UpdateAndroidDeviceToken(c.FormValue("deviceId"), c.FormValue("secret"), c.FormValue("fcmToken"))
+		} else {
+			client, err = notificationDB.UpdateIOSDeviceTokens(
+				c.FormValue("deviceId"),
+				c.FormValue("secret"),
+				c.FormValue("apnsToken"),
+				c.FormValue("env"),
+				c.FormValue("pushToStartToken"),
+			)
+		}
 		if err != nil {
 			status := http.StatusBadRequest
 			if errors.Is(err, ErrDeviceSecretMismatch) || errors.Is(err, ErrClientNotFound) {
@@ -1290,7 +1304,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 		status := map[string]any{
 			"platform": client.Platform,
-			"hasToken": client.Platform != "ios" || client.ApnsToken != "",
+			"hasToken": (client.Platform != "ios" && client.Platform != "android") || client.ApnsToken != "" || client.FcmToken != "",
 			"env":      client.ApnsEnv,
 			"sent":     false,
 			"error":    "",

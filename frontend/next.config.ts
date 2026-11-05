@@ -5,6 +5,8 @@ const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: false,
   devIndicators: false,
+  // packages/shared ships TypeScript source (no build step), so Next compiles it.
+  transpilePackages: ["@transit/shared"],
   // Shown at the foot of Settings.
   env: { NEXT_PUBLIC_APP_VERSION: pkg.version },
   // /stops and /vehicles became the Map tab's two modes. Query strings pass

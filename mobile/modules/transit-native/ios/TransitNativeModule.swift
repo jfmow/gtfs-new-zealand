@@ -1,0 +1,175 @@
+import ActivityKit
+import ExpoModulesCore
+import SQLite3
+import WidgetKit
+
+/// The native side of the Expo app on iOS - what iOS `LiveActivityCoordinator`
+/// and `SharedStore` did: start/update/end the journey Live Activity, stream
+/// its push and push-to-start tokens, adopt activities the server
+/// push-started, and write the app group the widgets and Siri read.
+public class TransitNativeModule: Module {
+    private static let appGroup = "group.dev.suddsy.transit"
+    private var observers: [Task<Void, Never>] = []
+
+    public func definition() -> ModuleDefinition {
+        Name("TransitNative")
+
+        Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded")
+
+        OnStartObserving {
+            self.startObserving()
+        }
+
+        OnStopObserving {
+            self.observers.forEach { $0.cancel() }
+            self.observers = []
+        }
+
+        // MARK: app group
+
+        Function("setSharedString") { (key: String, value: String?) in
+            let defaults = UserDefaults(suiteName: Self.appGroup)
+            defaults?.set(value, forKey: key)
+        }
+
+        /// JSON stored as Data - the shape `SharedStore` decodes.
+        Function("setSharedJSON") { (key: String, json: String) in
+            UserDefaults(suiteName: Self.appGroup)?.set(Data(json.utf8), forKey: key)
+        }
+
+        Function("reloadWidgets") {
+            WidgetCenter.shared.reloadAllTimelines()
+        }
+
+        // MARK: migration from the SwiftUI app (plans/expo-app.md phase 7)
+
+        /// The SwiftUI app's saved stops, places and trips, read straight from
+        /// its SwiftData store (`default.store` in the app group) - plus the
+        /// region it last had selected. Nil when there's no store.
+        Function("readLegacyStore") { () -> [String: Any]? in
+            Self.readLegacyStore()
+        }
+
+        // MARK: Live Activities
+
+        Function("liveActivitiesEnabled") { () -> Bool in
+            ActivityAuthorizationInfo().areActivitiesEnabled
+        }
+
+        Function("activeActivities") { () -> [[String: String]] in
+            Activity<JourneyActivityAttributes>.activities.map { ["id": $0.id, "planId": $0.attributes.planID] }
+        }
+
+        AsyncFunction("startActivity") { (planId: String, destinationLabel: String, regionSlug: String, contentJSON: String) -> String in
+            // One journey at a time: adopt one already running for this plan.
+            if let existing = Activity<JourneyActivityAttributes>.activities.first(where: { $0.attributes.planID == planId }) {
+                self.watchToken(existing)
+                return existing.id
+            }
+            for other in Activity<JourneyActivityAttributes>.activities {
+                await other.end(nil, dismissalPolicy: .immediate)
+            }
+            let state = try Self.decode(contentJSON)
+            let attributes = JourneyActivityAttributes(planID: planId, destinationLabel: destinationLabel, regionSlug: regionSlug)
+            let activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: state, staleDate: Date().addingTimeInterval(15 * 60)),
+                pushType: .token
+            )
+            self.watchToken(activity)
+            return activity.id
+        }
+
+        /// With a title and body, the update also alerts (expands the Dynamic Island).
+        AsyncFunction("updateActivity") { (id: String, contentJSON: String, alertTitle: String?, alertBody: String?) in
+            guard let activity = Activity<JourneyActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+            let state = try Self.decode(contentJSON)
+            var alert: AlertConfiguration?
+            if let alertTitle, let alertBody {
+                alert = AlertConfiguration(title: LocalizedStringResource(stringLiteral: alertTitle), body: LocalizedStringResource(stringLiteral: alertBody), sound: .default)
+            }
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(15 * 60)), alertConfiguration: alert)
+        }
+
+        AsyncFunction("endActivity") { (id: String?) in
+            for activity in Activity<JourneyActivityAttributes>.activities where id == nil || activity.id == id {
+                await activity.end(nil, dismissalPolicy: .default)
+            }
+        }
+    }
+
+    private static func readLegacyStore() -> [String: Any]? {
+        guard let dir = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
+            .appending(path: "Library/Application Support") else { return nil }
+        let path = dir.appending(path: "default.store").path
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        var db: OpaquePointer?
+        guard sqlite3_open_v2(path, &db, SQLITE_OPEN_READONLY, nil) == SQLITE_OK, let db else { return nil }
+        defer { sqlite3_close(db) }
+
+        // SwiftData is Core Data underneath: entity FavouriteStop -> table
+        // ZFAVOURITESTOP, property stopID -> column ZSTOPID.
+        func rows(_ sql: String) -> [[String: Any]] {
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else { return [] }
+            defer { sqlite3_finalize(stmt) }
+            var out: [[String: Any]] = []
+            while sqlite3_step(stmt) == SQLITE_ROW {
+                var row: [String: Any] = [:]
+                for i in 0..<sqlite3_column_count(stmt) {
+                    let name = String(cString: sqlite3_column_name(stmt, i))
+                    switch sqlite3_column_type(stmt, i) {
+                    case SQLITE_INTEGER: row[name] = Int(sqlite3_column_int64(stmt, i))
+                    case SQLITE_FLOAT: row[name] = sqlite3_column_double(stmt, i)
+                    case SQLITE_TEXT: row[name] = String(cString: sqlite3_column_text(stmt, i))
+                    default: break
+                    }
+                }
+                out.append(row)
+            }
+            return out
+        }
+        return [
+            "region": UserDefaults(suiteName: appGroup)?.string(forKey: "regionSlug") ?? "",
+            "stops": rows("SELECT ZSTOPID AS stopId, ZDISPLAYNAME AS name, ZCOLORHEX AS color, ZSORTORDER AS sortOrder FROM ZFAVOURITESTOP ORDER BY ZSORTORDER"),
+            "places": rows("SELECT ZNAME AS name, ZLATITUDE AS lat, ZLONGITUDE AS lon, ZICON AS icon, ZREGIONSLUG AS region FROM ZSAVEDPLACE ORDER BY ZSORTORDER"),
+            "trips": rows("SELECT ZNAME AS name, ZSTARTLABEL AS startLabel, ZSTARTLAT AS startLat, ZSTARTLON AS startLon, ZENDLABEL AS endLabel, ZENDLAT AS endLat, ZENDLON AS endLon, ZCOLORHEX AS color FROM ZSAVEDTRIP ORDER BY ZSORTORDER"),
+        ]
+    }
+
+    private static func decode(_ json: String) throws -> JourneyActivityAttributes.ContentState {
+        try JSONDecoder().decode(JourneyActivityAttributes.ContentState.self, from: Data(json.utf8))
+    }
+
+    private func watchToken(_ activity: Activity<JourneyActivityAttributes>) {
+        observers.append(Task { [weak self] in
+            for await data in activity.pushTokenUpdates {
+                let token = data.map { String(format: "%02x", $0) }.joined()
+                self?.sendEvent("onActivityPushToken", ["id": activity.id, "planId": activity.attributes.planID, "token": token])
+            }
+        })
+        observers.append(Task { [weak self] in
+            for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
+                self?.sendEvent("onActivityEnded", ["id": activity.id, "planId": activity.attributes.planID])
+            }
+        })
+    }
+
+    private func startObserving() {
+        // Push-to-start: the server starts the activity ahead of a reminder.
+        observers.append(Task { [weak self] in
+            for await data in Activity<JourneyActivityAttributes>.pushToStartTokenUpdates {
+                let token = data.map { String(format: "%02x", $0) }.joined()
+                self?.sendEvent("onPushToStartToken", ["token": token])
+            }
+        })
+        // An activity the server push-started while the app was closed: adopt it.
+        observers.append(Task { [weak self] in
+            for await activity in Activity<JourneyActivityAttributes>.activityUpdates {
+                self?.watchToken(activity)
+                self?.sendEvent("onActivityStarted", ["id": activity.id, "planId": activity.attributes.planID])
+            }
+        })
+        for activity in Activity<JourneyActivityAttributes>.activities { watchToken(activity) }
+    }
+}

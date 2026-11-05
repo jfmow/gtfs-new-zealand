@@ -74,6 +74,11 @@ func sharedNotifier() Notifier {
 			byPlatform["ios"] = apnsNotifier
 			sharedAPNsVal = apnsNotifier
 		}
+		if fcmNotifier, err := newFCMSender(); err != nil {
+			log.Printf("notifications: FCM not configured, Android push disabled: %v", err)
+		} else {
+			byPlatform["android"] = fcmNotifier
+		}
 		sharedNotifierVal = platformNotifier{byPlatform: byPlatform}
 	})
 	return sharedNotifierVal

@@ -411,7 +411,8 @@ The web app (`frontend/`, package `at-tracker`) is a Next.js 15 Pages Router app
 
 ### Key pieces
 
-- **Region selection** (`lib/url-store.ts`, `lib/url-context.tsx`): the five regions, each with its API base URL, map centre, country, time zone and a `realtime: false` flag for Otago. These must stay in sync with `backend/main.go` and iOS `Region.swift`.
+- **Region selection** (`lib/url-store.ts`, `lib/url-context.tsx`): the five regions, each with its API base URL, map centre, country, time zone and a `realtime: false` flag for Otago. The table itself lives in `packages/shared/src/regions.ts` (shared with the Expo app in `mobile/`); `url-store.ts` keeps the selected region. These must stay in sync with `backend/main.go` and iOS `Region.swift`.
+- **Shared package** (`packages/shared`, `@transit/shared`): platform-free TypeScript used by the web and the Expo app: the API client (`ApiFetch` wraps `createApiClient`), regions, region-time maths, formatting, the easy-planner steps and the API types. It's linked with `file:` and compiled by Next (`transpilePackages`); `frontend/lib/*` files re-export it with the selected region filled in. See `plans/expo-app.md`.
 - **Map** (`components/map/`): Apple MapKit JS v6 with the token in `NEXT_PUBLIC_MAPKIT_TOKEN`. It uses the app's own camera maths, `supercluster` for stop clusters, and Lucide icons for markers, whose icons and colours match the stop list. MapKit JS has no 3D, so the 3D map is iOS-only.
 - **Journey tracking** (`components/journey/`): `route-detail-sheet.tsx` holds the original leg-advance state machine that iOS ported. `use-journey-vehicles.ts` (10 s) and `use-journey-stop-times.ts` (20 s) feed it. `journey-alert-overlay.tsx` shows the in-app "get on now" and "get off next" moments.
 - **Departure board and tracker** (`components/services/`): the live board polls every 10 s; the tracker shows occupancy and accessibility details and lets the rider set a stop reminder.
@@ -497,7 +498,7 @@ The backend ships as one Docker image that also carries its own OSRM walking rou
 
 | Question | File |
 | --- | --- |
-| Regions, keys, poll rates | `backend/main.go`, `frontend/lib/url-store.ts`, `TransitCore/API/Region.swift` |
+| Regions, keys, poll rates | `backend/main.go`, `packages/shared/src/regions.ts`, `TransitCore/API/Region.swift` |
 | Route registration | `backend/providers/setup.go` |
 | Departure boards and plans | `backend/providers/services.go` |
 | Live vehicles, stop times, alerts | `backend/providers/realtime.go` |

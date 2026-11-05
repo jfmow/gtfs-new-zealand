@@ -135,6 +135,15 @@ func main() {
 
 	//e.GET("/logs", GetLogsHandler)
 
+	// MapKit JS tokens for the Android app's Apple map (and the web): signed
+	// here because Apple's unrestricted dashboard tokens last only 7 days.
+	mapkit, mkErr := newMapkitSignerFromEnv()
+	if mkErr != nil {
+		logrus.WithError(mkErr).Warn("MapKit tokens disabled")
+		mapkit = nil
+	}
+	e.GET("/mapkit/token", mapkitTokenHandler(mapkit))
+
 	atApi := e.Group("/at")
 	mlApi := e.Group("/wel")
 	seqAPI := e.Group("/seq")

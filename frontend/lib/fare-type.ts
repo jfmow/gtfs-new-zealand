@@ -2,17 +2,9 @@ import { useCallback, useEffect, useState } from "react"
 import { ApiFetch } from "@/lib/url-context"
 import { getRegionSlug, urlStore } from "@/lib/url-store"
 
-/** Settings -> Fare type: which fare estimates show (`fares.Concession` on the backend, the iOS `FareType`). */
-export type FareType = "adult" | "child" | "youth" | "tertiary" | "community" | "supergold" | "accessible"
-
-/** A fare type the current region offers, in its own words - `GET /fares/types`. */
-export interface FareTypeOption {
-    value: FareType
-    label: string
-    detail?: string
-}
-
-const ADULT_ONLY: FareTypeOption[] = [{ value: "adult", label: "Adult" }]
+// The fare types live in the shared package (packages/shared/src/fares.ts).
+import { ADULT_ONLY, type FareType, type FareTypeOption } from "@transit/shared/fares"
+export type { FareType, FareTypeOption } from "@transit/shared/fares"
 
 const KEY = "fareType"
 const EVENT = "fareTypeChanged"

@@ -1377,16 +1377,17 @@ func (v *Database) SetClientExpiryWarningSent(client NotificationClient) error {
 
 type NotificationClient struct {
 	Id       int
-	Platform string // "web" (default, legacy web-push subscriber) | "ios"
+	Platform string // "web" (default, legacy web-push subscriber) | "ios" | "android"
 
 	// Web push identity - populated only for Platform == "web".
 	Notification webpush.Subscription
 
-	// Native device identity - populated only for Platform == "ios".
+	// Native device identity - populated for Platform == "ios" and "android".
 	DeviceID         string
 	ApnsToken        string
 	ApnsEnv          string // "sandbox" | "production"
 	PushToStartToken string
+	FcmToken         string // Android only: the FCM registration token
 	deviceSecretHash string // never exposed; checked by FindIOSDeviceClient
 
 	RecentNotifications []RecentNotificationEntry
@@ -1404,7 +1405,7 @@ type NotificationClient struct {
 // schedule, so it's exempt from both the expiry deletion and the warning
 // push - see GetNotificationClients* below and the expiry-warning cron).
 func (client NotificationClient) isExpiringWeb() bool {
-	return client.Platform != "ios"
+	return client.Platform != "ios" && client.Platform != "android"
 }
 
 // SubscriptionFilters are the alert-type options shared by both stop and
