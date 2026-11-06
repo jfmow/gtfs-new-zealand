@@ -13,7 +13,7 @@ import { getRegionSlug } from "@transit/shared/regions"
 import type { Leg } from "@transit/shared/types/journey"
 import { occupancyShort } from "@/components/departures"
 import { JourneyLegBar, JourneyTimeline, journeyLines, legDate, legRouteName, type LegStatus } from "@/components/journey"
-import { TransitMap, type MapCamera } from "@/components/transit-map"
+import { TransitMap, boundsOf, isValidCoordinate, type MapCamera } from "@/components/transit-map"
 import { ErrorText, FitRow, GlassButton, Loading, RouteBadge, hexColor } from "@/components/ui"
 import type { JourneyTick } from "@/lib/journey-session"
 import { startJourney, stopJourney, useJourneyTick } from "@/lib/journey-runner"
@@ -44,11 +44,47 @@ export default function JourneyTracker() {
     const walk = useWalkNavigation(tick?.displayPlan, tick?.snapshot.progressLegIndex ?? -1, tick?.snapshot.phase === "walking", tick?.user ?? null)
     const [follow, setFollow] = useState(true)
     const camera = useRef<MapCamera>(null)
-    // Follow the vehicle you're on (or yourself) until you pan the map.
-    const followTarget = tick?.snapshot.followMarkerId ? tick.vehicles[tick.snapshot.followMarkerId.replace("vehicle-", "")]?.position ?? null : tick?.user ?? null
+    const ignoreRegionUntil = useRef(0)
+    const mapSnap = tick?.snapshot ?? null
+    const mapDisplay = tick?.displayPlan ?? plan
+    const mapLegs = mapDisplay?.Legs ?? []
+    const mapLeg = mapSnap && mapSnap.progressLegIndex >= 0 ? mapLegs[mapSnap.progressLegIndex] : undefined
+    const trackedVehicleId = mapSnap?.trackedTripId ?? mapSnap?.followMarkerId?.replace("vehicle-", "")
+    const mapVehicle = trackedVehicleId ? tick?.vehicles[trackedVehicleId] : undefined
+    const vehiclePositionCandidate = mapVehicle?.position ?? null
+    const vehiclePosition = vehiclePositionCandidate && isValidCoordinate(vehiclePositionCandidate) ? vehiclePositionCandidate : null
+    const userPositionCandidate = tick?.user ?? null
+    const userPosition = userPositionCandidate && isValidCoordinate(userPositionCandidate) ? userPositionCandidate : null
+    const mapDestinationCandidate = mapLeg?.ToStop?.stop_lat != null && mapLeg.ToStop.stop_lon != null
+        ? { lat: mapLeg.ToStop.stop_lat, lon: mapLeg.ToStop.stop_lon }
+        : mapDisplay?.EndLat != null && mapDisplay.EndLon != null ? { lat: mapDisplay.EndLat, lon: mapDisplay.EndLon } : null
+    const mapDestination = mapDestinationCandidate && isValidCoordinate(mapDestinationCandidate) ? mapDestinationCandidate : null
+    const followTargetCandidate = vehiclePosition ?? userPosition
+    const followTarget = followTargetCandidate && isValidCoordinate(followTargetCandidate) ? followTargetCandidate : null
+    const mapBounds = (() => {
+        const points = []
+        if (mapSnap?.phase === "walking" && userPosition && mapDestination) {
+            points.push(userPosition, mapDestination)
+        } else if (mapSnap?.phase === "onboard" && vehiclePosition && mapDestination) {
+            points.push(vehiclePosition, mapDestination)
+        } else if (mapSnap?.phase === "waiting" || mapSnap?.phase === "boarding") {
+            if (userPosition) points.push(userPosition)
+            if (vehiclePosition) points.push(vehiclePosition)
+        }
+        return boundsOf(points)
+    })()
+    const framePadding = { top: insets.top + 70, bottom: 380, left: 40, right: 40 }
+    const frameTarget = mapSnap?.phase === "walking"
+        ? userPosition
+        : mapSnap?.phase === "onboard"
+            ? vehiclePosition ?? userPosition
+            : followTarget
     useEffect(() => {
-        if (follow && followTarget) camera.current?.easeTo({ center: [followTarget.lon, followTarget.lat], duration: 800 })
-    }, [follow, followTarget?.lat, followTarget?.lon]) // eslint-disable-line react-hooks/exhaustive-deps
+        if (!follow) return
+        ignoreRegionUntil.current = Date.now() + 1_200
+        if (mapBounds) camera.current?.fitBounds(mapBounds, { padding: framePadding, duration: 800 })
+        else if (frameTarget) camera.current?.easeTo({ center: [frameTarget.lon, frameTarget.lat], duration: 800 })
+    }, [follow, mapBounds?.join(","), followTarget?.lat, followTarget?.lon]) // eslint-disable-line react-hooks-exhaustive-deps
 
     useEffect(() => {
         setJourneyTrackerOpen(true)
@@ -129,9 +165,11 @@ export default function JourneyTracker() {
         if (snap.trackedStopsAway != null && snap.trackedStopsToGo != null) {
             const away = snap.trackedStopsAway
             const atStop = snap.trackedStopsToGo === 0
-            status.push({ text: snap.phase === "onboard"
-                ? (atStop ? "At your stop - get off" : away === 0 ? "Get off at the next stop" : `${away + 1} stops to go`)
-                : (atStop ? `${name(nextRide)} at your stop` : away === 0 ? `${name(nextRide)} arriving` : `${name(nextRide)} is ${away} stop${away === 1 ? "" : "s"} away`) })
+            status.push({
+                text: snap.phase === "onboard"
+                    ? (atStop ? "At your stop - get off" : away === 0 ? "Get off at the next stop" : `${away + 1} stops to go`)
+                    : (atStop ? `${name(nextRide)} at your stop` : away === 0 ? `${name(nextRide)} arriving` : `${name(nextRide)} is ${away} stop${away === 1 ? "" : "s"} away`)
+            })
         }
         if (vehicle && vehicle.occupancy >= 0 && occupancyShort(vehicle.occupancy)) status.push({ text: occupancyShort(vehicle.occupancy) })
         if (vehicle?.cars) status.push({ text: `${vehicle.cars} cars` })
@@ -175,8 +213,11 @@ export default function JourneyTracker() {
     const lines = journeyLines(display, colors.live)
     const user = tick?.user ?? null
     const followVehicle = snap?.followMarkerId ? tick?.vehicles[snap.followMarkerId.replace("vehicle-", "")] : null
-    const followAt = followVehicle ? { lat: followVehicle.position.lat, lon: followVehicle.position.lon } : user
-    const startAt = followAt ?? { lat: plan.StartLat, lon: plan.StartLon }
+    const followVehiclePosition = followVehicle?.position && isValidCoordinate(followVehicle.position) ? followVehicle.position : null
+    const validUser = user && isValidCoordinate(user) ? user : null
+    const followAt = followVehiclePosition ?? validUser
+    const planStart = { lat: plan.StartLat, lon: plan.StartLon }
+    const startAt = followAt && isValidCoordinate(followAt) ? followAt : isValidCoordinate(planStart) ? planStart : { lat: 0, lon: 0 }
     const fraction = (() => {
         const a = legDate(display.DepartureTime)?.getTime() ?? now
         const b = legDate(display.ArrivalTime)?.getTime() ?? now
@@ -188,16 +229,25 @@ export default function JourneyTracker() {
     }
     const legStatus = (i: number): LegStatus => (!snap || snap.progressLegIndex < 0 ? "upcoming" : i < snap.progressLegIndex ? "done" : i === snap.progressLegIndex ? "current" : "upcoming")
 
+    const frameJourney = () => {
+        ignoreRegionUntil.current = Date.now() + 1_200
+        if (mapBounds) camera.current?.fitBounds(mapBounds, { padding: framePadding, duration: 600 })
+        else if (frameTarget) camera.current?.easeTo({ center: [frameTarget.lon, frameTarget.lat], zoom: 16, duration: 600 })
+    }
+
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
             <TransitMap
                 ref={camera}
                 center={startAt}
+                bounds={mapBounds}
                 zoom={16}
                 threeD={filter.threeD}
                 pitch={filter.threeD ? 55 : followVehicle ? 40 : 0}
                 padding={{ top: insets.top + 70, bottom: 380 }}
-                onRegionDidChange={(_c, _z, _b, byUser) => { if (byUser) setFollow(false) }}
+                onRegionDidChange={(_c, _z, _b, byUser) => {
+                    if (byUser && Date.now() >= ignoreRegionUntil.current) setFollow(false)
+                }}
                 lines={lines.map((l) => ({ id: `trk-${l.id}`, coords: l.coords, color: l.color, dashed: l.walk }))}
                 markers={Object.values(tick?.vehicles ?? {}).map((v) => ({
                     id: `veh-${v.trip_id}`, coordinate: { lat: v.position.lat, lon: v.position.lon }, zIndex: 4,
@@ -208,7 +258,7 @@ export default function JourneyTracker() {
             <View style={[styles.topBar, { top: insets.top + spacing.sm }]}>
                 <GlassButton icon={ChevronLeft} label="Minimise" onPress={() => leave()} size={52} />
                 <View style={{ flexDirection: "row", gap: spacing.md }}>
-                    <GlassButton icon={LocateFixed} label={follow ? "Following your journey" : "Follow my journey"} active={follow} size={52} onPress={() => { setFollow(true); if (followAt) camera.current?.easeTo({ center: [followAt.lon, followAt.lat], zoom: 16, duration: 600 }) }} />
+                    <GlassButton icon={LocateFixed} label={follow ? "Following your journey" : "Follow my journey"} active={follow} size={52} onPress={() => { setFollow(true); frameJourney() }} />
                     <GlassButton icon={Ellipsis} label="More" onPress={more} size={52} />
                 </View>
             </View>
@@ -317,7 +367,7 @@ function useMomentBanner(tick: JourneyTick | null): { title: string; body: strin
         }
         if (!key || !next || shown.current.has(key)) return
         shown.current.add(key)
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {})
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => { })
         setBanner(next)
         const timer = setTimeout(() => setBanner(null), 8_000)
         return () => clearTimeout(timer)

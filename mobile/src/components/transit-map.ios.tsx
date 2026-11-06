@@ -33,12 +33,23 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
     const regionFor = (c: Coordinate, z: number): Region => {
         const lonDelta = spanForZoom(z, size.current.width)
         const latDelta = lonDelta * (size.current.height / size.current.width) * Math.cos((c.lat * Math.PI) / 180)
-        return { latitude: c.lat, longitude: c.lon, latitudeDelta: latDelta, longitudeDelta: lonDelta }
+        return {
+            latitude: Math.max(-90, Math.min(90, c.lat)),
+            longitude: Math.max(-180, Math.min(180, c.lon)),
+            latitudeDelta: Math.min(179, Math.max(0.004, latDelta)),
+            longitudeDelta: Math.min(179, Math.max(0.004, lonDelta)),
+        }
     }
-    const regionOfBounds = (b: Bounds): Region => ({
-        latitude: (b[1] + b[3]) / 2, longitude: (b[0] + b[2]) / 2,
-        latitudeDelta: (b[3] - b[1]) * 1.3, longitudeDelta: (b[2] - b[0]) * 1.3,
-    })
+    const regionOfBounds = (b: Bounds): Region => {
+        const longitudeDelta = Math.min(179, Math.max(0.004, (b[2] - b[0]) * 1.3))
+        const latitudeDelta = Math.min(179, Math.max(0.004, (b[3] - b[1]) * 1.3))
+        return {
+            latitude: Math.max(-90, Math.min(90, (b[1] + b[3]) / 2)),
+            longitude: Math.max(-180, Math.min(180, (b[0] + b[2]) / 2)),
+            latitudeDelta,
+            longitudeDelta,
+        }
+    }
 
     const move = async (o: { center?: [number, number]; zoom?: number; pitch?: number; duration?: number }) => {
         const m = map.current

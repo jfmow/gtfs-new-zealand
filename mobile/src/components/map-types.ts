@@ -82,18 +82,33 @@ export interface TransitMapProps {
 
 export const lngLat = (c: Coordinate): [number, number] => [c.lon, c.lat]
 
+export const isValidCoordinate = (c: Coordinate): boolean =>
+    Number.isFinite(c.lat) && Number.isFinite(c.lon) && Math.abs(c.lat) <= 90 && Math.abs(c.lon) <= 180
+
 /** [west, south, east, north] around `coords`, or null with none. */
 export function boundsOf(coords: Coordinate[]): Bounds | null {
     if (!coords.length) return null
     let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity
     for (const c of coords) {
+        if (!isValidCoordinate(c)) continue
         w = Math.min(w, c.lon); e = Math.max(e, c.lon)
         s = Math.min(s, c.lat); n = Math.max(n, c.lat)
     }
+    if (!Number.isFinite(w) || !Number.isFinite(s) || !Number.isFinite(e) || !Number.isFinite(n)) return null
     // A single point (or a very short trip) still needs some area to show.
     const minSpan = 0.004
     if (e - w < minSpan) { const m = (e + w) / 2; w = m - minSpan / 2; e = m + minSpan / 2 }
     if (n - s < minSpan) { const m = (n + s) / 2; s = m - minSpan / 2; n = m + minSpan / 2 }
+    if (e - w > 179) {
+        const m = Math.max(-179, Math.min(179, (w + e) / 2))
+        w = Math.max(-180, m - 89.5)
+        e = Math.min(180, m + 89.5)
+    }
+    if (n - s > 179) {
+        const m = Math.max(-179, Math.min(179, (s + n) / 2))
+        s = Math.max(-90, m - 89.5)
+        n = Math.min(90, m + 89.5)
+    }
     return [w, s, e, n]
 }
 
