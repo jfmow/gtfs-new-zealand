@@ -6,6 +6,7 @@ import { parseDeepLink } from "@transit/shared/logic/deeplink"
 import { api, deviceIdentity } from "./api"
 import { openDeepLink } from "./links"
 import { currentRegion } from "./region"
+import { activeJourneyStore } from "./journey-session"
 
 /**
  * Push setup - iOS `PushRegistrationService`. The device registers its id +
@@ -98,7 +99,12 @@ export function listenForNotificationTaps(): () => void {
     const handle = (response: Notifications.NotificationResponse | null) => {
         const url = (response?.notification.request.content.data as Record<string, unknown> | undefined)?.url
         if (typeof url === "string" && parseDeepLink(url)) openDeepLink(url)
-        else if (response) router.push("/(tabs)/updates")
+        else if (response) {
+            const data = response.notification.request.content.data as Record<string, unknown>
+            const active = activeJourneyStore.get()
+            if (data.kind === "journey" && active) router.push({ pathname: "/journey/track/[id]", params: { id: active.planId } })
+            else router.push("/(tabs)/updates")
+        }
     }
     Notifications.getLastNotificationResponseAsync().then(handle).catch(() => {})
     const sub = Notifications.addNotificationResponseReceivedListener(handle)

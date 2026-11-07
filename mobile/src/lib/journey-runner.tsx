@@ -8,6 +8,7 @@ import { endLiveSurface, updateLiveSurface } from "./live-surface"
 import { resetMoments, scheduleMoments } from "./moments"
 import { planContext, usePlan } from "./plans"
 import { useRegion } from "./region"
+import { getRegionSlug } from "@transit/shared/regions"
 
 /**
  * The tracked journey, app-wide - iOS `JourneyTrackingSession`, which lives
@@ -97,7 +98,7 @@ function Session({ plan }: { plan: JourneyType }) {
         journeyTickStore.set(tick)
         // Keep the local get-off reminders and the Lock Screen in step with the live times.
         if (tick.snapshot.journeyArrived) resetMoments()
-        else scheduleMoments(tick.displayPlan.Legs, tick.snapshot.progressLegIndex, tick.snapshot.phase === "onboard", tick.content.phase === "walking" && tick.content.primaryText.startsWith("Walk"), tz).catch(() => {})
+        else scheduleMoments(tick.displayPlan.Legs, tick.snapshot.progressLegIndex, tick.snapshot.phase === "onboard", tick.content.phase === "walking" && tick.content.primaryText.startsWith("Walk"), tz, plan.ID, getRegionSlug(region)).catch(() => {})
         updateLiveSurface(plan.ID, destinationLabel(plan), region, tick.content, tick.snapshot).catch(() => {})
     }, [tick, tz, plan, region])
 

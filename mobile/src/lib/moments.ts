@@ -18,7 +18,7 @@ let desiredMoments: JourneyMoment[] | null = null
 let generation = 0
 let reconciliation = Promise.resolve()
 
-export async function scheduleMoments(legs: Leg[], progressLegIndex: number, onboard: boolean, setOff: boolean, tz: string): Promise<void> {
+export async function scheduleMoments(legs: Leg[], progressLegIndex: number, onboard: boolean, setOff: boolean, tz: string, planId: string, region: string): Promise<void> {
     const moments = upcomingMoments(legs, progressLegIndex, onboard, new Date(), tz, setOff)
         // Rounded to the minute so second-by-second feed wobble doesn't reschedule.
         .map((m) => ({ ...m, date: new Date(Math.round(m.date.getTime() / 60_000) * 60_000) }))
@@ -26,7 +26,7 @@ export async function scheduleMoments(legs: Leg[], progressLegIndex: number, onb
     const gen = generation
     reconciliation = reconciliation.catch(() => {}).then(async () => {
         if (gen !== generation || desiredMoments === null || signatureOf(desiredMoments) === appliedSignature) return
-        await reconcileMoments(desiredMoments, gen)
+        await reconcileMoments(desiredMoments, gen, planId, region)
     })
     await reconciliation
 }
@@ -35,23 +35,29 @@ function signatureOf(moments: JourneyMoment[]) {
     return moments.map((m) => `${m.key}@${m.date.getTime()}`).join("|")
 }
 
-async function reconcileMoments(moments: JourneyMoment[], gen: number) {
+async function reconcileMoments(moments: JourneyMoment[], gen: number, planId: string, region: string) {
     const signature = signatureOf(moments)
     const { granted } = await Notifications.getPermissionsAsync()
     if (!granted || gen !== generation) return
     await cancelMoments()
     for (const m of moments) {
         if (gen !== generation || signatureOf(desiredMoments ?? []) !== signature) return
-        await scheduleOne(m)
+        await scheduleOne(m, planId, region)
     }
     appliedSignature = signature
 }
 
-async function scheduleOne(m: JourneyMoment) {
+async function scheduleOne(m: JourneyMoment, planId: string, region: string) {
     if (m.date.getTime() <= Date.now() + 5_000) return
     await Notifications.scheduleNotificationAsync({
         identifier: PREFIX + m.key,
-        content: { title: m.title, body: m.body, data: { kind: "journey" }, sound: "default", interruptionLevel: "timeSensitive" },
+        content: {
+            title: m.title,
+            body: m.body,
+            data: { kind: "journey", url: `/journey?id=${encodeURIComponent(planId)}&region=${encodeURIComponent(region)}&track=1` },
+            sound: "default",
+            interruptionLevel: "timeSensitive",
+        },
         trigger: { type: SchedulableTriggerInputTypes.DATE, date: m.date, ...(Platform.OS === "android" ? { channelId: "journey" } : {}) },
     })
 }
