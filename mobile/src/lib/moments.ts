@@ -12,25 +12,39 @@ import type { Leg } from "@transit/shared/types/journey"
  */
 
 const PREFIX = "journey-moment:"
-let scheduled = ""
+let appliedSignature = ""
+let desiredMoments: JourneyMoment[] | null = null
 /** Bumped by resetMoments: a schedule still in flight when the journey ends must not put its reminders back. */
 let generation = 0
+let reconciliation = Promise.resolve()
 
 export async function scheduleMoments(legs: Leg[], progressLegIndex: number, onboard: boolean, setOff: boolean, tz: string): Promise<void> {
     const moments = upcomingMoments(legs, progressLegIndex, onboard, new Date(), tz, setOff)
         // Rounded to the minute so second-by-second feed wobble doesn't reschedule.
         .map((m) => ({ ...m, date: new Date(Math.round(m.date.getTime() / 60_000) * 60_000) }))
-    const signature = moments.map((m) => `${m.key}@${m.date.getTime()}`).join("|")
-    if (signature === scheduled) return
-    scheduled = signature
+    desiredMoments = moments
     const gen = generation
+    reconciliation = reconciliation.catch(() => {}).then(async () => {
+        if (gen !== generation || desiredMoments === null || signatureOf(desiredMoments) === appliedSignature) return
+        await reconcileMoments(desiredMoments, gen)
+    })
+    await reconciliation
+}
+
+function signatureOf(moments: JourneyMoment[]) {
+    return moments.map((m) => `${m.key}@${m.date.getTime()}`).join("|")
+}
+
+async function reconcileMoments(moments: JourneyMoment[], gen: number) {
+    const signature = signatureOf(moments)
+    const { granted } = await Notifications.getPermissionsAsync()
+    if (!granted || gen !== generation) return
     await cancelMoments()
     for (const m of moments) {
-        if (gen !== generation) return
+        if (gen !== generation || signatureOf(desiredMoments ?? []) !== signature) return
         await scheduleOne(m)
     }
-    // Ended while the last one was being scheduled: take them all back out.
-    if (gen !== generation) await cancelMoments()
+    appliedSignature = signature
 }
 
 async function scheduleOne(m: JourneyMoment) {
@@ -39,7 +53,7 @@ async function scheduleOne(m: JourneyMoment) {
         identifier: PREFIX + m.key,
         content: { title: m.title, body: m.body, data: { kind: "journey" }, sound: "default", interruptionLevel: "timeSensitive" },
         trigger: { type: SchedulableTriggerInputTypes.DATE, date: m.date, ...(Platform.OS === "android" ? { channelId: "journey" } : {}) },
-    }).catch(() => {})
+    })
 }
 
 export async function cancelMoments() {
@@ -48,7 +62,9 @@ export async function cancelMoments() {
 }
 
 export function resetMoments() {
-    scheduled = ""
     generation += 1
-    return cancelMoments()
+    desiredMoments = null
+    appliedSignature = ""
+    reconciliation = reconciliation.catch(() => {}).then(cancelMoments)
+    return reconciliation
 }

@@ -1,8 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { router, useLocalSearchParams } from "expo-router"
-import { ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, House, MapPin, RefreshCw, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
+import { ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, House, MapPin, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
 import { useEffect, useState, useSyncExternalStore } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { rankedPlans } from "@transit/shared/easy-planner"
 import type { JourneyPlanRequest } from "@transit/shared/endpoints"
@@ -126,6 +126,10 @@ function Planner({ params }: { params: PlannerParams }) {
     }
     const open = (id: string) => router.push({ pathname: "/journey/[id]", params: { id } })
     const searching = !to || editingFrom || query.length > 0
+    const refreshPlans = async () => {
+        setLater([])
+        await plans.refetch()
+    }
 
     return (
         <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -175,7 +179,11 @@ function Planner({ params }: { params: PlannerParams }) {
                 <Pill icon={SlidersHorizontal} label="Options" onPress={() => router.push("/planner-options")} active={optionsChanged(options)} />
             </View>
 
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scroll}>
+            <ScrollView
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={styles.scroll}
+                refreshControl={!searching ? <RefreshControl refreshing={plans.isRefetching} onRefresh={refreshPlans} /> : undefined}
+            >
                 {searching ? (
                     <>
                         {query.trim().length >= 2 ? <LocationResults query={query} onPick={pick} showCurrent={editingFrom} /> : null}
@@ -219,9 +227,6 @@ function Planner({ params }: { params: PlannerParams }) {
                                 {plans.data ? `${results.length} route${results.length === 1 ? "" : "s"} found · planned ${laClock(new Date(plans.dataUpdatedAt), tz)}` : ""}
                             </Text>
                             <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.lg }}>
-                                <Pressable accessibilityRole="button" accessibilityLabel="Refresh" hitSlop={8} onPress={() => { setLater([]); plans.refetch() }}>
-                                    <RefreshCw size={16} color={colors.mutedForeground} />
-                                </Pressable>
                                 {start && to ? (
                                     <Pressable accessibilityRole="button" disabled={savedAlready} hitSlop={8}
                                         onPress={() => router.push({ pathname: "/save-trip", params: { fromLabel: start.label, fromLat: String(start.lat), fromLon: String(start.lon), toLabel: to.label, toLat: String(to.lat), toLon: String(to.lon) } })}

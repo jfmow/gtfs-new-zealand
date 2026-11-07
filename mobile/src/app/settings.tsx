@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query"
 import Constants from "expo-constants"
 import { router } from "expo-router"
 import { BellRing, Check, ChevronRight } from "@/components/icons"
-import { useState } from "react"
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
+import { useEffect, useState } from "react"
+import { Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { ADULT_ONLY, type FareType } from "@transit/shared/fares"
 import { getRegionSlug, groupByCountry } from "@transit/shared/regions"
 import { WALK_SPEED_OPTIONS, normalizeWalkSpeed } from "@transit/shared/walk-speed"
@@ -25,6 +25,13 @@ export default function SettingsScreen() {
     const allowed = useQuery({ queryKey: ["notif-allowed"], queryFn: notificationsAllowed })
     const [testing, setTesting] = useState(false)
     const fareType = settings.fareType[slug] ?? "adult"
+
+    useEffect(() => {
+        const subscription = AppState.addEventListener("change", (state) => {
+            if (state === "active") allowed.refetch()
+        })
+        return () => subscription.remove()
+    }, [allowed])
 
     const testPush = async () => {
         if (!(await requestNotifications())) {
@@ -114,6 +121,19 @@ export default function SettingsScreen() {
             </Pressable>
             <Card style={{ gap: spacing.sm }}>
                 <Muted>{allowed.data ? "On for this device." : "Off. You'll be asked when you set a reminder or follow a stop."}</Muted>
+                <Toggle
+                    label="Notifications"
+                    value={!!allowed.data}
+                    onChange={async (on) => {
+                        if (on) {
+                            const granted = await requestNotifications()
+                            allowed.refetch()
+                            if (!granted) Linking.openSettings()
+                        } else {
+                            await Linking.openSettings()
+                        }
+                    }}
+                />
                 <Button title="Send a test notification" variant="secondary" onPress={testPush} loading={testing} />
             </Card>
 

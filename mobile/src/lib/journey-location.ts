@@ -71,7 +71,9 @@ export async function setJourneyLocationMode(mode: GPSMode) {
             timeInterval: mode === "precise" ? 2_000 : 5_000,
             // On foot vs riding, so Core Location filters and paces fixes for it.
             activityType: mode === "pedestrian" ? Location.ActivityType.Fitness : Location.ActivityType.OtherNavigation,
-            pausesUpdatesAutomatically: false,
+            // Let the OS suspend stationary low-power fixes while preserving
+            // updates in motion. Precise navigation stays uninterrupted.
+            pausesUpdatesAutomatically: mode !== "precise",
             showsBackgroundLocationIndicator: true,
             foregroundService: {
                 notificationTitle: "Following your journey",

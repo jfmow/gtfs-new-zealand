@@ -93,7 +93,7 @@ public class TransitNativeModule: Module {
 
         AsyncFunction("endActivity") { (id: String?) in
             for activity in Activity<JourneyActivityAttributes>.activities where id == nil || activity.id == id {
-                await activity.end(nil, dismissalPolicy: .default)
+                await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
     }

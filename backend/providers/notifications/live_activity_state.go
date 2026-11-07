@@ -601,7 +601,12 @@ func fillTransit(state *journeyActivityState, plan gtfs.JourneyPlan, timings []l
 			// after the "stops away" heads-up has. Siri reads it out
 			// through AirPods (sent as a notification while they're in),
 			// same as the app's in-app "Get on the 70 now".
-			if away == 0 && t.live.MetresToBoard != nil && *t.live.MetresToBoard <= boardProximityMeters(state.VehicleMode) {
+			// Stop-count feeds can be accurate without publishing a vehicle
+			// position. At that point the vehicle is at/approaching the rider's
+			// stop, so the moment must not depend on optional GPS distance.
+			boardingNearby := t.live.MetresToBoard == nil ||
+				*t.live.MetresToBoard <= boardProximityMeters(state.VehicleMode)
+			if away == 0 && boardingNearby {
 				body := "It's arriving at " + stopLabel(leg.FromStop) + platformSuffix(state.Platform) + "."
 				if state.VehicleMode == "bus" || state.VehicleMode == "" {
 					body += " Flag it down if needed."
