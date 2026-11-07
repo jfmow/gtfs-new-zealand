@@ -16,7 +16,7 @@ import (
 // join, so bound them before they reach the database.
 const (
 	maxSearchQueryRunes = 100
-	maxSearchQueryWords = 15
+	maxSearchQueryWords = 20
 )
 
 // searchQueryTooLarge reports whether a stop/route/place search is over the limits.
