@@ -510,7 +510,11 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 					}
 					l.StopsToBoard = boardIdx - nextIdx
 					l.StopsToAlight = alightIdx - nextIdx
-					if b := stops[boardIdx]; b.StopLat != 0 || b.StopLon != 0 {
+					// Only with a real fix: a vehicle that reports no position reads
+					// as 0,0, which would put it thousands of km from the stop and
+					// hold back the "get on now" moment. Without one the stop count decides.
+					hasPosition := v.Position != nil && (lat != 0 || lon != 0)
+					if b := stops[boardIdx]; hasPosition && (b.StopLat != 0 || b.StopLon != 0) {
 						m := vehiclestate.Haversine(lat, lon, b.StopLat, b.StopLon)
 						l.MetresToBoard = &m
 					}

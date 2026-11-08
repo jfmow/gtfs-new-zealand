@@ -291,19 +291,11 @@ private struct MinutesText: View {
     let target: Date
 
     var body: some View {
-        TimelineView(.periodic(from: tenSecondBoundary(Date()), by: 10)) { timeline in
-            let remaining = max(0, target.timeIntervalSince(timeline.date))
-            if remaining == 0 {
-                Text("Now")
-            } else {
-                Text("\(Int(remaining / 60)) min")
-            }
-        }
+        // TimelineView isn't redrawn inside a Live Activity (it's rendered as a
+        // snapshot), so a self-updating timer is the only countdown that stays
+        // right between pushes.
+        Text(timerInterval: Date()...max(Date(), target), countsDown: true, showsHours: false)
     }
-}
-
-private func tenSecondBoundary(_ date: Date) -> Date {
-    Date(timeIntervalSince1970: floor(date.timeIntervalSince1970 / 10) * 10)
 }
 
 // MARK: - Phase bar

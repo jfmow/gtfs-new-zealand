@@ -473,7 +473,7 @@ The backend ships as one Docker image that also carries its own OSRM walking rou
 - **Build**: `docker buildx build --platform linux/amd64 -t registry.tail4520a7.ts.net/trains:latest --push .` from `backend/` (`build-cmd.txt`). The builder is Go on Debian bookworm with CGO on; the runtime is the official OSRM image, which supplies `osrm-extract` / `-routed` and the foot profile.
 - **Walking router**: `docker-entrypoint.sh` builds a foot graph from `OSRM_PBF_URL` (one or more `.osm.pbf` extracts, optionally cropped and merged), caches it in `/data/osrm`, and runs it on loopback port 5000. If the build fails, usually from lack of memory, the API starts anyway and uses `OSRM_URL`.
 - **Volume**: everything is written under `/data`: `gtfs/`, `notifications/`, `plans/`, `logs/`, `osrm/`.
-- **Local stack**: `docker compose up --build` on port 8085 with BBBike's Auckland extract (about 70 MB). `npm run go` in `frontend/` runs `go run .` and `next dev` together.
+- **Local stack**: `docker compose up --build` on port 8090 with BBBike's Auckland extract (about 70 MB). `npm run go` in `frontend/` runs `go run .` and `next dev` together.
 - **Order of deploys**: when a client depends on a new backend parameter (for example the easy planner's `modes`), the backend goes out first.
 - **Memory**: `GOGC=60` (override with `GOGC_PERCENT`), 2 planner slots, and regions built 2 at a time keep a cold start within the host's limit.
 - **API testing**: the `Yaak/` folder holds a request collection matching the current routes.

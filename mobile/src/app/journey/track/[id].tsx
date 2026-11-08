@@ -27,6 +27,9 @@ import { radius, spacing, type, useColors } from "@/theme"
 const WEB_HOST = "https://trains.suddsy.dev"
 
 /** Live journey tracking - iOS `JourneyTrackingView` (restyled 2026-11-03). */
+/** Camera moves the app makes itself report as gestures for a moment - ignore region changes until then. */
+const regionHoldUntil = () => Date.now() + 1_200
+
 export default function JourneyTracker() {
     const colors = useColors()
     const insets = useSafeAreaInsets()
@@ -81,10 +84,10 @@ export default function JourneyTracker() {
             : followTarget
     useEffect(() => {
         if (!follow) return
-        ignoreRegionUntil.current = Date.now() + 1_200
+        ignoreRegionUntil.current = regionHoldUntil()
         if (mapBounds) camera.current?.fitBounds(mapBounds, { padding: framePadding, duration: 800 })
         else if (frameTarget) camera.current?.easeTo({ center: [frameTarget.lon, frameTarget.lat], duration: 800 })
-    }, [follow, mapBounds?.join(","), followTarget?.lat, followTarget?.lon]) // eslint-disable-line react-hooks-exhaustive-deps
+    }, [follow, mapBounds?.join(","), followTarget?.lat, followTarget?.lon]) // eslint-disable-line react-hooks/exhaustive-deps
 
     useEffect(() => {
         setJourneyTrackerOpen(true)
@@ -230,7 +233,7 @@ export default function JourneyTracker() {
     const legStatus = (i: number): LegStatus => (!snap || snap.progressLegIndex < 0 ? "upcoming" : i < snap.progressLegIndex ? "done" : i === snap.progressLegIndex ? "current" : "upcoming")
 
     const frameJourney = () => {
-        ignoreRegionUntil.current = Date.now() + 1_200
+        ignoreRegionUntil.current = regionHoldUntil()
         if (mapBounds) camera.current?.fitBounds(mapBounds, { padding: framePadding, duration: 600 })
         else if (frameTarget) camera.current?.easeTo({ center: [frameTarget.lon, frameTarget.lat], zoom: 16, duration: 600 })
     }

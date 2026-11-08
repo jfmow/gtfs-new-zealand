@@ -139,7 +139,7 @@ func setupNavigationRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database) {
 	navigationRoute.GET("/search", func(c echo.Context) error {
 		query := strings.TrimSpace(c.QueryParam("q"))
 		if searchQueryTooLarge(query) {
-			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", "Search is limited to 20 words / 100 characters"))
+			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", searchQueryLimitMessage))
 		}
 		if query == "" {
 			return JsonApiResponse(

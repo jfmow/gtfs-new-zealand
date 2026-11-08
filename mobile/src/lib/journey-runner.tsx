@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from "react"
+import { useEffect, useRef, useSyncExternalStore } from "react"
 import { goTime } from "@transit/shared/models"
 import type { JourneyType } from "@transit/shared/types/journey"
 import { activeJourneyStore, endJourney, useActiveJourney, useJourneySession, type JourneyTick } from "./journey-session"
@@ -60,6 +60,9 @@ export function stopJourney() {
 /** How long after arriving the journey stays resumable - iOS `ResumeJourneyVisibility.grace`. */
 export const RESUME_GRACE_MS = 45 * 60_000
 
+/** How long the Lock Screen shows "arrived" before it goes - the server's `endGraceAfterArrival`. */
+const ARRIVED_SURFACE_GRACE_MS = 90_000
+
 /** Where the journey ends, for the resume bar and the Live Activity. */
 export function destinationLabel(plan: JourneyType): string {
     // From the search when there was one; a shared link has none, so the last named stop on the way.
@@ -82,6 +85,7 @@ function Session({ plan }: { plan: JourneyType }) {
     const { region } = useRegion()
     const tz = region.timeZone
     const tick = useJourneySession(plan)
+    const surfaceEnded = useRef(false)
 
     // Save the journey for offline use as soon as it starts (and again if a ride's stops were missing).
     useEffect(() => {
@@ -97,8 +101,21 @@ function Session({ plan }: { plan: JourneyType }) {
         if (!tick || activeJourneyStore.get()?.planId !== plan.ID) return
         journeyTickStore.set(tick)
         // Keep the local get-off reminders and the Lock Screen in step with the live times.
-        if (tick.snapshot.journeyArrived) resetMoments()
-        else scheduleMoments(tick.displayPlan.Legs, tick.snapshot.progressLegIndex, tick.snapshot.phase === "onboard", tick.content.phase === "walking" && tick.content.primaryText.startsWith("Walk"), tz, plan.ID, getRegionSlug(region)).catch(() => {})
+        if (tick.snapshot.journeyArrived) {
+            resetMoments()
+            // Arrived a while ago: take the Live Activity / live notification down
+            // rather than keep updating it - and, after a relaunch, rather than
+            // starting a fresh one for a journey that's already over.
+            const lastLeg = tick.displayPlan.Legs[tick.displayPlan.Legs.length - 1]
+            const arrival = goTime((lastLeg?.ArrivalTime ?? tick.displayPlan.ArrivalTime) as unknown as string)?.getTime() ?? 0
+            if (Date.now() >= arrival + ARRIVED_SURFACE_GRACE_MS) {
+                if (!surfaceEnded.current) {
+                    surfaceEnded.current = true
+                    endLiveSurface(plan.ID).catch(() => {})
+                }
+                return
+            }
+        } else scheduleMoments(tick.displayPlan.Legs, tick.snapshot.progressLegIndex, tick.snapshot.phase === "onboard", tick.content.phase === "walking" && tick.content.primaryText.startsWith("Walk"), tz, plan.ID, getRegionSlug(region)).catch(() => {})
         updateLiveSurface(plan.ID, destinationLabel(plan), region, tick.content, tick.snapshot).catch(() => {})
     }, [tick, tz, plan, region])
 

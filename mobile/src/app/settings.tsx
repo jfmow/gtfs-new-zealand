@@ -26,12 +26,14 @@ export default function SettingsScreen() {
     const [testing, setTesting] = useState(false)
     const fareType = settings.fareType[slug] ?? "adult"
 
+    // Back from the phone's Settings: show the switch as it is now.
+    const refetchAllowed = allowed.refetch
     useEffect(() => {
         const subscription = AppState.addEventListener("change", (state) => {
-            if (state === "active") allowed.refetch()
+            if (state === "active") refetchAllowed()
         })
         return () => subscription.remove()
-    }, [allowed])
+    }, [refetchAllowed])
 
     const testPush = async () => {
         if (!(await requestNotifications())) {
