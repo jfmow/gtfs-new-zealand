@@ -47,6 +47,8 @@ export interface JourneyTick {
     user: Coordinate | null
     online: boolean
     lastLiveAt: number | null
+    /** For the server's leave alerts: when you set off (unix s), 0 while GPS still has you at the start, undefined when it can't tell. */
+    leftAt?: number
 }
 
 const POLL_MS = 10_000
@@ -62,27 +64,23 @@ export function useJourneySession(plan: JourneyType | undefined): JourneyTick | 
     const detector = useRef<DepartureDetector | null>(null)
     const lastFix = useRef<GPSFix | null>(null)
     const lastTracked = useRef<string | null>(null)
+    /** The trip whose vehicle was at your stop last tick (boarding) - GPS can then tell you've got on sooner. */
+    const boardingTrip = useRef<string | null>(null)
     const [tick, setTick] = useState(0)
     const [user, setUser] = useState<{ c: Coordinate; accuracy: number | null } | null>(null)
 
     const transitLegs = plan?.Legs.filter((l) => l.Mode === "transit" && l.TripID) ?? []
     const tripIds = [...new Set(transitLegs.map((l) => l.TripID))]
 
-    // Start (or resume) the session for this plan.
+    // Pick up where the saved journey left off. `startJourney` saved it
+    // fresh, and the runner only mounts a session for the saved journey.
     useEffect(() => {
-        if (!plan) return
         const current = activeJourneyStore.get()
-        if (!current || current.planId !== plan.ID) {
-            activeJourneyStore.set({ planId: plan.ID, region: region.url, startedAt: Date.now(), setOffAt: null, alightedThroughLeg: -1, rides: {} })
-            model.reset()
-            estimator.reset()
-            detector.current = new DepartureDetector()
-        } else {
-            model.restore(current.alightedThroughLeg)
-            estimator.restore(current.rides)
-            detector.current = new DepartureDetector(current.setOffAt ? new Date(current.setOffAt) : null)
-        }
-    }, [plan, region.url, model, estimator])
+        if (!plan || current?.planId !== plan.ID) return
+        model.restore(current.alightedThroughLeg)
+        estimator.restore(current.rides)
+        detector.current = new DepartureDetector(current.setOffAt ? new Date(current.setOffAt) : null)
+    }, [plan, model, estimator])
 
     // Journey GPS - keeps running with the screen off (journey-location.ts).
     // Starts precise (the journey is opened from the foreground); each tick
@@ -155,7 +153,7 @@ export function useJourneySession(plan: JourneyType | undefined): JourneyTick | 
         for (const leg of transitLegs) {
             const stops = stopsByTrip[leg.TripID]
             if (!stops?.length) continue
-            const est = estimator.estimate(leg, stops, fix, goTime(leg.DepartureTime as unknown as string), now)
+            const est = estimator.estimate(leg, stops, fix, goTime(leg.DepartureTime as unknown as string), now, boardingTrip.current === leg.TripID)
             if (!est) continue
             if (vehicles[leg.TripID]) vehicles[leg.TripID] = OfflineRideEstimator.advancing(vehicles[leg.TripID], est)
             else {
@@ -173,6 +171,7 @@ export function useJourneySession(plan: JourneyType | undefined): JourneyTick | 
         const trackedStops = (lastTracked.current && stopsByTrip[lastTracked.current]) || trackedStopsFor(plan, stopsByTrip, model)
         const tracked = model.update({ plan, displayPlan, now, vehiclesByTripId: vehicles, stopTimesByTripId: stopTimes, journeyStarted: true, trackedStops, userLocation: user?.c ?? null, estimatedTripIds: estimated, holdAtStart })
         lastTracked.current = tracked.trackedTripId
+        boardingTrip.current = tracked.phase === "boarding" ? tracked.trackedTripId : null
 
         const trackedVehicle = tracked.trackedTripId ? vehicles[tracked.trackedTripId] : null
         const content = buildLiveActivityContent(displayPlan.Legs, {
@@ -193,7 +192,10 @@ export function useJourneySession(plan: JourneyType | undefined): JourneyTick | 
         if (model.alightedThroughLeg !== active.alightedThroughLeg || JSON.stringify(estimator.progress) !== JSON.stringify(active.rides)) {
             setActive((a) => (a ? { ...a, alightedThroughLeg: model.alightedThroughLeg, rides: estimator.progress } : a))
         }
-        setSnapshot({ displayPlan, snapshot: tracked, content, vehicles, user: user?.c ?? null, online: !live.error, lastLiveAt: live.dataUpdatedAt || null })
+        // iOS `watchingDeparture`: a walk first, and a fix from the last 2 min.
+        const watching = first?.Mode === "walk" && !!fix && now.getTime() - fix.timestamp.getTime() <= 120_000
+        const leftAt = setOffAt ? Math.floor(setOffAt.getTime() / 1000) : watching ? 0 : undefined
+        setSnapshot({ displayPlan, snapshot: tracked, content, vehicles, user: user?.c ?? null, online: !live.error, lastLiveAt: live.dataUpdatedAt || null, leftAt })
 
         // How much GPS to use now - the SwiftUI app's JourneyGPSPolicy: precise
         // while you're looking, resting on a live-tracked ride far from your stop.

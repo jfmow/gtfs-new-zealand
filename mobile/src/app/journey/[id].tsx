@@ -8,11 +8,10 @@ import { getRegionSlug } from "@transit/shared/regions"
 import { JourneyLegBar, JourneyMap, JourneyTimeline, isDisrupted, legDate, summaryLine } from "@/components/journey"
 import { Button, ErrorText, Loading } from "@/components/ui"
 import { useActiveJourney } from "@/lib/journey-session"
+import { journeyWebLink } from "@/lib/links"
 import { planContext, useConnectionOdds, useFares, useLiveTripIds, usePlan } from "@/lib/plans"
 import { useRegion } from "@/lib/region"
 import { radius, spacing, type, useColors } from "@/theme"
-
-const WEB_HOST = "https://trains.suddsy.dev"
 
 /**
  * One planned journey - iOS `JourneyDetailView`: a still map preview (tap
@@ -52,7 +51,7 @@ export default function JourneyDetail() {
     const isActive = active?.planId === plan.ID
     const leaveMinutes = depart ? Math.floor((depart.getTime() - now) / 60_000) : null
     const share = () => Share.share({
-        message: `${arrive ? `Follow my journey - arriving around ${laClock(arrive, tz)}` : "Follow my journey"}\n${WEB_HOST}/journey?id=${encodeURIComponent(plan.ID)}&region=${getRegionSlug(region)}`,
+        message: `${arrive ? `Follow my journey - arriving around ${laClock(arrive, tz)}` : "Follow my journey"}\n${journeyWebLink(plan.ID, getRegionSlug(region))}`,
     })
     const destinationName = ctx?.end?.label ?? plan.Legs[plan.Legs.length - 1]?.ToStop?.stop_name ?? "your destination"
 

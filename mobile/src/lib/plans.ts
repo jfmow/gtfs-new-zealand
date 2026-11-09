@@ -1,7 +1,5 @@
 import { QueryClient, useQuery } from "@tanstack/react-query"
-import { rankedPlans } from "@transit/shared/easy-planner"
 import type { JourneyPlanRequest, TravelMode } from "@transit/shared/endpoints"
-import { pruneDominatedPlans } from "@transit/shared/logic/basics"
 import { getRegionSlug } from "@transit/shared/regions"
 import { reliabilityChangeKeys, type ReliabilityConnection } from "@transit/shared/reliability"
 import type { JourneyType } from "@transit/shared/types/journey"
@@ -45,19 +43,19 @@ export function planContext(id: string): PlanContext | undefined {
     return contexts.get(id)
 }
 
-export function usePlans(req: JourneyPlanRequest | null) {
-    const { region, ready } = useRegion()
-    return useQuery({
-        queryKey: ["plans", region.url, req && JSON.stringify({ ...req, date: req.date?.toISOString() })],
-        queryFn: async () => {
-            const plans = (await unwrap(api.plan(req!))) ?? []
-            rememberPlans(plans)
-            const arriveBy = req!.timeType === "arriveat" ? req!.date ?? null : null
-            return rankedPlans(pruneDominatedPlans(plans), arriveBy)
-        },
-        enabled: ready && !!req,
-        staleTime: 30_000,
-    })
+/** The context for plans from `req` - what's saved with them for reminders, saved trips and the tracker's labels. */
+export function contextFor(req: JourneyPlanRequest, start: { label: string; lat: number; lon: number }, end: { label: string; lat: number; lon: number }): PlanContext {
+    return {
+        start: { label: start.label, lat: start.lat, lon: start.lon },
+        end: { label: end.label, lat: end.lat, lon: end.lon },
+        arriveBy: req.timeType === "arriveat",
+        maxWalkKm: req.maxWalkKm ?? 1,
+        walkSpeed: req.walkSpeed ?? 1,
+        maxTransfers: req.maxTransfers ?? 5,
+        onlyRoutes: req.onlyRoutes ?? [],
+        modes: req.modes,
+        minTransferSec: req.minTransferSec,
+    }
 }
 
 /** A plan by id: from this session's results, else `services/plan/:id` (shared links, reminders). */

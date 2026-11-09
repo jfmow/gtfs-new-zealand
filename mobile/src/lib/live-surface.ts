@@ -16,7 +16,9 @@ import { savedStopsStore } from "./saved"
 
 let activityId: string | null = null
 let activityPlan: string | null = null
-let lastReported = ""
+/** What the Lock Screen shows now - to hold small countdown wobbles and pace updates (iOS `updateLiveActivity`). */
+let lastSent: { content: LiveActivityContent; comparable: string; at: number } | null = null
+let lastReport: { key: string; at: number } | null = null
 let lastAlertKey = ""
 let starting = false
 /** The journey just ended - late updates for it must not start a new Live Activity (and re-register it with the server). */
@@ -40,14 +42,59 @@ function listenForTokens(region: string) {
     })
 }
 
-/** Called on every tracker tick with the latest content. */
-export async function updateLiveSurface(planId: string, destination: string, region: Region, content: LiveActivityContent, snapshot: JourneyProgressSnapshot) {
+/** A countdown that moves less than this (same leg and stage) keeps its time - feed predictions wobble by seconds each poll. */
+const STEADY_TARGET_S = 30
+/** Changes the rider wouldn't notice (a countdown drifting) go out at most this often; phase, leg, stops away and status at once. */
+const MINOR_UPDATE_MS = 15_000
+/** Nothing changed: re-sent this often so the Live Activity never goes stale (its stale date is 15 min). */
+const RESEND_UNCHANGED_MS = 3 * 60_000
+/**
+ * Report in at least this often while online: the server holds off pushing
+ * its own content over the app's while it's heard from the app in the last
+ * 100 s (`clientActiveWindow`). Reporting only on a change let the two take
+ * turns writing different countdowns.
+ */
+const REPORT_EVERY_MS = 25_000
+
+const keyOf = (c: LiveActivityContent) => `${c.legIndex}|${c.phase}|${c.stopsAway ?? ""}|${c.offline ? 1 : 0}|${c.status}`
+
+/** `content` with its countdown held where it was, when it has only wobbled. */
+function steadied(content: LiveActivityContent): LiveActivityContent {
+    const prev = lastSent?.content
+    if (!prev || prev.legIndex !== content.legIndex || prev.phase !== content.phase || prev.countdownLabel !== content.countdownLabel) return content
+    return Math.abs(content.targetUnix - prev.targetUnix) < STEADY_TARGET_S ? { ...content, targetUnix: prev.targetUnix } : content
+}
+
+/** Whether this tick's content should go to the Lock Screen (alerts always do). */
+function due(content: LiveActivityContent, alert: boolean, now: number): boolean {
+    if (alert || !lastSent) return true
+    const { updatedUnix: _, ...rest } = content
+    const comparable = JSON.stringify(rest)
+    const elapsed = now - lastSent.at
+    if (comparable === lastSent.comparable) return elapsed >= RESEND_UNCHANGED_MS
+    return keyOf(content) !== keyOf(lastSent.content) || elapsed >= MINOR_UPDATE_MS
+}
+
+function sent(content: LiveActivityContent, now: number) {
+    const { updatedUnix: _, ...rest } = content
+    lastSent = { content, comparable: JSON.stringify(rest), at: now }
+}
+
+/**
+ * Called on every tracker tick with the latest content. `leftAt` tells the
+ * server when you set off (unix s), 0 while you're still at the start, or
+ * undefined when the app can't tell - it stops talking about leaving once
+ * you've gone.
+ */
+export async function updateLiveSurface(planId: string, destination: string, region: Region, raw: LiveActivityContent, snapshot: JourneyProgressSnapshot, online: boolean, leftAt?: number) {
     if (planId === endedPlan) {
         // The same journey started again (from the planner or a link) - let it through.
         if (startedAgain(planId)) endedPlan = null
         else return
     }
     const slug = getRegionSlug(region)
+    const now = Date.now()
+    const content = steadied(raw)
     // A moment worth expanding the Dynamic Island / alerting for, once each.
     const alertKey = `${snapshot.progressLegIndex}:${snapshot.phase}:${snapshot.trackedStopsAway === 0}`
     const alert = alertKey !== lastAlertKey && (content.urgent || snapshot.phase === "boarding" || (snapshot.phase === "onboard" && snapshot.trackedStopsAway === 0))
@@ -56,7 +103,9 @@ export async function updateLiveSurface(planId: string, destination: string, reg
     lastAlertKey = alertKey
 
     if (Platform.OS === "android") {
+        if (!due(content, !!alert, now)) return
         TransitNative.showLiveNotification(content, planId, !!alert)
+        sent(content, now)
         return
     }
     // Ask regardless: `areActivitiesEnabled` can read false before the system
@@ -76,6 +125,7 @@ export async function updateLiveSurface(planId: string, destination: string, reg
             }
             activityId = id
             activityPlan = planId
+            sent(content, now)
         } catch (e) {
             warnOnce(`start:${String(e)}`, `Couldn't start the Live Activity: ${String(e)}`)
             activityId = null
@@ -84,13 +134,17 @@ export async function updateLiveSurface(planId: string, destination: string, reg
         }
         return
     }
-    await TransitNative.updateActivity(activityId, content, alert).catch(() => {})
+    if (due(content, !!alert, now)) {
+        sent(content, now)
+        await TransitNative.updateActivity(activityId, content, alert).catch(() => {})
+    }
 
-    // The server's floor: it never moves its own state behind what the phone reports.
-    const report = `${content.legIndex}:${content.phase}`
-    if (report !== lastReported) {
-        lastReported = report
-        api.reportLiveActivityLeg(activityId, content.legIndex, content.phase).catch(() => {})
+    // The server's floor (it never moves its own state behind what the phone
+    // reports), and the sign the app is writing the content itself.
+    const report = `${content.legIndex}:${content.phase}:${leftAt ?? ""}`
+    if (online && activityId && (report !== lastReport?.key || now - lastReport.at >= REPORT_EVERY_MS)) {
+        lastReport = { key: report, at: now }
+        api.reportLiveActivityLeg(activityId, content.legIndex, content.phase, false, leftAt).catch(() => {})
     }
 }
 
@@ -107,7 +161,8 @@ export async function endLiveSurface(planId?: string) {
     }
     activityId = null
     activityPlan = null
-    lastReported = ""
+    lastSent = null
+    lastReport = null
     lastAlertKey = ""
 }
 

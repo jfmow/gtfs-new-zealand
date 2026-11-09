@@ -70,6 +70,34 @@ describe("OfflineRideEstimator boarding", () => {
         feed(e, fix(1.7, null, 640))
         expect(e.hasBoarded("T1")).toBe(true)
     })
+    // Stops are ~500 m apart, so 1.12 is ~60 m past the stop.
+    const feedAtStop = (e: OfflineRideEstimator, f: GPSFix) => e.estimate(rideLeg, tripStops, f, departure, f.timestamp, true)
+    it("is boarded sooner pulling away while the vehicle is at the stop", () => {
+        const e = new OfflineRideEstimator()
+        feedAtStop(e, fix(1.12, 3.5, 605))
+        const v = feedAtStop(e, fix(1.16, 3.5, 612))
+        expect(e.hasBoarded("T1")).toBe(true)
+        expect(v?.state).toBe("Travelling")
+        expect(hasDepartedStop(v, 2)).toBe(true)
+    })
+    it("needs the vehicle at the stop to board that soon", () => {
+        const e = new OfflineRideEstimator()
+        feed(e, fix(1.12, 3.5, 605))
+        feed(e, fix(1.16, 3.5, 612))
+        expect(e.hasBoarded("T1")).toBe(false)
+    })
+    it("isn't boarded walking away from the stop while the vehicle is there", () => {
+        const e = new OfflineRideEstimator()
+        feedAtStop(e, fix(1.12, 1.4, 605))
+        feedAtStop(e, fix(1.16, 1.4, 640))
+        expect(e.hasBoarded("T1")).toBe(false)
+    })
+    it("isn't boarded off to the side while the vehicle is at the stop", () => {
+        const e = new OfflineRideEstimator()
+        feedAtStop(e, fix(1.12, 3.5, 605, 0.001))
+        feedAtStop(e, fix(1.16, 3.5, 612, 0.001))
+        expect(e.hasBoarded("T1")).toBe(false)
+    })
     it("isn't boarded far from the route", () => {
         const e = new OfflineRideEstimator()
         feed(e, fix(1.4, 9, 620, 0.01))
@@ -184,6 +212,13 @@ describe("OfflineRideEstimator with the progress model and feed", () => {
         const live = feedVehicle(5, 6, "Travelling", 0)
         expect(OfflineRideEstimator.advancing(live, feedVehicle(4, 5, "Travelling", 0.001))).toBe(live)
         expect(OfflineRideEstimator.advancing(live, feedVehicle(5, 6, "AtStop", 0.001))).toBe(live)
+    })
+    it("moves the feed's vehicle off the stop when GPS has it on its way", () => {
+        const merged = OfflineRideEstimator.advancing(feedVehicle(5, 6, "AtStop", 0), feedVehicle(5, 6, "Travelling", 0.001))
+        expect(merged.state).toBe("Travelling")
+        expect(hasDepartedStop(merged, 5)).toBe(true)
+        const leaving = feedVehicle(5, 6, "Leaving", 0)
+        expect(OfflineRideEstimator.advancing(leaving, feedVehicle(5, 6, "Travelling", 0.001))).toBe(leaving)
     })
 })
 

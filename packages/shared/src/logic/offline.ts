@@ -51,6 +51,15 @@ export class OfflineRideEstimator {
     static readonly atStopMeters = 40
     static readonly walkedAwayMeters = 10
     static readonly earlyBoardingMs = 180_000
+    /**
+     * While the vehicle is at your stop (the boarding phase), pulling away
+     * with it is evidence enough sooner: a city bus is often under
+     * `ridingSpeed` for its first 150 m, which kept "Get on now" up long
+     * after the rider was aboard. Still two fixes in a row, close to the route.
+     */
+    static readonly boardingNowPastMeters = 50
+    static readonly boardingNowSpeed = 2.5
+    static readonly boardingNowOffRouteMeters = 50
 
     private rides = new Map<string, RideState>()
 
@@ -86,8 +95,11 @@ export class OfflineRideEstimator {
         return { boarded: false, alighted: false, reachedAlight: false, segment: 0, boardingEvidence: 0, lastFix: null, lastSpeed: null, passedAt: new Map() }
     }
 
-    /** Advances one ride with a new fix; returns its synthetic vehicle, or null until on board. */
-    estimate(leg: Leg, stops: TripStopRef[], fix: GPSFix | null, departure: Date | null, now: Date): Vehicle | null {
+    /**
+     * Advances one ride with a new fix; returns its synthetic vehicle, or null until on board.
+     * `vehicleAtStop`: the ride's vehicle is at your stop now (boarding) - see `boardingNowPastMeters`.
+     */
+    estimate(leg: Leg, stops: TripStopRef[], fix: GPSFix | null, departure: Date | null, now: Date, vehicleAtStop = false): Vehicle | null {
         const tripId = leg.TripID
         if (!tripId) return null
         const boardSeq = findStopSequence(stops, leg.FromStop)
@@ -115,7 +127,10 @@ export class OfflineRideEstimator {
 
         if (!state.boarded) {
             const timeOK = departure ? now.getTime() >= departure.getTime() - OfflineRideEstimator.earlyBoardingMs : true
-            const qualifies = timeOK && p.distanceFromRoute <= OfflineRideEstimator.onRouteMeters && p.alongMeters >= OfflineRideEstimator.boardedPastMeters && (speed ?? 0) >= OfflineRideEstimator.ridingSpeed
+            const riding = p.distanceFromRoute <= OfflineRideEstimator.onRouteMeters && p.alongMeters >= OfflineRideEstimator.boardedPastMeters && (speed ?? 0) >= OfflineRideEstimator.ridingSpeed
+            const pullingAway = vehicleAtStop && p.distanceFromRoute <= OfflineRideEstimator.boardingNowOffRouteMeters &&
+                p.alongMeters >= OfflineRideEstimator.boardingNowPastMeters && (speed ?? 0) >= OfflineRideEstimator.boardingNowSpeed
+            const qualifies = timeOK && (riding || pullingAway)
             state.boardingEvidence = qualifies ? state.boardingEvidence + 1 : 0
             if (state.boardingEvidence >= 2) {
                 state.boarded = true
@@ -186,12 +201,17 @@ export class OfflineRideEstimator {
         return stopTimes.find((x) => x.child_stop_id === stop.child_stop_id) ?? stopTimes.find((x) => stop.parent_stop_id !== "" && x.parent_stop_id === stop.parent_stop_id) ?? null
     }
 
-    /** The live vehicle moved on to where the rider's GPS puts the ride, when that's further along. Only ever forward. */
+    /**
+     * The live vehicle moved on to where the rider's GPS puts the ride, when that's further along. Only ever forward:
+     * a later stop, or the same stop when the feed still has it there but GPS has it on its way (the feed lags pulling out).
+     */
     static advancing(live: Vehicle, estimate: Vehicle): Vehicle {
         const liveSeq = live.trip?.current_stop?.sequence ?? -Infinity
         const gps = estimate.trip
         const gpsSeq = gps?.current_stop?.sequence
-        if (!gps || gpsSeq === undefined || gpsSeq <= liveSeq) return live
+        if (!gps || gpsSeq === undefined || gpsSeq < liveSeq) return live
+        const leftStop = gpsSeq === liveSeq && estimate.state === "Travelling" && live.state !== "Travelling" && live.state !== "Leaving"
+        if (gpsSeq === liveSeq && !leftStop) return live
         return {
             ...live,
             trip: {

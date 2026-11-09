@@ -8,6 +8,7 @@ import { endLiveSurface, updateLiveSurface } from "./live-surface"
 import { resetMoments, scheduleMoments } from "./moments"
 import { planContext, usePlan } from "./plans"
 import { useRegion } from "./region"
+import { cleanStopName } from "@transit/shared/formatting"
 import { getRegionSlug } from "@transit/shared/regions"
 
 /**
@@ -67,7 +68,7 @@ const ARRIVED_SURFACE_GRACE_MS = 90_000
 export function destinationLabel(plan: JourneyType): string {
     // From the search when there was one; a shared link has none, so the last named stop on the way.
     const lastStop = [...plan.Legs].reverse().find((l) => l.ToStop?.stop_name)?.ToStop?.stop_name
-    return planContext(plan.ID)?.end?.label ?? lastStop ?? "your destination"
+    return planContext(plan.ID)?.end?.label ?? (lastStop ? cleanStopName(lastStop) : null) ?? "your destination"
 }
 
 export function JourneyRunner() {
@@ -116,7 +117,7 @@ function Session({ plan }: { plan: JourneyType }) {
                 return
             }
         } else scheduleMoments(tick.displayPlan.Legs, tick.snapshot.progressLegIndex, tick.snapshot.phase === "onboard", tick.content.phase === "walking" && tick.content.primaryText.startsWith("Walk"), tz, plan.ID, getRegionSlug(region)).catch(() => {})
-        updateLiveSurface(plan.ID, destinationLabel(plan), region, tick.content, tick.snapshot).catch(() => {})
+        updateLiveSurface(plan.ID, destinationLabel(plan), region, tick.content, tick.snapshot, tick.online, tick.leftAt).catch(() => {})
     }, [tick, tz, plan, region])
 
     // A journey nobody ended stops itself a while after it arrives.

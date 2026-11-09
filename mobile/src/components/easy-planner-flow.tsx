@@ -12,10 +12,11 @@ import { LocationResults, type PickedPlace } from "./location-search"
 import { Button, Loading, SearchField, HeaderTextButton } from "./ui"
 import { api } from "@/lib/api"
 import { coordinateOf, useUserLocation } from "@/lib/location"
-import { rememberPlans } from "@/lib/plans"
+import { contextFor, rememberPlans } from "@/lib/plans"
 import { useRegion } from "@/lib/region"
 import { useSettings } from "@/lib/saved"
 import { radius, spacing, type, useColors } from "@/theme"
+import type { JourneyPlanRequest } from "@transit/shared/endpoints"
 
 type Step = "to" | "from" | "how" | "when" | "result"
 
@@ -51,20 +52,17 @@ export function EasyPlannerFlow({ embedded = false }: { embedded?: boolean }) {
         setBusy(true)
         setResult(null)
         for (const attempt of easyAttempts(modes, walkLess)) {
-            const res = await api.plan({
+            const req: JourneyPlanRequest = {
                 start: { lat: start.lat, lon: start.lon }, end: { lat: to.lat, lon: to.lon },
                 date: arriveBy ?? undefined, timeType: arriveBy ? "arriveat" : "now",
                 maxWalkKm: attempt.options.maxWalkKm, walkSpeed: walkLess ? attempt.options.walkSpeed : Number(normalizeWalkSpeed(settings.walkSpeed)),
                 maxTransfers: attempt.options.maxTransfers, minTransferSec: attempt.options.minTransferSec, modes: attempt.modes,
-            })
+            }
+            const res = await api.plan(req)
             const plans = res.ok ? res.data ?? [] : []
             const best = recommendedPlan(plans, arriveBy)
             if (best) {
-                rememberPlans(plans, {
-                    start: { label: start.label, lat: start.lat, lon: start.lon }, end: { label: to.label, lat: to.lat, lon: to.lon },
-                    arriveBy: !!arriveBy, maxWalkKm: attempt.options.maxWalkKm ?? 1, walkSpeed: attempt.options.walkSpeed ?? 1,
-                    maxTransfers: attempt.options.maxTransfers ?? 5, onlyRoutes: [], modes: attempt.modes, minTransferSec: attempt.options.minTransferSec,
-                })
+                rememberPlans(plans, contextFor(req, start, to))
                 setResult({ plan: best, note: attempt.note })
                 setBusy(false)
                 return

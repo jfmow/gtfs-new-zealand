@@ -20,7 +20,7 @@ import { Button, EmptyState, ErrorText, GlassButton, Loading, Muted } from "@/co
 import { api } from "@/lib/api"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { optionsChanged, plannerWhenStore, usePlannerOptions, whenLabel } from "@/lib/planner-store"
-import { rememberPlans, useFares, type PlanContext } from "@/lib/plans"
+import { contextFor, rememberPlans, useFares } from "@/lib/plans"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { useSavedPlaces, useSavedTrips, useSettings } from "@/lib/saved"
@@ -79,16 +79,7 @@ function Planner({ params }: { params: PlannerParams }) {
         modes: options.modes,
         onlyRoutes: options.onlyRoutes.map((r) => r.id),
     } : null
-    const context: PlanContext | null = request && start && to ? {
-        start: { label: start.label, lat: start.lat, lon: start.lon },
-        end: { label: to.label, lat: to.lat, lon: to.lon },
-        arriveBy: when.mode === "arriveat",
-        maxWalkKm: request.maxWalkKm ?? 1,
-        walkSpeed: request.walkSpeed ?? 1,
-        maxTransfers: request.maxTransfers ?? 5,
-        onlyRoutes: request.onlyRoutes ?? [],
-        modes: request.modes,
-    } : null
+    const context = request && start && to ? contextFor(request, start, to) : null
     const plans = useQuery({
         queryKey: ["plans", region.url, request && JSON.stringify(request)],
         queryFn: async () => {

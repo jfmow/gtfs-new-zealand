@@ -1,25 +1,24 @@
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import * as Haptics from "expo-haptics"
 import { router, useLocalSearchParams } from "expo-router"
-import { ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, WifiOff } from "@/components/icons"
+import { ArrowDownCircle, ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, WifiOff } from "@/components/icons"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useRef, useState } from "react"
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { cleanStopName } from "@transit/shared/formatting"
 import { formatDistance, formatDuration } from "@transit/shared/logic/basics"
 import { laClock, replanChoices } from "@transit/shared/logic/journey-live"
-import { connectionRisk } from "@transit/shared/logic/tracking"
 import { getRegionSlug } from "@transit/shared/regions"
 import { lineCoordinates } from "@transit/shared/models"
-import type { Leg } from "@transit/shared/types/journey"
-import { occupancyShort } from "@/components/departures"
 import { JourneyLegBar, JourneyTimeline, journeyLines, legDate, legRouteName, type LegStatus } from "@/components/journey"
 import { TransitMap, isValidCoordinate, type MapCamera } from "@/components/transit-map"
 import { ErrorText, FitRow, GlassButton, Loading, RouteBadge, hexColor } from "@/components/ui"
 import type { JourneyTick } from "@/lib/journey-session"
 import { api } from "@/lib/api"
-import { startJourney, stopJourney, useJourneyTick } from "@/lib/journey-runner"
+import { packIsComplete, useJourneyPack } from "@/lib/journey-pack"
+import { destinationLabel, startJourney, stopJourney, useJourneyTick } from "@/lib/journey-runner"
+import { activeRide, trackerSummary, type StatusTone } from "@/lib/journey-status"
+import { journeyWebLink } from "@/lib/links"
 import { useMapFilter } from "@/lib/map-filter"
 import { usePlan } from "@/lib/plans"
 import { unwrap } from "@/lib/queries"
@@ -28,8 +27,6 @@ import { useRegion } from "@/lib/region"
 import { journeyCamera, useTrackerCamera } from "@/lib/tracker-camera"
 import { useWalkNavigation } from "@/lib/walk-nav"
 import { radius, spacing, type, useColors } from "@/theme"
-
-const WEB_HOST = "https://trains.suddsy.dev"
 
 /** Live journey tracking - iOS `JourneyTrackingView` (restyled 2026-11-03). */
 
@@ -44,30 +41,36 @@ export default function JourneyTracker() {
     // runner does the tracking, so it carries on when this is minimised.
     useEffect(() => { if (plan) startJourney(plan.ID, region.url) }, [plan, region.url])
     const tick = useJourneyTick(plan?.ID)
+    const pack = useJourneyPack(plan?.ID)
     const [now, setNow] = useState(() => Date.now())
-    const moment = useMomentBanner(tick)
     const [filter, setFilter] = useMapFilter()
-    const walk = useWalkNavigation(tick?.displayPlan, tick?.snapshot.progressLegIndex ?? -1, tick?.snapshot.phase === "walking", tick?.user ?? null)
+
+    // The journey as it stands: the plan re-timed from live data, where you
+    // are in it, and the vehicle for the ride you're on or about to catch
+    // (iOS `activeRideVehicle` - the map shows only this one).
+    const display = tick?.displayPlan ?? plan
+    const snap = tick?.snapshot ?? null
+    const vehicle = snap?.trackedTripId ? tick?.vehicles[snap.trackedTripId] : undefined
+    const ride = display ? activeRide(display, snap) : undefined
+    const user = tick?.user && isValidCoordinate(tick.user) ? tick.user : null
+
+    const moment = useMomentBanner(tick)
+    const walk = useWalkNavigation(display, snap?.progressLegIndex ?? -1, snap?.phase === "walking", user)
+
+    // Map: the camera follows the stage of the journey (tracker-camera.ts);
+    // the clear area is between the top bar (plus the walk card while it
+    // shows, as iOS) and the drawer.
     const camera = useRef<MapCamera>(null)
-    const mapSnap = tick?.snapshot ?? null
-    const mapDisplay = tick?.displayPlan ?? plan
-    const mapVehicleId = mapSnap?.trackedTripId ?? mapSnap?.followMarkerId?.replace("vehicle-", "")
-    // Only the vehicle for the ride you're on or about to take (iOS `activeRideVehicle`).
-    const mapVehicle = mapVehicleId ? tick?.vehicles[mapVehicleId] : undefined
-    // iOS adds the walking-step card (76) to the top inset while it shows.
     const mapPadding = { top: insets.top + 70 + (walk || moment ? 76 : 0), bottom: 380, left: 0, right: 0 }
-    const cameraMode = journeyCamera(mapDisplay ?? null, mapSnap, mapVehicle, tick?.user ?? null)
-    const tracker = useTrackerCamera(camera, cameraMode, { padding: mapPadding, threeD: filter.threeD })
-    // The ride you're on or about to catch is drawn along the vehicle's whole
-    // route (iOS `activeRideLeg` + `rideShapes`); same cache as the trip screen.
-    const activeRideTripId = mapDisplay?.Legs.slice(Math.max(0, mapSnap?.progressLegIndex ?? 0)).find((l) => l.Mode === "transit")?.TripID || undefined
-    const rideShape = useQuery({
-        queryKey: ["trip-shape", region.url, activeRideTripId],
-        queryFn: async () => unwrap(api.routeShape({ tripId: activeRideTripId! })),
-        enabled: !!activeRideTripId,
+    const tracker = useTrackerCamera(camera, journeyCamera(display ?? null, snap, vehicle, user), { padding: mapPadding, threeD: filter.threeD })
+    // The active ride is drawn along the vehicle's whole route, greyed before
+    // you board and after you get off (iOS `rideShapes`); same cache as the trip screen.
+    const shape = useQuery({
+        queryKey: ["trip-shape", region.url, ride?.TripID],
+        queryFn: async () => unwrap(api.routeShape({ tripId: ride!.TripID })),
+        enabled: !!ride?.TripID,
         staleTime: Infinity,
     })
-    const activeRide = activeRideTripId && rideShape.data ? { tripId: activeRideTripId, shape: lineCoordinates(rideShape.data.geojson) } : null
 
     useEffect(() => {
         setJourneyTrackerOpen(true)
@@ -79,125 +82,56 @@ export default function JourneyTracker() {
     }, [])
 
     if (isLoading) return <Loading />
-    if (error || !plan) return <View style={{ padding: spacing.xl, paddingTop: insets.top + spacing.xl }}><ErrorText>{(error as Error | null)?.message ?? "Journey not found"}</ErrorText></View>
+    if (error || !plan || !display) return <View style={{ padding: spacing.xl, paddingTop: insets.top + spacing.xl }}><ErrorText>{(error as Error | null)?.message ?? "Journey not found"}</ErrorText></View>
 
-    const display = tick?.displayPlan ?? plan
     const legs = display.Legs
-    const snap = tick?.snapshot ?? null
-    const idx = Math.max(0, snap?.progressLegIndex ?? 0)
-    const currentLeg = snap && snap.progressLegIndex >= 0 ? legs[snap.progressLegIndex] : undefined
-    const nextRide = legs.slice(idx).find((l) => l.Mode === "transit")
-    const vehicle = snap?.trackedTripId ? tick?.vehicles[snap.trackedTripId] : undefined
-    const destinationName = cleanStopName(legs[legs.length - 1]?.ToStop?.stop_name ?? "") || "your destination"
-    const clock = (d: unknown) => { const x = legDate(d); return x ? laClock(x, tz) : "" }
-    const name = (l?: Leg) => (l ? legRouteName(l) || "Bus" : "service")
-    const stopName = (st?: Leg["FromStop"]) => (st?.stop_name ? cleanStopName(st.stop_name) : null)
-
-    const phaseLabel = (() => {
-        if (!snap) return "Your journey"
-        if (snap.journeyArrived) return "You've arrived"
-        const leg = legs[Math.min(idx, legs.length - 1)]
-        if (!leg) return "Tracking"
-        switch (snap.phase) {
-            case "walking": return leg.ToStop ? `Walking to ${cleanStopName(leg.ToStop.stop_name)}` : idx === legs.length - 1 ? "Almost there" : "Walking"
-            case "waiting": return `Waiting for the ${name(leg.Mode === "transit" ? leg : nextRide)}`
-            case "boarding": return `Boarding the ${name(leg.Mode === "transit" ? leg : nextRide)}`
-            case "onboard": return leg.ToStop ? `On the ${name(leg)} → ${cleanStopName(leg.ToStop.stop_name)}` : `On the ${name(leg)}`
-            default: return "Tracking"
-        }
-    })()
-
-    const countdown: { target: Date; caption: string; place: string; urgent: boolean } | null = (() => {
-        if (!snap || snap.journeyArrived) return null
-        if (snap.phase === "onboard") {
-            const a = legDate(currentLeg?.ArrivalTime)
-            return a ? { target: a, caption: "Get off at", place: stopName(currentLeg?.ToStop) ?? "your stop", urgent: false } : null
-        }
-        if (snap.phase) {
-            const dep = legDate(nextRide?.DepartureTime)
-            if (nextRide && dep && (currentLeg?.Mode === "walk" || currentLeg?.TripID === nextRide.TripID)) {
-                return { target: dep, caption: `${name(nextRide)} leaves`, place: stopName(nextRide.FromStop) ?? "the stop", urgent: dep.getTime() - now < 120_000 }
-            }
-            const arr = legDate(display.ArrivalTime)
-            return arr ? { target: arr, caption: "Arrive at", place: destinationName, urgent: false } : null
-        }
-        const d = legDate(display.DepartureTime)
-        return d ? { target: d, caption: "Leave from", place: stopName(legs[0]?.FromStop) ?? "your start", urgent: false } : null
-    })()
-    const heroExtra = !snap || snap.journeyArrived ? null : snap.phase === "onboard"
-        ? (vehicle?.trip?.next_stop?.name ? `Next stop: ${vehicle.trip.next_stop.name}` : null)
-        : nextRide?.FromStop?.platform_number ? `Platform ${nextRide.FromStop.platform_number}` : null
-    const subline = !snap ? null : snap.journeyArrived ? `at ${destinationName}` : countdown
-        ? `${countdown.caption} ${countdown.place} at ${laClock(countdown.target, tz)}${heroExtra ? `, ${heroExtra.charAt(0).toLowerCase()}${heroExtra.slice(1)}` : ""}`
-        : heroExtra
-
-    const risk = snap ? legs.map((_, i) => (i > idx ? connectionRisk(legs, i) : null)).find(Boolean) ?? null : null
-    const stale = tick?.lastLiveAt ? now - tick.lastLiveAt > 45_000 : false
-    const status: { text: string; color?: string; icon?: typeof WifiOff; dot?: string; spin?: boolean }[] = []
-    if (snap && !snap.journeyArrived && snap.phase) {
-        if (nextRide && !nextRide.trip_usable) status.push({ text: "Not running", color: colors.danger, icon: TriangleAlert })
-        if (risk) status.push({ text: risk.level === "missed" ? "Connection missed" : "Tight connection", color: risk.level === "missed" ? colors.danger : colors.warning, icon: TriangleAlert })
-        if (tick && !tick.online) status.push({ text: "Offline", color: colors.warning, icon: WifiOff })
-        if (nextRide?.trip_usable && nextRide.delay_seconds && Math.abs(nextRide.delay_seconds) >= 60) status.push({ text: nextRide.delay_seconds > 0 ? `${Math.floor(nextRide.delay_seconds / 60)} min late` : `${Math.floor(-nextRide.delay_seconds / 60)} min early`, color: nextRide.delay_seconds > 0 ? colors.warning : colors.success })
-        if (nextRide) {
-            if (snap.trackingLevel === "live") status.push(stale ? { text: "Updating", spin: true } : { text: "Live", dot: colors.success })
-            else if (snap.trackingLevel === "estimated") status.push({ text: "From GPS", icon: Navigation })
-            else if (snap.trackingLevel === "predicted") status.push({ text: "Predicted" })
-            else status.push({ text: "Timetable only" })
-        }
-        if (snap.trackedStopsAway != null && snap.trackedStopsToGo != null) {
-            const away = snap.trackedStopsAway
-            const atStop = snap.trackedStopsToGo === 0
-            status.push({
-                text: snap.phase === "onboard"
-                    ? (atStop ? "At your stop - get off" : away === 0 ? "Get off at the next stop" : `${away + 1} stops to go`)
-                    : (atStop ? `${name(nextRide)} at your stop` : away === 0 ? `${name(nextRide)} arriving` : `${name(nextRide)} is ${away} stop${away === 1 ? "" : "s"} away`)
-            })
-        }
-        if (vehicle && vehicle.occupancy >= 0 && occupancyShort(vehicle.occupancy)) status.push({ text: occupancyShort(vehicle.occupancy) })
-        if (vehicle?.cars) status.push({ text: `${vehicle.cars} cars` })
-    }
+    const destination = destinationLabel(display)
+    const summary = trackerSummary({ plan: display, snap, vehicle, destination, online: tick?.online ?? true, lastLiveAt: tick?.lastLiveAt ?? null, savedOffline: packIsComplete(pack), now, tz })
+    const { countdown } = summary
+    const toneColor = (t?: StatusTone) => (t ? colors[t] : colors.mutedForeground)
 
     const choices = snap && !snap.journeyArrived ? replanChoices({
         legs, progressLegIndex: snap.progressLegIndex, phase: snap.phase,
         vehicleNextStop: vehicle?.trip?.next_stop ? { name: vehicle.trip.next_stop.name, coordinate: { lat: vehicle.trip.next_stop.lat, lon: vehicle.trip.next_stop.lon } } : null,
-        vehicleNextStopETA: null, userLocation: tick?.user ?? null, tz,
+        vehicleNextStopETA: null, userLocation: user, tz,
     }) : []
-    const replanUrgent = !!risk || (!!nextRide && !nextRide.trip_usable)
-    const shareUrl = `${WEB_HOST}/journey?id=${encodeURIComponent(plan.ID)}&region=${getRegionSlug(region)}&track=1`
-    const share = () => Share.share({ message: `Follow my journey\n${shareUrl}` })
+    const share = () => Share.share({ message: `Follow my journey\n${journeyWebLink(plan.ID, getRegionSlug(region), true)}` })
     const replan = () => {
         const end = legs[legs.length - 1]
         const toLat = display.EndLat || end?.ToStop?.stop_lat || 0
         const toLon = display.EndLon || end?.ToStop?.stop_lon || 0
-        const go = (c: (typeof choices)[number]) => router.push({ pathname: "/(tabs)/planner", params: { fromLat: String(c.origin.lat), fromLon: String(c.origin.lon), fromLabel: c.originLabel, toLat: String(toLat), toLon: String(toLon), toLabel: destinationName, departAt: String(c.departAt.getTime()) } })
+        const go = (c: (typeof choices)[number]) => router.push({ pathname: "/(tabs)/planner", params: { fromLat: String(c.origin.lat), fromLon: String(c.origin.lon), fromLabel: c.originLabel, toLat: String(toLat), toLon: String(toLon), toLabel: destination, departAt: String(c.departAt.getTime()) } })
         if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ title: "Re-plan from…", options: [...choices.map((c) => `${c.label} - ${c.detail}`), "Cancel"], cancelButtonIndex: choices.length }, (i) => choices[i] && go(choices[i]))
         else Alert.alert("Re-plan from…", undefined, [...choices.map((c) => ({ text: `${c.label} - ${c.detail}`, onPress: () => go(c) })), { text: "Cancel", style: "cancel" as const }])
     }
-    // Minimise: back to wherever the tracker was opened from - Home when it
-    // was opened from a link or notification with nothing behind it.
-    const leave = () => (router.canGoBack() ? router.back() : router.replace("/"))
+    // Back to wherever the tracker was opened from (Home from a link or notification).
+    const close = () => (router.canGoBack() ? router.back() : router.replace("/"))
     const end = () => {
         stopJourney()
-        leave()
+        close()
     }
+    // Minimise keeps the journey going - unless it's arrived, when there's
+    // nothing left to resume (iOS `leaveTracker`).
+    const minimise = () => (snap?.journeyArrived ? end() : close())
     const confirmEnd = () => {
         const msg = "Get-off alerts and the live notification will stop. Minimise keeps them going."
-        if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ title: "End this journey?", message: msg, options: ["End journey", "Minimise instead", "Keep tracking"], destructiveButtonIndex: 0, cancelButtonIndex: 2 }, (i) => (i === 0 ? end() : i === 1 ? leave() : undefined))
-        else Alert.alert("End this journey?", msg, [{ text: "End journey", style: "destructive", onPress: end }, { text: "Minimise instead", onPress: () => leave() }, { text: "Keep tracking", style: "cancel" }])
+        if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ title: "End this journey?", message: msg, options: ["End journey", "Minimise instead", "Keep tracking"], destructiveButtonIndex: 0, cancelButtonIndex: 2 }, (i) => (i === 0 ? end() : i === 1 ? close() : undefined))
+        else Alert.alert("End this journey?", msg, [{ text: "End journey", style: "destructive", onPress: end }, { text: "Minimise instead", onPress: close }, { text: "Keep tracking", style: "cancel" }])
     }
+    const toggle3D = () => {
+        setFilter({ threeD: !filter.threeD })
+        tracker.recentre()
+    }
+    // iOS's ⋯ menu: the 3D toggle and End (behind a confirmation). Share is
+    // in the drawer's actions row.
     const more = () => {
-        const toggle3D = () => setFilter({ threeD: !filter.threeD })
-        const opts = [{ label: filter.threeD ? "Flat map" : "3D map", run: toggle3D }, { label: "Share journey", run: share }, { label: "End journey", run: confirmEnd }]
-        if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ options: [...opts.map((o) => o.label), "Cancel"], destructiveButtonIndex: 2, cancelButtonIndex: 3 }, (i) => opts[i]?.run())
-        else Alert.alert("Journey", undefined, [...opts.map((o, i) => ({ text: o.label, style: i === 2 ? ("destructive" as const) : undefined, onPress: o.run })), { text: "Cancel", style: "cancel" as const }])
+        const opts = [{ label: filter.threeD ? "Flat map" : "3D map", run: toggle3D }, { label: "End journey", run: confirmEnd }]
+        if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ options: [...opts.map((o) => o.label), "Cancel"], destructiveButtonIndex: 1, cancelButtonIndex: 2 }, (i) => opts[i]?.run())
+        else Alert.alert("Journey", undefined, [...opts.map((o, i) => ({ text: o.label, style: i === 1 ? ("destructive" as const) : undefined, onPress: o.run })), { text: "Cancel", style: "cancel" as const }])
     }
 
-    const lines = journeyLines(display, colors.live, activeRide)
-    const user = tick?.user ?? null
-    const validUser = user && isValidCoordinate(user) ? user : null
+    const lines = journeyLines(display, colors.live, ride && shape.data ? { tripId: ride.TripID, shape: lineCoordinates(shape.data.geojson) } : null)
     const planStart = { lat: plan.StartLat, lon: plan.StartLon }
-    const startAt = validUser ?? (isValidCoordinate(planStart) ? planStart : { lat: 0, lon: 0 })
     const fraction = (() => {
         const a = legDate(display.DepartureTime)?.getTime() ?? now
         const b = legDate(display.ArrivalTime)?.getTime() ?? now
@@ -208,27 +142,27 @@ export default function JourneyTracker() {
         return m <= 0 ? "Now" : m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m} min`
     }
     const legStatus = (i: number): LegStatus => (!snap || snap.progressLegIndex < 0 ? "upcoming" : i < snap.progressLegIndex ? "done" : i === snap.progressLegIndex ? "current" : "upcoming")
+    const statusIcon = { alert: TriangleAlert, offline: WifiOff, gps: Navigation, saved: ArrowDownCircle } as const
 
     return (
         <View style={{ flex: 1, backgroundColor: colors.background }}>
             <TransitMap
                 ref={camera}
-                center={startAt}
+                center={user ?? (isValidCoordinate(planStart) ? planStart : { lat: 0, lon: 0 })}
                 zoom={16}
                 threeD={filter.threeD}
-                pitch={filter.threeD ? 60 : 0}
                 padding={mapPadding}
                 onRegionDidChange={tracker.onRegionDidChange}
                 onLoaded={tracker.onLoaded}
                 lines={lines.map((l) => ({ id: `trk-${l.id}`, coords: l.coords, color: l.color, dashed: l.walk, width: l.muted ? 4 : undefined }))}
-                markers={(mapVehicle && isValidCoordinate(mapVehicle.position) ? [mapVehicle] : []).map((v) => ({
+                markers={(vehicle && isValidCoordinate(vehicle.position) ? [vehicle] : []).map((v) => ({
                     id: `veh-${v.trip_id}`, coordinate: { lat: v.position.lat, lon: v.position.lon }, zIndex: 4,
                     view: { type: "vehicle" as const, mode: v.type, color: hexColor(v.route.color, "#0D1A12") }, accessibilityLabel: `${v.type} ${v.route.name}`,
                 }))}
             />
 
             <View style={[styles.topBar, { top: insets.top + spacing.sm }]}>
-                <GlassButton icon={ChevronLeft} label="Minimise" onPress={() => leave()} size={52} />
+                <GlassButton icon={ChevronLeft} label="Minimise" onPress={minimise} size={52} />
                 <View style={{ flexDirection: "row", gap: spacing.md }}>
                     <GlassButton icon={LocateFixed} label={tracker.following ? "Following your journey" : "Follow my journey"} active={tracker.following} size={52} onPress={tracker.recentre} />
                     <GlassButton icon={Ellipsis} label="More" onPress={more} size={52} />
@@ -248,11 +182,11 @@ export default function JourneyTracker() {
                         <>
                             <View style={styles.hero} accessible>
                                 {snap?.journeyArrived ? <CircleCheck size={22} color={colors.success} />
-                                    : snap?.phase === "walking" || !nextRide ? <View style={[styles.walkTile, { backgroundColor: colors.muted }]}><Footprints size={14} color={colors.foreground} /></View>
-                                        : <RouteBadge name={name(nextRide)} color={nextRide.Route?.route_color} />}
+                                    : snap?.phase === "walking" || !ride ? <View style={[styles.walkTile, { backgroundColor: colors.muted }]}><Footprints size={14} color={colors.foreground} /></View>
+                                        : <RouteBadge name={legRouteName(ride) || "Bus"} color={ride.Route?.route_color} />}
                                 <View style={{ flex: 1, gap: 2 }}>
-                                    <Text style={[type.cardTitle, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit>{phaseLabel}</Text>
-                                    {subline ? <Text style={[type.meta, { color: colors.mutedForeground }]} numberOfLines={1}>{subline}</Text> : null}
+                                    <Text style={[type.cardTitle, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit>{summary.headline}</Text>
+                                    {summary.subline ? <Text style={[type.meta, { color: colors.mutedForeground }]} numberOfLines={1}>{summary.subline}</Text> : null}
                                 </View>
                                 {countdown ? <Text style={[type.minutes, { fontSize: 24, minWidth: 80, textAlign: "right", color: countdown.urgent ? colors.warning : colors.live }]}>{minutesText(countdown.target)}</Text> : null}
                             </View>
@@ -260,27 +194,30 @@ export default function JourneyTracker() {
                                 <View style={{ gap: spacing.sm }}>
                                     <JourneyLegBar plan={display} currentIndex={snap.progressLegIndex} progress={fraction} />
                                     <View style={styles.between}>
-                                        <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Arrive {clock(display.ArrivalTime)}</Text>
+                                        <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Arrive {legDate(display.ArrivalTime) ? laClock(legDate(display.ArrivalTime)!, tz) : ""}</Text>
                                         <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>{formatDuration(display.TotalDuration)} trip</Text>
                                     </View>
                                 </View>
                             ) : null}
-                            {status.length ? (
+                            {summary.status.length ? (
                                 // Problems first; lower-priority facts drop off rather than wrap (iOS `ViewThatFits`).
-                                <FitRow gap={14} items={status.map((it, i) => (
-                                    <View key={i} style={styles.statusItem}>
-                                        {it.dot ? <View style={[styles.liveDot, { backgroundColor: it.dot }]} /> : null}
-                                        {it.spin ? <ActivityIndicator size="small" /> : null}
-                                        {it.icon ? <it.icon size={13} color={it.color ?? colors.mutedForeground} /> : null}
-                                        <Text numberOfLines={1} style={[it.color ? type.metaMedium : type.meta, { color: it.color ?? colors.mutedForeground }]}>{it.text}</Text>
-                                    </View>
-                                ))} />
+                                <FitRow gap={14} items={summary.status.map((it, i) => {
+                                    const Icon = it.icon ? statusIcon[it.icon] : null
+                                    return (
+                                        <View key={i} style={styles.statusItem}>
+                                            {it.liveDot ? <View style={[styles.liveDot, { backgroundColor: colors.success }]} /> : null}
+                                            {it.spinner ? <ActivityIndicator size="small" /> : null}
+                                            {Icon ? <Icon size={13} color={toneColor(it.tone)} /> : null}
+                                            <Text numberOfLines={1} style={[it.tone ? type.metaMedium : type.meta, { color: toneColor(it.tone) }]}>{it.text}</Text>
+                                        </View>
+                                    )
+                                })} />
                             ) : null}
                             <View style={styles.actions}>
                                 {choices.length ? (
-                                    <Pressable accessibilityRole="button" onPress={replan} style={[styles.action, { flex: 1, backgroundColor: replanUrgent ? colors.danger : colors.card, borderColor: replanUrgent ? colors.danger : colors.border }]}>
-                                        <RefreshCw size={16} color={replanUrgent ? "#fff" : colors.foreground} />
-                                        <Text style={[type.bodyMedium, { color: replanUrgent ? "#fff" : colors.foreground }]}>Find a better route</Text>
+                                    <Pressable accessibilityRole="button" onPress={replan} style={[styles.action, { flex: 1, backgroundColor: summary.replanUrgent ? colors.danger : colors.card, borderColor: summary.replanUrgent ? colors.danger : colors.border }]}>
+                                        <RefreshCw size={16} color={summary.replanUrgent ? "#fff" : colors.foreground} />
+                                        <Text style={[type.bodyMedium, { color: summary.replanUrgent ? "#fff" : colors.foreground }]}>Find a better route</Text>
                                     </Pressable>
                                 ) : null}
                                 <Pressable accessibilityRole="button" accessibilityLabel="Share journey" onPress={share} style={[styles.action, choices.length ? { width: 48 } : { flex: 1 }, { backgroundColor: colors.card, borderColor: colors.border }]}>
@@ -289,11 +226,8 @@ export default function JourneyTracker() {
                                 </Pressable>
                             </View>
                             <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Your trip</Text>
-                            <JourneyTimeline legs={legs} tz={tz} destinationName={destinationName} status={legStatus}
+                            <JourneyTimeline legs={legs} tz={tz} destinationName={destination} status={legStatus}
                                 tracked={(i) => { const l = legs[i]; return l?.Mode === "transit" && tick ? !!tick.vehicles[l.TripID] || undefined : undefined }} />
-                            <Pressable accessibilityRole="button" onPress={confirmEnd} style={{ alignSelf: "center", padding: spacing.sm }}>
-                                <Text style={[type.bodyMedium, { color: colors.danger }]}>End journey</Text>
-                            </Pressable>
                         </>
                     )}
                 </BottomSheetScrollView>

@@ -3,6 +3,14 @@ import { parseDeepLink, type DeepLink } from "@transit/shared/logic/deeplink"
 import { regionBySlug } from "@transit/shared/regions"
 import { currentRegion, regions } from "./region"
 
+/** The web app - shared links open the app when it's installed (universal links). */
+export const WEB_HOST = "https://trains.suddsy.dev"
+
+/** A journey's shareable link; `track` opens the live tracker rather than the preview. */
+export function journeyWebLink(planId: string, regionSlug: string, track = false): string {
+    return `${WEB_HOST}/journey?id=${encodeURIComponent(planId)}&region=${regionSlug}${track ? "&track=1" : ""}`
+}
+
 let switchRegion: ((slug: string) => void) | null = null
 /** The region provider registers how to switch region for a link that names one. */
 export function setRegionSwitcher(fn: (slug: string) => void) {
