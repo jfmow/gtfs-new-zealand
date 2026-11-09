@@ -3,8 +3,8 @@ import * as Haptics from "expo-haptics"
 import { router, useLocalSearchParams } from "expo-router"
 import { ArrowDownCircle, ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, WifiOff } from "@/components/icons"
 import { useQuery } from "@tanstack/react-query"
-import { useEffect, useRef, useState } from "react"
-import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text, View } from "react-native"
+import { useEffect, useMemo, useRef, useState } from "react"
+import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { formatDistance, formatDuration } from "@transit/shared/logic/basics"
 import { laClock, replanChoices } from "@transit/shared/logic/journey-live"
@@ -61,7 +61,18 @@ export default function JourneyTracker() {
     // the clear area is between the top bar (plus the walk card while it
     // shows, as iOS) and the drawer.
     const camera = useRef<MapCamera>(null)
-    const mapPadding = { top: insets.top + 70 + (walk || moment ? 76 : 0), bottom: 380, left: 0, right: 0 }
+    // The drawer: peek (just the hero row - the map gets nearly the whole
+    // screen), compact (down to the actions) and full - iOS's detents. The
+    // peek hugs the hero row, which is one or two lines.
+    const { height: screenHeight } = useWindowDimensions()
+    const [heroHeight, setHeroHeight] = useState(56)
+    const [drawer, setDrawer] = useState<Drawer>("compact")
+    // iOS `peekHeight`: handle + top padding + hero + 16 - the leg bar starts right below, out of sight.
+    const peekHeight = Math.round(DRAWER_HANDLE + spacing.sm + heroHeight + spacing.lg)
+    const snapPoints = useMemo(() => [peekHeight, "40%", "90%"], [peekHeight])
+    // The map's clear area ends at the drawer (iOS caps it at half the screen when the drawer's up).
+    const drawerCover = drawer === "peek" ? peekHeight : drawer === "compact" ? COMPACT_COVER : screenHeight / 2
+    const mapPadding = { top: insets.top + 70 + (walk || moment ? 76 : 0), bottom: drawerCover, left: 0, right: 0 }
     const tracker = useTrackerCamera(camera, journeyCamera(display ?? null, snap, vehicle, user), { padding: mapPadding, threeD: filter.threeD })
     // The active ride is drawn along the vehicle's whole route, greyed before
     // you board and after you get off (iOS `rideShapes`); same cache as the trip screen.
@@ -176,11 +187,11 @@ export default function JourneyTracker() {
                 </View>
             ) : null}
 
-            <BottomSheet snapPoints={["40%", "90%"]} index={0} backgroundStyle={{ backgroundColor: colors.background }} handleIndicatorStyle={{ backgroundColor: colors.mutedForeground, width: 40 }}>
+            <BottomSheet snapPoints={snapPoints} index={1} onChange={(i) => i >= 0 && setDrawer(DRAWER_STATES[i] ?? "compact")} backgroundStyle={{ backgroundColor: colors.background }} handleIndicatorStyle={{ backgroundColor: colors.mutedForeground, width: 40 }}>
                 <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: insets.bottom + 40, gap: spacing.lg }}>
                     {!tick ? <Loading /> : (
                         <>
-                            <View style={styles.hero} accessible>
+                            <View style={styles.hero} accessible onLayout={(e) => setHeroHeight(e.nativeEvent.layout.height)}>
                                 {snap?.journeyArrived ? <CircleCheck size={22} color={colors.success} />
                                     : snap?.phase === "walking" || !ride ? <View style={[styles.walkTile, { backgroundColor: colors.muted }]}><Footprints size={14} color={colors.foreground} /></View>
                                         : <RouteBadge name={legRouteName(ride) || "Bus"} color={ride.Route?.route_color} />}
@@ -280,6 +291,13 @@ function useMomentBanner(tick: JourneyTick | null): { title: string; body: strin
     }, [tick])
     return banner
 }
+
+type Drawer = "peek" | "compact" | "full"
+const DRAWER_STATES: Drawer[] = ["peek", "compact", "full"]
+/** The bottom sheet's grab-handle area. */
+const DRAWER_HANDLE = 24
+/** How much of the map the compact (40%) drawer covers, for centring - as before the peek existed. */
+const COMPACT_COVER = 380
 
 const styles = StyleSheet.create({
     topBar: { position: "absolute", left: spacing.lg, right: spacing.lg, flexDirection: "row", justifyContent: "space-between" },

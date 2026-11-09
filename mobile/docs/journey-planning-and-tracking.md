@@ -324,7 +324,16 @@ While a banner shows, the map's clear area shrinks by 76 pt and the camera refit
 
 ### Drawer
 
-A bottom sheet with two stops: 40% and 90% of the screen.
+A bottom sheet with three stops, like iOS's detents:
+
+| Stop | Height | Shows | Map clear area ends |
+| --- | --- | --- | --- |
+| Peek | handle + hero row + 16 pt (measured, so it fits a one- or two-line hero) | What you're doing now and the countdown | at the peek |
+| Compact (opens here) | 40% | Down to the actions | 380 pt up |
+| Full | 90% | Everything, including Your trip | half the screen |
+
+Moving between stops changes the map's clear area, so the camera refits to keep things centred in
+what's visible.
 
 **Hero.** An icon (✓ arrived, 🚶 walking or no ride left, else the route badge), the headline, the
 subline and a countdown.
@@ -422,7 +431,7 @@ at least 800 m.
   - Any mode starts over when the mode changes (e.g. walking → waiting), 3D is toggled, or the
     clear area changes size (a banner came or went).
 - **Clear area**: the map is padded so things centre between the top bar (safe area + 70 pt, plus
-  76 pt for a banner) and the drawer (380 pt). Frames add 40 pt more on each side, fitAll 30 pt.
+  76 pt for a banner) and the drawer (peek height, 380 pt, or half the screen, by drawer stop). Frames add 40 pt more on each side, fitAll 30 pt.
 - **3D**: a follow is a chase cam: pitch 62°, facing the vehicle's bearing, zoom 16.5 when it
   starts. A frame tilts to 45° after fitting. Going back to 2D flattens (pitch 0, north up) before
   fitting.
@@ -539,8 +548,8 @@ back into the query cache, so the tracker opens and keeps going:
 | GPS boarding: 150 m past at 4.5 m/s; with the vehicle at your stop 50 m past at 2.5 m/s, within 50 m of the route; two fixes | `OfflineRideEstimator` |
 | Live Activity: countdown held under 30 s; minor updates every 15 s; resend 3 min; report every 25 s (server stands back for 100 s) | `live-surface.ts`, backend `clientActiveWindow` |
 | Camera: follow 700 m (vehicle) / 350 m (you); frame min 400 / 300 / 800 m; hold 1.2 s; follow moves at 3 m; bunching 55%; 3D pitch 62° follow / 45° frame | `tracker-camera.ts` |
-| Map clear area: top safe area + 70 (+76 banner); bottom 380; frame +40; fitAll +30 | tracker screen, `tracker-camera.ts` |
-| Drawer stops 40% / 90% | tracker screen |
+| Map clear area: top safe area + 70 (+76 banner); bottom by drawer stop; frame +40; fitAll +30 | tracker screen, `tracker-camera.ts` |
+| Drawer stops: peek (handle 24 + 8 + hero + 16), 40%, 90%; map cover peek / 380 / half screen | tracker screen |
 | Moment banner 8 s | tracker screen |
 | Reminders: get ready 5 min; leave 30 s; board 3 min; alight 2 min | `upcomingMoments` |
 | Ranking: +10 min per change, +15 min per km walked; arrive-by prefers 5 min spare | `easy-planner.ts` |
