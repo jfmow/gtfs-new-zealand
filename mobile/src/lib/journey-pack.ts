@@ -1,4 +1,4 @@
-import type { TripStopRef } from "@transit/shared/models"
+import type { RouteShape, TripStopRef } from "@transit/shared/models"
 import type { JourneyType } from "@transit/shared/types/journey"
 import { api } from "./api"
 import { queryClient } from "./plans"
@@ -16,6 +16,8 @@ export interface JourneyPack {
     plan: JourneyType
     /** Stops for each ride, by trip id. */
     stopsByTrip: Record<string, TripStopRef[]>
+    /** Each ride's route shape, by trip id - for the greyed-out route on the map. Optional: older packs lack it. */
+    shapesByTrip?: Record<string, RouteShape>
     savedAt: number
 }
 
@@ -30,6 +32,7 @@ export function useJourneyPack(planId: string | undefined) {
 export async function saveJourneyPack(plan: JourneyType, regionUrl: string) {
     const existing = journeyPackStore.get()
     const base = existing?.planId === plan.ID ? existing.stopsByTrip : {}
+    const shapesByTrip: Record<string, RouteShape> = { ...(existing?.planId === plan.ID ? existing.shapesByTrip : {}) }
     const tripIds = [...new Set(plan.Legs.filter((l) => l.Mode === "transit" && l.TripID).map((l) => l.TripID))]
     const stopsByTrip: Record<string, TripStopRef[]> = { ...base }
     await Promise.all(tripIds.filter((id) => !stopsByTrip[id]?.length).map(async (id) => {
@@ -40,7 +43,15 @@ export async function saveJourneyPack(plan: JourneyType, regionUrl: string) {
             if (stops.length) stopsByTrip[id] = stops
         } catch { /* offline - try again next time */ }
     }))
-    journeyPackStore.set({ planId: plan.ID, regionUrl, plan, stopsByTrip, savedAt: Date.now() })
+    await Promise.all(tripIds.filter((id) => !shapesByTrip[id]).map(async (id) => {
+        const cached = queryClient.getQueryData<RouteShape>(["trip-shape", regionUrl, id])
+        if (cached) { shapesByTrip[id] = cached; return }
+        try {
+            const shape = await unwrap(api.routeShape({ tripId: id }))
+            if (shape) shapesByTrip[id] = shape
+        } catch { /* offline - the plan's own line is drawn instead */ }
+    }))
+    journeyPackStore.set({ planId: plan.ID, regionUrl, plan, stopsByTrip, shapesByTrip, savedAt: Date.now() })
 }
 
 /** Every ride's stops are on the phone - the journey can carry on with no signal. */
@@ -55,6 +66,9 @@ export function seedFromPack(pack: JourneyPack) {
     if (!queryClient.getQueryData(["plan", pack.planId])) queryClient.setQueryData(["plan", pack.planId], pack.plan)
     for (const [id, stops] of Object.entries(pack.stopsByTrip)) {
         if (!queryClient.getQueryData(["trip-stops", pack.regionUrl, id])) queryClient.setQueryData(["trip-stops", pack.regionUrl, id], stops)
+    }
+    for (const [id, shape] of Object.entries(pack.shapesByTrip ?? {})) {
+        if (!queryClient.getQueryData(["trip-shape", pack.regionUrl, id])) queryClient.setQueryData(["trip-shape", pack.regionUrl, id], shape)
     }
 }
 

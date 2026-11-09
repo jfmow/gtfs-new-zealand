@@ -32,8 +32,8 @@ export const MapLibreMap = forwardRef<MapCamera, TransitMapProps>(function MapLi
     const pad = { top: padding?.top ?? 0, bottom: padding?.bottom ?? 0, left: padding?.left ?? 0, right: padding?.right ?? 0 }
 
     useImperativeHandle(ref, () => ({
-        easeTo: (o) => camera.current?.easeTo(o as never),
-        flyTo: (o) => camera.current?.flyTo(o as never),
+        easeTo: ({ heading, ...o }) => camera.current?.easeTo({ ...o, ...(heading !== undefined ? { bearing: heading } : {}) } as never),
+        flyTo: ({ heading, ...o }) => camera.current?.flyTo({ ...o, ...(heading !== undefined ? { bearing: heading } : {}) } as never),
         fitBounds: (b, o) => camera.current?.fitBounds(b, { padding: o?.padding, duration: o?.duration ?? 0 }),
     }))
 

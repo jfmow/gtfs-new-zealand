@@ -52,6 +52,8 @@ export interface CameraOptions {
     center?: [number, number]
     zoom?: number
     pitch?: number
+    /** Compass heading the map turns to, in degrees. */
+    heading?: number
     duration?: number
 }
 

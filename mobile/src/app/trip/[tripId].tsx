@@ -1,7 +1,7 @@
 import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import { useQuery } from "@tanstack/react-query"
 import { Stack, router, useLocalSearchParams } from "expo-router"
-import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronUp, Ellipsis, LocateFixed, MapPin, TriangleAlert, User, WifiOff } from "@/components/icons"
+import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronUp, Ellipsis, LocationNorthCircle, MapPin, TriangleAlert, User, WifiOff } from "@/components/icons"
 import { useEffect, useRef, useState } from "react"
 import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -16,6 +16,7 @@ import { api } from "@/lib/api"
 import { useMapFilter } from "@/lib/map-filter"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
+import { useTrackerCamera, type TrackerCameraMode } from "@/lib/tracker-camera"
 import { spacing, type, useColors } from "@/theme"
 
 type StopState = "passed" | "current" | "next" | "upcoming"
@@ -36,7 +37,6 @@ export default function TripTracker() {
     const [ratchet] = useState(() => new VehicleProgressRatchet())
     const [reminded, setReminded] = useState<Set<number>>(new Set())
     const [showEarlier, setShowEarlier] = useState(false)
-    const [follow, setFollow] = useState(true)
     const camera = useRef<MapCamera>(null)
     const [now, setNow] = useState(() => Date.now())
     useEffect(() => {
@@ -109,10 +109,13 @@ export default function TripTracker() {
     const between = focus ? rows.filter((s) => s.sequence >= startSeq && s.sequence < focus.sequence).length : 0
     const stopsToGo = (n: number) => (isAtStop && n <= 1 && focus?.sequence === currentSeq ? "At the stop" : n <= 1 ? (yourRow ? "Your stop is next" : "Next stop") : `${n} stops to go`)
 
-    // Follow the vehicle until the rider pans the map.
-    useEffect(() => {
-        if (follow && v) camera.current?.easeTo({ center: [v.position.lon, v.position.lat], duration: 800 })
-    }, [follow, v])
+    // iOS `VehicleQuickLookView`: follow the vehicle (700 m across to start);
+    // with no live position, frame the whole trip's stops. Until the rider pans.
+    const cameraMode: TrackerCameraMode = v
+        ? { kind: "follow", id: tripId!, at: { lat: v.position.lat, lon: v.position.lon }, spanMeters: 700, bearing: v.position.bearing }
+        : rows.length ? { kind: "frame", points: rows.map((s) => ({ lat: s.lat, lon: s.lon })), minSpanMeters: 800 } : { kind: "none" }
+    const mapPadding = { top: insets.top + 60, bottom: 360, left: 0, right: 0 }
+    const tracker = useTrackerCamera(camera, cameraMode, { padding: mapPadding, threeD: filter.threeD })
 
     const more = () => {
         const options: { label: string; run: () => void }[] = []
@@ -121,7 +124,7 @@ export default function TripTracker() {
             label: filter.threeD ? "Flat map" : "3D map",
             run: () => {
                 setFilter({ threeD: !filter.threeD })
-                if (v) camera.current?.easeTo({ center: [v.position.lon, v.position.lat], pitch: filter.threeD ? 0 : 60, zoom: 16.5, duration: 500 })
+                tracker.recentre()
             },
         })
         if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ options: [...options.map((o) => o.label), "Cancel"], cancelButtonIndex: options.length }, (i) => options[i]?.run())
@@ -146,8 +149,9 @@ export default function TripTracker() {
                 zoom={15.5}
                 threeD={filter.threeD}
                 pitch={filter.threeD ? 60 : 0}
-                padding={{ top: insets.top + 60, bottom: 360 }}
-                onRegionDidChange={(_c, _z, _b, byUser) => { if (byUser) setFollow(false) }}
+                padding={mapPadding}
+                onRegionDidChange={tracker.onRegionDidChange}
+                onLoaded={tracker.onLoaded}
                 lines={[{ id: "shape", coords: shapeCoords, color: routeHex }]}
                 markers={[
                     ...rows.map((s, i): MapMarker => {
@@ -168,14 +172,10 @@ export default function TripTracker() {
             <View style={[styles.topBar, { top: insets.top + spacing.sm }]}>
                 <GlassButton icon={ChevronLeft} label="Back" onPress={() => router.back()} size={52} />
                 <View style={{ flexDirection: "row", gap: spacing.md }}>
-                    <GlassButton icon={LocateFixed} label={follow ? "Following the vehicle" : "Follow the vehicle"} size={52} active={follow && !!v}
-                        onPress={() => {
-                            setFollow(true)
-                            // Recentre now - following only moves the camera when the vehicle does.
-                            if (v) camera.current?.easeTo({ center: [v.position.lon, v.position.lat], duration: 500 })
-                            // No live position: the stop it's counting down to.
-                            else if (focus) camera.current?.easeTo({ center: [focus.lon, focus.lat], duration: 500 })
-                        }} />
+                    {/* iOS: location.north.circle, filled and live-tinted while following. */}
+                    <GlassButton label={tracker.following ? "Following the vehicle" : "Follow the vehicle"} size={52} onPress={tracker.recentre}>
+                        <LocationNorthCircle size={52 * 0.45} color={colors.foreground} fill={tracker.following ? colors.live : undefined} />
+                    </GlassButton>
                     <GlassButton icon={Ellipsis} label="More" onPress={more} size={52} />
                 </View>
             </View>

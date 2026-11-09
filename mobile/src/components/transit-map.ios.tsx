@@ -51,7 +51,7 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
         }
     }
 
-    const move = async (o: { center?: [number, number]; zoom?: number; pitch?: number; duration?: number }) => {
+    const move = async (o: { center?: [number, number]; zoom?: number; pitch?: number; heading?: number; duration?: number }) => {
         const m = map.current
         if (!m) return
         const cam = await m.getCamera().catch(() => null)
@@ -61,6 +61,7 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
                 ...(o.center ? { center: { latitude: o.center[1], longitude: o.center[0] } } : {}),
                 ...(altitude ? { altitude } : {}),
                 ...(o.pitch !== undefined ? { pitch: o.pitch } : {}),
+                ...(o.heading !== undefined ? { heading: o.heading } : {}),
             },
             { duration: o.duration ?? 400 },
         )
@@ -71,9 +72,17 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
         easeTo: (o) => { void move(o) },
         flyTo: (o) => { void move(o) },
         fitBounds: (b, o) => {
+            // MapKit fits inside the map's own padding (`mapPadding`) and then
+            // the edge padding on top; callers give padding from the screen
+            // edge (as MapLibre and MapKit JS take it), so drop what
+            // `mapPadding` already covers.
+            const p = o?.padding ?? { top: pad.top + 40, bottom: pad.bottom + 40, left: pad.left + 40, right: pad.right + 40 }
             map.current?.fitToCoordinates(
                 [{ latitude: b[1], longitude: b[0] }, { latitude: b[3], longitude: b[2] }],
-                { edgePadding: o?.padding ?? { top: 40, bottom: 40, left: 40, right: 40 }, animated: (o?.duration ?? 0) > 0 },
+                {
+                    edgePadding: { top: Math.max(0, p.top - pad.top), bottom: Math.max(0, p.bottom - pad.bottom), left: Math.max(0, p.left - pad.left), right: Math.max(0, p.right - pad.right) },
+                    animated: (o?.duration ?? 0) > 0,
+                },
             )
         },
     }))
@@ -102,7 +111,7 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
             onLayout={(e) => { size.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height } }}
             onMapReady={() => {
                 if (pitch || threeD) void move({ pitch: pitch || 60, duration: 0 })
-                if (bounds) map.current?.fitToCoordinates([{ latitude: bounds[1], longitude: bounds[0] }, { latitude: bounds[3], longitude: bounds[2] }], { edgePadding: { top: pad.top || 40, bottom: pad.bottom || 40, left: pad.left || 40, right: pad.right || 40 }, animated: false })
+                if (bounds) map.current?.fitToCoordinates([{ latitude: bounds[1], longitude: bounds[0] }, { latitude: bounds[3], longitude: bounds[2] }], { edgePadding: { top: 40, bottom: 40, left: 40, right: 40 }, animated: false })
                 onLoaded?.()
             }}
             onPress={onPress ? () => onPress() : undefined}

@@ -34,8 +34,8 @@ export interface WebMarker {
 
 /** A camera command from the app - plain JSON, as the bridge needs. */
 export type CameraCommand =
-    | { op: "easeTo"; lon: number | null; lat: number | null; zoom: number | null; animated: boolean }
-    | { op: "fitBounds"; bounds: Bounds; top: number; right: number; bottom: number; left: number }
+    | { op: "easeTo"; lon: number | null; lat: number | null; zoom: number | null; rotation?: number | null; animated: boolean }
+    | { op: "fitBounds"; bounds: Bounds; top: number; right: number; bottom: number; left: number; animated?: boolean }
 
 export interface AppleMapWebCamera extends DOMImperativeFactory {
     run: (...args: JSONValue[]) => void
@@ -230,9 +230,10 @@ export default function AppleMapWeb({ ref, ...props }: Props) {
                 const c = cmd.lon !== null && cmd.lat !== null ? { lat: cmd.lat, lon: cmd.lon } : { lat: m.center.latitude, lon: m.center.longitude }
                 if (cmd.zoom !== null) m.setRegionAnimated(regionFor(mk, el.current, c, cmd.zoom), cmd.animated)
                 else m.setCenterAnimated(new mk.Coordinate(c.lat, c.lon), cmd.animated)
+                if (cmd.rotation != null) m.setRotationAnimated(cmd.rotation, cmd.animated)
             } else {
                 m.padding = new mk.Padding(cmd.top, cmd.right, cmd.bottom, cmd.left)
-                m.setRegionAnimated(regionOfBounds(mk, cmd.bounds), false)
+                m.setRegionAnimated(regionOfBounds(mk, cmd.bounds), cmd.animated ?? false)
             }
         },
     }), [])

@@ -55,11 +55,11 @@ const AppleMapAndroid = forwardRef<MapCamera, TransitMapProps & { regionUrl: str
 
     const send = (cmd: CameraCommand) => web.current?.run(cmd as never)
     useImperativeHandle(ref, () => ({
-        easeTo: (o) => send({ op: "easeTo", lon: o.center?.[0] ?? null, lat: o.center?.[1] ?? null, zoom: o.zoom ?? null, animated: (o.duration ?? 400) > 0 }),
+        easeTo: (o) => send({ op: "easeTo", lon: o.center?.[0] ?? null, lat: o.center?.[1] ?? null, zoom: o.zoom ?? null, rotation: o.heading ?? null, animated: (o.duration ?? 400) > 0 }),
         flyTo: (o) => send({ op: "easeTo", lon: o.center?.[0] ?? null, lat: o.center?.[1] ?? null, zoom: o.zoom ?? null, animated: (o.duration ?? 400) > 0 }),
         fitBounds: (b, o) => {
             const p = o?.padding ?? { top: 40, bottom: 40, left: 40, right: 40 }
-            send({ op: "fitBounds", bounds: b, ...p })
+            send({ op: "fitBounds", bounds: b, ...p, animated: (o?.duration ?? 0) > 0 })
         },
     }))
 

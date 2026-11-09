@@ -346,16 +346,55 @@ export function JourneyTimeline({ legs, tz, destinationName, startName, status =
 // Map - iOS `TransitMapView(waypoints:polylines:)` for a plan
 
 /** Each ride in its own route colour, walks as grey dots - iOS `JourneyDetailView.polylines`. */
-export function journeyLines(plan: JourneyType, fallback: string) {
+export interface JourneyLine { id: string; walk: boolean; color: string; coords: Coordinate[]; muted?: boolean }
+
+/** A greyed-out part of the vehicle's route (iOS: 60% `9CA3AF`, one point thinner). */
+const MUTED_ROUTE = "#9CA3AF99"
+
+/**
+ * Each ride in its own route colour, walks in grey. Pass `ride` (the trip
+ * you're on or about to catch, with its full route shape) and that ride is
+ * drawn from the vehicle's whole route instead, the parts before you board
+ * and after you get off greyed out - iOS `JourneyTrackingView.polylines`.
+ * Greyed parts come first so they sit under the coloured lines.
+ */
+export function journeyLines(plan: JourneyType, fallback: string, ride?: { tripId: string; shape: Coordinate[] } | null): JourneyLine[] {
     const features = plan.RouteGeoJSON?.features ?? []
     const rides = plan.Legs.filter((l) => l.Mode === "transit")
     let n = 0
-    return features.map((f, i) => {
+    const lines = features.flatMap((f, i): JourneyLine[] => {
         const props = (f.properties ?? {}) as unknown as Record<string, unknown>
         const walk = (props.mode ?? "walk") === "walk"
-        const color = walk ? "#9CA3AF" : hexColor(rides[n++]?.Route?.route_color, fallback)
-        return { id: `leg-${i}`, walk, color, coords: lineCoordinates(f as never) }
+        if (walk) return [{ id: `leg-${i}`, walk, color: "#9CA3AF", coords: lineCoordinates(f as never) }]
+        const leg = rides[n++]
+        const color = hexColor(leg?.Route?.route_color, fallback)
+        if (leg && ride && leg.TripID === ride.tripId && leg.FromStop && leg.ToStop) {
+            const split = splitRide(`leg-${i}`, ride.shape, { lat: leg.FromStop.stop_lat, lon: leg.FromStop.stop_lon }, { lat: leg.ToStop.stop_lat, lon: leg.ToStop.stop_lon }, color)
+            if (split.length) return split
+        }
+        return [{ id: `leg-${i}`, walk, color, coords: lineCoordinates(f as never) }]
     })
+    return [...lines.filter((l) => l.muted), ...lines.filter((l) => !l.muted)]
+}
+
+/** iOS `RoutePolylineData.splitRide`: the shape cut at the stops nearest where you get on and off. */
+function splitRide(id: string, shape: Coordinate[], board: Coordinate, alight: Coordinate, color: string): JourneyLine[] {
+    if (shape.length < 2) return []
+    const nearest = (p: Coordinate) => {
+        let best = 0, bestD = Infinity
+        shape.forEach((c, i) => {
+            const d = (c.lat - p.lat) ** 2 + (c.lon - p.lon) ** 2
+            if (d < bestD) { best = i; bestD = d }
+        })
+        return best
+    }
+    let a = nearest(board), b = nearest(alight)
+    if (a > b) [a, b] = [b, a]
+    const out: JourneyLine[] = []
+    if (a > 0) out.push({ id: `${id}-before`, walk: false, color: MUTED_ROUTE, coords: shape.slice(0, a + 1), muted: true })
+    if (b < shape.length - 1) out.push({ id: `${id}-after`, walk: false, color: MUTED_ROUTE, coords: shape.slice(b), muted: true })
+    if (b > a) out.push({ id: `${id}-ride`, walk: false, color, coords: shape.slice(a, b + 1) })
+    return out
 }
 
 export function JourneyMap({ plan, interactive = true, padding, showUser }: { plan: JourneyType; interactive?: boolean; padding?: { top?: number; bottom?: number; left?: number; right?: number }; showUser?: boolean }) {
