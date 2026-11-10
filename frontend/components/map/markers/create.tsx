@@ -23,6 +23,8 @@ export interface MapItem {
     opacity?: number;
     /** Only shown once the map is zoomed to at least this level - declutters minor markers (e.g. in-between stops) at a wide view. */
     minZoom?: number;
+    /** Never folded into a cluster bubble, however many markers of its type there are (e.g. the tracked vehicle). */
+    noCluster?: boolean;
     /** Click opens an in-place popup instead of navigating away. */
     popup?: {
         title: string;

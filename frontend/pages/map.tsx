@@ -366,11 +366,23 @@ function VehiclesMode() {
 
     const shownVehicles = useMemo(() => {
         const running = vehicles.filter((v) => v.route.id !== "")
-        if (routes.length === 0) return running
         const ids = new Set(routes.map((r) => r.route_id))
         const names = new Set(routes.map((r) => r.name.toLowerCase()))
-        return running.filter((v) => ids.has(v.route.id) || names.has(v.route.name.toLowerCase()))
-    }, [vehicles, routes])
+        const filtered = routes.length === 0
+            ? running
+            : running.filter((v) => ids.has(v.route.id) || names.has(v.route.name.toLowerCase()))
+        // The list poll is paused while a vehicle is open, so draw that one
+        // from the tracker's own 10 s poll - otherwise it sits frozen where
+        // it was when it was tapped.
+        if (!trackedVehicle || trackedVehicle.trip_id !== selectedTrip) return filtered
+        let replaced = false
+        const live = filtered.map((v) => {
+            if (v.trip_id !== trackedVehicle.trip_id) return v
+            replaced = true
+            return trackedVehicle
+        })
+        return replaced ? live : [...live, trackedVehicle]
+    }, [vehicles, routes, trackedVehicle, selectedTrip])
 
     const nearbyStops = useMemo(() => {
         if (!showStops) return []
@@ -397,6 +409,7 @@ function VehiclesMode() {
                 color: vehicle.route.color,
                 visibleLabel: `${vehicle.route.name}${vehicle.type ? " · " + vehicle.type : ""}${vehicle.license_plate ? " · " + vehicle.license_plate : ""}`,
                 zIndex: isSelected ? 10 : 1,
+                noCluster: isSelected,
                 type: "vehicle",
                 onClick: (id) => tracked.open(id),
             }

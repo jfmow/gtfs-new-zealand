@@ -73,8 +73,12 @@ export class MarkerManager {
         const nextPlain = new Map<string, MapItem>();
         const nextClustered = new Map<string, MapItem[]>();
         for (const [type, list] of byType) {
-            if (list.length >= this.opts.clusterThreshold) nextClustered.set(type, list);
-            else for (const item of list) nextPlain.set(item.id, item);
+            if (list.length >= this.opts.clusterThreshold) {
+                // `noCluster` items (the tracked vehicle) stay plain markers so they never vanish into a bubble.
+                const clusterable = list.filter((item) => !item.noCluster);
+                for (const item of list) if (item.noCluster) nextPlain.set(item.id, item);
+                nextClustered.set(type, clusterable);
+            } else for (const item of list) nextPlain.set(item.id, item);
         }
 
         // Types that stopped being clustered: drop their leaves + bubbles.
