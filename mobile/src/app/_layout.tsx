@@ -12,6 +12,7 @@ import "@/lib/journey-location" // defines the background GPS task at startup, b
 import { JourneyRunner } from "@/lib/journey-runner"
 import { setRegionSwitcher } from "@/lib/links"
 import { syncWidgetData } from "@/lib/live-surface"
+import { startCloudSync } from "@/lib/cloud-sync"
 import { migrateFromSwiftUIApp } from "@/lib/migrate"
 import { queryClient } from "@/lib/plans"
 import { listenForNotificationTaps, registerForPush } from "@/lib/push"
@@ -132,7 +133,8 @@ function AppEffects() {
             const r = regionBySlug(regions, slug)
             if (r) setRegion(r)
         })
-        migrateFromSwiftUIApp().catch(() => {})
+        // iCloud sync starts after the migration, so what it brought over syncs too.
+        migrateFromSwiftUIApp().catch(() => {}).finally(() => startCloudSync().catch(() => {}))
         registerForPush().catch(() => {})
         return listenForNotificationTaps()
     }, [setRegion])

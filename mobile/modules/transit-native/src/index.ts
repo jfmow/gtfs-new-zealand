@@ -13,6 +13,8 @@ type Events = {
     onActivityEnded: (e: { id: string; planId: string }) => void
     onTripActivityPushToken: (e: { id: string; tripId: string; token: string }) => void
     onTripActivityEnded: (e: { id: string; tripId: string }) => void
+    /** iCloud key-value store changed elsewhere. reason: 0 server, 1 initial sync, 2 quota, 3 account change. */
+    onCloudChange: (e: { reason: number; keys: string[] }) => void
 }
 
 interface Native {
@@ -31,12 +33,18 @@ interface Native {
     showLiveNotification?(contentJSON: string, planId: string, alert: boolean): void
     cancelLiveNotification?(): void
     readLegacyStore?(): LegacyStore | null
+    cloudGet?(key: string): string | null
+    cloudSet?(key: string, json: string): void
+    cloudSynchronize?(): boolean
+    cloudSignedIn?(): boolean
     addListener<K extends keyof Events>(name: K, listener: Events[K]): EventSubscription
 }
 
 /** What the SwiftUI app had saved (iOS only). */
 export interface LegacyStore {
     region: string
+    /** The SwiftUI app's iCloud sync switch. */
+    cloudSyncEnabled?: boolean
     stops: { stopId: string; name: string; color?: string; sortOrder?: number }[]
     places: { name: string; lat: number; lon: number; icon?: string; region?: string }[]
     trips: { name: string; startLabel: string; startLat: number; startLon: number; endLabel: string; endLat: number; endLon: number; color?: string }[]
@@ -61,6 +69,12 @@ export const TransitNative = {
     showLiveNotification: (content: unknown, planId: string, alert = false) => native?.showLiveNotification?.(JSON.stringify(content), planId, alert),
     cancelLiveNotification: () => native?.cancelLiveNotification?.(),
     readLegacyStore: (): LegacyStore | null => native?.readLegacyStore?.() ?? null,
+    /** iCloud key-value store (iOS only - false/no-op elsewhere). */
+    cloudAvailable: Platform.OS === "ios" && typeof native?.cloudGet === "function",
+    cloudGet: (key: string): string | null => native?.cloudGet?.(key) ?? null,
+    cloudSet: (key: string, json: string) => native?.cloudSet?.(key, json),
+    cloudSynchronize: () => native?.cloudSynchronize?.() ?? false,
+    cloudSignedIn: () => native?.cloudSignedIn?.() ?? false,
     addListener<K extends keyof Events>(name: K, listener: Events[K]): EventSubscription | null {
         return native ? native.addListener(name, listener) : null
     },

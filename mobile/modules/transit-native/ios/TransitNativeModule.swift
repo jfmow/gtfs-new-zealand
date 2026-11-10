@@ -10,11 +10,12 @@ import WidgetKit
 public class TransitNativeModule: Module {
     private static let appGroup = "group.dev.suddsy.transit"
     private var observers: [Task<Void, Never>] = []
+    private var cloudObserver: NSObjectProtocol?
 
     public func definition() -> ModuleDefinition {
         Name("TransitNative")
 
-        Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded", "onTripActivityPushToken", "onTripActivityEnded")
+        Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded", "onTripActivityPushToken", "onTripActivityEnded", "onCloudChange")
 
         OnStartObserving {
             self.startObserving()
@@ -24,6 +25,8 @@ public class TransitNativeModule: Module {
             self.observers.forEach { $0.cancel() }
             self.observers = []
             self.watchedTrips = []
+            if let cloudObserver = self.cloudObserver { NotificationCenter.default.removeObserver(cloudObserver) }
+            self.cloudObserver = nil
         }
 
         // MARK: app group
@@ -49,6 +52,30 @@ public class TransitNativeModule: Module {
         /// region it last had selected. Nil when there's no store.
         Function("readLegacyStore") { () -> [String: Any]? in
             Self.readLegacyStore()
+        }
+
+        // MARK: iCloud sync (src/lib/cloud-sync.ts)
+
+        // Saved stops, places and trips sync through the iCloud key-value
+        // store - one JSON document per kind; the merging happens in JS.
+
+        Function("cloudGet") { (key: String) -> String? in
+            NSUbiquitousKeyValueStore.default.string(forKey: key)
+        }
+
+        Function("cloudSet") { (key: String, json: String) in
+            NSUbiquitousKeyValueStore.default.set(json, forKey: key)
+            NSUbiquitousKeyValueStore.default.synchronize()
+        }
+
+        /// Pulls what iCloud has now (it's otherwise fetched lazily).
+        Function("cloudSynchronize") { () -> Bool in
+            NSUbiquitousKeyValueStore.default.synchronize()
+        }
+
+        /// Signed in to iCloud with iCloud Drive/data allowed for the app.
+        Function("cloudSignedIn") { () -> Bool in
+            FileManager.default.ubiquityIdentityToken != nil
         }
 
         // MARK: Live Activities
@@ -175,6 +202,8 @@ public class TransitNativeModule: Module {
         }
         return [
             "region": UserDefaults(suiteName: appGroup)?.string(forKey: "regionSlug") ?? "",
+            // The SwiftUI app's Settings > iCloud sync switch (`CloudSyncMonitor.enabledKey`) - on unless turned off.
+            "cloudSyncEnabled": UserDefaults.standard.object(forKey: "iCloudSyncEnabled") as? Bool ?? true,
             "stops": rows("SELECT ZSTOPID AS stopId, ZDISPLAYNAME AS name, ZCOLORHEX AS color, ZSORTORDER AS sortOrder FROM ZFAVOURITESTOP ORDER BY ZSORTORDER"),
             "places": rows("SELECT ZNAME AS name, ZLATITUDE AS lat, ZLONGITUDE AS lon, ZICON AS icon, ZREGIONSLUG AS region FROM ZSAVEDPLACE ORDER BY ZSORTORDER"),
             "trips": rows("SELECT ZNAME AS name, ZSTARTLABEL AS startLabel, ZSTARTLAT AS startLat, ZSTARTLON AS startLon, ZENDLABEL AS endLabel, ZENDLAT AS endLat, ZENDLON AS endLon, ZCOLORHEX AS color FROM ZSAVEDTRIP ORDER BY ZSORTORDER"),
@@ -217,6 +246,20 @@ public class TransitNativeModule: Module {
     }
 
     private func startObserving() {
+        // Another device changed the iCloud key-value store (or the first
+        // download after install landed, or the iCloud account changed).
+        // reason: 0 server change, 1 initial sync, 2 quota exceeded, 3 account change.
+        if cloudObserver == nil {
+            cloudObserver = NotificationCenter.default.addObserver(
+                forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+                object: NSUbiquitousKeyValueStore.default, queue: .main
+            ) { [weak self] note in
+                let reason = note.userInfo?[NSUbiquitousKeyValueStoreChangeReasonKey] as? Int ?? 0
+                let keys = note.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] ?? []
+                self?.sendEvent("onCloudChange", ["reason": reason, "keys": keys])
+            }
+            NSUbiquitousKeyValueStore.default.synchronize()
+        }
         // Push-to-start: the server starts the activity ahead of a reminder.
         observers.append(Task { [weak self] in
             for await data in Activity<JourneyActivityAttributes>.pushToStartTokenUpdates {

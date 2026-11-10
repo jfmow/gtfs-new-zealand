@@ -32,7 +32,13 @@ export default ({ config }: ConfigContext): ExpoConfig => {
             bundleIdentifier: IOS_ID,
             associatedDomains: uniq(ios.associatedDomains),
             infoPlist: { ...ios.infoPlist, UIBackgroundModes: uniq(ios.infoPlist?.UIBackgroundModes as string[] | undefined) },
-            entitlements: { ...ios.entitlements, "com.apple.security.application-groups": ["group.dev.suddsy.transit"] },
+            entitlements: {
+                ...ios.entitlements,
+                "com.apple.security.application-groups": ["group.dev.suddsy.transit"],
+                // iCloud key-value store: saved stops, places and trips sync (src/lib/cloud-sync.ts).
+                // The SwiftUI app already had this entitlement on dev.suddsy.transit.
+                "com.apple.developer.ubiquity-kvstore-identifier": "$(TeamIdentifierPrefix)$(CFBundleIdentifier)",
+            },
         },
         android: {
             ...config.android,

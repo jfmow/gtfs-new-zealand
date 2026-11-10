@@ -32,7 +32,10 @@ stays live and keeps getting fixes until the Expo app reaches parity (phase 7).
    with those env vars. Screens pass lines and markers as data
    (`components/map-types.ts`); `transit-map.{ios,android}.tsx` pick the
    engine. MapKit JS has no pitch, so no 3D on Android's Apple map.
-2. **Sync: none for now.** Saved stops, places and trips stay on each device
+2. **Sync: iCloud on iOS, none on Android yet.** (Updated 2026-11-10: iOS syncs
+   saved stops, places and trips through the iCloud key-value store -
+   `mobile/src/lib/cloud-sync.ts`, merge rules in `@transit/shared/sync-merge`.)
+   Originally: saved stops, places and trips stay on each device
    (local storage). No backend sync API in phase 1; it can be added later.
 3. **Bundle ID: replace the SwiftUI app** as `dev.suddsy.transit`. Phase 7
    adds a one-off migration of the SwiftData store into local storage.

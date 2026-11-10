@@ -4,7 +4,7 @@ import { useSyncExternalStore } from "react"
 /**
  * A tiny persisted store: a value in memory, mirrored to AsyncStorage, that
  * any component can subscribe to. Saved stops, places, trips and settings
- * live in these (on-device only - no sync, decision 2 in plans/expo-app.md).
+ * live in these; `cloud-sync.ts` syncs the saved lists through iCloud on iOS.
  */
 export interface Stored<T> {
     get(): T

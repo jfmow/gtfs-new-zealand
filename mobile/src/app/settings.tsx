@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import Constants from "expo-constants"
 import { router } from "expo-router"
 import { BellRing, Check, ChevronRight } from "@/components/icons"
+import { TransitNative } from "../../modules/transit-native/src"
 import { useEffect, useState } from "react"
 import { Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { ADULT_ONLY, type FareType } from "@transit/shared/fares"
@@ -10,6 +11,7 @@ import { WALK_SPEED_OPTIONS, normalizeWalkSpeed } from "@transit/shared/walk-spe
 import { Toggle } from "@/components/alerts"
 import { Button, Card, Divider, Muted, SectionLabel, Segmented } from "@/components/ui"
 import { api } from "@/lib/api"
+import { useCloudSyncStatus, type CloudSyncStatus } from "@/lib/cloud-sync"
 import { notificationsAllowed, requestNotifications } from "@/lib/push"
 import { unwrap } from "@/lib/queries"
 import { regions, useRegion } from "@/lib/region"
@@ -25,6 +27,7 @@ export default function SettingsScreen() {
     const allowed = useQuery({ queryKey: ["notif-allowed"], queryFn: notificationsAllowed })
     const [testing, setTesting] = useState(false)
     const fareType = settings.fareType[slug] ?? "adult"
+    const cloud = useCloudSyncStatus()
 
     // Back from the phone's Settings: show the switch as it is now.
     const refetchAllowed = allowed.refetch
@@ -112,6 +115,15 @@ export default function SettingsScreen() {
             <Segmented<"standard" | "easy"> options={[{ value: "standard", label: "Standard" }, { value: "easy", label: "Step by step" }]} value={settings.easyPlanner ? "easy" : "standard"} onChange={(v) => update({ easyPlanner: v === "easy" })} />
             <Muted style={{ marginTop: spacing.xs, marginLeft: spacing.xs }}>Step by step asks 4 simple questions, with large buttons.</Muted>
 
+            {TransitNative.cloudAvailable ? (
+                <>
+                    <SectionLabel>iCloud</SectionLabel>
+                    <Card style={{ paddingVertical: 0 }}>
+                        <Toggle label="iCloud sync" detail={cloudSyncDetail(settings.iCloudSync, cloud)} value={settings.iCloudSync} onChange={(v) => update({ iCloudSync: v })} />
+                    </Card>
+                </>
+            ) : null}
+
             <SectionLabel>Notifications</SectionLabel>
             <Pressable accessibilityRole="button" onPress={() => router.push("/manage-notifications")} style={[styles.card, styles.row, { gap: spacing.md, backgroundColor: colors.card, borderColor: colors.border, marginBottom: spacing.md }]}>
                 <BellRing size={18} color={colors.primary} />
@@ -146,6 +158,29 @@ export default function SettingsScreen() {
             </Card>
         </ScrollView>
     )
+}
+
+/** iOS `SettingsView.iCloudRow`'s wording. */
+function cloudSyncDetail(enabled: boolean, status: CloudSyncStatus): string {
+    if (!enabled) return "Off - saved stops, places and trips stay on this device"
+    switch (status.state) {
+        case "signedOut":
+            return "Sign in to iCloud to sync saved stops, places and trips across your devices"
+        case "quota":
+            return "iCloud storage for Transit is full - remove some saved trips"
+        default:
+            return status.lastSynced ? `Saved stops, places and trips - synced ${ago(status.lastSynced)}` : "Syncing saved stops, places and trips"
+    }
+}
+
+function ago(ms: number): string {
+    const minutes = Math.round((Date.now() - ms) / 60000)
+    if (minutes < 1) return "just now"
+    if (minutes < 60) return `${minutes} min ago`
+    const hours = Math.round(minutes / 60)
+    if (hours < 24) return `${hours} h ago`
+    const days = Math.round(hours / 24)
+    return days === 1 ? "yesterday" : `${days} days ago`
 }
 
 const styles = StyleSheet.create({

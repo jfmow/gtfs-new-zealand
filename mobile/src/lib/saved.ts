@@ -5,7 +5,8 @@ import { stored, useStored } from "./storage"
 
 /**
  * Saved stops, places and trips, plus settings - per region where the iOS
- * SwiftData models were (`PersistenceModels.swift`). Device-local.
+ * SwiftData models were (`PersistenceModels.swift`). Stops, places and trips
+ * sync through iCloud on iOS (`cloud-sync.ts`); settings stay on the device.
  */
 
 export interface SavedStop {
@@ -118,6 +119,8 @@ export interface Settings {
     mapStyle: "auto" | "light" | "dark"
     onboarded: boolean
     notificationsAsked: boolean
+    /** Sync saved stops, places and trips through iCloud (iOS) - on unless turned off. */
+    iCloudSync: boolean
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -131,6 +134,7 @@ const DEFAULT_SETTINGS: Settings = {
     mapStyle: "auto",
     onboarded: false,
     notificationsAsked: false,
+    iCloudSync: true,
 }
 
 /** New fields get their defaults when an older saved value loads. */

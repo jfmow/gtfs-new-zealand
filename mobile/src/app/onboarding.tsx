@@ -1,6 +1,8 @@
 import * as Location from "expo-location"
 import { router } from "expo-router"
-import { Bell, Check, MapPin } from "@/components/icons"
+import { Bell, Check, Cloud, MapPin } from "@/components/icons"
+import { Toggle } from "@/components/alerts"
+import { TransitNative } from "../../modules/transit-native/src"
 import { useEffect, useState } from "react"
 import { ScrollView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -11,11 +13,11 @@ import { regions, useRegion } from "@/lib/region"
 import { useSettings } from "@/lib/saved"
 import { spacing, type, useColors } from "@/theme"
 
-/** First launch - iOS `OnboardingView`: pick a region, then location and notifications (both optional). */
+/** First launch - iOS `OnboardingView`: pick a region, then location, notifications and iCloud sync (all optional). */
 export default function Onboarding() {
     const colors = useColors()
     const { region, setRegion } = useRegion()
-    const [, update] = useSettings()
+    const [settings, update] = useSettings()
     const [step, setStep] = useState<"region" | "permissions">("region")
     const [locationOn, setLocationOn] = useState(false)
     const [notificationsOn, setNotificationsOn] = useState(false)
@@ -68,6 +70,13 @@ export default function Onboarding() {
                             <Muted>When to leave, when to get off, and disruptions at your stops.</Muted>
                             <Button title={notificationsOn ? "Notifications on" : "Allow notifications"} variant={notificationsOn ? "secondary" : "primary"} disabled={notificationsOn} onPress={async () => setNotificationsOn(await requestNotifications())} />
                         </Card>
+                        {TransitNative.cloudAvailable ? (
+                            <Card style={{ gap: spacing.sm, marginTop: spacing.md }}>
+                                <View style={styles.row}><Cloud size={20} color={colors.foreground} /><Text style={[type.bodyMedium, { color: colors.foreground, flex: 1 }]}>Sync with iCloud</Text></View>
+                                <Muted>Your saved stops, places and trips follow you to your other iPhones and iPads, through your own iCloud account. Only you can see it.</Muted>
+                                <Toggle label="iCloud sync" detail={settings.iCloudSync ? "On" : "Off - everything stays on this device"} value={settings.iCloudSync} onChange={(v) => update({ iCloudSync: v })} />
+                            </Card>
+                        ) : null}
                         <Button title="Done" onPress={finish} style={{ marginTop: spacing.xl }} />
                     </>
                 )}
