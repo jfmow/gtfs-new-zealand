@@ -200,8 +200,13 @@ function draw(mk: any, m: any, p: Props, drawn: Drawn, onMarkerPress: (id: strin
             }
             return div
         }, {
-            // MapKit JS puts an annotation's bottom-centre on its coordinate; "center" shifts it down half its height.
-            anchorOffset: new DOMPoint(0, mm.anchor === "bottom" ? 0 : heightOf(mm.view) / 2),
+            // MapKit JS puts an annotation's bottom-centre on its coordinate, and
+            // `anchorOffset` moves that anchor point within the element (positive
+            // y = towards the bottom edge... of the map, so the element goes UP).
+            // "center" therefore needs -h/2 to bring the element's middle down
+            // onto the coordinate. (+h/2 drew every centred marker a whole
+            // height too high - the 58 pt vehicle badge sat well off its route.)
+            anchorOffset: new DOMPoint(0, mm.anchor === "bottom" ? 0 : -heightOf(mm.view) / 2),
             calloutEnabled: false,
             enabled: !!mm.tappable,
             displayPriority: 1000,
