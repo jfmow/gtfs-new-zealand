@@ -36,8 +36,12 @@ export default ({ config }: ConfigContext): ExpoConfig => {
                 ...ios.entitlements,
                 "com.apple.security.application-groups": ["group.dev.suddsy.transit"],
                 // iCloud key-value store: saved stops, places and trips sync (src/lib/cloud-sync.ts).
-                // The SwiftUI app already had this entitlement on dev.suddsy.transit.
+                // The container isn't used, but EAS only turns on the App ID's iCloud
+                // capability (and puts it in the provisioning profile) when one is
+                // listed - same three entitlements as the SwiftUI app had.
                 "com.apple.developer.ubiquity-kvstore-identifier": "$(TeamIdentifierPrefix)$(CFBundleIdentifier)",
+                "com.apple.developer.icloud-container-identifiers": ["iCloud.dev.suddsy.transit"],
+                "com.apple.developer.icloud-services": ["CloudKit"],
             },
         },
         android: {
