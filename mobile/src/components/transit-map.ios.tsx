@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useRef } from "react"
+import { forwardRef, useImperativeHandle, useRef, useState } from "react"
 import { Dimensions, StyleSheet, useColorScheme, View } from "react-native"
 import MapView, { Marker, Polyline, type Region } from "react-native-maps"
 import type { Coordinate } from "@transit/shared/models"
@@ -25,6 +25,8 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
     const scheme = settings.mapStyle === "auto" ? system ?? "light" : settings.mapStyle
     const size = useRef({ width: Dimensions.get("window").width, height: Dimensions.get("window").height })
     const lastZoom = useRef(zoom)
+    // Which way the map is turned - vehicle pointers are drawn on screen.
+    const [heading, setHeading] = useState(0)
     // react-native-maps' Apple map never fills in `isGesture` (only Google's
     // does), so a move counts as the rider's when a finger was on the map.
     const touch = useRef({ down: false, lastUp: 0 })
@@ -116,6 +118,7 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
             }}
             onPress={onPress ? () => onPress() : undefined}
             onRegionChangeComplete={(r, details) => {
+                map.current?.getCamera().then((c) => setHeading((h) => (Math.abs(c.heading - h) > 0.5 ? c.heading : h))).catch(() => {})
                 const z = zoomForSpan(r.longitudeDelta, size.current.width)
                 lastZoom.current = z
                 onRegionDidChange?.(
@@ -151,7 +154,7 @@ export const TransitMap = forwardRef<MapCamera, TransitMapProps>(function Transi
                     zIndex={m.zIndex}
                     tracksViewChanges={false}
                 >
-                    <MarkerBody view={m.view} />
+                    <MarkerBody view={m.view} mapHeading={heading} />
                 </Marker>
             ))}
         </MapView>

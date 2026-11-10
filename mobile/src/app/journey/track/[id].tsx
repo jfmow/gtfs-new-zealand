@@ -168,7 +168,7 @@ export default function JourneyTracker() {
                 lines={lines.map((l) => ({ id: `trk-${l.id}`, coords: l.coords, color: l.color, dashed: l.walk, width: l.muted ? 4 : undefined }))}
                 markers={(vehicle && isValidCoordinate(vehicle.position) ? [vehicle] : []).map((v) => ({
                     id: `veh-${v.trip_id}`, coordinate: { lat: v.position.lat, lon: v.position.lon }, zIndex: 4,
-                    view: { type: "vehicle" as const, mode: v.type, color: hexColor(v.route.color, "#0D1A12") }, accessibilityLabel: `${v.type} ${v.route.name}`,
+                    view: { type: "vehicle" as const, mode: v.type, color: hexColor(v.route.color, "#0D1A12"), bearing: v.position.bearing }, accessibilityLabel: `${v.type} ${v.route.name}`,
                 }))}
             />
 

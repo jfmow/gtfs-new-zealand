@@ -99,8 +99,13 @@ function markerHTML(v: MarkerView): string {
             const glyph = v.bearing ? icon("navigation", 11, fg, v.bearing) : icon(modeKey(v.mode), 12, fg)
             return `<div style="display:flex;align-items:center;gap:3px;height:26px;padding:0 7px;box-sizing:border-box;border-radius:13px;background:${bg};border:2px solid #fff;color:${fg};${FONT}font-weight:700;font-size:12px;white-space:nowrap;${SHADOW}">${glyph}<span>${v.label}</span></div>`
         }
-        case "vehicle":
-            return `<div style="width:40px;height:40px;box-sizing:border-box;border-radius:20px;background:${v.color};border:3px solid #fff;display:flex;align-items:center;justify-content:center;${SHADOW}">${icon(modeKey(v.mode), 18, textOn(v.color))}</div>`
+        case "vehicle": {
+            // A pointer riding round the badge for its bearing (turned with the map by `turnPointers`).
+            const pointer = v.bearing && v.bearing > 0
+                ? `<svg data-bearing="${v.bearing}" width="58" height="58" style="position:absolute;inset:0;transform:rotate(${v.bearing}deg)"><path d="M23 9 L35 9 L29 1 Z" fill="${v.color}" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>`
+                : ""
+            return `<div style="position:relative;width:58px;height:58px;display:flex;align-items:center;justify-content:center">${pointer}<div style="position:relative;width:40px;height:40px;box-sizing:border-box;border-radius:20px;background:${v.color};border:3px solid #fff;display:flex;align-items:center;justify-content:center;${SHADOW}">${icon(modeKey(v.mode), 18, textOn(v.color))}</div></div>`
+        }
         case "dot":
             return `<div style="width:${v.size}px;height:${v.size}px;box-sizing:border-box;border-radius:50%;background:${v.fill};border:${v.strokeWidth}px solid ${v.stroke}"></div>`
         case "pin":
@@ -115,7 +120,7 @@ function heightOf(v: MarkerView): number {
         case "cluster": return 34
         case "stop": return 28
         case "vehicleTag": return 26
-        case "vehicle": return 40
+        case "vehicle": return 58
         case "dot": return v.size
         case "pin": return 34
         case "badge": return 22
@@ -153,6 +158,14 @@ function regionFor(mk: any, el: HTMLElement | null, c: { lat: number; lon: numbe
 const regionOfBounds = (mk: any, b: Bounds) =>
     new mk.CoordinateRegion(new mk.Coordinate((b[1] + b[3]) / 2, (b[0] + b[2]) / 2), new mk.CoordinateSpan(b[3] - b[1], b[2] - b[0]))
 
+/** Vehicle pointers point at a compass bearing; turn them against the map's rotation. */
+function turnPointers(m: any, root: HTMLElement | null) {
+    const rotation = Number(m?.rotation) || 0
+    root?.querySelectorAll<SVGElement>("svg[data-bearing]").forEach((svg) => {
+        svg.style.transform = `rotate(${Number(svg.dataset.bearing) - rotation}deg)`
+    })
+}
+
 type Drawn = { annotations: Map<string, { ann: any; key: string }>; overlays: any[] }
 
 /** Draw lines and markers: overlays are cheap to redraw; annotations are kept by id and only rebuilt when they change. */
@@ -179,6 +192,7 @@ function draw(mk: any, m: any, p: Props, drawn: Drawn, onMarkerPress: (id: strin
         const ann = new mk.Annotation(new mk.Coordinate(mm.lat, mm.lon), () => {
             const div = document.createElement("div")
             div.innerHTML = markerHTML(mm.view)
+            turnPointers(m, div)
             div.setAttribute("aria-label", mm.label ?? "")
             if (mm.tappable) {
                 div.style.cursor = "pointer"
@@ -260,6 +274,7 @@ export default function AppleMapWeb({ ref, ...props }: Props) {
             m.addEventListener("scroll-start", gesture)
             m.addEventListener("zoom-start", gesture)
             m.addEventListener("region-change-end", () => {
+                turnPointers(m, el.current)
                 if (!settled.current) return
                 const r = m.region
                 const w = el.current?.clientWidth || 400

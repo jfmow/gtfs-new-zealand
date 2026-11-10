@@ -19,8 +19,12 @@ export type MarkerView =
     | { type: "stop"; mode: string }
     /** A live vehicle on the Map tab: route name and heading on the route colour. */
     | { type: "vehicleTag"; label: string; color: string; mode: string; bearing?: number | null }
-    /** The vehicle a tracker follows: a big circle with its mode icon. */
-    | { type: "vehicle"; mode: string; color: string }
+    /**
+     * The vehicle a tracker follows: a big circle with its mode icon, and a
+     * little pointer riding round its edge for the way it's heading
+     * (degrees from true north; 0 or none = no bearing, no pointer).
+     */
+    | { type: "vehicle"; mode: string; color: string; bearing?: number | null }
     /** A plain ring or dot - a stop along a trip, a journey's start. */
     | { type: "dot"; size: number; fill: string; stroke: string; strokeWidth: number }
     /** The red pin for "your stop" or a destination. Anchor it "bottom". */

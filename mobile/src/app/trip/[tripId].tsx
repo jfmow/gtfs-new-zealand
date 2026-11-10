@@ -228,7 +228,7 @@ export default function TripTracker() {
                         }
                         return { id: `m-${s.sequence}`, coordinate, view: { type: "dot", size: 12, fill: colors.card, stroke: st === "passed" ? colors.border : routeHex, strokeWidth: 3 } }
                     }),
-                    ...(v ? [{ id: "vehicle", coordinate: { lat: v.position.lat, lon: v.position.lon }, zIndex: 4, view: { type: "vehicle" as const, mode: v.type, color: "#0D1A12" } }] : []),
+                    ...(v ? [{ id: "vehicle", coordinate: { lat: v.position.lat, lon: v.position.lon }, zIndex: 4, view: { type: "vehicle" as const, mode: v.type, color: "#0D1A12", bearing: v.position.bearing } }] : []),
                 ]}
             />
 

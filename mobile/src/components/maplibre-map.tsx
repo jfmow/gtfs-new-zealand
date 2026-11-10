@@ -1,5 +1,5 @@
 import { Camera, GeoJSONSource, Layer, Map, Marker, UserLocation, type CameraRef } from "@maplibre/maplibre-react-native"
-import { forwardRef, useImperativeHandle, useRef } from "react"
+import { forwardRef, useImperativeHandle, useRef, useState } from "react"
 import { Pressable, StyleSheet, useColorScheme } from "react-native"
 import type { Coordinate } from "@transit/shared/models"
 import { useSettings } from "@/lib/saved"
@@ -25,6 +25,8 @@ export const MapLibreMap = forwardRef<MapCamera, TransitMapProps>(function MapLi
     ref,
 ) {
     const camera = useRef<CameraRef>(null)
+    // Which way the map is turned - vehicle pointers are drawn on screen.
+    const [heading, setHeading] = useState(0)
     const system = useColorScheme()
     const [settings] = useSettings()
     const scheme = settings.mapStyle === "auto" ? system : settings.mapStyle
@@ -58,6 +60,7 @@ export const MapLibreMap = forwardRef<MapCamera, TransitMapProps>(function MapLi
             }}
             onRegionDidChange={(e) => {
                 const s = e.nativeEvent
+                setHeading((h) => (Math.abs(s.bearing - h) > 0.5 ? s.bearing : h))
                 onRegionDidChange?.({ lat: s.center[1], lon: s.center[0] }, s.zoom, s.bounds, s.userInteraction)
             }}
         >
@@ -92,7 +95,7 @@ export const MapLibreMap = forwardRef<MapCamera, TransitMapProps>(function MapLi
             {markers.map((m) => (
                 <Marker key={m.id} id={`m-${m.id}`} lngLat={lngLat(m.coordinate)} anchor={m.anchor === "bottom" ? "bottom" : "center"}>
                     <Pressable accessibilityRole={m.onPress ? "button" : undefined} accessibilityLabel={m.accessibilityLabel} disabled={!m.onPress} onPress={m.onPress} hitSlop={8}>
-                        <MarkerBody view={m.view} />
+                        <MarkerBody view={m.view} mapHeading={heading} />
                     </Pressable>
                 </Marker>
             ))}
