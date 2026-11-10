@@ -1373,10 +1373,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		// The activity's own APNs environment - sent by the app, falling
 		// back to the device's. Live Activity tokens belong to the same
 		// environment as the build, not to whether alerts are enabled.
-		apnsEnv := c.FormValue("env")
-		if apnsEnv != "sandbox" && apnsEnv != "production" {
-			apnsEnv = client.ApnsEnv
-		}
+		// Android's "activity" is its live notification, pushed over FCM.
+		apnsEnv := activityEnvFor(client, c.FormValue("env"))
 		if err := notificationDB.CreateLiveActivity(client.Id, activityRegion, planId, activityId, pushToken, apnsEnv); err != nil {
 			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to register live activity"})
 		}
@@ -1456,9 +1454,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		if a.Kind != "get_off" {
 			a.Kind = "arrival"
 		}
-		if a.ApnsEnv != "sandbox" && a.ApnsEnv != "production" {
-			a.ApnsEnv = client.ApnsEnv
-		}
+		a.ApnsEnv = activityEnvFor(client, a.ApnsEnv)
 		a.StopSeq, _ = strconv.Atoi(c.FormValue("stopSequence"))
 		a.Scheduled, _ = strconv.ParseInt(c.FormValue("scheduledUnix"), 10, 64)
 		if err := notificationDB.CreateTripLiveActivity(a); err != nil {

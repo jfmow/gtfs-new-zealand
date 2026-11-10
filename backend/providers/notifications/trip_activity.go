@@ -133,8 +133,8 @@ func (d *Database) recordTripActivityPush(id int, hash string, now time.Time) {
 	d.execContext(`UPDATE trip_live_activities SET last_state_hash = ?, last_pushed = ? WHERE id = ?`, hash, now.Unix(), id)
 }
 
-const tripActivityColumns = `ta.id, ta.clientId, ta.region, ta.trip_id, ta.stop_id, ta.stop_sequence, ta.scheduled_unix, ta.kind,
-        ta.activity_id, ta.push_token, COALESCE(NULLIF(ta.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
+var tripActivityColumns = `ta.id, ta.clientId, ta.region, ta.trip_id, ta.stop_id, ta.stop_sequence, ta.scheduled_unix, ta.kind,
+        ta.activity_id, `+liveActivityTokenColumn("ta")+`, COALESCE(NULLIF(ta.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
         ta.last_state_hash, ta.last_pushed, ta.client_reported, ta.created`
 
 func scanTripActivity(row rowScanner) (TripLiveActivity, error) {
@@ -327,8 +327,7 @@ func runTripActivitiesCron(db *Database, region string, lookup tripActivityLooku
 	if db == nil {
 		return
 	}
-	apns := sharedAPNsSender()
-	if apns == nil {
+	if !activityPushConfigured() {
 		return
 	}
 	activities, err := db.TripLiveActivitiesForRegion(region)
@@ -345,7 +344,7 @@ func runTripActivitiesCron(db *Database, region string, lookup tripActivityLooku
 				state.Phase = "gone"
 			}
 			dismissal := now.Add(2 * time.Minute)
-			if err := apns.SendLiveActivityUpdate(a.PushToken, a.ApnsEnv, state, nil, nil, &dismissal); err != nil {
+			if err := sendActivityUpdate(activityKindTrip, a.ActivityId, a.PushToken, a.ApnsEnv, state, nil, nil, &dismissal); err != nil {
 				log.Printf("notifications: trip activity %d end push: %v", a.Id, err)
 			}
 			db.DeleteTripLiveActivity(a.ClientId, a.ActivityId)
@@ -360,7 +359,7 @@ func runTripActivitiesCron(db *Database, region string, lookup tripActivityLooku
 			continue
 		}
 		stale := now.Add(activityStaleAfter)
-		if err := apns.SendLiveActivityUpdate(a.PushToken, a.ApnsEnv, state, nil, &stale, nil); err != nil {
+		if err := sendActivityUpdate(activityKindTrip, a.ActivityId, a.PushToken, a.ApnsEnv, state, nil, &stale, nil); err != nil {
 			log.Printf("notifications: trip activity %d push: %v", a.Id, err)
 			if errors.Is(err, errLiveActivityBadToken) {
 				db.DeleteTripLiveActivity(a.ClientId, a.ActivityId)
@@ -379,13 +378,9 @@ func alertTripActivity(db *Database, clientId int, tripId string, lookup tripAct
 	if !ok || a.PushToken == "" {
 		return false
 	}
-	apns := sharedAPNsSender()
-	if apns == nil {
-		return false
-	}
 	state := lookup(a, now)
 	stale := now.Add(activityStaleAfter)
-	if err := apns.SendLiveActivityUpdate(a.PushToken, a.ApnsEnv, state, &activityAlert{Title: title, Body: body}, &stale, nil); err != nil {
+	if err := sendActivityUpdate(activityKindTrip, a.ActivityId, a.PushToken, a.ApnsEnv, state, &activityAlert{Title: title, Body: body}, &stale, nil); err != nil {
 		log.Printf("notifications: trip activity %d alert: %v", a.Id, err)
 		return false
 	}

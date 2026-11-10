@@ -60,6 +60,7 @@ var (
 	sharedNotifierOnce sync.Once
 	sharedNotifierVal  Notifier
 	sharedAPNsVal      *apnsSender // nil if APNs isn't configured - same condition sharedNotifier logs
+	sharedFCMVal       *fcmSender  // nil if FCM isn't configured
 )
 
 // sharedNotifier builds the process-wide Notifier once, from environment
@@ -78,6 +79,7 @@ func sharedNotifier() Notifier {
 			log.Printf("notifications: FCM not configured, Android push disabled: %v", err)
 		} else {
 			byPlatform["android"] = fcmNotifier
+			sharedFCMVal = fcmNotifier
 		}
 		sharedNotifierVal = platformNotifier{byPlatform: byPlatform}
 	})

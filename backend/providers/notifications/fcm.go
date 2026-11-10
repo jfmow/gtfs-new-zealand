@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -185,39 +186,119 @@ func fcmTokenGone(status int, body []byte) bool {
 	return status == http.StatusBadRequest && strings.Contains(text, "registration token")
 }
 
-func (s *fcmSender) Send(client NotificationClient, p Payload) error {
-	if client.FcmToken == "" {
-		return errors.New("client has no fcm token")
-	}
+// post sends one v1 message body - status 200 is success; anything else
+// comes back with FCM's error body for fcmTokenGone.
+func (s *fcmSender) post(message map[string]any) (int, []byte, error) {
 	access, err := s.token()
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
-	body, err := json.Marshal(fcmMessage(client.FcmToken, p))
+	body, err := json.Marshal(message)
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req, err := http.NewRequest(http.MethodPost, s.sendURL, bytes.NewReader(body))
 	if err != nil {
-		return err
+		return 0, nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+access)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := s.http.Do(req)
 	if err != nil {
-		return fmt.Errorf("fcm push: %w", err)
+		return 0, nil, fmt.Errorf("fcm push: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusOK {
-		return nil
+		return http.StatusOK, nil, nil
 	}
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
-	log.Printf("notifications: fcm push to client %d rejected: %d", client.Id, resp.StatusCode)
+	return resp.StatusCode, respBody, nil
+}
+
+// fcmLiveTTL: a live update that can't be delivered within this is out of
+// date - the next one replaces it anyway (same collapse key).
+const fcmLiveTTL = "300s"
+
+// fcmLiveMessage is a live-update push - Android's Live Activity. A data
+// message (no `notification` block) so the app's TransitMessagingService
+// draws it itself, as the same ongoing notification the app writes while
+// it's open. `state` is the activity's content state - the same JSON the
+// iOS activity gets. Collapsible per activity: a phone that was offline
+// gets only the latest.
+func fcmLiveMessage(token, kind, activityID string, state any, alert *activityAlert, dismissal *time.Time) (map[string]any, error) {
+	encoded, err := json.Marshal(state)
+	if err != nil {
+		return nil, err
+	}
+	data := map[string]string{
+		"transit":    "live",
+		"kind":       kind,
+		"activityId": activityID,
+		"state":      string(encoded),
+	}
+	if alert != nil {
+		data["alertTitle"] = alert.Title
+		data["alertBody"] = alert.Body
+		if alert.Silent {
+			data["alertSilent"] = "1"
+		}
+	}
+	if dismissal != nil {
+		data["end"] = strconv.FormatInt(dismissal.Unix(), 10)
+	}
+	return map[string]any{"message": map[string]any{
+		"token": token,
+		"data":  data,
+		"android": map[string]any{
+			// High: a normal-priority data message waits for the phone to
+			// leave Doze, and this updates something the rider is looking at.
+			"priority":     "HIGH",
+			"ttl":          fcmLiveTTL,
+			"collapse_key": "live-" + activityID,
+		},
+	}}, nil
+}
+
+// SendLiveUpdate pushes a journey or trip activity's state to an Android
+// device. A dead token comes back as errLiveActivityBadToken, like APNs.
+func (s *fcmSender) SendLiveUpdate(token, kind, activityID string, state any, alert *activityAlert, dismissal *time.Time) error {
+	if token == "" {
+		return errors.New("live activity has no fcm token")
+	}
+	message, err := fcmLiveMessage(token, kind, activityID, state, alert, dismissal)
+	if err != nil {
+		return err
+	}
+	status, body, err := s.post(message)
+	if err != nil {
+		return err
+	}
+	if status == http.StatusOK {
+		return nil
+	}
+	if fcmTokenGone(status, body) {
+		return fmt.Errorf("%w (fcm %d)", errLiveActivityBadToken, status)
+	}
+	return fmt.Errorf("fcm live update rejected: %d", status)
+}
+
+func (s *fcmSender) Send(client NotificationClient, p Payload) error {
+	if client.FcmToken == "" {
+		return errors.New("client has no fcm token")
+	}
+	status, respBody, err := s.post(fcmMessage(client.FcmToken, p))
+	if err != nil {
+		return err
+	}
+	if status == http.StatusOK {
+		return nil
+	}
+	log.Printf("notifications: fcm push to client %d rejected: %d", client.Id, status)
 	// Like APNs: clear just the token, never the device row (it owns every
 	// subscription and reminder). The app sends a fresh token next launch.
-	if fcmTokenGone(resp.StatusCode, respBody) && client.db != nil {
+	if fcmTokenGone(status, respBody) && client.db != nil {
 		client.db.setAndroidDeviceFcm(client.Id, "")
 	}
-	return fmt.Errorf("fcm push rejected: %d", resp.StatusCode)
+	return fmt.Errorf("fcm push rejected: %d", status)
 }

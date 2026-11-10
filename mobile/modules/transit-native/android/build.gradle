@@ -18,6 +18,19 @@ android {
   }
 }
 
+def expoNotificationsVersion() {
+  def pkg = providers.exec {
+    workingDir(projectDir)
+    commandLine("node", "--print", "require('expo-notifications/package.json').version")
+  }.standardOutput.asText.get().trim()
+  return pkg
+}
+
 dependencies {
-  implementation "androidx.core:core-ktx:1.13.1"
+  // 1.17+: NotificationCompat.ProgressStyle and promoted ongoing (Android 16 Live Updates).
+  implementation "androidx.core:core-ktx:1.18.0"
+  // TransitMessagingService extends expo-notifications' FCM service. Expo
+  // ships that module prebuilt (its local-maven-repo), at its package's version.
+  compileOnly "host.exp.exponent:expo.modules.notifications:${expoNotificationsVersion()}"
+  implementation 'com.google.firebase:firebase-messaging:25.0.1'
 }

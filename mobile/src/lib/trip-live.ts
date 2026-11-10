@@ -9,7 +9,7 @@ import { stored, useStored } from "./storage"
  * The rider picks a stop in the trip tracker - tapping it (an arrival
  * reminder) or through the bell's reminder sheet (get off / arriving / N
  * stops before). That stop is kept here per trip, so the tracker shows it
- * again when reopened (and from the Live Activity's link). On iOS a trip
+ * again when reopened (and from the Live Activity's link). A trip
  * Live Activity counts the vehicle down to it: the tracker writes it while
  * it's open, and the server (trip_activity.go) pushes it while it isn't,
  * sending the reminder itself as the activity's alert.
@@ -103,7 +103,7 @@ export async function clearTripTarget(tripId: string) {
     await endTripLive(tripId)
 }
 
-// ─── Live Activity (iOS) ───
+// ─── Live Activity (iOS; Android's live-update notification) ───
 
 interface Running {
     id: string
@@ -146,7 +146,8 @@ function registerWithServer(r: Running, token: string) {
         activityId: r.id,
         pushToken: token,
         region: r.register.region,
-        env: __DEV__ ? "sandbox" : "production",
+        // Android's activity is pushed over FCM with the device's token.
+        env: Platform.OS === "android" ? "fcm" : __DEV__ ? "sandbox" : "production",
         tripId: r.tripId,
         stopId: r.register.stopId,
         stopSequence: r.register.stopSequence,
@@ -161,8 +162,8 @@ function registerWithServer(r: Running, token: string) {
  * changes), then keeps it current.
  */
 export async function updateTripLive(attributes: TripActivityAttributes, content: TripActivityContent, scheduledUnix: number, stopSeq: number) {
-    if (Platform.OS !== "ios" || !TransitNative.available) return
-    listen()
+    if (Platform.OS === "web" || !TransitNative.available) return
+    if (Platform.OS === "ios") listen()
     const key = `${attributes.tripID}|${attributes.stopID}|${stopSeq}|${attributes.kind}`
     if (!running || running.key !== key) {
         // Never start one for a vehicle that's already been to the stop.
@@ -180,7 +181,7 @@ export async function updateTripLive(attributes: TripActivityAttributes, content
             }
             lastSent = { comparable: comparable(content), key: stageKey(content), at: Date.now() }
             lastReport = Date.now()
-            const token = tokens.get(id)
+            const token = Platform.OS === "android" ? "fcm" : tokens.get(id)
             if (token) registerWithServer(running, token)
         } catch (e) {
             console.warn(`[trip-live-activity] Couldn't start: ${String(e)}`)
@@ -215,7 +216,7 @@ export async function updateTripLive(attributes: TripActivityAttributes, content
 
 /** Ends the trip's Live Activity (every one, without a trip id). */
 export async function endTripLive(tripId?: string) {
-    if (Platform.OS !== "ios") return
+    if (Platform.OS === "web") return
     const ids = TransitNative.activeTripActivities().filter((a) => !tripId || a.tripId === tripId).map((a) => a.id)
     if (running && (!tripId || running.tripId === tripId)) ids.push(running.id)
     for (const id of new Set(ids)) {

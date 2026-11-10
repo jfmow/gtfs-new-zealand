@@ -2,7 +2,8 @@ import { requireOptionalNativeModule, type EventSubscription } from "expo-module
 import { Platform } from "react-native"
 
 /**
- * Live Activities (iOS), the live journey notification (Android) and the
+ * Live Activities - on iOS ActivityKit's, on Android the live-update
+ * notification (LiveNotifications.kt) behind the same calls - and the
  * widgets' shared store. Optional: Expo Go and the web have none of it, so
  * every call is a no-op there.
  */
@@ -30,8 +31,6 @@ interface Native {
     startTripActivity?(attributesJSON: string, contentJSON: string): Promise<string>
     updateTripActivity?(id: string, contentJSON: string, alertTitle: string | null, alertBody: string | null): Promise<void>
     endTripActivity?(id: string | null): Promise<void>
-    showLiveNotification?(contentJSON: string, planId: string, alert: boolean): void
-    cancelLiveNotification?(): void
     readLegacyStore?(): LegacyStore | null
     cloudGet?(key: string): string | null
     cloudSet?(key: string, json: string): void
@@ -66,8 +65,6 @@ export const TransitNative = {
     startTripActivity: (attributes: unknown, content: unknown) => native?.startTripActivity?.(JSON.stringify(attributes), JSON.stringify(content)) ?? Promise.resolve(null),
     updateTripActivity: (id: string, content: unknown, alert?: { title: string; body: string }) => native?.updateTripActivity?.(id, JSON.stringify(content), alert?.title ?? null, alert?.body ?? null) ?? Promise.resolve(),
     endTripActivity: (id?: string) => native?.endTripActivity?.(id ?? null) ?? Promise.resolve(),
-    showLiveNotification: (content: unknown, planId: string, alert = false) => native?.showLiveNotification?.(JSON.stringify(content), planId, alert),
-    cancelLiveNotification: () => native?.cancelLiveNotification?.(),
     readLegacyStore: (): LegacyStore | null => native?.readLegacyStore?.() ?? null,
     /** iCloud key-value store (iOS only - false/no-op elsewhere). */
     cloudAvailable: Platform.OS === "ios" && typeof native?.cloudGet === "function",

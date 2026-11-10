@@ -8,10 +8,12 @@ import { activeJourneyStore } from "./journey-session"
 import { savedStopsStore } from "./saved"
 
 /**
- * The journey on the Lock Screen - iOS `LiveActivityCoordinator`. iOS: one
- * Live Activity per journey, its push token registered with the server (so
- * the 20 s cron keeps it current while the app is suspended) and the leg
- * reported on every change. Android: the ongoing live notification.
+ * The journey on the Lock Screen - iOS `LiveActivityCoordinator`. One Live
+ * Activity per journey, registered with the server so its 20 s cron keeps it
+ * current while the app is suspended, and the leg reported on every change.
+ * iOS registers the activity's own push token once ActivityKit hands it over;
+ * Android's activity is its live-update notification, registered straight
+ * away as an FCM one (the server pushes it with the device's FCM token).
  */
 
 let activityId: string | null = null
@@ -102,17 +104,13 @@ export async function updateLiveSurface(planId: string, destination: string, reg
         : undefined
     lastAlertKey = alertKey
 
-    if (Platform.OS === "android") {
-        if (!due(content, !!alert, now)) return
-        TransitNative.showLiveNotification(content, planId, !!alert)
-        sent(content, now)
-        return
+    if (Platform.OS === "ios") {
+        // Ask regardless: `areActivitiesEnabled` can read false before the system
+        // has ever seen a request from this app, and a request that's really
+        // refused just throws (caught below).
+        if (!TransitNative.liveActivitiesEnabled()) warnOnce("off", "areActivitiesEnabled is false - requesting anyway")
+        listenForTokens(slug)
     }
-    // Ask regardless: `areActivitiesEnabled` can read false before the system
-    // has ever seen a request from this app, and a request that's really
-    // refused just throws (caught below).
-    if (!TransitNative.liveActivitiesEnabled()) warnOnce("off", "areActivitiesEnabled is false - requesting anyway")
-    listenForTokens(slug)
     if (activityPlan !== planId || !activityId) {
         if (starting) return
         starting = true
@@ -126,6 +124,8 @@ export async function updateLiveSurface(planId: string, destination: string, reg
             activityId = id
             activityPlan = planId
             sent(content, now)
+            // No ActivityKit token on Android: the server pushes the device's FCM token.
+            if (Platform.OS === "android" && id) api.startLiveActivity(planId, id, "fcm", slug, "fcm").catch(() => {})
         } catch (e) {
             warnOnce(`start:${String(e)}`, `Couldn't start the Live Activity: ${String(e)}`)
             activityId = null
@@ -150,15 +150,11 @@ export async function updateLiveSurface(planId: string, destination: string, reg
 
 export async function endLiveSurface(planId?: string) {
     if (planId) { endedPlan = planId; endedAt = Date.now() }
-    if (Platform.OS === "android") {
-        TransitNative.cancelLiveNotification()
-    } else {
-        // Every activity iOS still has, not just the one this launch started - after a
-        // relaunch the server would otherwise keep pushing to the old one.
-        const ids = new Set([...(activityId ? [activityId] : []), ...TransitNative.activeActivities().map((a) => a.id)])
-        for (const id of ids) api.endLiveActivity(id).catch(() => {})
-        await TransitNative.endActivity().catch(() => {})
-    }
+    // Every activity the phone still has, not just the one this launch started - after a
+    // relaunch the server would otherwise keep pushing to the old one.
+    const ids = new Set([...(activityId ? [activityId] : []), ...TransitNative.activeActivities().map((a) => a.id)])
+    for (const id of ids) api.endLiveActivity(id).catch(() => {})
+    await TransitNative.endActivity().catch(() => {})
     activityId = null
     activityPlan = null
     lastSent = null
