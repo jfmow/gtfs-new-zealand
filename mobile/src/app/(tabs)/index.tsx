@@ -9,7 +9,7 @@ import { boardQuery } from "@transit/shared/models"
 import { getRegionSlug } from "@transit/shared/regions"
 import { MiniBoard, StarTile } from "@/components/departures"
 import { placeStyle, placeTitle } from "@/components/place-style"
-import { StopSearchResults } from "@/components/stop-search"
+import { LocationResults } from "@/components/location-search"
 import { EmptyState, GlassButton, Loading, Muted, SectionHeader } from "@/components/ui"
 import { readable, useLayout } from "@/lib/layout"
 import { coordinateOf, useUserLocation } from "@/lib/location"
@@ -29,7 +29,7 @@ function regionCity(name: string): string {
     return name.replace(/^Dev – /, "").split(/ – | Transport/)[0]
 }
 
-/** The "Boards" Home (iOS 2026-11-03): search + gear, greeting, round launcher, your stops, near you. */
+/** The "Boards" Home (iOS 2026-11-03): "Where to?" journey search + gear, greeting, round launcher, your stops, near you. */
 export default function HomeTab() {
     const colors = useColors()
     const { region } = useRegion()
@@ -56,11 +56,11 @@ export default function HomeTab() {
                     <TextInput
                         value={query}
                         onChangeText={setQuery}
-                        placeholder="Search for stop..."
+                        placeholder="Where to?"
                         placeholderTextColor={colors.mutedForeground}
                         autoCorrect={false}
                         clearButtonMode="while-editing"
-                        accessibilityLabel="Search for stop"
+                        accessibilityLabel="Search for a destination"
                         style={[type.body, { flex: 1, color: colors.foreground, paddingVertical: 0 }]}
                     />
                 </View>
@@ -68,7 +68,16 @@ export default function HomeTab() {
             </View>
 
             {searching ? (
-                <View style={[{ flex: 1 }, readable(wide)]}><StopSearchResults query={query.trim()} onPick={() => setQuery("")} /></View>
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={[{ paddingHorizontal: spacing.lg }, readable(wide)]} keyboardShouldPersistTaps="handled">
+                    <LocationResults
+                        query={query.trim()}
+                        showCurrent={false}
+                        onPick={(p) => {
+                            setQuery("")
+                            router.push({ pathname: "/(tabs)/planner", params: { toLat: String(p.lat), toLon: String(p.lon), toLabel: p.label } })
+                        }}
+                    />
+                </ScrollView>
             ) : (
                 <ScrollView contentContainerStyle={[styles.scroll, page]} keyboardShouldPersistTaps="handled">
                     <Text accessibilityRole="header" style={[type.display, { color: colors.foreground, marginTop: 4 }]}>{greeting(region.timeZone)}</Text>

@@ -1,4 +1,5 @@
-import SearchForStop from "@/components/stops/search";
+import { useRouter } from "next/router";
+import { LocationSearchInput } from "@/components/map/search";
 import SavedStopsSection from "@/components/stops/favourites";
 import { StopBoardPage } from "@/components/stops/stop-board";
 import { Header, MobileSettingsLink } from "@/components/nav";
@@ -10,7 +11,7 @@ import { WifiOff } from "lucide-react";
 import { FirstVisitCard } from "@/components/home/first-visit-card";
 
 /**
- * The Schedule tab - the iOS Home tab ("Boards", 2026-11-03): stop search,
+ * The Schedule tab - the iOS Home tab ("Boards", 2026-11-03): "Where to?" search,
  * a greeting, a row of round shortcuts (find my vehicle, your places and
  * trips), then your stops and the stops near you as small departure boards
  * (two to a row on wide screens). A stop's board (`?s=`) takes over the
@@ -34,7 +35,7 @@ export default function Home() {
       <Header title="Train, Bus, Ferry — Find your next journey" />
       <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-4 pb-8">
         <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1"><SearchForStop /></div>
+          <div className="min-w-0 flex-1"><DestinationSearch /></div>
           <MobileSettingsLink />
         </div>
 
@@ -53,5 +54,21 @@ export default function Home() {
         <NearbySection />
       </div>
     </>
+  );
+}
+
+/** "Where to?" - picking a place plans a trip there from the rider's location (as the app's Home does). */
+function DestinationSearch() {
+  const router = useRouter();
+  return (
+    <LocationSearchInput
+      placeholder="Where to?"
+      storageKey="recentEndLocations"
+      onSelect={(place) => {
+        if (!place) return;
+        const params = new URLSearchParams({ endLat: String(place.lat), endLon: String(place.lon), endLabel: place.label, fromHere: "1" });
+        router.push(`/plan?${params}`);
+      }}
+    />
   );
 }
