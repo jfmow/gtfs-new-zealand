@@ -10,6 +10,8 @@ export interface CurrentStop {
     lat: number
     lon: number
     name: string
+    /** The trip's stop sequence, when known (a stop picked in the tracker). */
+    sequence?: number
 }
 
 /**
@@ -43,6 +45,10 @@ export function findRiderStop(
     currentStop?: CurrentStop,
 ): ServicesStop | undefined {
     if (!currentStop || !stops || stops.length === 0) return undefined
+    if (currentStop.sequence !== undefined) {
+        const exact = stops.find((s) => s.sequence === currentStop.sequence)
+        if (exact) return exact
+    }
     return stops.find((s) => matchesRiderStop(s, currentStop))
 }
 

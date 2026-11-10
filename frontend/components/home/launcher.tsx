@@ -4,7 +4,7 @@ import { Plus, Route, ScanLine } from "lucide-react"
 import { useUrl } from "@/lib/url-context"
 import { hasRealtime } from "@/lib/url-store"
 import { cn } from "@/lib/utils"
-import { placeIcon, useSavedPlaces, type PlaceIconKey } from "@/components/places/use-saved-places"
+import { hasPlaceKind, placeStyle, useSavedPlaces } from "@/components/places/use-saved-places"
 import { ManagePlacesDialog, PlaceEditorDialog, planToPlaceHref, type PlaceEditorTarget } from "@/components/places/places"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
 import { planSavedTripHref } from "./saved-trips-section"
@@ -53,7 +53,6 @@ export function HomeLauncher() {
     const [managingTrips, setManagingTrips] = useState(false)
     const [findingVehicle, setFindingVehicle] = useState(false)
 
-    const hasIcon = (key: PlaceIconKey) => places.some((p) => p.icon === key)
 
     return (
         <div className="-mx-4 flex gap-1 overflow-x-auto px-3 pb-1 scrollbar-hide">
@@ -65,7 +64,7 @@ export function HomeLauncher() {
                 </LauncherItem>
             )}
             {places.map((place) => {
-                const meta = placeIcon(place.icon)
+                const meta = placeStyle(place)
                 return (
                     <ContextMenu key={place.id}>
                         <ContextMenuTrigger asChild>
@@ -76,10 +75,10 @@ export function HomeLauncher() {
                             </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent>
-                            <ContextMenuItem onSelect={() => setEditor({ place })}>Edit</ContextMenuItem>
-                            <ContextMenuItem onSelect={() => setManagingPlaces(true)}>Manage places</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => setEditor({ place })}>Edit {place.name}</ContextMenuItem>
+                            <ContextMenuItem onSelect={() => setManagingPlaces(true)}>Reorder places</ContextMenuItem>
                             <ContextMenuSeparator />
-                            <ContextMenuItem className="text-destructive" onSelect={() => deletePlace(place.id)}>Delete</ContextMenuItem>
+                            <ContextMenuItem className="text-destructive" onSelect={() => deletePlace(place.id)}>Remove</ContextMenuItem>
                         </ContextMenuContent>
                     </ContextMenu>
                 )
@@ -89,7 +88,7 @@ export function HomeLauncher() {
                     <ContextMenuTrigger asChild>
                         <div>
                             <LauncherItem label={trip.name} href={planSavedTripHref(trip)} ariaLabel={`${trip.name}, from ${trip.startLocation.label} to ${trip.endLocation.label}`}>
-                                <Tinted color={trip.color}><Route className="h-5 w-5" /></Tinted>
+                                <Tinted color={trip.color}><Route className="h-6 w-6" /></Tinted>
                             </LauncherItem>
                         </div>
                     </ContextMenuTrigger>
@@ -100,8 +99,8 @@ export function HomeLauncher() {
                     </ContextMenuContent>
                 </ContextMenu>
             ))}
-            {places.length < 2 && !hasIcon("home") && <AddItem label="Add home" onClick={() => setEditor({ preset: { name: "Home", icon: "home" } })} />}
-            {places.length < 2 && !hasIcon("work") && <AddItem label="Add work" onClick={() => setEditor({ preset: { name: "Work", icon: "work" } })} />}
+            {!hasPlaceKind(places, "home") && <AddItem label="Add home" onClick={() => setEditor({ preset: { name: "Home", icon: "home" } })} />}
+            {!hasPlaceKind(places, "work") && <AddItem label="Add work" onClick={() => setEditor({ preset: { name: "Work", icon: "work" } })} />}
             <AddItem label="Add" ariaLabel="Add place" onClick={() => setEditor({ preset: { name: "", icon: "pin" } })} />
 
             <PlaceEditorDialog target={editor} onOpenChange={(open) => !open && setEditor(null)} />

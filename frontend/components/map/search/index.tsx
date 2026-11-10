@@ -7,7 +7,7 @@ import { ApiFetch } from "@/lib/url-context"
 import { cn } from "@/lib/utils"
 import { SearchInput } from "@/components/ui/input"
 import { useQueryParams } from "@/lib/url-params"
-import { placeIcon, placeLocation, placeMatches, useSavedPlaces, type SavedPlace } from "@/components/places/use-saved-places"
+import { placeStyle, placeLocation, placeMatches, useSavedPlaces, type SavedPlace } from "@/components/places/use-saved-places"
 
 export interface LocationAutocompleteResult {
     id: number
@@ -276,7 +276,7 @@ export function LocationSearchInput({
                                     Saved places
                                 </li>
                                 {shownPlaces.map((place) => {
-                                    const { icon: Icon, color } = placeIcon(place.icon)
+                                    const { icon: Icon, color } = placeStyle(place)
                                     return (
                                         <li key={place.id}>
                                             <button

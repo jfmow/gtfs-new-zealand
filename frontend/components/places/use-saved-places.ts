@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
-import { Briefcase, Dumbbell, GraduationCap, Heart, House, MapPin, ShoppingCart, Star, User, Utensils, type LucideIcon } from "lucide-react"
+import { Bookmark, Briefcase, Building, Bus, Coffee, Dumbbell, Flag, GraduationCap, Heart, Hospital, House, MapPin, Plane, ShoppingCart, Star, TrainFront, Trees, User, Utensils, type LucideIcon } from "lucide-react"
+import { SWATCH_COLORS } from "@/lib/colors"
 import { useUrl } from "@/lib/url-context"
 import { getRegionSlug } from "@/lib/url-store"
 import type { Location } from "@/components/journey/types"
@@ -17,29 +18,57 @@ export interface SavedPlace {
     lat: number
     lon: number
     icon: PlaceIconKey
+    /** The rider's colour pick (hex); unset = the icon's own tint. */
+    color?: string
     /** The region it was saved in - places only show in that region. */
     region: string
     createdAt: string
 }
 
-/** Same keys, names and tints as iOS `SavedPlaceIcon` - don't rename keys. */
+/**
+ * Same keys, names and tints as iOS `SavedPlaceIcon` - don't rename keys.
+ * The later ones match the Expo app's extra icons (place-style.tsx).
+ */
 export const PLACE_ICONS = {
     home: { label: "Home", icon: House, color: "#0ea5e9" },
     work: { label: "Work", icon: Briefcase, color: "#f59e0b" },
+    pin: { label: "Pin", icon: MapPin, color: "#10b981" },
+    school: { label: "School", icon: GraduationCap, color: "#10b981" },
     heart: { label: "Partner", icon: Heart, color: "#f43f5e" },
     person: { label: "Friend or family", icon: User, color: "#8b5cf6" },
-    school: { label: "School", icon: GraduationCap, color: "#10b981" },
-    gym: { label: "Gym", icon: Dumbbell, color: "#f97316" },
     shop: { label: "Shops", icon: ShoppingCart, color: "#06b6d4" },
     food: { label: "Food", icon: Utensils, color: "#d946ef" },
+    coffee: { label: "Coffee", icon: Coffee, color: "#f97316" },
+    gym: { label: "Gym", icon: Dumbbell, color: "#f97316" },
+    park: { label: "Park", icon: Trees, color: "#10b981" },
+    hospital: { label: "Health", icon: Hospital, color: "#f43f5e" },
+    building: { label: "Building", icon: Building, color: "#64748b" },
+    train: { label: "Station", icon: TrainFront, color: "#0ea5e9" },
+    bus: { label: "Bus", icon: Bus, color: "#0ea5e9" },
+    plane: { label: "Airport", icon: Plane, color: "#8b5cf6" },
     star: { label: "Favourite", icon: Star, color: "#f59e0b" },
-    pin: { label: "Other", icon: MapPin, color: "#737373" },
+    flag: { label: "Flag", icon: Flag, color: "#f43f5e" },
+    bookmark: { label: "Bookmark", icon: Bookmark, color: "#8b5cf6" },
 } satisfies Record<string, { label: string; icon: LucideIcon; color: string }>
+
+/** The colours a place can wear - the app's: sky and amber first, then the shared swatches. */
+export const PLACE_COLORS: string[] = [...new Set(["#0ea5e9", "#f59e0b", "#10b981", ...SWATCH_COLORS.map((c) => c.value), "#64748b"])]
 
 export type PlaceIconKey = keyof typeof PLACE_ICONS
 
 export function placeIcon(key: string) {
     return PLACE_ICONS[key as PlaceIconKey] ?? PLACE_ICONS.pin
+}
+
+/** A place's icon and colour - the rider's colour pick, or the icon's tint. */
+export function placeStyle(place: { icon: string; color?: string }) {
+    const meta = placeIcon(place.icon)
+    return { ...meta, color: place.color || meta.color }
+}
+
+/** Is this the rider's home (or work)? Picked by icon, as the add buttons offer them. */
+export function hasPlaceKind(places: SavedPlace[], key: "home" | "work") {
+    return places.some((p) => p.icon === key)
 }
 
 /** As a planner endpoint - labelled with the place's name ("Home"). */

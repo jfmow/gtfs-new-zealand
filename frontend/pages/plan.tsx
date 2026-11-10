@@ -5,9 +5,9 @@ import { SaveTripDialog } from "@/components/trips/save-trip-dialog"
 import { ManageTripsSheet } from "@/components/trips/manage-trips-sheet"
 import { GlobalTripSettingsDialog } from "@/components/trips/global-trip-settings-dialog"
 import { Button } from "@/components/ui/button"
-import { AlarmClock, Bookmark, BookmarkCheck, ChevronRight, Route as RouteIcon, Undo2 } from "lucide-react"
-import { placeIcon, placeLocation, useSavedPlaces } from "@/components/places/use-saved-places"
-import { PlaceTile } from "@/components/places/places"
+import { AlarmClock, Bookmark, BookmarkCheck, Briefcase, ChevronRight, House, Plus, Route as RouteIcon, Undo2, type LucideIcon } from "lucide-react"
+import { PLACE_ICONS, hasPlaceKind, placeLocation, placeStyle, useSavedPlaces } from "@/components/places/use-saved-places"
+import { ManagePlacesDialog, PlaceEditorDialog, PlaceTile, type PlaceEditorTarget } from "@/components/places/places"
 import { getUserLocation } from "@/lib/userLocation"
 import { toast } from "sonner"
 import type { TravelMode } from "@/components/journey/planner-options"
@@ -825,31 +825,77 @@ function StandardPlanner() {
     )
 }
 
-/** Your saved places - one tap plans from here to there (iOS "Your places"). */
+/**
+ * Your places - the app's planner list: your places in your order (one tap
+ * plans there), Manage to reorder or edit, then Add home / Add work until
+ * they're set, and Add a place.
+ */
 function YourPlaces({ onPick }: { onPick: (location: Location) => void }) {
     const { places } = useSavedPlaces()
-    if (places.length === 0) return null
+    const [editor, setEditor] = useState<PlaceEditorTarget | null>(null)
+    const [managing, setManaging] = useState(false)
     return (
         <section className="space-y-2">
-            <h2 className="text-sm font-medium text-muted-foreground">Your places</h2>
+            <div className="flex items-baseline justify-between">
+                <h2 className="text-[13px] font-medium text-muted-foreground">Your places</h2>
+                {places.length > 0 && (
+                    <button type="button" onClick={() => setManaging(true)} className="text-[13px] font-medium text-muted-foreground hover:text-foreground">Manage</button>
+                )}
+            </div>
             <div className="divide-y overflow-hidden rounded-xl border bg-card">
                 {places.map((place) => (
-                    <button
+                    <PlaceListRow
                         key={place.id}
-                        type="button"
+                        tile={<PlaceTile icon={place.icon} color={place.color} size={30} />}
+                        title={place.name}
+                        subtitle={place.address && place.address !== place.name ? place.address : undefined}
+                        ariaLabel={`${place.name} - plans a journey there`}
                         onClick={() => onPick(placeLocation(place))}
-                        aria-label={`${place.name} - plans a journey there`}
-                        className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-accent/50 transition-colors"
-                    >
-                        <PlaceTile icon={place.icon} size={30} />
-                        <span className="min-w-0 flex-1">
-                            <span className="block text-[15px] font-medium">{place.name}</span>
-                            <span className="block truncate text-[13px] text-muted-foreground">{place.address || placeIcon(place.icon).label}</span>
-                        </span>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
-                    </button>
+                    />
                 ))}
+                {!hasPlaceKind(places, "home") && <AddPlaceRow icon={House} color={PLACE_ICONS.home.color} label="Add home" onClick={() => setEditor({ preset: { name: "Home", icon: "home" } })} />}
+                {!hasPlaceKind(places, "work") && <AddPlaceRow icon={Briefcase} color={PLACE_ICONS.work.color} label="Add work" onClick={() => setEditor({ preset: { name: "Work", icon: "work" } })} />}
+                <AddPlaceRow icon={Plus} color={placeStyle({ icon: "pin" }).color} label="Add a place" onClick={() => setEditor({ preset: { name: "", icon: "pin" } })} />
             </div>
+            <PlaceEditorDialog target={editor} onOpenChange={(open) => !open && setEditor(null)} />
+            <ManagePlacesDialog
+                open={managing}
+                onOpenChange={setManaging}
+                onEdit={(place) => { setManaging(false); setEditor({ place }) }}
+                onAdd={() => { setManaging(false); setEditor({ preset: { name: "", icon: "pin" } }) }}
+            />
         </section>
+    )
+}
+
+function PlaceListRow({ tile, title, subtitle, ariaLabel, onClick }: { tile: React.ReactNode; title: string; subtitle?: string; ariaLabel?: string; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={ariaLabel ?? title}
+            className="flex w-full items-center gap-3 px-3.5 py-2.5 text-left hover:bg-accent/50 transition-colors"
+        >
+            {tile}
+            <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium">{title}</span>
+                {subtitle && <span className="block truncate text-[13px] text-muted-foreground">{subtitle}</span>}
+            </span>
+            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/60" />
+        </button>
+    )
+}
+
+function AddPlaceRow({ icon: Icon, color, label, onClick }: { icon: LucideIcon; color: string; label: string; onClick: () => void }) {
+    return (
+        <PlaceListRow
+            title={label}
+            onClick={onClick}
+            tile={
+                <span aria-hidden className="inline-flex h-[30px] w-[30px] shrink-0 items-center justify-center rounded-lg" style={{ background: `${color}2e`, color }}>
+                    <Icon className="h-[15px] w-[15px]" strokeWidth={2.25} />
+                </span>
+            }
+        />
     )
 }

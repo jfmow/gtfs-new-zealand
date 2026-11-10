@@ -221,6 +221,24 @@ export async function addReminder(stopId: string, tripId: string, type: "arrival
     }
 }
 
+/** Cancels this device's one-off trip reminder of `type` (they're one per type per device). */
+export async function removeReminder(type: "arrival" | "get_off" | "n_stops_away") {
+    const subscription = await getCurrentPushSubscription();
+    if (!subscription) return false
+    const form = new FormData();
+    form.set("endpoint", subscription.endpoint);
+    form.set("p256dh", subscription.p256dh);
+    form.set("auth", subscription.auth);
+    form.set("type", type)
+    try {
+        const response = await ApiFetch(`notifications/reminder/remove`, { method: 'POST', body: form });
+        return response.ok
+    } catch (err) {
+        console.error(err)
+        return false
+    }
+}
+
 // ─────────────── planned journey "leave-by" reminders ───────────────
 
 export interface JourneyReminder {
@@ -711,6 +729,7 @@ const notification = {
     getCurrentPushSubscription,
     checkStopSubscription,
     addReminder,
+    removeReminder,
     subscribeToStop,
     refreshSubscription,
     addJourneyReminder,

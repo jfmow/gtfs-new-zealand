@@ -42,11 +42,12 @@ function trackedStopIcon(
     currentStop?: CurrentStop,
 ): MapItem["icon"] {
     const trip = vehicle.trip
+    // Your stop's pin wins, as in the app.
+    if (currentStop && (currentStop.sequence !== undefined ? currentStop.sequence === stop.sequence : currentStop.name === stop.name)) return "marked stop marker"
     const isNext =
         trip.next_stop.parent_stop_id === stop.parent_stop_id ||
         trip.next_stop.child_stop_id === stop.child_stop_id
     if (isNext) return "next stop marker"
-    if (currentStop?.name === stop.name) return "marked stop marker"
     if (
         trip.final_stop.parent_stop_id === stop.parent_stop_id ||
         trip.final_stop.child_stop_id === stop.child_stop_id

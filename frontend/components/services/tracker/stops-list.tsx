@@ -1,5 +1,7 @@
 import { forwardRef, useRef, useEffect, useState, useMemo } from "react"
-import { Bell, ChevronDown, ChevronUp, Flag, MapPin, Triangle } from "lucide-react"
+import { Bell, BellRing, ChevronDown, ChevronUp, MapPin } from "lucide-react"
+import { toast } from "sonner"
+import { clearTripTarget, markTripTarget, setTripReminder } from "@/lib/trip-target"
 import { cn } from "@/lib/utils"
 import { StopReminderDialog, type StopReminderTarget } from "../stop-reminder-dialog"
 import { useServiceTrackerContext } from "./use-service-tracker"
@@ -26,10 +28,6 @@ interface StopsListProps {
 
 type StopState = "passed" | "current" | "next" | "upcoming"
 
-/** Stops shown behind / ahead of the vehicle before the rest fold away. */
-const KEEP_BEHIND = 1
-const KEEP_AHEAD = 6
-
 /**
  * The trip's stops as a timeline - the iOS tracker's stop list: arrival
  * time, the route-coloured rail (dim once passed), a marker matching the
@@ -45,11 +43,10 @@ export default function StopsList({
     routeColor,
     layout = "inset",
 }: StopsListProps) {
-    const { currentStop, previewData } = useServiceTrackerContext()
+    const { currentStop, previewData, tripTarget } = useServiceTrackerContext()
     const isPage = layout === "page"
     const nextStopRef = useRef<HTMLButtonElement>(null)
     const [showPast, setShowPast] = useState(false)
-    const [showFarAhead, setShowFarAhead] = useState(false)
     const [reminderFor, setReminderFor] = useState<{ target: StopReminderTarget; isRiderStop: boolean } | null>(null)
     /** Stops given a reminder while this was open (the API can't list one-off reminders). */
     const [reminded, setReminded] = useState<Set<string>>(new Set())
@@ -114,17 +111,27 @@ export default function StopsList({
         return () => clearTimeout(t)
     }, [isPage, nextKey, stops])
 
-    // Fold the stops long behind the vehicle and the far-ahead ones on a long list.
-    const anchorIndex = (() => {
-        const i = states.findIndex((s) => s === "current" || s === "next")
-        return i === -1 ? null : i
-    })()
     const lastIndex = ordered.length - 1
-    const collapsing = anchorIndex !== null && ordered.length > KEEP_BEHIND + KEEP_AHEAD + 5
-    const inPast = (i: number) => collapsing && i < (anchorIndex as number) - KEEP_BEHIND
-    const inFarAhead = (i: number) => collapsing && i > (anchorIndex as number) + KEEP_AHEAD && i !== lastIndex
-    const pastCount = ordered.filter((_, i) => inPast(i)).length
-    const farAheadCount = ordered.filter((_, i) => inFarAhead(i)).length
+    // Stops already passed fold into one "N earlier stops" row, as in the app.
+    const inPast = (i: number) => states[i] === "passed"
+    const pastCount = states.filter((st) => st === "passed").length
+
+    /** Tapping a stop makes it yours, with a reminder as the vehicle arrives; tapping yours again clears it. */
+    const [picking, setPicking] = useState(false)
+    const pick = async (stop: ServicesStop) => {
+        if (!tripId || picking) return
+        if (tripTarget && tripTarget.stopSeq === stop.sequence) {
+            clearTripTarget(tripId)
+            return
+        }
+        setPicking(true)
+        const ok = await setTripReminder(tripId, {
+            stopSeq: stop.sequence, parentStopId: stop.parent_stop_id, childStopId: stop.child_stop_id, name: stop.name, lat: stop.lat, lon: stop.lon,
+        }, "arrival")
+        setPicking(false)
+        if (!ok) toast.error("Couldn't set your stop - turn on notifications for this site to be told when it's arriving.")
+        else toast.success(`Your stop: ${cleanStopName(stop.name)} - you'll be told as it arrives`)
+    }
 
     const openReminder = (stop: ServicesStop) => {
         if (!tripId) return
@@ -149,20 +156,11 @@ export default function StopsList({
     const rows: React.ReactNode[] = []
     if (showPast && pastCount > 0) {
         rows.push(<CollapseToggle key="hide-past" label="Hide earlier stops" direction="up" onClick={() => setShowPast(false)} />)
+    } else if (pastCount > 0) {
+        rows.push(<CollapseToggle key="show-past" label={`${pastCount} earlier stop${pastCount === 1 ? "" : "s"}`} direction="down" onClick={() => setShowPast(true)} />)
     }
     ordered.forEach((stop, index) => {
-        if (inPast(index) && !showPast) {
-            if (index === 0 || !inPast(index - 1)) {
-                rows.push(<CollapseToggle key="show-past" label={`${pastCount} earlier stop${pastCount === 1 ? "" : "s"}`} direction="down" onClick={() => setShowPast(true)} />)
-            }
-            return
-        }
-        if (inFarAhead(index) && !showFarAhead) {
-            if (index === 0 || !inFarAhead(index - 1)) {
-                rows.push(<CollapseToggle key="show-ahead" label={`${farAheadCount} more stop${farAheadCount === 1 ? "" : "s"}`} direction="down" onClick={() => setShowFarAhead(true)} />)
-            }
-            return
-        }
+        if (inPast(index) && !showPast) return
         const state = states[index]
         const stopTime = getStopTime(stop)
         const yours = riderStop?.sequence === stop.sequence
@@ -180,14 +178,12 @@ export default function StopsList({
                 isLast={index === lastIndex}
                 prevState={index > 0 ? states[index - 1] : undefined}
                 rail={rail}
-                reminded={reminded.has(key)}
-                onTap={tappable ? () => openReminder(stop) : undefined}
+                reminded={reminded.has(key) || (yours && !!tripTarget?.reminders.length)}
+                onPick={tappable ? () => pick(stop) : undefined}
+                onBell={tappable ? () => openReminder(stop) : undefined}
             />,
         )
     })
-    if (showFarAhead && farAheadCount > 0) {
-        rows.push(<CollapseToggle key="hide-ahead" label="Show fewer stops" direction="up" onClick={() => setShowFarAhead(false)} />)
-    }
 
     return (
         <div className="space-y-2">
@@ -205,9 +201,12 @@ export default function StopsList({
                 target={reminderFor?.target ?? null}
                 offersGetOff={!reminderFor?.isRiderStop}
                 onOpenChange={(open) => { if (!open) setReminderFor(null) }}
-                onSet={(target) => {
+                onSet={(target, kind) => {
                     const stop = ordered.find((s) => s.parent_stop_id === target.parentStopId && s.child_stop_id === target.childStopId)
-                    if (stop) setReminded((prev) => new Set(prev).add(`${stop.parent_stop_id}|${stop.platform}|${stop.sequence}`))
+                    if (!stop) return
+                    setReminded((prev) => new Set(prev).add(`${stop.parent_stop_id}|${stop.platform}|${stop.sequence}`))
+                    // The bell's trip reminders pick the stop too (the app's trip-reminder).
+                    if (tripId && kind !== "leave") markTripTarget(tripId, { stopSeq: stop.sequence, parentStopId: stop.parent_stop_id, childStopId: stop.child_stop_id, name: stop.name, lat: stop.lat, lon: stop.lon }, kind)
                 }}
             />
         </div>
@@ -224,10 +223,13 @@ interface TimelineRowProps {
     isLast: boolean
     rail: string
     reminded: boolean
-    onTap?: () => void
+    /** Makes this your stop (or clears it). */
+    onPick?: () => void
+    /** Opens the reminder options. */
+    onBell?: () => void
 }
 
-const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function TimelineRow({ stop, stopTime, state, prevState, yours, isFirst, isLast, rail, reminded, onTap }, ref) {
+const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function TimelineRow({ stop, stopTime, state, prevState, yours, isFirst, isLast, rail, reminded, onPick, onBell }, ref) {
     const highlighted = state === "next" || state === "current"
     const arrival = stopTime?.arrival_time || 0
     const minutes = arrival > 0 ? Math.ceil((arrival - Date.now()) / 60_000) : null
@@ -257,12 +259,21 @@ const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function Tim
             role="listitem"
             aria-label={label}
             className={cn(
-                "relative flex min-h-[54px] items-stretch gap-3 pl-3 pr-1 text-left",
+                "relative flex min-h-[58px] items-stretch pr-1 text-left",
                 highlighted && (state === "current" ? "bg-orange-500/[0.07]" : "bg-blue-500/[0.07]"),
                 state === "passed" && "opacity-70",
                 stopTime?.skipped && "opacity-50",
             )}
         >
+            <button
+                ref={ref}
+                type="button"
+                disabled={!onPick}
+                onClick={onPick}
+                aria-label={label}
+                title={onPick ? (yours ? "Clear your stop" : "Make this your stop, with a reminder as it arrives") : undefined}
+                className="flex min-w-0 flex-1 items-stretch gap-3 pl-3 text-left transition-colors enabled:hover:bg-muted/50 disabled:cursor-default"
+            >
             {/* Rail + marker */}
             <span className="relative flex w-6 shrink-0 justify-center" aria-hidden>
                 {!isFirst && (
@@ -301,33 +312,31 @@ const TimelineRow = forwardRef<HTMLButtonElement, TimelineRowProps>(function Tim
                     </span>
                 </span>
             )}
+            </button>
 
-            {/* A reminder for this stop */}
-            {onTap ? (
+            {/* The reminder options for this stop */}
+            {onBell ? (
                 <button
-                    ref={ref}
                     type="button"
-                    onClick={onTap}
+                    onClick={onBell}
                     aria-label={reminded ? `Reminder set for ${name}` : `Remind me about ${name}`}
-                    className="flex w-10 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                    className="flex w-11 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
                 >
-                    <Bell className={cn("h-4 w-4", reminded && "fill-current text-blue-600 dark:text-blue-400")} />
+                    {reminded ? <BellRing className="h-[18px] w-[18px] text-blue-600 dark:text-blue-400" /> : <Bell className="h-[18px] w-[18px]" />}
                 </button>
             ) : (
-                <span className="w-10 shrink-0" />
+                <span className="w-11 shrink-0" />
             )}
         </div>
     )
 })
 
-/** Matches the map's trip-stop markers: your stop, the end, next, at stop, passed, upcoming. */
-function Marker({ state, yours, isLast, rail }: { state: StopState; yours: boolean; isLast: boolean; rail: string }) {
-    if (yours) return <MapPin className="h-4 w-4 fill-red-500 text-red-600" />
-    if (isLast) return <Flag className="h-3.5 w-3.5 fill-foreground text-foreground" />
-    if (state === "next") return <Triangle className="h-3 w-3 rotate-180 fill-blue-600 text-blue-600 dark:fill-blue-400 dark:text-blue-400" />
-    if (state === "current") return <span className="block h-3 w-3 rounded-full border-2 border-background bg-orange-500 ring-2 ring-orange-500" />
-    if (state === "passed") return <span className="block h-2.5 w-2.5 rounded-full bg-border" />
-    return <span className="block h-2.5 w-2.5 rounded-full border-2 bg-card" style={{ borderColor: rail }} />
+/** The app's rail markers: a red pin at your stop, a big dot for next (blue) / at the stop (orange), else a ring in the route colour. */
+function Marker({ state, yours, rail }: { state: StopState; yours: boolean; isLast: boolean; rail: string }) {
+    if (yours) return <MapPin className="h-5 w-5 fill-red-500 text-white" strokeWidth={1.75} />
+    if (state === "next") return <span className="block h-4 w-4 rounded-full border-[3px] border-background bg-blue-600 dark:bg-blue-400" />
+    if (state === "current") return <span className="block h-4 w-4 rounded-full border-[3px] border-background bg-orange-500" />
+    return <span className="block h-[13px] w-[13px] rounded-full border-[3px] bg-background" style={{ borderColor: state === "passed" ? "hsl(var(--border))" : rail }} />
 }
 
 /** A slim row that stands in for a run of folded stops (earlier, or far ahead). */
