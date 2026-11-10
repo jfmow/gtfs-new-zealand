@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { Stack, router, useLocalSearchParams } from "expo-router"
 import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronUp, Ellipsis, LocationNorthCircle, MapPin, TriangleAlert, User, WifiOff } from "@/components/icons"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { headsignDisplay } from "@transit/shared/formatting"
@@ -24,6 +24,9 @@ import { activityKind, clearTripTarget, setTripReminder, updateTripLive, useTrip
 import { spacing, type, useColors } from "@/theme"
 
 type StopState = "passed" | "current" | "next" | "upcoming"
+
+/** The drawer's grab handle, above its content. */
+const DRAWER_HANDLE = 24
 
 /**
  * One trip, live - iOS `VehicleQuickLookView` (2026-11-03): a full map with
@@ -123,11 +126,20 @@ export default function TripTracker() {
     const cameraMode: TrackerCameraMode = v
         ? { kind: "follow", id: tripId!, at: { lat: v.position.lat, lon: v.position.lon }, spanMeters: 700, bearing: v.position.bearing }
         : rows.length ? { kind: "frame", points: rows.map((s) => ({ lat: s.lat, lon: s.lon })), minSpanMeters: 800 } : { kind: "none" }
+    // The drawer: peek (route + the countdown row - the map gets nearly the
+    // whole screen), half and full. The peek hugs the content it shows, which
+    // is measured; Android draws edge-to-edge, so it also clears the nav bar.
+    const [whatBottom, setWhatBottom] = useState(40)
+    const [focusBottom, setFocusBottom] = useState(110)
+    const [drawerPeek, setDrawerPeek] = useState(false)
+    const peekContent = rows.length === 0 && !v ? 72 : focus ? focusBottom : whatBottom
+    const peekHeight = Math.round(DRAWER_HANDLE + peekContent + spacing.lg + (Platform.OS === "android" ? insets.bottom : 0))
+    const snapPoints = useMemo(() => [peekHeight, "42%", "88%"], [peekHeight])
     // Phones: clear of the top bar and the drawer. Wide windows: right of the side panel.
     const layout = useLayout()
     const mapPadding = layout.wide
         ? { top: insets.top + 60, bottom: insets.bottom + 20, left: panelInset(layout.panelWidth, insets.left), right: 0 }
-        : { top: insets.top + 60, bottom: 360, left: 0, right: 0 }
+        : { top: insets.top + 60, bottom: drawerPeek ? peekHeight : 360, left: 0, right: 0 }
     const tracker = useTrackerCamera(camera, cameraMode, { padding: mapPadding, threeD: filter.threeD })
 
     const more = () => {
@@ -248,7 +260,7 @@ export default function TripTracker() {
                 </View>
             </View>
 
-            <MapDrawer snapPoints={["42%", "88%"]} index={0}>
+            <MapDrawer snapPoints={snapPoints} index={1} onChange={(i) => i >= 0 && setDrawerPeek(i === 0)}>
                 <View style={styles.header}>
                     {rows.length === 0 && !v ? (
                         hasLoaded ? (
@@ -262,13 +274,13 @@ export default function TripTracker() {
                         ) : <Text style={[type.meta, { color: colors.mutedForeground }]}>Finding the vehicle...</Text>
                     ) : (
                         <>
-                            <View style={styles.what}>
+                            <View style={styles.what} onLayout={(e) => setWhatBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
                                 <RouteBadge name={v?.route.name ?? route?.route_short_name ?? ""} color={routeHex} />
                                 <Text style={[type.cardTitle, { flex: 1, color: colors.foreground }]} numberOfLines={1}>{headsign}</Text>
                             </View>
                             {focus ? (
                                 <>
-                                    <View style={styles.focus}>
+                                    <View style={styles.focus} onLayout={(e) => setFocusBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
                                         <View style={{ flex: 1 }}>
                                             <Text style={[type.meta, { color: colors.mutedForeground }]}>{yourRow ? "To your stop" : isAtStop && focus.sequence === currentSeq ? "At" : "Next stop"}</Text>
                                             <Text style={[type.pageTitle, { color: colors.foreground, fontSize: 20 }]} numberOfLines={1}>{tripStopLabel(focus)}</Text>

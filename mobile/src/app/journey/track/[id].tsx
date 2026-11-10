@@ -69,7 +69,10 @@ export default function JourneyTracker() {
     const [heroHeight, setHeroHeight] = useState(56)
     const [drawer, setDrawer] = useState<Drawer>("compact")
     // iOS `peekHeight`: handle + top padding + hero + 16 - the leg bar starts right below, out of sight.
-    const peekHeight = Math.round(DRAWER_HANDLE + spacing.sm + heroHeight + spacing.lg)
+    // Android draws edge-to-edge, so the system nav bar (buttons or gesture
+    // pill) sits over the bottom of the sheet - lift the peek clear of it.
+    // iOS keeps its native look, with the home indicator over the padding.
+    const peekHeight = Math.round(DRAWER_HANDLE + spacing.sm + heroHeight + spacing.lg + (Platform.OS === "android" ? insets.bottom : 0))
     const snapPoints = useMemo(() => [peekHeight, "40%", "90%"], [peekHeight])
     // The map's clear area ends at the drawer (iOS caps it at half the screen when the drawer's up).
     const drawerCover = drawer === "peek" ? peekHeight : drawer === "compact" ? COMPACT_COVER : screenHeight / 2
