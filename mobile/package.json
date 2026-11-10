@@ -67,7 +67,10 @@
     "run:ios": "expo run:ios",
     "run:android": "expo run:android",
     "prebuild": "expo prebuild --clean",
-    "eas": "npx --yes eas-cli@latest"
+    "eas": "npx --yes eas-cli@latest",
+    "build:android": "rm -rf \"${TMPDIR:-/tmp}/metro-cache\" && GOOGLE_SERVICES_JSON=\"$PWD/google-services.json\" JAVA_HOME=\"${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}\" ANDROID_HOME=\"${ANDROID_HOME:-$HOME/Library/Android/sdk}\" npx --yes eas-cli@latest build --local -p android --profile production --output ./transit.aab",
+    "build:ios": "rm -rf \"${TMPDIR:-/tmp}/metro-cache\" && npx --yes eas-cli@latest build --local -p ios --profile production --output ./transit.ipa",
+    "build": "npm run build:ios && npm run build:android"
   },
   "private": true
 }

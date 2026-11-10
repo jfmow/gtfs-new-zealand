@@ -54,3 +54,7 @@ example
 # Firebase client config: supplied to EAS builds via the GOOGLE_SERVICES_JSON file env var
 google-services.json
 *service-account*.json
+
+# EAS credentials (credentials.json + keystore) - never commit
+credentials.json
+credentials/
