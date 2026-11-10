@@ -1,6 +1,6 @@
 /**
- * The regions the apps can show. Keep in sync with `backend/main.go` (and,
- * until it's retired, iOS `TransitCore/API/Region.swift`).
+ * The regions the apps can show. Keep in sync with `backend/main.go` and the
+ * widget's copy in `mobile/targets/widgets/WidgetSupport.swift`.
  *
  * Which region is *selected* is platform state (localStorage on web, device
  * storage in the Expo app), so it lives in each app, not here.

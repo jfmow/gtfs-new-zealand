@@ -1,7 +1,7 @@
 /**
  * The iOS widget extension: the departures widget and the journey Live
  * Activity (Lock Screen + Dynamic Island), in SwiftUI - moved from
- * ios/TransitWidgets. Built by @bacons/apple-targets during prebuild.
+ * the old SwiftUI app's TransitWidgets target. Built by @bacons/apple-targets during prebuild.
  * The app group is shared with the app (SharedStore / modules/transit-native).
  * @type {import('@bacons/apple-targets/app.plugin').ConfigFunction}
  */

@@ -119,7 +119,9 @@ anything: Next compiles it via `transpilePackages`, Metro via `watchFolders`.
   `npm run typecheck` and `npm run bundle:check` (iOS + Android bundles) pass.
 - Temporary IDs: bundle/package `dev.suddsy.transit.expo`, scheme
   `transit-expo`, so dev builds sit beside the SwiftUI app. Switch to
-  `dev.suddsy.transit` / `transit` at phase 7 (decision 3).
+  `dev.suddsy.transit` / `transit` at phase 7 (decision 3). Done: production builds
+  (`APP_VARIANT=production`) use `dev.suddsy.transit` / `transit` via
+  `mobile/app.config.ts`; dev builds keep the `.expo` IDs.
 - Not done yet: per-endpoint typed functions (they come with the model port
   in phase 2), EAS project setup (needs `eas login`), app icon, Geist font.
   Android can't be built on this Mac yet (no Java / Android SDK).
@@ -335,8 +337,10 @@ Not done yet:
 - assetlinks.json (needs the release key's SHA-256); EAS project + signing;
   Firebase project + `google-services.json` for Android FCM; deploying the
   backend's FCM changes.
-- Switching the bundle ID / scheme from `dev.suddsy.transit.expo` /
-  `transit-expo` to `dev.suddsy.transit` / `transit`, then deleting `ios/`.
+- ~~Switching the bundle ID / scheme to `dev.suddsy.transit` / `transit`,
+  then deleting `ios/`.~~ Done 2026-11-11: production builds use the store
+  IDs (`mobile/app.config.ts`) and the SwiftUI app in `ios/` was removed
+  (it stays in git history).
 - Android: builds and runs on the API 37 emulator (2026-11-04) - onboarding,
   Home boards with live data, Map (MapLibre tiles + clustered stops)
   checked by tapping through. Package is `dev.suddsy.transit.android`

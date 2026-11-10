@@ -17,7 +17,7 @@ import (
 )
 
 // LiveActivity is one running journey-progress Live Activity
-// (`ios/Shared/JourneyActivityAttributes.swift` is the client-side contract
+// (`mobile/modules/transit-native/ios/JourneyActivityAttributes.swift` is the client-side contract
 // this feeds). It's pushed to with its *own* push token and environment -
 // not the owning device's alert token, which may legitimately be empty
 // (alerts denied) without affecting Live Activities at all.

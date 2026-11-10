@@ -1,7 +1,7 @@
 import Foundation
 
 // The few pieces of TransitCore the widget extension needs, so it builds on
-// its own inside the Expo project (the Swift package goes when ios/ does).
+// its own inside the Expo project (the old SwiftUI app's TransitCore package is gone).
 // Keep in step with packages/shared: regions.ts, formatting.ts, logic/basics.ts.
 
 struct Region: Hashable, Sendable {

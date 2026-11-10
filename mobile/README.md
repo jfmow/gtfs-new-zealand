@@ -1,7 +1,7 @@
 # Transit (Expo)
 
-One React Native app for iOS and Android, replacing the SwiftUI app in
-`../ios`. The plan and its phases are in `../plans/expo-app.md`.
+One React Native app for iOS and Android. It replaced the SwiftUI app that
+used to live in `../ios` (removed 2026-11-11; it is in git history). The plan and its phases are in `../plans/expo-app.md`.
 
 Shared logic (API client, regions, formatting, planner steps, types) comes
 from `../packages/shared`, the same package the web app uses.

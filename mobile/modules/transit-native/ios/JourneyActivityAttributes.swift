@@ -2,11 +2,11 @@ import ActivityKit
 import Foundation
 
 /// The Live Activity contract for journey progress - built by the app
-/// (`LiveActivityContentBuilder` in TransitCore, while the app is open) and
+/// (`packages/shared/src/logic/live-content.ts`, while the app is open) and
 /// by the backend (`journeyActivityState` in live_activity_state.go, pushed
-/// while it isn't), and rendered by the widget extension. Lives in `Shared/`
-/// because both the app and the widget need it; deliberately ActivityKit/
-/// Foundation only so the widget doesn't pull in TransitCore.
+/// while it isn't), and rendered by the widget extension. One copy here and
+/// one in the other target (widget / transit-native module) - keep them
+/// identical; deliberately ActivityKit/Foundation only.
 public struct JourneyActivityAttributes: ActivityAttributes {
     /// v2 (2026-09-23). Times are plain Unix seconds, not `Date`s, so the
     /// server never has to guess which epoch ActivityKit decodes against.

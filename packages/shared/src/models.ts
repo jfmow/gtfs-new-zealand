@@ -1,7 +1,7 @@
 /**
  * Backend response types, with their wire field names (no decode layer).
- * Ported from iOS `TransitCore/Models/*` - see those files for how each
- * shape was confirmed against live responses.
+ * Ported from the old SwiftUI app's `TransitCore/Models/*` (in git history
+ * before 2026-11-11), where each shape was confirmed against live responses.
  *
  * Go types on the wire:
  * - `time.Time` -> RFC3339 string, sometimes Go's zero value "0001-01-01T00:00:00Z" (use `goTime`)

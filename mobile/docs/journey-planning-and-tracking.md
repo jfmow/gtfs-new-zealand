@@ -1,7 +1,7 @@
 # Journey planning and tracking (Expo app)
 
 How the Expo app plans a journey, previews it and tracks it live: every option, every state, how the
-map moves and what each button does. The behaviour copies the SwiftUI app (`ios/Transit`); the
+map moves and what each button does. The behaviour copies the old SwiftUI app (removed from the repo 2026-11-11); the
 iOS name for each piece is given where it helps to compare the two.
 
 Most of the rules (phases, moments, GPS policy, re-plan choices, ranking) live in

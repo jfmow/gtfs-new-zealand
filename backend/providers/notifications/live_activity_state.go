@@ -31,7 +31,7 @@ import (
 const activityStateVersion = 3
 
 // journeyActivityState mirrors `JourneyActivityAttributes.ContentState`
-// (ios/Shared/JourneyActivityAttributes.swift) field for field. Times are
+// (mobile/modules/transit-native/ios/JourneyActivityAttributes.swift) field for field. Times are
 // plain Unix seconds rather than `Date`s so there's no ambiguity about
 // which epoch ActivityKit's decoder expects.
 type journeyActivityState struct {

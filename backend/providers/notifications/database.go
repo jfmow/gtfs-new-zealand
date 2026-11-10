@@ -234,7 +234,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_jr_region_status ON journey_reminders(region, status);`,
-		// One row per running Live Activity (`ios/Shared/JourneyActivityAttributes.swift`).
+		// One row per running Live Activity (`mobile/modules/transit-native/ios/JourneyActivityAttributes.swift`).
 		// `push_token` is the activity's own token from `Activity.pushTokenUpdates` -
 		// distinct from the device's `apns_token` (used for plain alert pushes),
 		// which is still where `runLiveActivitiesCron` gets the sandbox/production

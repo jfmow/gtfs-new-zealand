@@ -1,5 +1,5 @@
 /**
- * The native iPhone app (ios/). It registers the `transit://` scheme and its
+ * The native app (mobile/, Expo). It registers the `transit://` scheme and its
  * DeepLink parser mirrors the web's routes + query params, so any web path
  * maps straight across: `/journey?id=…` -> `transit://journey?id=…`.
  */
