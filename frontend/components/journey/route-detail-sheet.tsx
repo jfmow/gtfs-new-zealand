@@ -861,7 +861,10 @@ export function RouteDetailSheet({
                 // through to the scroll container. h-[85vh] still leaves 15vh
                 // of map visible above it.
                 snapPoints={snapPoints}
-                activeSnapPoint={activeSnapPoint}
+                // Any string means "the peek": its px value is re-measured as the
+                // hero row changes, so hand vaul the current one - a stale value
+                // isn't in snapPoints and vaul then refuses every drag.
+                activeSnapPoint={typeof activeSnapPoint === "string" ? (peekSnap ?? 0.4) : activeSnapPoint}
                 setActiveSnapPoint={setActiveSnapPoint}
             >
                 {/* h-[85vh] (a fixed height, not max-h): vaul computes snap-point

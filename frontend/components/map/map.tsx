@@ -413,6 +413,9 @@ export default function MapComp({
 
     // --- controls --------------------------------------------------------
     const bottom = options?.buttonPosition === "bottom";
+    // Bottom corner buttons sit above the space a drawer covers (`padding.bottom`),
+    // not behind it.
+    const ctrlLift = bottom && padBottom > 0 ? { marginBottom: padBottom, transition: "margin-bottom 0.2s ease-out" } : undefined;
     const zoomTargets = mapItems.filter((i) => i.zoomButton);
     const map = mapRef.current;
     const withMap = (fn: (mk: MapKit, map: MKMap) => void) => () => {
@@ -453,7 +456,7 @@ export default function MapComp({
             {ready && map && (
                 <>
                     {!hideZoomControls && (
-                        <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-left" : "map-ctrl-top-left"}`}>
+                        <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-left" : "map-ctrl-top-left"}`} style={ctrlLift}>
                             <Button size="icon" className="map-control-button" title="Zoom in" onClick={withMap((m, mp) => zoomBy(m, mp, 1))}>
                                 <ZoomIn />
                             </Button>
@@ -462,7 +465,7 @@ export default function MapComp({
                             </Button>
                         </div>
                     )}
-                    <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-right" : "map-ctrl-top-right"}`}>
+                    <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-right" : "map-ctrl-top-right"}`} style={ctrlLift}>
                         {basemapRef.current && <MapVariantToggle manager={basemapRef.current} />}
                         {hasUserLocation && (
                             <Button
