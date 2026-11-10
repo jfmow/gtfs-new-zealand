@@ -41,6 +41,7 @@ import { cleanStopName } from "@/lib/formating"
 import { cn } from "@/lib/utils"
 import { JourneyLegBar } from "./leg-bar"
 import { LiveMap } from "./live-map"
+import { journeyCamera } from "@/components/map/tracker-camera"
 import { useJourneyVehicles } from "./use-journey-vehicles"
 import { useJourneyStopTimes } from "./use-journey-stop-times"
 import { useTrackedTripStops } from "./use-tracked-trip"
@@ -620,6 +621,69 @@ export function RouteDetailSheet({
 
     const fare = useFares(route ? [route.ID] : [])[route?.ID ?? ""]
 
+    // The tracker's drawer, as in the app: peek (just the hero row - the map
+    // gets nearly the whole screen), compact and full. The peek hugs the hero
+    // row, measured from the drawer's top. vaul takes "Npx" as the visible
+    // height of a 100vh sheet; ours is 85vh tall, so add the 15vh it starts below.
+    const [peekVisible, setPeekVisible] = useState(0)
+    const [viewportH, setViewportH] = useState(0)
+    const tracking = isMobile && open && journeyStarted
+    useEffect(() => {
+        if (!tracking) return
+        let observer: ResizeObserver | null = null
+        const measure = () => {
+            const hero = document.querySelector<HTMLElement>("[data-vaul-drawer] [data-journey-hero]")
+            const drawer = hero?.closest<HTMLElement>("[data-vaul-drawer]")
+            if (!hero || !drawer) return false
+            setViewportH(window.innerHeight)
+            setPeekVisible(Math.round(hero.getBoundingClientRect().bottom - drawer.getBoundingClientRect().top + 16))
+            if (!observer) {
+                observer = new ResizeObserver(() => measure())
+                observer.observe(hero)
+            }
+            return true
+        }
+        // The drawer content mounts a frame or two after open.
+        let tries = 0
+        const timer = setInterval(() => { if (measure() || ++tries > 20) clearInterval(timer) }, 100)
+        window.addEventListener("resize", measure)
+        return () => {
+            clearInterval(timer)
+            observer?.disconnect()
+            window.removeEventListener("resize", measure)
+        }
+    }, [tracking])
+    const peekSnap = tracking && peekVisible > 0 && viewportH > 0 ? `${Math.round(peekVisible + viewportH * 0.15)}px` : null
+    const snapPoints = useMemo<(number | string)[]>(() => (peekSnap ? [peekSnap, 0.4, 1] : [0.4, 1]), [peekSnap])
+    // Leaving tracking drops the peek - don't strand the drawer on a snap point that's gone.
+    useEffect(() => {
+        if (!peekSnap && typeof activeSnapPoint === "string") setActiveSnapPoint(0.4)
+    }, [peekSnap, activeSnapPoint])
+
+    // How much of the map the drawer covers, so the camera centres in the clear
+    // part (the app caps it at half the screen when the drawer's up).
+    const vh = viewportH || (typeof window !== "undefined" ? window.innerHeight : 800)
+    const drawerCover = !isMobile || embedded
+        ? 0
+        : typeof activeSnapPoint === "string" ? peekVisible
+            : activeSnapPoint === 1 ? vh / 2
+                : Math.round(vh * 0.25)
+
+    // The map's camera while tracking - the app's journeyCamera: follow you
+    // while walking, frame you and the bus while waiting, follow the vehicle on
+    // board, the whole route once arrived. Before starting, `fitTo` frames it.
+    const camera = journeyStarted
+        ? journeyCamera({
+            plan: shownRoute,
+            started: journeyStarted,
+            arrived: journeyArrived,
+            legIndex: progressLegIndex,
+            phase: currentPhase,
+            vehicle: trackedVehicle,
+            rider: userLoc ? [userLoc.lat, userLoc.lon] : null,
+        })
+        : undefined
+
     if (!route || !shownRoute) return null
 
     const handleShare = async () => {
@@ -669,6 +733,8 @@ export function RouteDetailSheet({
             onUserLocation={(lat, lon) => setUserLoc({ lat, lon })}
             trackingStarted={journeyStarted}
             fitTo={fitTo}
+            camera={camera}
+            padding={isMobile && !embedded ? { top: 70, bottom: drawerCover } : undefined}
             showOverlayButtons
             onToggleAlternates={onShowAlternates}
         />
@@ -794,8 +860,11 @@ export function RouteDetailSheet({
                 // sheet sits at translateY 0 there and vertical drags fall
                 // through to the scroll container. h-[85vh] still leaves 15vh
                 // of map visible above it.
-                snapPoints={[0.4, 1]}
-                activeSnapPoint={activeSnapPoint}
+                snapPoints={snapPoints}
+                // Any string means "the peek": its px value is re-measured as the
+                // hero row changes, so hand vaul the current one - a stale value
+                // isn't in snapPoints and vaul then refuses every drag.
+                activeSnapPoint={typeof activeSnapPoint === "string" ? (peekSnap ?? 0.4) : activeSnapPoint}
                 setActiveSnapPoint={setActiveSnapPoint}
             >
                 {/* h-[85vh] (a fixed height, not max-h): vaul computes snap-point
@@ -949,8 +1018,8 @@ function JourneySummary({
 
     return (
         <div className="space-y-3.5">
-            {/* What you're doing (or when the trip runs), and the countdown that matters. */}
-            <div className="flex items-center gap-3">
+            {/* What you're doing (or when the trip runs), and the countdown that matters - the tracker's peek shows just this row. */}
+            <div className="flex items-center gap-3" data-journey-hero>
                 {walkingNow ? (
                     <span className="flex h-[22px] w-[30px] shrink-0 items-center justify-center rounded-[5px] bg-muted"><Footprints className="h-3.5 w-3.5" /></span>
                 ) : badgeLeg?.Route ? (

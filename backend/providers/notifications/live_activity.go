@@ -17,7 +17,7 @@ import (
 )
 
 // LiveActivity is one running journey-progress Live Activity
-// (`ios/Shared/JourneyActivityAttributes.swift` is the client-side contract
+// (`mobile/modules/transit-native/ios/JourneyActivityAttributes.swift` is the client-side contract
 // this feeds). It's pushed to with its *own* push token and environment -
 // not the owning device's alert token, which may legitimately be empty
 // (alerts denied) without affecting Live Activities at all.
@@ -210,7 +210,7 @@ func (d *Database) GetActiveLiveActivitiesForRegion(region string) ([]LiveActivi
 		return nil, nil
 	}
 	rows, err := d.db.Query(`
-        SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, la.push_token,
+        SELECT la.id, la.clientId, la.region, la.plan_id, la.activity_id, `+liveActivityTokenColumn("la")+`,
                COALESCE(NULLIF(la.apns_env, ''), NULLIF(n.apns_env, ''), 'production'),
                la.leg_hint, la.phase_hint, la.last_state_hash, la.alerted_keys, la.last_pushed, la.client_reported, la.pending_alert, la.headphones, la.left_unix
         FROM live_activities la
@@ -273,9 +273,8 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 	if db == nil {
 		return
 	}
-	apns := sharedAPNsSender()
-	if apns == nil {
-		return // APNs not configured - nothing to push with.
+	if !activityPushConfigured() {
+		return // Neither APNs nor FCM configured - nothing to push with.
 	}
 
 	activities, err := db.GetActiveLiveActivitiesForRegion(region)
@@ -294,7 +293,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		if !found {
 			// The plan aged out of the store - nothing left to compute
 			// progress from, so end it rather than leave it stale.
-			endLiveActivity(apns, db, activity, journeyActivityState{Version: activityStateVersion, Phase: "arrived", Status: "arrived", PrimaryText: "Journey ended"}, now)
+			endLiveActivity(db, activity, journeyActivityState{Version: activityStateVersion, Phase: "arrived", Status: "arrived", PrimaryText: "Journey ended"}, now)
 			continue
 		}
 
@@ -303,7 +302,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 		state := computeJourneyActivityState(plan, now, live, hint)
 
 		if state.Phase == "arrived" && now.After(time.Unix(int64(state.ArrivalUnix), 0).Add(endGraceAfterArrival)) {
-			endLiveActivity(apns, db, activity, state, now)
+			endLiveActivity(db, activity, state, now)
 			continue
 		}
 
@@ -363,7 +362,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 			}
 		}
 		stale := now.Add(activityStaleAfter)
-		err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, state, laAlert, &stale, nil)
+		err := sendActivityUpdate(activityKindJourney, activity.ActivityId, activity.PushToken, activity.ApnsEnv, state, laAlert, &stale, nil)
 		alertDelivered := bannerSent || (laAlert != nil && err == nil)
 		if err != nil {
 			log.Printf("notifications: live activity %d push: %v", activity.Id, err)
@@ -398,7 +397,7 @@ func runLiveActivitiesCron(db *Database, region string, planLookup func(id strin
 // has no alert token (notifications denied) or the send failed.
 func sendJourneyMomentNotification(db *Database, activity LiveActivity, alert activityAlert) bool {
 	client, err := db.getClientByID(activity.ClientId)
-	if err != nil || client.ApnsToken == "" {
+	if err != nil || (client.ApnsToken == "" && client.FcmToken == "") {
 		return false
 	}
 	payload := Payload{
@@ -424,10 +423,10 @@ func sendJourneyMomentNotification(db *Database, activity LiveActivity, alert ac
 	return true
 }
 
-func endLiveActivity(apns *apnsSender, db *Database, activity LiveActivity, finalState journeyActivityState, now time.Time) {
+func endLiveActivity(db *Database, activity LiveActivity, finalState journeyActivityState, now time.Time) {
 	finalState.UpdatedUnix = float64(now.Unix())
 	dismissal := now.Add(60 * time.Second)
-	if err := apns.SendLiveActivityUpdate(activity.PushToken, activity.ApnsEnv, finalState, nil, nil, &dismissal); err != nil {
+	if err := sendActivityUpdate(activityKindJourney, activity.ActivityId, activity.PushToken, activity.ApnsEnv, finalState, nil, nil, &dismissal); err != nil {
 		log.Printf("notifications: live activity %d end push: %v", activity.Id, err)
 	}
 	db.DeleteLiveActivity(activity.ClientId, activity.ActivityId)
@@ -510,7 +509,11 @@ func newLiveLegLookup(rt realtime.Realtime, stopsForTripCache caches.StopsForTri
 					}
 					l.StopsToBoard = boardIdx - nextIdx
 					l.StopsToAlight = alightIdx - nextIdx
-					if b := stops[boardIdx]; b.StopLat != 0 || b.StopLon != 0 {
+					// Only with a real fix: a vehicle that reports no position reads
+					// as 0,0, which would put it thousands of km from the stop and
+					// hold back the "get on now" moment. Without one the stop count decides.
+					hasPosition := v.Position != nil && (lat != 0 || lon != 0)
+					if b := stops[boardIdx]; hasPosition && (b.StopLat != 0 || b.StopLon != 0) {
 						m := vehiclestate.Haversine(lat, lon, b.StopLat, b.StopLon)
 						l.MetresToBoard = &m
 					}

@@ -237,6 +237,13 @@ func TestActivity_BoardNowAlert(t *testing.T) {
 	if !strings.Contains(state.alert.Body, "It's arriving at") {
 		t.Errorf("body = %q", state.alert.Body)
 	}
+
+	// Stop-count data is enough when a feed omits vehicle coordinates.
+	live = liveFor(map[string]legLive{"trip-70": {HasTripUpdate: true, HasVehicle: true, StopsToBoard: 0, StopsToAlight: 7}})
+	state = computeJourneyActivityState(testPlan(base), base.Add(8*time.Minute), live, noHint)
+	if state.alert == nil || state.alert.Key != "board-1" || state.alert.Title != "Get on the 70 now" {
+		t.Fatalf("no position: alert = %+v, want get-on alert", state.alert)
+	}
 }
 
 func TestActivity_LateVehicleKeepsRiderWaitingPastScheduledDeparture(t *testing.T) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { Reorder, useDragControls } from "framer-motion"
-import { GripVertical, Pencil, Plus, Trash2 } from "lucide-react"
+import { Check, GripVertical, Pencil, Plus, Trash2 } from "lucide-react"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -13,16 +13,16 @@ import { ApiFetch } from "@/lib/url-context"
 import { cn } from "@/lib/utils"
 import type { Location } from "@/components/journey/types"
 import { HomeSection } from "@/components/home/home-section"
-import { PLACE_ICONS, placeIcon, useSavedPlaces, type PlaceIconKey, type SavedPlace } from "./use-saved-places"
+import { PLACE_COLORS, PLACE_ICONS, placeStyle, useSavedPlaces, type PlaceIconKey, type SavedPlace } from "./use-saved-places"
 
 /** The rounded tile with a place's icon on its tint. */
-export function PlaceTile({ icon, size = 28 }: { icon: string; size?: number }) {
-    const { icon: Icon, color } = placeIcon(icon)
+export function PlaceTile({ icon, color: picked, size = 28, round }: { icon: string; color?: string; size?: number; round?: boolean }) {
+    const { icon: Icon, color } = placeStyle({ icon, color: picked })
     return (
         <span
             aria-hidden
             className="inline-flex shrink-0 items-center justify-center"
-            style={{ width: size, height: size, borderRadius: size * 0.28, background: `${color}2e`, color }}
+            style={{ width: size, height: size, borderRadius: round ? size / 2 : size * 0.28, background: `${color}2e`, color }}
         >
             <Icon style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={2.25} />
         </span>
@@ -55,6 +55,7 @@ export function PlaceEditorDialog({
     const editing = target && "place" in target ? target.place : null
     const [name, setName] = useState("")
     const [icon, setIcon] = useState<PlaceIconKey>("pin")
+    const [color, setColor] = useState<string>(PLACE_ICONS.pin.color)
     const [location, setLocation] = useState<Location | null>(null)
     const [isLocating, setIsLocating] = useState(false)
 
@@ -63,10 +64,12 @@ export function PlaceEditorDialog({
         if ("place" in target) {
             setName(target.place.name)
             setIcon(target.place.icon)
+            setColor(placeStyle(target.place).color)
             setLocation({ lat: target.place.lat, lon: target.place.lon, label: target.place.address })
         } else {
             setName(target.preset.name)
             setIcon(target.preset.icon)
+            setColor(PLACE_ICONS[target.preset.icon].color)
             setLocation(null)
         }
     }, [target])
@@ -76,9 +79,11 @@ export function PlaceEditorDialog({
 
     const pickIcon = (key: PlaceIconKey) => {
         setIcon(key)
+        // Home and work keep their usual colours unless the rider picked one.
+        if (PLACE_COLORS.includes(color) && color === PLACE_ICONS[icon].color) setColor(PLACE_ICONS[key].color)
         // Naming by icon, until the rider types their own name.
         const isIconName = Object.values(PLACE_ICONS).some((i) => i.label === trimmed)
-        if ((!trimmed || isIconName) && key !== "pin" && key !== "star") setName(PLACE_ICONS[key].label)
+        if ((!trimmed || isIconName) && key !== "pin" && key !== "star" && key !== "flag" && key !== "bookmark") setName(PLACE_ICONS[key].label)
     }
 
     const useCurrentLocation = () => {
@@ -104,7 +109,7 @@ export function PlaceEditorDialog({
 
     const save = () => {
         if (!canSave || !location) return
-        const fields = { name: trimmed, icon, address: location.label, lat: location.lat, lon: location.lon }
+        const fields = { name: trimmed, icon, color, address: location.label, lat: location.lat, lon: location.lon }
         if (editing) {
             updatePlace({ ...editing, ...fields })
         } else {
@@ -125,11 +130,17 @@ export function PlaceEditorDialog({
         <Dialog open={!!target} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>{editing ? "Edit place" : "Add place"}</DialogTitle>
+                    <DialogTitle>
+                        {editing ? `Edit ${editing.name}` : target && "preset" in target && target.preset.icon === "home" ? "Set home" : target && "preset" in target && target.preset.icon === "work" ? "Set work" : "Add a place"}
+                    </DialogTitle>
                     <DialogDescription>Plan trips here in one tap from the home page or the planner.</DialogDescription>
                 </DialogHeader>
 
                 <div className="space-y-4">
+                    <div className="flex flex-col items-center gap-2" aria-hidden>
+                        <PlaceTile icon={icon} color={color} size={64} round />
+                        <p className="max-w-full truncate text-base font-semibold">{trimmed || location?.label || "New place"}</p>
+                    </div>
                     <div className="space-y-1.5">
                         <p className="text-xs font-medium text-muted-foreground">Location</p>
                         <LocationSearchInput
@@ -156,21 +167,44 @@ export function PlaceEditorDialog({
 
                     <div className="space-y-1.5">
                         <p className="text-xs font-medium text-muted-foreground">Icon</p>
-                        <div className="grid grid-cols-5 gap-2">
-                            {(Object.keys(PLACE_ICONS) as PlaceIconKey[]).map((key) => (
+                        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Icon">
+                            {(Object.keys(PLACE_ICONS) as PlaceIconKey[]).map((key) => {
+                                const { icon: Icon, label } = PLACE_ICONS[key]
+                                const selected = icon === key
+                                return (
+                                    <button
+                                        key={key}
+                                        type="button"
+                                        role="radio"
+                                        onClick={() => pickIcon(key)}
+                                        aria-label={label}
+                                        aria-checked={selected}
+                                        title={label}
+                                        className="flex h-11 w-11 items-center justify-center rounded-full border-[1.5px] transition-colors"
+                                        style={selected ? { background: `${color}33`, borderColor: color, color } : undefined}
+                                    >
+                                        <Icon className={cn("h-5 w-5", !selected && "text-muted-foreground")} />
+                                    </button>
+                                )
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                        <p className="text-xs font-medium text-muted-foreground">Colour</p>
+                        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Colour">
+                            {PLACE_COLORS.map((c) => (
                                 <button
-                                    key={key}
+                                    key={c}
                                     type="button"
-                                    onClick={() => pickIcon(key)}
-                                    aria-label={PLACE_ICONS[key].label}
-                                    aria-pressed={icon === key}
-                                    title={PLACE_ICONS[key].label}
-                                    className={cn(
-                                        "flex items-center justify-center rounded-xl p-1 transition-shadow",
-                                        icon === key && "ring-2 ring-foreground/60"
-                                    )}
+                                    role="radio"
+                                    aria-checked={c === color}
+                                    aria-label={`Colour ${c}`}
+                                    onClick={() => setColor(c)}
+                                    className={cn("flex h-8 w-8 items-center justify-center rounded-full border-[2.5px]", c === color ? "border-foreground" : "border-transparent")}
+                                    style={{ background: c }}
                                 >
-                                    <PlaceTile icon={key} size={40} />
+                                    {c === color && <Check className="h-4 w-4 text-white" />}
                                 </button>
                             ))}
                         </div>
@@ -208,7 +242,7 @@ function PlaceRow({ place, onEdit, onDelete }: { place: SavedPlace; onEdit: () =
             >
                 <GripVertical className="h-4 w-4" />
             </button>
-            <PlaceTile icon={place.icon} size={32} />
+            <PlaceTile icon={place.icon} color={place.color} size={32} round />
             <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{place.name}</p>
                 <p className="truncate text-xs text-muted-foreground">{place.address}</p>
@@ -242,8 +276,8 @@ export function ManagePlacesDialog({
         <Dialog open={open} onOpenChange={(next) => { if (!next) reorderPlaces(order); onOpenChange(next) }}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                    <DialogTitle>Places</DialogTitle>
-                    <DialogDescription>Drag to reorder. Places only show in the region they were saved in.</DialogDescription>
+                    <DialogTitle>Your places</DialogTitle>
+                    <DialogDescription>Drag to reorder - Home and the planner follow this order. Places only show in the region they were saved in.</DialogDescription>
                 </DialogHeader>
                 {order.length === 0 ? (
                     <p className="py-6 text-center text-sm text-muted-foreground">No saved places yet.</p>
@@ -313,7 +347,7 @@ export function SavedPlacesRow() {
                         title={`Plan a trip to ${place.address}`}
                         className="flex shrink-0 items-center gap-2 rounded-full border bg-card py-1 pl-1 pr-3.5 text-sm font-medium shadow-sm hover:bg-accent transition-colors"
                     >
-                        <PlaceTile icon={place.icon} />
+                        <PlaceTile icon={place.icon} color={place.color} />
                         {place.name}
                     </Link>
                 ))}

@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from "
 import { ApiFetch } from "@/lib/url-context"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import { fetchStopsForTrip } from "../stops"
+import { useTripTarget, type TripTarget } from "@/lib/trip-target"
 import type { ShapesResponse, GeoJSON } from "@/components/map/geojson-types"
 import type { VehiclesResponse, PreviewData, ServicesStop, StopTimes } from "."
 
@@ -25,7 +26,11 @@ export interface ServiceTrackerContextValue {
         lat: number
         lon: number
         name: string
+        /** Set when the rider picked it in the tracker - tells a loop's two visits apart. */
+        sequence?: number
     }
+    /** The stop the rider picked in this tracker (with its reminders), if any. */
+    tripTarget?: TripTarget | null
     refreshing: boolean
     /** Suppress the internal mini map - use when a caller already shows this trip on a bigger map alongside. */
     hideMap?: boolean
@@ -47,7 +52,13 @@ export function ServiceTrackerProvider({
     value: ServiceTrackerContextValue
     children: ReactNode
 }) {
-    return <ServiceTrackerContext.Provider value={value}>{children}</ServiceTrackerContext.Provider>
+    // A stop picked in the tracker (lib/trip-target.ts) becomes "your stop"
+    // everywhere - hero, stop list and map - over the board it was opened from.
+    const tripTarget = useTripTarget(value.tripId)
+    const currentStop = tripTarget
+        ? { parent_stop_id: tripTarget.parentStopId, child_stop_id: tripTarget.childStopId, lat: tripTarget.lat, lon: tripTarget.lon, name: tripTarget.name, sequence: tripTarget.stopSeq }
+        : value.currentStop
+    return <ServiceTrackerContext.Provider value={{ ...value, currentStop, tripTarget }}>{children}</ServiceTrackerContext.Provider>
 }
 
 export function useServiceTrackerContext(): ServiceTrackerContextValue {

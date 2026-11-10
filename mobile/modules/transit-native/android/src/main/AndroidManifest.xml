@@ -1,0 +1,15 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Android 16 Live Updates: lets the journey/trip notification ask to be promoted. -->
+  <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+  <application>
+    <!-- Ahead of expo-notifications' service (priority -1): draws live-update pushes, hands the rest on. -->
+    <service
+      android:name="dev.suddsy.transitnative.TransitMessagingService"
+      android:exported="false">
+      <intent-filter android:priority="0">
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+      </intent-filter>
+    </service>
+  </application>
+</manifest>

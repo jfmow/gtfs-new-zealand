@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -16,8 +17,10 @@ import (
 // join, so bound them before they reach the database.
 const (
 	maxSearchQueryRunes = 100
-	maxSearchQueryWords = 8
+	maxSearchQueryWords = 20
 )
+
+var searchQueryLimitMessage = fmt.Sprintf("Search is limited to %d words / %d characters", maxSearchQueryWords, maxSearchQueryRunes)
 
 // searchQueryTooLarge reports whether a stop/route/place search is over the limits.
 func searchQueryTooLarge(q string) bool {

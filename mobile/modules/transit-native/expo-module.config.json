@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["TransitNativeModule"] },
+  "android": { "modules": ["dev.suddsy.transitnative.TransitNativeModule"] }
+}

@@ -4,7 +4,9 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Bell, ListTree } from "lucide-react"
+import { Bell, ListTree, LocateFixed } from "lucide-react"
+import { cn } from "@/lib/utils"
+import type { TrackerCameraMode } from "@/components/map/tracker-camera"
 import { ApiFetch } from "@/lib/url-context"
 import { fullyEncodeURIComponent } from "@/lib/utils"
 import type { AlertResponseData } from "@/lib/alert-causes"
@@ -54,6 +56,14 @@ interface LiveMapProps {
     trackingStarted?: boolean
     /** Frame the whole journey - refits whenever its key changes (picking another journey). */
     fitTo?: { key: string; points: LatLng[]; padding?: { top?: number; right?: number; bottom?: number; left?: number } }
+    /**
+     * The app's tracker camera (follow the vehicle / you, frame you and the
+     * bus, the whole route) - replaces followMarkerId / followUser while set.
+     * Panning stops following; the locate button hands it back.
+     */
+    camera?: TrackerCameraMode
+    /** Screen space covered by overlays (the drawer) - the camera works in the rest. */
+    padding?: { top?: number; right?: number; bottom?: number; left?: number }
 }
 
 const VEHICLE_ICONS = new Set(["bus", "train", "ferry", "school bus"])
@@ -115,7 +125,16 @@ export function LiveMap({
     onUserLocation,
     trackingStarted,
     fitTo,
+    camera,
+    padding,
 }: LiveMapProps) {
+    const [following, setFollowing] = useState(true)
+    const [resetKey, setResetKey] = useState(0)
+    const cameraOn = !!camera && camera.kind !== "none"
+    const recentre = () => {
+        setFollowing(true)
+        setResetKey((k) => k + 1)
+    }
     // Rebuilt only when a real input changes - not on every render. The 30s
     // useNow tick upstream would otherwise hand map.tsx a fresh array each time,
     // re-running its whole marker-diff.
@@ -365,11 +384,16 @@ export function LiveMap({
                     map_id={mapId}
                     height={height}
                     line={line}
-                    followMarkerId={followMarkerId}
-                    followFitWith={followFitWith}
-                    followUser={followUser}
+                    followMarkerId={cameraOn ? undefined : followMarkerId}
+                    followFitWith={cameraOn ? undefined : followFitWith}
+                    followUser={cameraOn ? false : followUser}
                     onLocationUpdate={onUserLocation}
-                    zoomInTrigger={trackingStarted}
+                    camera={cameraOn ? camera : undefined}
+                    cameraFollowing={following}
+                    cameraResetKey={resetKey}
+                    onUserMove={cameraOn ? () => setFollowing(false) : undefined}
+                    padding={padding}
+                    zoomInTrigger={cameraOn ? false : trackingStarted}
                     zoomInCenter={zoomInCenter}
                     fitTo={fitTo}
                     options={{ buttonPosition: "bottom" }}
@@ -394,6 +418,19 @@ export function LiveMap({
                         </Button>
                     )}
                     <AlertsBell routeIds={getTransitRouteIds(selectedRoute)} />
+                    {cameraOn && (
+                        // The app's locate button: filled while the map follows the journey.
+                        <Button
+                            variant={following ? "default" : "secondary"}
+                            size="icon"
+                            className={cn("h-10 w-10 rounded-full shadow-md")}
+                            aria-label={following ? "Following your journey" : "Follow my journey"}
+                            aria-pressed={following}
+                            onClick={recentre}
+                        >
+                            <LocateFixed className="h-4 w-4" />
+                        </Button>
+                    )}
                 </div>
             )}
         </div>

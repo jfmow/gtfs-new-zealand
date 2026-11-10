@@ -4,11 +4,11 @@ As of 2026-11-03. Live, editable copy: https://claude.ai/artifact/TsEPsMfi3ab98P
 
 ## Overview
 
-The app is a live public-transport companion for five regions: one Go server turns each region's GTFS timetable and GTFS-Realtime feeds into departure boards, live vehicle maps, journey plans and push alerts, served to a Next.js web app and a native SwiftUI iPhone/iPad app. It has three layers:
+The app is a live public-transport companion for five regions: one Go server turns each region's GTFS timetable and GTFS-Realtime feeds into departure boards, live vehicle maps, journey plans and push alerts, served to a Next.js web app and an Expo (React Native) app for iOS and Android. It has three layers:
 
 1. **`github.com/jfmow/gtfs`** (v1.3.34): a Go library the backend imports. It downloads each static GTFS zip into its own SQLite database, polls the realtime feeds, and contains the RAPTOR journey planner.
 2. **Backend** (`backend/`, Go module `github.com/jfmow/at-trains-api`): an Echo v5 HTTP server. It mounts one route group per region and owns caches, fares, reliability history, plan storage and every push notification (Web Push, APNs and Live Activities).
-3. **Clients**: the web app (`frontend/`, Next.js 15 + React 18 + Tailwind + Apple MapKit JS) and the iOS app (`ios/`, SwiftUI, about 150 Swift files including widgets and Live Activities).
+3. **Clients**: the web app (`frontend/`, Next.js 15 + React 18 + Tailwind + Apple MapKit JS) and the mobile app (`mobile/`, Expo + React Native for iOS and Android, with a SwiftUI widget extension and Live Activities).
 
 | Region | Path | Static feed | Realtime | Poll interval | Time zone |
 | --- | --- | --- | --- | --- | --- |
@@ -40,7 +40,7 @@ flowchart TB
         osrm["OSRM router<br/>walking routes,<br/>bundled in the image"]
     end
     web["Web app<br/>Next.js 15, Apple MapKit JS<br/>service worker for Web Push"]
-    ios["iOS app<br/>SwiftUI, widgets, Siri<br/>Live Activities, iCloud sync"]
+    ios["Mobile app (Expo)<br/>iOS + Android, widgets<br/>Live Activities, iCloud sync"]
 
     static -- "nightly zip" --> importer
     rtfeeds -- "protobuf" --> fetcher
@@ -50,10 +50,10 @@ flowchart TB
     api -- "HTTPS JSON, polled every 10–60 s" --> web
     api --> ios
     crons -. "Web Push" .-> web
-    crons -. "APNs" .-> ios
+    crons -. "APNs / FCM" .-> ios
 ```
 
-The agencies are only ever called by the backend. Both apps pull from the HTTP API, and the crons push through APNs and Web Push. Solid lines: data pulled on request. Dashed: the server pushes alerts, reminders and Live Activity updates.
+The agencies are only ever called by the backend. Both apps pull from the HTTP API, and the crons push through APNs, FCM and Web Push. Solid lines: data pulled on request. Dashed: the server pushes alerts, reminders and Live Activity updates.
 
 ## The gtfs library
 
@@ -390,8 +390,8 @@ Async arrows are server pushes through APNs; solid arrows are app requests or on
 
 ### Links, sync and sharing
 
-- **Universal links**: `/.well-known/apple-app-site-association` on the web host hands `/trip?tripId=`, `/journey?id=`, `/map?tripId=` and the old `/vehicles?tripId=` to the iOS app. A shared `/journey?id=` reopens the exact stored plan through `/services/plan/:id`.
-- **iCloud**: saved stops, places and trips live in SwiftData with CloudKit mirroring. The store sits in the app group container, and its schema only ever adds fields. None of this touches the backend.
+- **Universal links**: `/.well-known/apple-app-site-association` on the web host hands `/trip?tripId=`, `/journey?id=`, `/map?tripId=` and the old `/vehicles?tripId=` to the iOS app (`packages/shared/src/logic/deeplink.ts` parses them). A shared `/journey?id=` reopens the exact stored plan through `/services/plan/:id`.
+- **iCloud**: on iOS, saved stops, places and trips sync through the iCloud key-value store with a per-item merge (`mobile/src/lib/cloud-sync.ts`, `packages/shared/src/sync-merge.ts`). Android has no sync yet. None of this touches the backend.
 - **Widgets, Siri and quick actions** read the region, saved stops and places from the app group (`SharedStore`), and fetch departure boards from the API themselves.
 
 ## Web frontend
@@ -411,57 +411,27 @@ The web app (`frontend/`, package `at-tracker`) is a Next.js 15 Pages Router app
 
 ### Key pieces
 
-- **Region selection** (`lib/url-store.ts`, `lib/url-context.tsx`): the five regions, each with its API base URL, map centre, country, time zone and a `realtime: false` flag for Otago. These must stay in sync with `backend/main.go` and iOS `Region.swift`.
+- **Region selection** (`lib/url-store.ts`, `lib/url-context.tsx`): the five regions, each with its API base URL, map centre, country, time zone and a `realtime: false` flag for Otago. The table itself lives in `packages/shared/src/regions.ts` (shared with the Expo app in `mobile/`); `url-store.ts` keeps the selected region. These must stay in sync with `backend/main.go` and the widget's copy in `mobile/targets/widgets/WidgetSupport.swift`.
+- **Shared package** (`packages/shared`, `@transit/shared`): platform-free TypeScript used by the web and the Expo app: the API client (`ApiFetch` wraps `createApiClient`), regions, region-time maths, formatting, the easy-planner steps and the API types. It's linked with `file:` and compiled by Next (`transpilePackages`); `frontend/lib/*` files re-export it with the selected region filled in. See `plans/expo-app.md`.
 - **Map** (`components/map/`): Apple MapKit JS v6 with the token in `NEXT_PUBLIC_MAPKIT_TOKEN`. It uses the app's own camera maths, `supercluster` for stop clusters, and Lucide icons for markers, whose icons and colours match the stop list. MapKit JS has no 3D, so the 3D map is iOS-only.
 - **Journey tracking** (`components/journey/`): `route-detail-sheet.tsx` holds the original leg-advance state machine that iOS ported. `use-journey-vehicles.ts` (10 s) and `use-journey-stop-times.ts` (20 s) feed it. `journey-alert-overlay.tsx` shows the in-app "get on now" and "get off next" moments.
 - **Departure board and tracker** (`components/services/`): the live board polls every 10 s; the tracker shows occupancy and accessibility details and lets the rider set a stop reminder.
 - **Notifications** (`lib/notifications.ts`, `components/notifications/`): service worker registration, the Web Push subscription, stop and route alert subscriptions with cause and severity filters, and the bell feed.
 - **Plain-English steps** (`lib/easy-planner.ts`): turns a plan into steps a first-time rider can follow. A bus is named by its number; a train or ferry line code is only a detail.
 
-## iOS app
+## Mobile app
 
-The iOS app (`ios/`, bundle `dev.suddsy.transit`, iOS 17.2+) is a native SwiftUI app for iPhone and iPad. It talks to the same backend as the web, and adds what only the device can do: Live Activities, GPS-driven and offline journey tracking, widgets, Siri and iCloud sync. It merged to master on 2026-09-25 (PR #21), with iPad support following on 2026-09-28 (PR #23).
-
-### Targets and modules
+The mobile app (`mobile/`) is one Expo / React Native codebase for iOS (17.2+, iPhone and iPad) and Android. It replaced the native SwiftUI app, which lived in `ios/` until 2026-11-11 and is still in git history. Production builds (`APP_VARIANT=production`) ship as the existing App Store app, `dev.suddsy.transit` with the `transit` scheme; development builds use `dev.suddsy.transit.expo` / `transit-expo` so they install beside it. See `mobile/app.config.ts`, `mobile/README.md` and `plans/expo-app.md`.
 
 | Part | Contents |
 | --- | --- |
-| `Transit/` (app) | `App/` (entry, environment, Siri intents, quick actions), `DesignSystem/` (shell, bottom drawer, side panel, theme), `Map/` (MapKit map, annotations, camera), `Services/`, `Views/` |
-| `Packages/TransitCore` | Platform-free logic, testable on its own: `API/` (client, endpoints, regions, deep links), `Models/`, `Logic/` (journey progress, offline estimator, reminders, Live Activity content, ranking, easy planner), `Store/` (SwiftData models, device identity, offline packs) |
-| `TransitWidgets` | `DeparturesWidget` and the `JourneyLiveActivity` (Lock Screen + Dynamic Island) |
-| `Shared/` | Code used by both the app and the extension: `JourneyActivityAttributes` (the Live Activity contract mirrored by the server), `SharedStore` (app group), route colours, saved-stop intents |
+| `src/app/` | expo-router screens: four tabs (Home, Planner, Map, Updates) plus trip, stop, journey, onboarding and settings screens |
+| `src/components/`, `src/lib/` | UI, the map (native MapKit on iOS; MapLibre / MapKit JS on Android), journey sessions, push registration, offline packs, cloud sync |
+| `packages/shared` | Platform-free logic shared with the web: API client, regions, deep links, journey progress, Live Activity content, reminders |
+| `modules/transit-native` | Local native module: starts and updates Live Activities (iOS) and FCM live-update notifications (Android); holds `JourneyActivityAttributes` / `TripActivityAttributes`, the contract the server mirrors |
+| `targets/widgets` | The SwiftUI widget extension (departures widget, journey and trip Live Activities), built by `@bacons/apple-targets` |
 
-### Screens
-
-There are four tabs: **Home** (compact shortcuts and grouped stop rows), **Planner**, **Map** (stops and vehicles in one map) and **Alerts** (hidden for Otago, which has no realtime). First launch runs an onboarding flow. The Planner offers the full planner and an "easy" planner that asks four questions in turn, using the backend's `modes` and `minTransferSec` filters. On iPad, layouts follow the size class, with a map side panel in place of the bottom drawer.
-
-### Services
-
-- **`JourneyTrackingSession`**: runs a tracked journey and feeds `JourneyProgressModel` and `JourneyAlertCenter` (in-app "get on now" and "get off next").
-- **`LiveActivityCoordinator`**: starts, updates and ends the Live Activity, registers its push token, and adopts activities that a reminder push-started while the app was closed.
-- **`PushRegistrationService`**: device registration and APNs plus push-to-start tokens, sent on every launch.
-- **`LocationProvider` + `JourneyGPSPolicy`**: picks the cheapest GPS accuracy that still works in the background (below).
-- **`JourneyOfflineNotifications`**: schedules local notifications for the journey's key moments, so alerts still fire with no data.
-- **`DeepLinkRouter`**: universal links and notification taps to the right tab and screen. **`CloudSyncMonitor`**: iCloud account state and post-import tidy-up.
-
-### Battery-aware GPS
-
-| Level | When |
-| --- | --- |
-| `resting` (coarse cell/Wi-Fi) | On board, the live feed is tracking the vehicle well, there's a connection, and the rider's stop is still a way off |
-| `coarse` | Still at the start, well before the leave time: enough to see them set off (150 m move, fix good to 100 m) |
-| `pedestrian` | Walking or waiting: GPS, but only after moving a few metres |
-| `precise` | On board with no live feed, or nearing the stop: get-off alerts and the next walk run from GPS |
-
-On screen, GPS is always precise because the map follows the rider. The tracker must read `preciseCoordinate` so a coarse fix never places the rider.
-
-### Offline journeys
-
-While a connection exists, the app saves an `OfflineJourneyPack` (one JSON file in Application Support): the plan, each ride's stops with coordinates, the latest predictions, route shapes and walking directions. It is refreshed on every successful poll. With no data, `OfflineRideEstimator` places the rider on the trip from GPS, and local notifications replace server pushes. Before boarding, the vehicle's position can't be known offline, so that part falls back to the timetable plus the last delay seen.
-
-### Map
-
-`TransitMapView` uses MapKit for SwiftUI with its own camera engine: follow a vehicle, follow the rider with compass heading, or frame a set of points inside the area overlays leave free. It supports 3D, a chase camera, and vehicles that glide between position updates (a setting).
+`ios/` and `android/` inside `mobile/` are generated by `expo prebuild` and never edited by hand.
 
 ## Operations and reference
 
@@ -472,7 +442,7 @@ The backend ships as one Docker image that also carries its own OSRM walking rou
 - **Build**: `docker buildx build --platform linux/amd64 -t registry.tail4520a7.ts.net/trains:latest --push .` from `backend/` (`build-cmd.txt`). The builder is Go on Debian bookworm with CGO on; the runtime is the official OSRM image, which supplies `osrm-extract` / `-routed` and the foot profile.
 - **Walking router**: `docker-entrypoint.sh` builds a foot graph from `OSRM_PBF_URL` (one or more `.osm.pbf` extracts, optionally cropped and merged), caches it in `/data/osrm`, and runs it on loopback port 5000. If the build fails, usually from lack of memory, the API starts anyway and uses `OSRM_URL`.
 - **Volume**: everything is written under `/data`: `gtfs/`, `notifications/`, `plans/`, `logs/`, `osrm/`.
-- **Local stack**: `docker compose up --build` on port 8085 with BBBike's Auckland extract (about 70 MB). `npm run go` in `frontend/` runs `go run .` and `next dev` together.
+- **Local stack**: `docker compose up --build` on port 8090 with BBBike's Auckland extract (about 70 MB). `npm run go` in `frontend/` runs `go run .` and `next dev` together.
 - **Order of deploys**: when a client depends on a new backend parameter (for example the easy planner's `modes`), the backend goes out first.
 - **Memory**: `GOGC=60` (override with `GOGC_PERCENT`), 2 planner slots, and regions built 2 at a time keep a cold start within the host's limit.
 - **API testing**: the `Yaak/` folder holds a request collection matching the current routes.
@@ -497,7 +467,7 @@ The backend ships as one Docker image that also carries its own OSRM walking rou
 
 | Question | File |
 | --- | --- |
-| Regions, keys, poll rates | `backend/main.go`, `frontend/lib/url-store.ts`, `TransitCore/API/Region.swift` |
+| Regions, keys, poll rates | `backend/main.go`, `packages/shared/src/regions.ts`, `mobile/targets/widgets/WidgetSupport.swift` |
 | Route registration | `backend/providers/setup.go` |
 | Departure boards and plans | `backend/providers/services.go` |
 | Live vehicles, stop times, alerts | `backend/providers/realtime.go` |
@@ -506,7 +476,7 @@ The backend ships as one Docker image that also carries its own OSRM walking rou
 | Realtime fetch and consists | `gtfs/realtime/feed.go`, `consist.go` |
 | Crons and notification routes | `backend/providers/notifications/routes.go` |
 | Leave-by reminders | `notifications/journey_reminders*.go`, `next_journey.go` |
-| Live Activity content | `notifications/live_activity_state.go`, `TransitCore/Logic/LiveActivityContentBuilder.swift` |
-| Which leg the rider is on | `TransitCore/Logic/JourneyProgressModel.swift`, `frontend/components/journey/route-detail-sheet.tsx` |
+| Live Activity content | `notifications/live_activity_state.go`, `packages/shared/src/logic/live-content.ts` |
+| Which leg the rider is on | `packages/shared/src/logic/tracking.ts`, `frontend/components/journey/route-detail-sheet.tsx` |
 | Fares | `backend/providers/fares/` |
 | Plans and design notes | `plans/`, `backend/plans/` |

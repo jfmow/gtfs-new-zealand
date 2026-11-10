@@ -445,7 +445,8 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if len(foundRoutes) == 0 {
-			return JsonApiResponse(c, http.StatusInternalServerError, "", nil, ResponseDetails("details", "no routes found for stop: "+stopName))
+			// No routes means no alerts - a 404 like the no-alerts case above, not a server error.
+			return JsonApiResponse(c, http.StatusNotFound, "", nil, ResponseDetails("details", "no routes found for stop: "+stopName))
 		}
 
 		// Make sure this is initialised somewhere before the loop

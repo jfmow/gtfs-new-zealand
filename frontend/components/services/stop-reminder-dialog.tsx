@@ -8,7 +8,7 @@ import { regionHHMM, serviceDate, formatTime } from "@/components/journey/helper
 import { cn } from "@/lib/utils"
 import { DEFAULT_WALK_SPEED } from "@/lib/walk-speed"
 
-type ReminderKind = "get_off" | "arrival" | "n_stops_away" | "leave"
+export type ReminderKind = "get_off" | "arrival" | "n_stops_away" | "leave"
 
 export interface StopReminderTarget {
     tripId: string
@@ -51,7 +51,7 @@ export function StopReminderDialog({
     offersGetOff?: boolean
     onOpenChange: (open: boolean) => void
     /** After a reminder is saved - e.g. to mark the stop in a list. */
-    onSet?: (target: StopReminderTarget) => void
+    onSet?: (target: StopReminderTarget, kind: ReminderKind) => void
 }) {
     const [stopsBefore, setStopsBefore] = useState(2)
     const [saving, setSaving] = useState<ReminderKind | null>(null)
@@ -64,9 +64,9 @@ export function StopReminderDialog({
     const offsetPassed = (minutes: number) => departsMs - minutes * 60_000 <= Date.now() + 15_000
     const canLeave = !!target?.scheduledMs && !!target.childStopId && target.lat !== undefined && !offsetPassed(0)
 
-    const finish = (message: string) => {
+    const finish = (message: string, kind: ReminderKind) => {
         toast.success(message, { duration: 6000 })
-        if (target) onSet?.(target)
+        if (target) onSet?.(target, kind)
         onOpenChange(false)
     }
 
@@ -90,6 +90,7 @@ export function StopReminderDialog({
                 : kind === "n_stops_away"
                     ? `Reminder set - you'll get a notification when it's ${stopsBefore} stop${stopsBefore === 1 ? "" : "s"} away`
                     : `Reminder set - you'll get a notification as it arrives at ${target.stopName}`,
+            kind,
         )
     }
 
@@ -127,7 +128,7 @@ export function StopReminderDialog({
             return
         }
         const shown = res.nextLeaveLocal ? formatTime(`1970-01-01T${res.nextLeaveLocal}:00`) : formatTime(new Date(departsMs))
-        finish(`Reminder set - the ${target.routeShortName ? target.routeShortName + " " : ""}${shown} departure from ${target.stopName}`)
+        finish(`Reminder set - the ${target.routeShortName ? target.routeShortName + " " : ""}${shown} departure from ${target.stopName}`, "leave")
     }
 
     const option = (kind: Exclude<ReminderKind, "leave">, icon: React.ReactNode, title: string, detail: string) => (

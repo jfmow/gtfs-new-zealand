@@ -12,12 +12,12 @@ import (
 )
 
 func TestSearchQueryTooLarge(t *testing.T) {
-	for _, q := range []string{"britomart", "Albany Station 4115", strings.Repeat("a ", 8)} {
+	for _, q := range []string{"britomart", "Albany Station 4115", strings.Repeat("a ", 8), "Go Media Stadium Church Street Penrose Maungakiekie-Tāmaki 1061 New Zealand / Aotearoa"} {
 		if searchQueryTooLarge(q) {
 			t.Errorf("rejected ordinary search %q", q)
 		}
 	}
-	for _, q := range []string{strings.Repeat("a ", 9), strings.Repeat("x", maxSearchQueryRunes+1)} {
+	for _, q := range []string{strings.Repeat("a ", maxSearchQueryWords+1), strings.Repeat("x", maxSearchQueryRunes+1)} {
 		if !searchQueryTooLarge(q) {
 			t.Errorf("accepted oversized search (%d chars)", len(q))
 		}

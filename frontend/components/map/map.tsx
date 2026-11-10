@@ -12,6 +12,7 @@ import { resolveMapTheme, useMapThemeOverride } from "./map-theme";
 import { MapItem, pointElement } from "./markers/create";
 import { USER_LOCATION_HTML } from "./markers/icons";
 import { MarkerManager } from "./cluster-manager";
+import { TrackerCamera, type TrackerCameraMode } from "./tracker-camera";
 import { useUrl } from "@/lib/url-context";
 import { fitPoints, setView, zoomBy, type Insets, type LatLng } from "./geo";
 import { hasMapKitToken, loadMapKit } from "./mapkit";
@@ -59,6 +60,14 @@ interface MapProps {
     onUserMove?: () => void
     /** Screen space covered by overlays (e.g. a side panel) - the camera centres, follows and fits within the rest. */
     padding?: { top?: number; right?: number; bottom?: number; left?: number }
+    /**
+     * A tracker camera (tracker-camera.ts): the map follows this mode while
+     * `cameraFollowing` is true. A gesture calls `onUserMove` (the parent stops
+     * following); bumping `cameraResetKey` hands the camera back.
+     */
+    camera?: TrackerCameraMode
+    cameraFollowing?: boolean
+    cameraResetKey?: number
 }
 
 interface MapOptions {
@@ -97,6 +106,9 @@ export default function MapComp({
     followPaused,
     onUserMove,
     fitTo,
+    camera,
+    cameraFollowing = true,
+    cameraResetKey = 0,
 }: MapProps) {
     const { currentUrl } = useUrl();
     const { resolvedTheme } = useTheme();
@@ -128,6 +140,9 @@ export default function MapComp({
     onMapClickRef.current = onMapClick;
     followUserRef.current = followUser;
     followFitWithRef.current = followFitWith;
+    const trackerCameraRef = useRef(new TrackerCamera());
+    const cameraModeRef = useRef(camera);
+    cameraModeRef.current = camera;
     themeRef.current = theme;
 
     // --- load MapKit JS (once per page) ----------------------------------------
@@ -200,7 +215,11 @@ export default function MapComp({
             cb(c.latitude, c.longitude);
         });
         // scroll-start / zoom-start only fire for user gestures, not our own camera moves.
-        const userMoved = () => onUserMoveRef.current?.();
+        // With a tracker camera, gestures right after its own moves don't count.
+        const userMoved = () => {
+            if (cameraModeRef.current && !trackerCameraRef.current.userMoved()) return;
+            onUserMoveRef.current?.();
+        };
         map.addEventListener("scroll-start", userMoved);
         map.addEventListener("zoom-start", userMoved);
 
@@ -247,6 +266,19 @@ export default function MapComp({
         // so whatever was centred stays centred in the new free area.
         map.padding = new mk.Padding({ top: padTop, right: padRight, bottom: padBottom, left: padLeft });
     }, [ready, mk, padTop, padRight, padBottom, padLeft]);
+
+    // --- tracker camera (journey tracker) ----------------------------------
+    const lastResetKey = useRef(cameraResetKey);
+    useEffect(() => {
+        const map = mapRef.current;
+        if (!ready || !map || !mk || !camera) return;
+        if (lastResetKey.current !== cameraResetKey) {
+            lastResetKey.current = cameraResetKey;
+            trackerCameraRef.current.reset();
+        }
+        if (!cameraFollowing) return;
+        trackerCameraRef.current.apply(mk, map, camera);
+    }, [ready, mk, camera, cameraFollowing, cameraResetKey, padTop, padRight, padBottom, padLeft]);
 
     // --- keep the camera inside the current region ------------------------
     const regionSlug = getRegionSlug(currentUrl);
@@ -381,6 +413,9 @@ export default function MapComp({
 
     // --- controls --------------------------------------------------------
     const bottom = options?.buttonPosition === "bottom";
+    // Bottom corner buttons sit above the space a drawer covers (`padding.bottom`),
+    // not behind it.
+    const ctrlLift = bottom && padBottom > 0 ? { marginBottom: padBottom, transition: "margin-bottom 0.2s ease-out" } : undefined;
     const zoomTargets = mapItems.filter((i) => i.zoomButton);
     const map = mapRef.current;
     const withMap = (fn: (mk: MapKit, map: MKMap) => void) => () => {
@@ -421,7 +456,7 @@ export default function MapComp({
             {ready && map && (
                 <>
                     {!hideZoomControls && (
-                        <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-left" : "map-ctrl-top-left"}`}>
+                        <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-left" : "map-ctrl-top-left"}`} style={ctrlLift}>
                             <Button size="icon" className="map-control-button" title="Zoom in" onClick={withMap((m, mp) => zoomBy(m, mp, 1))}>
                                 <ZoomIn />
                             </Button>
@@ -430,7 +465,7 @@ export default function MapComp({
                             </Button>
                         </div>
                     )}
-                    <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-right" : "map-ctrl-top-right"}`}>
+                    <div className={`map-ctrl ${bottom ? "map-ctrl-bottom-right" : "map-ctrl-top-right"}`} style={ctrlLift}>
                         {basemapRef.current && <MapVariantToggle manager={basemapRef.current} />}
                         {hasUserLocation && (
                             <Button

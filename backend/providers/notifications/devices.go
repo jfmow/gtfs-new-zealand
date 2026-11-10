@@ -79,7 +79,7 @@ func (v *Database) RegisterIOSDevice(deviceID, secret, apnsToken, apnsEnv, pushT
 		return nil, err
 	}
 	if err == nil {
-		if subtle.ConstantTimeCompare([]byte(existing.deviceSecretHash), []byte(secretHash)) != 1 {
+		if existing.Platform != "ios" || subtle.ConstantTimeCompare([]byte(existing.deviceSecretHash), []byte(secretHash)) != 1 {
 			return nil, ErrDeviceSecretMismatch
 		}
 		// The app re-registers on every launch, usually before iOS has
@@ -120,6 +120,9 @@ func (v *Database) UpdateIOSDeviceTokens(deviceID, secret, apnsToken, apnsEnv, p
 	client, err := v.FindIOSDeviceClient(deviceID, secret)
 	if err != nil {
 		return nil, err
+	}
+	if client.Platform != "ios" {
+		return nil, ErrDeviceSecretMismatch
 	}
 	if err := validateApnsFields(apnsToken, apnsEnv); err != nil {
 		return nil, err
@@ -173,7 +176,8 @@ func (v *Database) ClearPushToStartToken(clientID int, token string) error {
 	return err
 }
 
-// FindIOSDeviceClient resolves a client from its device id + secret, as sent
+// FindIOSDeviceClient resolves a native client (iOS or Android - the name
+// predates Android) from its device id + secret, as sent
 // via the X-Device-Id/X-Device-Secret request headers. Returns
 // ErrClientNotFound if no such device is registered, ErrDeviceSecretMismatch
 // if the secret is wrong - callers should treat both as "unauthenticated",
@@ -189,9 +193,6 @@ func (v *Database) FindIOSDeviceClient(deviceID, secret string) (*NotificationCl
 	return client, nil
 }
 
-// findIOSDeviceClient looks a device up by id alone (no secret check) -
-// used internally by RegisterIOSDevice/UpdateIOSDeviceTokens, which verify
-// the secret themselves against the hash this returns.
 // getClientByID loads a client by its row id (e.g. a Live Activity's owner).
 func (v *Database) getClientByID(id int) (*NotificationClient, error) {
 	row, cancel := v.queryRowContext(`SELECT `+clientCoreColumns("n")+` FROM notifications n WHERE n.id = ?`, id)
@@ -207,9 +208,12 @@ func (v *Database) getClientByID(id int) (*NotificationClient, error) {
 	return &client, nil
 }
 
+// findIOSDeviceClient looks a native device (iOS or Android) up by id alone
+// (no secret check) - used internally by the register/update functions,
+// which verify the secret themselves against the hash this returns.
 func (v *Database) findIOSDeviceClient(deviceID string) (*NotificationClient, error) {
 	query := `SELECT ` + clientCoreColumns("n") + `, n.device_secret_hash
-              FROM notifications n WHERE n.device_id = ? AND n.platform = 'ios'`
+              FROM notifications n WHERE n.device_id = ? AND n.platform IN ('ios', 'android')`
 	row, cancel := v.queryRowContext(query, deviceID)
 	defer cancel()
 
@@ -219,7 +223,7 @@ func (v *Database) findIOSDeviceClient(deviceID string) (*NotificationClient, er
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrClientNotFound
 		}
-		return nil, fmt.Errorf("find ios device: %w", err)
+		return nil, fmt.Errorf("find device: %w", err)
 	}
 
 	client.deviceSecretHash = secretHash.String
@@ -227,4 +231,92 @@ func (v *Database) findIOSDeviceClient(deviceID string) (*NotificationClient, er
 	client.RecentNotifications = pruneRecentNotificationEntries(client.RecentNotifications, time.Now().In(v.timeZone))
 
 	return &client, nil
+}
+
+// fcmTokenPattern bounds an FCM registration token: printable, URL-safe-ish
+// characters (letters, digits, '-', '_', ':'), 32 to 4096 long.
+// (Go's regexp caps a repeat count at 1000, so the length is checked apart.)
+var fcmTokenPattern = regexp.MustCompile(`^[A-Za-z0-9_:\-]+$`)
+
+func validateFcmToken(fcmToken string) error {
+	if fcmToken != "" && (len(fcmToken) < 32 || len(fcmToken) > 4096 || !fcmTokenPattern.MatchString(fcmToken)) {
+		return errors.New("invalid fcm token")
+	}
+	return nil
+}
+
+// RegisterAndroidDevice is RegisterIOSDevice for an Android device: it
+// creates the client, or refreshes the FCM token of one already registered
+// under the same deviceID+secret. An empty token keeps the stored one (the
+// app may register before Firebase has handed it a token).
+func (v *Database) RegisterAndroidDevice(deviceID, secret, fcmToken string) (*NotificationClient, error) {
+	if !validDeviceID(deviceID) {
+		return nil, errors.New("invalid device id")
+	}
+	if len(secret) < 16 {
+		return nil, errors.New("invalid device secret")
+	}
+	if err := validateFcmToken(fcmToken); err != nil {
+		return nil, err
+	}
+
+	secretHash := hashDeviceSecret(secret)
+	existing, err := v.findIOSDeviceClient(deviceID)
+	if err != nil && !errors.Is(err, ErrClientNotFound) {
+		return nil, err
+	}
+	if err == nil {
+		if existing.Platform != "android" || subtle.ConstantTimeCompare([]byte(existing.deviceSecretHash), []byte(secretHash)) != 1 {
+			return nil, ErrDeviceSecretMismatch
+		}
+		if fcmToken != "" {
+			if err := v.setAndroidDeviceFcm(existing.Id, fcmToken); err != nil {
+				return nil, fmt.Errorf("update device: %w", err)
+			}
+		}
+		return v.findIOSDeviceClient(deviceID)
+	}
+
+	now := int(time.Now().In(v.timeZone).Unix())
+	if _, err := v.execContext(
+		`INSERT INTO notifications (platform, device_id, device_secret_hash, fcm_token, created)
+         VALUES ('android', ?, ?, ?, ?)`,
+		deviceID, secretHash, nullableString(fcmToken), now,
+	); err != nil {
+		return nil, fmt.Errorf("create device: %w", err)
+	}
+	return v.findIOSDeviceClient(deviceID)
+}
+
+// UpdateAndroidDeviceToken rotates a registered Android device's FCM token.
+func (v *Database) UpdateAndroidDeviceToken(deviceID, secret, fcmToken string) (*NotificationClient, error) {
+	client, err := v.FindIOSDeviceClient(deviceID, secret)
+	if err != nil {
+		return nil, err
+	}
+	if client.Platform != "android" {
+		return nil, ErrDeviceSecretMismatch
+	}
+	if err := validateFcmToken(fcmToken); err != nil {
+		return nil, err
+	}
+	if fcmToken != "" {
+		if err := v.setAndroidDeviceFcm(client.Id, fcmToken); err != nil {
+			return nil, fmt.Errorf("update device token: %w", err)
+		}
+	}
+	return v.findIOSDeviceClient(deviceID)
+}
+
+// setAndroidDeviceFcm overwrites (or, with "", clears) an Android device's
+// FCM token without touching the row that owns its subscriptions.
+func (v *Database) setAndroidDeviceFcm(clientID int, fcmToken string) error {
+	if v == nil {
+		return nil
+	}
+	_, err := v.execContext(
+		`UPDATE notifications SET fcm_token = ? WHERE id = ? AND platform = 'android'`,
+		nullableString(fcmToken), clientID,
+	)
+	return err
 }

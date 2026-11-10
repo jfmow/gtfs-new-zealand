@@ -52,8 +52,9 @@ export function TrackerHero() {
 
     // Stops still to go, counting the target itself.
     const toGo = vehicle && stops && target && startSeq !== undefined
-        ? stops.filter((s) => s.sequence >= startSeq && s.sequence <= (yoursAhead && riderStop ? riderStop.sequence : startSeq)).length
+        ? Math.max(1, stops.filter((s) => s.sequence >= startSeq && s.sequence <= (yoursAhead && riderStop ? riderStop.sequence : startSeq)).length)
         : null
+    const toGoLabel = (n: number) => (isAtStop && n <= 1 && !yoursAhead ? "At the stop" : isAtStop && n <= 1 ? "At your stop" : n <= 1 ? (yoursAhead ? "Your stop is next" : "Next stop") : `${n} stops to go`)
 
     const VehicleIcon = vehicle?.type?.toLowerCase() === "train" ? TrainFront : vehicle?.type?.toLowerCase() === "ferry" ? Ship : Bus
     const platform = vehicle?.trip.next_stop.platform
@@ -90,8 +91,8 @@ export function TrackerHero() {
                 </div>
             )}
 
-            {vehicle && toGo !== null && toGo > 0 && yoursAhead && (
-                <div className="space-y-1.5" aria-label={toGo === 1 ? "Your stop is next" : `${toGo} stops to go`}>
+            {vehicle && toGo !== null && (
+                <div className="space-y-1.5" aria-label={toGoLabel(toGo)}>
                     <div className="flex items-center" aria-hidden>
                         <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full" style={{ background: `#${hex}`, color: textOn(hex) }}>
                             <VehicleIcon className="h-3 w-3" strokeWidth={2.5} />
@@ -103,10 +104,16 @@ export function TrackerHero() {
                             </span>
                         ))}
                         <span className="h-[3px] flex-1" style={{ background: `#${hex}` }} />
-                        <MapPin className="h-5 w-5 shrink-0 fill-red-500 text-background" strokeWidth={1.5} />
+                        {yoursAhead ? (
+                            <MapPin className="h-[22px] w-[22px] shrink-0 fill-red-500 text-white" strokeWidth={1.5} />
+                        ) : (
+                            <span className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-[2.5px]" style={{ borderColor: `#${hex}` }}>
+                                <span className="h-2 w-2 rounded-full" style={{ background: `#${hex}` }} />
+                            </span>
+                        )}
                     </div>
                     <p className="text-[13px] font-medium text-muted-foreground">
-                        {isAtStop && toGo <= 1 ? "At the stop" : toGo === 1 ? "Your stop is next" : `${toGo} stops to go`}
+                        {toGoLabel(toGo)}
                     </p>
                 </div>
             )}

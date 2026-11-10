@@ -46,7 +46,7 @@ func setupRoutesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, getRout
 		}
 
 		if searchQueryTooLarge(routeName) {
-			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", "Search is limited to 8 words / 100 characters"))
+			return JsonApiResponse(c, http.StatusBadRequest, "search too long", nil, ResponseDetails("details", searchQueryLimitMessage))
 		}
 
 		routes, err := gtfsData.SearchForRouteByNameOrID(routeName)

@@ -234,7 +234,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_jr_region_status ON journey_reminders(region, status);`,
-		// One row per running Live Activity (`ios/Shared/JourneyActivityAttributes.swift`).
+		// One row per running Live Activity (`mobile/modules/transit-native/ios/JourneyActivityAttributes.swift`).
 		// `push_token` is the activity's own token from `Activity.pushTokenUpdates` -
 		// distinct from the device's `apns_token` (used for plain alert pushes),
 		// which is still where `runLiveActivitiesCron` gets the sandbox/production
@@ -259,6 +259,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_live_activities_region ON live_activities(region);`,
+		tripActivitiesSchema,
 	}
 
 	for _, stmt := range stmts {
@@ -366,6 +367,17 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 
 	if err := d.migrateNotificationsDeviceIdentity(ctx); err != nil {
 		return fmt.Errorf("ensure schema: %w", err)
+	}
+
+	// Android devices (the Expo app) push through FCM, with their own token.
+	notificationColumns, err := d.columnNames(ctx, "notifications")
+	if err != nil {
+		return fmt.Errorf("ensure schema: %w", err)
+	}
+	if !notificationColumns["fcm_token"] {
+		if _, err := d.db.ExecContext(ctx, `ALTER TABLE notifications ADD COLUMN fcm_token TEXT;`); err != nil {
+			return fmt.Errorf("ensure schema: migrate notifications.fcm_token: %w", err)
+		}
 	}
 
 	return nil
@@ -719,7 +731,7 @@ type rowScanner interface {
 // every client query below selects, in this fixed order:
 //
 //	id, endpoint, p256dh, auth, platform, device_id, apns_token, apns_env,
-//	push_to_start_token, recent_notifications, created, expiry_warning_sent
+//	push_to_start_token, recent_notifications, created, expiry_warning_sent, fcm_token
 //
 // followed by whatever extra columns the caller's query appends (e.g.
 // s.routes, r.min_severity) - passed through to Scan as extra destinations.
@@ -731,6 +743,7 @@ func scanClientRow(row rowScanner, extra ...any) (NotificationClient, error) {
 		endpoint, p256dh, auth         sql.NullString
 		platform                       string
 		deviceID, apnsToken, pushStart sql.NullString
+		fcmToken                       sql.NullString
 		apnsEnv                        string
 		recent                         sql.NullString
 		created                        int
@@ -739,7 +752,7 @@ func scanClientRow(row rowScanner, extra ...any) (NotificationClient, error) {
 
 	dest := append([]any{
 		&id, &endpoint, &p256dh, &auth, &platform, &deviceID, &apnsToken, &apnsEnv, &pushStart,
-		&recent, &created, &expiryWarningSent,
+		&recent, &created, &expiryWarningSent, &fcmToken,
 	}, extra...)
 
 	if err := row.Scan(dest...); err != nil {
@@ -758,6 +771,7 @@ func scanClientRow(row rowScanner, extra ...any) (NotificationClient, error) {
 		ApnsToken:        apnsToken.String,
 		ApnsEnv:          apnsEnv,
 		PushToStartToken: pushStart.String,
+		FcmToken:         fcmToken.String,
 		Notification: webpush.Subscription{
 			Endpoint: endpoint.String,
 			Keys:     webpush.Keys{Auth: auth.String, P256dh: p256dh.String},
@@ -778,7 +792,8 @@ func clientCoreColumns(alias string) string {
 	}
 	return alias + "id, " + alias + "endpoint, " + alias + "p256dh, " + alias + "auth, " +
 		alias + "platform, " + alias + "device_id, " + alias + "apns_token, " + alias + "apns_env, " +
-		alias + "push_to_start_token, " + alias + "recent_notifications, " + alias + "created, " + alias + "expiry_warning_sent"
+		alias + "push_to_start_token, " + alias + "recent_notifications, " + alias + "created, " + alias + "expiry_warning_sent, " +
+		alias + "fcm_token"
 }
 
 func (d *Database) queryContext(query string, args ...any) (*sql.Rows, context.CancelFunc, error) {
