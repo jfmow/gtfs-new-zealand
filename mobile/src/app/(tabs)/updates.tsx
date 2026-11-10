@@ -14,6 +14,7 @@ import { AlertList } from "@/components/alerts"
 import { StarTile } from "@/components/departures"
 import { EmptyState, GlassButton, Loading, ModeIcon, RouteBadge } from "@/components/ui"
 import { api } from "@/lib/api"
+import { readable, useLayout } from "@/lib/layout"
 import { openDeepLink } from "@/lib/links"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { unwrap, useClosestStops, useStopAlerts } from "@/lib/queries"
@@ -28,9 +29,11 @@ export default function UpdatesTab() {
     const { region } = useRegion()
     const hasRealtime = region.realtime !== false
     const [inbox, setInbox] = useState(true)
+    const { wide } = useLayout()
     return (
         <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.grouped }}>
-            <View style={styles.topRow}>
+            {/* Service alerts splits the full width on wide windows; the inbox stays a readable column. */}
+            <View style={[styles.topRow, readable(wide && (inbox || !hasRealtime))]}>
                 {hasRealtime ? (
                     <>
                         <ChipButton label="For you" active={inbox} onPress={() => setInbox(true)} />
@@ -58,6 +61,7 @@ function ChipButton({ label, active, onPress }: { label: string; active: boolean
 /** "For you" - iOS `NotificationsInbox`: Alerts & reminders, then today's and earlier notifications. */
 function Inbox() {
     const colors = useColors()
+    const { wide } = useLayout()
     const { region, ready } = useRegion()
     const tz = region.timeZone
     const mine = useQuery({ queryKey: ["mine", region.url], queryFn: async () => unwrap(api.mySubscriptions()), enabled: ready })
@@ -76,7 +80,7 @@ function Inbox() {
     }
 
     return (
-        <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={() => { mine.refetch() }} />}>
+        <ScrollView contentContainerStyle={[styles.scroll, readable(wide)]} refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={() => { mine.refetch() }} />}>
             <Pressable accessibilityRole="button" onPress={() => router.push("/manage-notifications")} style={[styles.group, styles.manage, { backgroundColor: colors.card }]}>
                 <BellRing size={20} color={colors.primary} />
                 <Text style={[type.body, { flex: 1, fontSize: 17, color: colors.foreground }]}>Alerts & reminders</Text>
@@ -108,11 +112,39 @@ function Inbox() {
     )
 }
 
-/** Service alerts - search any stop, or your stops and the nearest few with a one-line summary each. */
+/**
+ * Service alerts - search any stop, or your stops and the nearest few with
+ * a one-line summary each. Wide windows split it (iOS's Alerts split): the
+ * list stays on the left and the picked stop's alerts fill the right.
+ */
 function ServiceAlerts() {
     const colors = useColors()
+    const layout = useLayout()
     const [query, setQuery] = useState("")
     const [selected, setSelected] = useState<string | null>(null)
+    if (layout.wide) {
+        return (
+            <View style={{ flex: 1, flexDirection: "row" }}>
+                <View style={{ width: layout.listWidth, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.border }}>
+                    <View style={[styles.search, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <Search size={14} color={colors.mutedForeground} />
+                        <TextInput value={query} onChangeText={setQuery} placeholder="Search for stop..." placeholderTextColor={colors.mutedForeground} autoCorrect={false} clearButtonMode="while-editing"
+                            accessibilityLabel="Search for stop" style={[type.body, { flex: 1, color: colors.foreground, paddingVertical: 0 }]} />
+                    </View>
+                    {query.trim().length >= 2
+                        ? <StopSearchResults query={query.trim()} navigate={false} onPick={(s) => { setSelected(s.name); setQuery("") }} />
+                        : <Overview onSelect={setSelected} selected={selected} />}
+                </View>
+                <View style={{ flex: 1 }}>
+                    {selected ? <SelectedStop key={selected} query={selected} onClear={() => setSelected(null)} /> : (
+                        <View style={{ flex: 1, justifyContent: "center", padding: spacing.xl }}>
+                            <EmptyState icon={MessageSquareWarning} title="Pick a stop" body="Its service alerts show up here." />
+                        </View>
+                    )}
+                </View>
+            </View>
+        )
+    }
     return (
         <View style={{ flex: 1 }}>
             {!selected ? (
@@ -154,7 +186,7 @@ function SelectedStop({ query, onClear }: { query: string; onClear: () => void }
     )
 }
 
-function Overview({ onSelect }: { onSelect: (q: string) => void }) {
+function Overview({ onSelect, selected }: { onSelect: (q: string) => void; selected?: string | null }) {
     const { region } = useRegion()
     const saved = useSavedStops(getRegionSlug(region))
     const nearby = useClosestStops(coordinateOf(useUserLocation(false)))
@@ -168,12 +200,12 @@ function Overview({ onSelect }: { onSelect: (q: string) => void }) {
             ) : null}
             {saved.stops.length ? (
                 <Section title="Your stops">
-                    {saved.stops.map((s, i) => <SummaryRow key={s.stopId} query={s.query} title={s.name} border={i > 0} tile={<StarTile color={s.color} />} onPress={() => onSelect(s.query)} />)}
+                    {saved.stops.map((s, i) => <SummaryRow key={s.stopId} query={s.query} title={s.name} border={i > 0} tile={<StarTile color={s.color} />} selected={selected === s.query} onPress={() => onSelect(s.query)} />)}
                 </Section>
             ) : null}
             {near.length ? (
                 <Section title="Near you">
-                    {near.map((s, i) => <SummaryRow key={s.stop_id} query={boardQuery(s)} title={cleanStopName(s.stop_name)} border={i > 0} tile={<ModeTile mode={s.stop_type} />} onPress={() => onSelect(boardQuery(s))} />)}
+                    {near.map((s, i) => <SummaryRow key={s.stop_id} query={boardQuery(s)} title={cleanStopName(s.stop_name)} border={i > 0} tile={<ModeTile mode={s.stop_type} />} selected={selected === boardQuery(s)} onPress={() => onSelect(boardQuery(s))} />)}
                 </Section>
             ) : null}
         </ScrollView>
@@ -199,7 +231,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 const shortRoute = (id: string) => id.replace(/^(.+)-\d+$/, "$1")
 
 /** "Britomart · 2 happening now, 1 planned" with the affected routes - iOS `StopAlertsSummaryRow`. */
-function SummaryRow({ query, title, tile, border, onPress }: { query: string; title: string; tile: React.ReactNode; border?: boolean; onPress: () => void }) {
+function SummaryRow({ query, title, tile, border, selected, onPress }: { query: string; title: string; tile: React.ReactNode; border?: boolean; selected?: boolean; onPress: () => void }) {
     const colors = useColors()
     const alerts = useStopAlerts(query)
     let active = 0
@@ -214,7 +246,7 @@ function SummaryRow({ query, title, tile, border, onPress }: { query: string; ti
     const notFound = (alerts.error as Error | null)?.message?.includes("404")
     const count = [active ? `${active} happening now` : null, upcoming ? `${upcoming} planned` : null].filter(Boolean).join(", ")
     return (
-        <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={[styles.summary, border && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginLeft: 0 }]}>
+        <Pressable accessibilityRole="button" accessibilityLabel={title} accessibilityState={{ selected: !!selected }} onPress={onPress} style={[styles.summary, border && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, marginLeft: 0 }, selected && { backgroundColor: colors.muted }]}>
             {tile}
             <View style={{ flex: 1, gap: 5 }}>
                 <Text style={[type.bodyMedium, { color: colors.foreground }]}>{title}</Text>

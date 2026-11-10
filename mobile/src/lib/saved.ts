@@ -34,6 +34,12 @@ export interface SavedPlace {
     lat: number
     lon: number
     region: string
+    /** Icon id from `PLACE_ICONS` (components/place-style.tsx); unset = the kind's default. */
+    icon?: string
+    /** Hex colour; unset = the kind's default. */
+    color?: string
+    /** Position in the rider's order (Home's launcher, the Planner's list); unset sorts last, oldest first. */
+    order?: number
 }
 
 export interface SavedTrip {
@@ -78,18 +84,43 @@ export function useSavedStops(region: string) {
     return { stops, isSaved, toggle, remove, move, update }
 }
 
+/** A region's places in the rider's order (`order`, then the order they were saved). */
+function orderedPlaces(all: SavedPlace[], region: string): SavedPlace[] {
+    return all
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => p.region === region)
+        .sort((a, b) => (a.p.order ?? Number.MAX_SAFE_INTEGER) - (b.p.order ?? Number.MAX_SAFE_INTEGER) || a.i - b.i)
+        .map(({ p }) => p)
+}
+
 export function useSavedPlaces(region: string) {
     const [all, set] = useStored(savedPlacesStore)
-    const places = all.filter((p) => p.region === region)
+    const places = orderedPlaces(all, region)
     const save = (place: Omit<SavedPlace, "id" | "region"> & { id?: string }) =>
         set((prev) => {
             // One home and one work per region.
             const id = place.id ?? (place.kind === "other" ? `${Date.now()}` : place.kind)
-            const rest = prev.filter((p) => !(p.region === region && p.id === id))
-            return [...rest, { ...place, id, region }]
+            const existing = prev.find((p) => p.region === region && p.id === id)
+            const mine = orderedPlaces(prev, region)
+            // An edit keeps its spot; a new place goes on the end.
+            const order = existing?.order ?? place.order ?? (mine.length ? Math.max(...mine.map((p, i) => p.order ?? i)) + 1 : 0)
+            const saved: SavedPlace = { ...existing, ...place, id, region, order }
+            return existing ? prev.map((p) => (p === existing ? saved : p)) : [...prev, saved]
         })
     const remove = (id: string) => set((prev) => prev.filter((p) => !(p.region === region && p.id === id)))
-    return { places, save, remove, home: places.find((p) => p.kind === "home"), work: places.find((p) => p.kind === "work") }
+    /** Moves a place `delta` spots; every place in the region gets an explicit `order`, so it syncs. */
+    const move = (id: string, delta: number) =>
+        set((prev) => {
+            const mine = orderedPlaces(prev, region)
+            const i = mine.findIndex((p) => p.id === id)
+            const j = i + delta
+            if (i < 0 || j < 0 || j >= mine.length) return prev
+            const next = [...mine]
+            ;[next[i], next[j]] = [next[j], next[i]]
+            const orderOf = new Map(next.map((p, k) => [p.id, k]))
+            return prev.map((p) => (p.region === region && orderOf.has(p.id) ? { ...p, order: orderOf.get(p.id)! } : p))
+        })
+    return { places, save, remove, move, home: places.find((p) => p.kind === "home"), work: places.find((p) => p.kind === "work") }
 }
 
 export function useSavedTrips(region: string) {

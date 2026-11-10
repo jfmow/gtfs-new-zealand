@@ -1,4 +1,3 @@
-import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import * as Haptics from "expo-haptics"
 import { router, useLocalSearchParams } from "expo-router"
 import { ArrowDownCircle, ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, WifiOff } from "@/components/icons"
@@ -12,6 +11,7 @@ import { getRegionSlug } from "@transit/shared/regions"
 import { lineCoordinates } from "@transit/shared/models"
 import { JourneyLegBar, JourneyTimeline, journeyLines, legDate, legRouteName, type LegStatus } from "@/components/journey"
 import { TransitMap, isValidCoordinate, type MapCamera } from "@/components/transit-map"
+import { MapDrawer, panelInset } from "@/components/map-drawer"
 import { ErrorText, FitRow, GlassButton, Loading, RouteBadge, hexColor } from "@/components/ui"
 import type { JourneyTick } from "@/lib/journey-session"
 import { api } from "@/lib/api"
@@ -24,6 +24,7 @@ import { usePlan } from "@/lib/plans"
 import { unwrap } from "@/lib/queries"
 import { setJourneyTrackerOpen } from "@/lib/push"
 import { useRegion } from "@/lib/region"
+import { useLayout } from "@/lib/layout"
 import { journeyCamera, useTrackerCamera } from "@/lib/tracker-camera"
 import { useWalkNavigation } from "@/lib/walk-nav"
 import { radius, spacing, type, useColors } from "@/theme"
@@ -72,7 +73,10 @@ export default function JourneyTracker() {
     const snapPoints = useMemo(() => [peekHeight, "40%", "90%"], [peekHeight])
     // The map's clear area ends at the drawer (iOS caps it at half the screen when the drawer's up).
     const drawerCover = drawer === "peek" ? peekHeight : drawer === "compact" ? COMPACT_COVER : screenHeight / 2
-    const mapPadding = { top: insets.top + 70 + (walk || moment ? 76 : 0), bottom: drawerCover, left: 0, right: 0 }
+    // Wide windows: no drawer - the map's clear area is right of the side panel.
+    const layout = useLayout()
+    const sideInset = layout.wide ? panelInset(layout.panelWidth, insets.left) : 0
+    const mapPadding = { top: insets.top + 70 + (walk || moment ? 76 : 0), bottom: layout.wide ? insets.bottom + 20 : drawerCover, left: sideInset, right: 0 }
     const tracker = useTrackerCamera(camera, journeyCamera(display ?? null, snap, vehicle, user), { padding: mapPadding, threeD: filter.threeD })
     // The active ride is drawn along the vehicle's whole route, greyed before
     // you board and after you get off (iOS `rideShapes`); same cache as the trip screen.
@@ -179,16 +183,16 @@ export default function JourneyTracker() {
                     <GlassButton icon={Ellipsis} label="More" onPress={more} size={52} />
                 </View>
             </View>
-            {walk && !moment ? <WalkBanner walk={walk} top={insets.top + 72} /> : null}
+            {walk && !moment ? <WalkBanner walk={walk} top={insets.top + 72} left={sideInset} /> : null}
             {moment ? (
-                <View accessibilityLiveRegion="assertive" style={[styles.banner, { top: insets.top + 72, backgroundColor: colors.primary }]}>
+                <View accessibilityLiveRegion="assertive" style={[styles.banner, { top: insets.top + 72, backgroundColor: colors.primary }, layout.wide && { left: sideInset + spacing.md }]}>
                     <Text style={[type.cardTitle, { color: colors.primaryForeground }]}>{moment.title}</Text>
                     <Text style={[type.body, { color: colors.primaryForeground }]}>{moment.body}</Text>
                 </View>
             ) : null}
 
-            <BottomSheet snapPoints={snapPoints} index={1} onChange={(i) => i >= 0 && setDrawer(DRAWER_STATES[i] ?? "compact")} backgroundStyle={{ backgroundColor: colors.background }} handleIndicatorStyle={{ backgroundColor: colors.mutedForeground, width: 40 }}>
-                <BottomSheetScrollView contentContainerStyle={{ paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: insets.bottom + 40, gap: spacing.lg }}>
+            <MapDrawer snapPoints={snapPoints} index={1} onChange={(i) => i >= 0 && setDrawer(DRAWER_STATES[i] ?? "compact")}
+                contentContainerStyle={[{ paddingHorizontal: spacing.lg, gap: spacing.lg }, !layout.wide && { paddingTop: spacing.sm }]}>
                     {!tick ? <Loading /> : (
                         <>
                             <View style={styles.hero} accessible onLayout={(e) => setHeroHeight(e.nativeEvent.layout.height)}>
@@ -241,21 +245,20 @@ export default function JourneyTracker() {
                                 tracked={(i) => { const l = legs[i]; return l?.Mode === "transit" && tick ? !!tick.vehicles[l.TripID] || undefined : undefined }} />
                         </>
                     )}
-                </BottomSheetScrollView>
-            </BottomSheet>
+            </MapDrawer>
         </View>
     )
 }
 
 /** The walking step you're on - iOS's turn-by-turn card over the map. */
-function WalkBanner({ walk, top }: { walk: NonNullable<ReturnType<typeof useWalkNavigation>>; top: number }) {
+function WalkBanner({ walk, top, left = 0 }: { walk: NonNullable<ReturnType<typeof useWalkNavigation>>; top: number; left?: number }) {
     const colors = useColors()
     const { step, distance, arrived } = walk
     const Icon = arrived || step.type === "arrive" ? Flag : step.type === "depart" ? MapPin : step.modifier.includes("right") ? CornerUpRight : step.modifier.includes("left") ? CornerUpLeft : ArrowUp
     const text = arrived ? "You've arrived" : step.instruction.charAt(0).toUpperCase() + step.instruction.slice(1)
     return (
         <View accessible accessibilityLiveRegion="polite" accessibilityLabel={`${text}${!arrived && distance > 0 ? `, ${formatDistance(distance)}` : ""}`}
-            style={[styles.walkBanner, { top, backgroundColor: arrived ? colors.success + "26" : colors.card + "f2", borderColor: colors.border }]}>
+            style={[styles.walkBanner, { top, left: left + spacing.lg, backgroundColor: arrived ? colors.success + "26" : colors.card + "f2", borderColor: colors.border }]}>
             <View style={[styles.walkIcon, { backgroundColor: arrived ? colors.success : colors.live }]}><Icon size={20} color="#fff" /></View>
             <View style={{ flex: 1 }}>
                 <Text style={[type.cardTitle, { color: colors.foreground }]} numberOfLines={2}>{text}</Text>

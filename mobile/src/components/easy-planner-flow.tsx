@@ -17,6 +17,7 @@ import { useRegion } from "@/lib/region"
 import { useSettings } from "@/lib/saved"
 import { radius, spacing, type, useColors } from "@/theme"
 import type { JourneyPlanRequest } from "@transit/shared/endpoints"
+import { readable, useLayout } from "@/lib/layout"
 
 type Step = "to" | "from" | "how" | "when" | "result"
 
@@ -27,6 +28,7 @@ type Step = "to" | "from" | "how" | "when" | "result"
  */
 export function EasyPlannerFlow({ embedded = false }: { embedded?: boolean }) {
     const colors = useColors()
+    const { wide } = useLayout()
     const { region } = useRegion()
     const tz = region.timeZone
     const [settings] = useSettings()
@@ -77,8 +79,8 @@ export function EasyPlannerFlow({ embedded = false }: { embedded?: boolean }) {
     const body = (
         <>
             {embedded ? null : <Stack.Screen options={{ title, headerLeft: () => <HeaderTextButton title="Close" side="left" onPress={() => router.back()} /> }} />}
-            {embedded ? <Text style={[type.metaMedium, { color: colors.mutedForeground, paddingHorizontal: spacing.lg, paddingTop: spacing.sm }]}>{title}</Text> : null}
-            <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            {embedded ? <Text style={[type.metaMedium, { color: colors.mutedForeground, paddingHorizontal: spacing.lg, paddingTop: spacing.sm }, readable(wide)]}>{title}</Text> : null}
+            <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={[styles.content, readable(wide)]} keyboardShouldPersistTaps="handled">
                 {step === "to" ? (
                     <>
                         <Text style={[styles.question, { color: colors.foreground }]}>Where do you want to go?</Text>

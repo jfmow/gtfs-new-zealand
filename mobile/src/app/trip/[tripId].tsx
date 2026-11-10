@@ -1,4 +1,3 @@
-import BottomSheet, { BottomSheetScrollView } from "@gorhom/bottom-sheet"
 import { useQuery } from "@tanstack/react-query"
 import { Stack, router, useLocalSearchParams } from "expo-router"
 import { Bell, BellRing, ChevronDown, ChevronLeft, ChevronUp, Ellipsis, LocationNorthCircle, MapPin, TriangleAlert, User, WifiOff } from "@/components/icons"
@@ -11,9 +10,11 @@ import { VehicleProgressRatchet } from "@transit/shared/logic/basics"
 import { laClock } from "@transit/shared/logic/journey-live"
 import { lineCoordinates, tripStopLabel, type StopTimeUpdate, type TripStopRef } from "@transit/shared/models"
 import { occupancyShort } from "@/components/departures"
+import { MapDrawer, panelInset } from "@/components/map-drawer"
 import { TransitMap, type MapCamera, type MapMarker } from "@/components/transit-map"
 import { FitRow, GlassButton, ModeIcon, RouteBadge, hexColor, textOn } from "@/components/ui"
 import { api } from "@/lib/api"
+import { useLayout } from "@/lib/layout"
 import { useMapFilter } from "@/lib/map-filter"
 import { requestNotifications } from "@/lib/push"
 import { unwrap } from "@/lib/queries"
@@ -122,7 +123,11 @@ export default function TripTracker() {
     const cameraMode: TrackerCameraMode = v
         ? { kind: "follow", id: tripId!, at: { lat: v.position.lat, lon: v.position.lon }, spanMeters: 700, bearing: v.position.bearing }
         : rows.length ? { kind: "frame", points: rows.map((s) => ({ lat: s.lat, lon: s.lon })), minSpanMeters: 800 } : { kind: "none" }
-    const mapPadding = { top: insets.top + 60, bottom: 360, left: 0, right: 0 }
+    // Phones: clear of the top bar and the drawer. Wide windows: right of the side panel.
+    const layout = useLayout()
+    const mapPadding = layout.wide
+        ? { top: insets.top + 60, bottom: insets.bottom + 20, left: panelInset(layout.panelWidth, insets.left), right: 0 }
+        : { top: insets.top + 60, bottom: 360, left: 0, right: 0 }
     const tracker = useTrackerCamera(camera, cameraMode, { padding: mapPadding, threeD: filter.threeD })
 
     const more = () => {
@@ -243,8 +248,7 @@ export default function TripTracker() {
                 </View>
             </View>
 
-            <BottomSheet snapPoints={["42%", "88%"]} index={0} backgroundStyle={{ backgroundColor: colors.background }} handleIndicatorStyle={{ backgroundColor: colors.mutedForeground, width: 40 }}>
-                <BottomSheetScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+            <MapDrawer snapPoints={["42%", "88%"]} index={0}>
                 <View style={styles.header}>
                     {rows.length === 0 && !v ? (
                         hasLoaded ? (
@@ -362,8 +366,7 @@ export default function TripTracker() {
                             </Pressable>
                         )
                     })}
-                </BottomSheetScrollView>
-            </BottomSheet>
+            </MapDrawer>
         </View>
     )
 }

@@ -6,11 +6,14 @@ import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, Text, View } fr
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { boardQuery } from "@transit/shared/models"
 import { hasRealtime } from "@transit/shared/regions"
+import { PANEL_TOP, panelInset } from "@/components/map-drawer"
+import { StopBoardView } from "@/components/stop-board"
 import { buildIndex, clusterMarker, clustersIn, stopMarker, vehicleMarker, type Bounds, type StopPoint, type VehiclePoint } from "@/components/map-markers"
 import { TransitMap, lngLat, type MapCamera } from "@/components/transit-map"
 import { GlassButton } from "@/components/ui"
 import { api } from "@/lib/api"
 import { coordinateOf, useUserLocation } from "@/lib/location"
+import { useLayout } from "@/lib/layout"
 import { useMapFilter } from "@/lib/map-filter"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
@@ -30,6 +33,12 @@ export default function MapTab() {
     const here = coordinateOf(useUserLocation())
     const start = here ?? { lat: region.defaultMapCenter[0], lon: region.defaultMapCenter[1] }
     const [view, setView] = useState<{ bounds: Bounds; zoom: number } | null>(null)
+    // Wide windows: a stop's board opens in a side panel over the map (iOS
+    // `MapSidePanel`) instead of covering it. Phones push the board screen.
+    const layout = useLayout()
+    const [board, setBoard] = useState<string | null>(null)
+    const panelOpen = layout.wide && !!board
+    const openStop = (query: string) => (layout.wide ? setBoard(query) : router.push({ pathname: "/stop/[query]", params: { query } }))
 
     const showStops = mode === "stops" || filter.showStops
     const stops = useQuery({
@@ -99,12 +108,13 @@ export default function MapTab() {
                 center={start}
                 zoom={here ? 15 : 13}
                 threeD={filter.threeD}
+                padding={panelOpen ? { top: 0, bottom: 0, left: panelInset(layout.panelWidth, insets.left), right: 0 } : undefined}
                 onRegionDidChange={(_c, z, b) => setView({ bounds: b, zoom: z })}
                 markers={[
                     ...stopItems.map((item) =>
                         item.kind === "cluster"
                             ? clusterMarker(item, "sc", colors.primary, () => zoomInto(item.lat, item.lon))
-                            : stopMarker(item, () => router.push({ pathname: "/stop/[query]", params: { query: item.query } }))),
+                            : stopMarker(item, () => openStop(item.query))),
                     ...vehicleItems.map((item) =>
                         item.kind === "cluster"
                             ? clusterMarker(item, "vc", colors.primary, () => zoomInto(item.lat, item.lon))
@@ -127,7 +137,7 @@ export default function MapTab() {
             </View>
 
             {mode === "vehicles" && (vehicles.error || filter.routes.length > 0 || (vehicles.data && vehicleItems.length === 0)) ? (
-                <View style={[styles.notice, { top: insets.top + 70, backgroundColor: colors.card + "F2", borderColor: colors.border }]}>
+                <View style={[styles.notice, { top: insets.top + 70, backgroundColor: colors.card + "F2", borderColor: colors.border }, panelOpen && { left: panelInset(layout.panelWidth, insets.left) + spacing.lg }]}>
                     <Text style={[type.meta, { color: colors.foreground }]}>
                         {vehicles.error
                             ? `Live vehicles unavailable: ${(vehicles.error as Error).message}`
@@ -135,6 +145,12 @@ export default function MapTab() {
                                 ? "None of these routes are running right now"
                                 : filter.routes.length > 0 ? `Showing ${filter.routes.map((r) => r.name).join(", ")}` : "No vehicles here right now"}
                     </Text>
+                </View>
+            ) : null}
+
+            {panelOpen ? (
+                <View style={[styles.panel, { top: insets.top + PANEL_TOP, bottom: insets.bottom + spacing.lg, left: insets.left + spacing.lg, width: layout.panelWidth, backgroundColor: colors.background, borderColor: colors.border }]}>
+                    <StopBoardView key={board} query={board!} embedded onClose={() => setBoard(null)} />
                 </View>
             ) : null}
 
@@ -153,5 +169,6 @@ const styles = StyleSheet.create({
     toggle: { flexDirection: "row", borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, padding: 3 },
     toggleItem: { paddingHorizontal: 14, minHeight: 32, justifyContent: "center", borderRadius: 16 },
     notice: { position: "absolute", left: spacing.lg, right: spacing.lg, padding: spacing.sm + 2, borderRadius: radius.lg, borderWidth: StyleSheet.hairlineWidth },
+    panel: { position: "absolute", borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden", paddingTop: spacing.sm },
     bottomRight: { position: "absolute", right: spacing.lg, gap: spacing.md },
 })

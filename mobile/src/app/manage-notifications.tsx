@@ -9,10 +9,12 @@ import { api } from "@/lib/api"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { spacing, type, useColors } from "@/theme"
+import { readable, useLayout } from "@/lib/layout"
 
 /** "Alerts & reminders" - iOS `ManageNotificationsView`: leave-by reminders, route alerts and stop alerts; tap to edit, bin to remove. */
 export default function ManageNotifications() {
     const colors = useColors()
+    const { wide } = useLayout()
     const { region, ready } = useRegion()
     const mine = useQuery({ queryKey: ["mine", region.url], queryFn: async () => unwrap(api.mySubscriptions()), enabled: ready })
     const reminders = useQuery({ queryKey: ["reminders", region.url], queryFn: async () => (await unwrap(api.journeyReminders())) ?? [], enabled: ready })
@@ -25,7 +27,7 @@ export default function ManageNotifications() {
     return (
         <>
             <Stack.Screen options={{ title: "Alerts & reminders" }} />
-            <ScrollView style={{ backgroundColor: colors.grouped }} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={refresh} />}>
+            <ScrollView style={{ backgroundColor: colors.grouped }} contentContainerStyle={[styles.content, readable(wide)]} refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={refresh} />}>
                 {mine.isLoading || reminders.isLoading ? <Loading /> : null}
                 {none ? <Text style={[type.body, { color: colors.mutedForeground, textAlign: "center", marginTop: spacing.xl }]}>{"Nothing set up yet. Tap the bell on a stop for its alerts, or \"Remind me\" on a planned journey."}</Text> : null}
                 {(reminders.data ?? []).length ? (

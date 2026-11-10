@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { router, useLocalSearchParams } from "expo-router"
-import { ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, House, MapPin, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
+import { type LucideIcon, Plus, ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, House, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
 import { useEffect, useState, useSyncExternalStore } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -13,11 +13,14 @@ import { goTime } from "@transit/shared/models"
 import { getRegionSlug } from "@transit/shared/regions"
 import type { JourneyType } from "@transit/shared/types/journey"
 import { normalizeWalkSpeed } from "@transit/shared/walk-speed"
+import { placeStyle, placeTitle } from "@/components/place-style"
 import { EasyPlannerFlow } from "@/components/easy-planner-flow"
 import { PlanCard, hasLeft } from "@/components/journey"
+import { JourneyDetailView } from "@/components/journey-detail"
 import { LocationResults, placeName, type PickedPlace } from "@/components/location-search"
 import { Button, EmptyState, ErrorText, GlassButton, Loading, Muted } from "@/components/ui"
 import { api } from "@/lib/api"
+import { readable, useLayout } from "@/lib/layout"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { optionsChanged, plannerWhenStore, usePlannerOptions, whenLabel } from "@/lib/planner-store"
 import { contextFor, rememberPlans, useFares } from "@/lib/plans"
@@ -115,16 +118,25 @@ function Planner({ params }: { params: PlannerParams }) {
             setLater((prev) => [...prev, ...res.data.filter((p) => !results.some((r) => r.ID === p.ID))])
         }
     }
-    const open = (id: string) => router.push({ pathname: "/journey/[id]", params: { id } })
     const searching = !to || editingFrom || query.length > 0
+    // Wide windows (iOS's planner split): results on the left, the picked
+    // journey beside them - the first one until you pick another. While
+    // searching it's one centred column.
+    const layout = useLayout()
+    const split = layout.wide && !searching
+    const [picked, setPicked] = useState<string | null>(null)
+    const selectedId = split ? (results.find((r) => r.ID === picked) ?? results[0])?.ID ?? null : null
+    const open = (id: string) => (split ? setPicked(id) : router.push({ pathname: "/journey/[id]", params: { id } }))
+    const column = readable(layout.wide && !split)
     const refreshPlans = async () => {
         setLater([])
         await plans.refetch()
     }
 
     return (
-        <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
-            <View style={styles.topRow}>
+        <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, flexDirection: "row", backgroundColor: colors.background }}>
+            <View style={split ? { width: layout.listWidth, borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.border } : { flex: 1 }}>
+            <View style={[styles.topRow, column]}>
                 <View style={[styles.search, { backgroundColor: colors.card, borderColor: colors.border }]}>
                     <Search size={15} color={colors.mutedForeground} />
                     <TextInput
@@ -142,7 +154,7 @@ function Planner({ params }: { params: PlannerParams }) {
                 <GlassButton icon={Gear} label="Settings" onPress={() => router.push("/settings")} size={40} />
             </View>
 
-            <View style={styles.fromRow}>
+            <View style={[styles.fromRow, column]}>
                 <View style={[styles.dot, { backgroundColor: colors.mutedForeground }]} />
                 <Text style={[type.meta, { color: colors.mutedForeground, flexShrink: 1 }]} numberOfLines={1}>From {start?.label ?? "…choose a start"}</Text>
                 <Pressable accessibilityRole="button" onPress={() => { setEditingFrom(true); setQuery("") }} hitSlop={8}>
@@ -165,14 +177,14 @@ function Planner({ params }: { params: PlannerParams }) {
                 ) : null}
             </View>
 
-            <View style={styles.pills}>
+            <View style={[styles.pills, column]}>
                 <Pill icon={Clock} label={whenLabel(when, (d) => laClock(d, tz))} trailing onPress={() => router.push("/planner-time")} />
                 <Pill icon={SlidersHorizontal} label="Options" onPress={() => router.push("/planner-options")} active={optionsChanged(options)} />
             </View>
 
             <ScrollView
                 keyboardShouldPersistTaps="handled"
-                contentContainerStyle={styles.scroll}
+                contentContainerStyle={[styles.scroll, column]}
                 refreshControl={!searching ? <RefreshControl refreshing={plans.isRefetching} onRefresh={refreshPlans} /> : undefined}
             >
                 {searching ? (
@@ -181,13 +193,20 @@ function Planner({ params }: { params: PlannerParams }) {
                         {query.trim().length < 2 ? (
                             <>
                                 {editingFrom && here ? <LocationResults query="" onPick={pick} showCurrent /> : null}
-                                <Text style={[type.metaMedium, styles.groupLabel, { color: colors.mutedForeground }]}>Your places</Text>
+                                <View style={styles.groupHead}>
+                                    <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Your places</Text>
+                                    {places.places.length ? <Pressable accessibilityRole="button" hitSlop={8} onPress={() => router.push("/places")}><Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Manage</Text></Pressable> : null}
+                                </View>
+                                {/* Your places in your order; Home and Work only as "Add" rows at the end until they're set. */}
                                 <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                                    <PlaceRow icon={House} tint="#0ea5e9" title="Home" subtitle={places.home?.label === "Home" ? "Set" : places.home?.label ?? "Add home"} onPress={() => (places.home ? pick({ label: "Home", lat: places.home.lat, lon: places.home.lon }) : router.push({ pathname: "/place", params: { kind: "home" } }))} />
-                                    <PlaceRow icon={Briefcase} tint="#f59e0b" title="Work" subtitle={places.work ? "Set" : "Add work"} onPress={() => (places.work ? pick({ label: "Work", lat: places.work.lat, lon: places.work.lon }) : router.push({ pathname: "/place", params: { kind: "work" } }))} border />
-                                    {places.places.filter((p) => p.kind === "other").map((p) => (
-                                        <PlaceRow key={p.id} icon={MapPin} tint="#10b981" title={p.label} onPress={() => pick({ label: p.label, lat: p.lat, lon: p.lon })} border />
-                                    ))}
+                                    {places.places.map((p, i) => {
+                                        const st = placeStyle(p)
+                                        return <PlaceRow key={p.id} icon={st.icon} tint={st.color} title={placeTitle(p)} subtitle={p.kind !== "other" && p.label !== placeTitle(p) ? p.label : undefined} border={i > 0}
+                                            onPress={() => pick({ label: placeTitle(p), lat: p.lat, lon: p.lon })} />
+                                    })}
+                                    {!places.home ? <PlaceRow icon={House} tint="#0ea5e9" title="Add home" border={places.places.length > 0} onPress={() => router.push({ pathname: "/place", params: { kind: "home" } })} /> : null}
+                                    {!places.work ? <PlaceRow icon={Briefcase} tint="#f59e0b" title="Add work" border={places.places.length > 0 || !places.home} onPress={() => router.push({ pathname: "/place", params: { kind: "work" } })} /> : null}
+                                    <PlaceRow icon={Plus} tint="#10b981" title="Add a place" border onPress={() => router.push({ pathname: "/place", params: { kind: "other" } })} />
                                 </View>
                                 {/* Like iOS, the section only appears once there's a saved trip. */}
                                 {trips.trips.length ? (
@@ -242,15 +261,27 @@ function Planner({ params }: { params: PlannerParams }) {
                         {plans.data && results.length === 0 ? <EmptyState title="No way found" body="Try leaving at a different time, or change the options." /> : null}
                         <View style={{ gap: spacing.md }}>
                             {results.map((p) => (
-                                <PlanCard key={p.ID} plan={p} tz={tz} fare={fares[p.ID]?.label} missed={hasLeft(p)}
-                                    onRemind={p.Legs.some((l) => l.Mode === "transit") && !hasLeft(p) ? () => router.push({ pathname: "/leave-reminder", params: { id: p.ID } }) : undefined}
-                                    onPress={() => open(p.ID)} />
+                                <View key={p.ID} style={p.ID === selectedId ? [styles.selected, { borderColor: colors.primary }] : undefined} accessibilityState={{ selected: p.ID === selectedId }}>
+                                    <PlanCard plan={p} tz={tz} fare={fares[p.ID]?.label} missed={hasLeft(p)}
+                                        onRemind={p.Legs.some((l) => l.Mode === "transit") && !hasLeft(p) ? () => router.push({ pathname: "/leave-reminder", params: { id: p.ID } }) : undefined}
+                                        onPress={() => open(p.ID)} />
+                                </View>
                             ))}
                         </View>
                         {results.length > 0 && !arriveBy ? <Button title="Later departures" variant="secondary" onPress={loadLater} loading={loadingLater} style={{ marginTop: spacing.md }} /> : null}
                     </>
                 )}
             </ScrollView>
+            </View>
+            {split ? (
+                <View style={{ flex: 1 }}>
+                    {selectedId ? <JourneyDetailView key={selectedId} id={selectedId} embedded /> : (
+                        <View style={{ flex: 1, justifyContent: "center", padding: spacing.xl }}>
+                            {plans.isLoading ? <Loading /> : <Text style={[type.meta, { color: colors.mutedForeground, textAlign: "center" }]}>Pick a route to see it here.</Text>}
+                        </View>
+                    )}
+                </View>
+            ) : null}
         </SafeAreaView>
     )
 }
@@ -266,7 +297,7 @@ function Pill({ icon: Icon, label, onPress, trailing, active }: { icon: typeof C
     )
 }
 
-function PlaceRow({ icon: Icon, tint, title, subtitle, onPress, border, trailingIcon: Trailing = ChevronRight }: { icon: typeof House; tint: string; title: string; subtitle?: string; onPress: () => void; border?: boolean; trailingIcon?: typeof ChevronRight }) {
+function PlaceRow({ icon: Icon, tint, title, subtitle, onPress, border, trailingIcon: Trailing = ChevronRight }: { icon: LucideIcon; tint: string; title: string; subtitle?: string; onPress: () => void; border?: boolean; trailingIcon?: typeof ChevronRight }) {
     const colors = useColors()
     return (
         <Pressable accessibilityRole="button" accessibilityLabel={title} onPress={onPress} style={({ pressed }) => [styles.placeRow, border && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }, pressed && { opacity: 0.6 }]}>
@@ -293,5 +324,7 @@ const styles = StyleSheet.create({
     group: { borderRadius: radius.xl, borderWidth: 1, overflow: "hidden" },
     placeRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingHorizontal: 14, paddingVertical: 10 },
     placeIcon: { width: 30, height: 30, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+    // The picked route in the split view: a ring just outside the card.
+    selected: { borderWidth: 2, borderRadius: radius.xl + 3, margin: -3 },
     resultsHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginVertical: spacing.sm },
 })

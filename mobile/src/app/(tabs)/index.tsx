@@ -1,15 +1,17 @@
 import { router } from "expo-router"
-import { ArrowDown, ArrowUp, Briefcase, House, MapPin, Palette, Plus, Route as RouteIcon, ScanLine, Search, Settings as Gear, Trash2 } from "@/components/icons"
+import { type LucideIcon, ArrowDown, ArrowUp, Briefcase, House, MapPin, Palette, Plus, Route as RouteIcon, ScanLine, Search, Settings as Gear, Trash2 } from "@/components/icons"
 import { useState } from "react"
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActionSheetIOS, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { SWATCH_COLORS } from "@transit/shared/colors"
 import { cleanStopName } from "@transit/shared/formatting"
 import { boardQuery } from "@transit/shared/models"
 import { getRegionSlug } from "@transit/shared/regions"
 import { MiniBoard, StarTile } from "@/components/departures"
+import { placeStyle, placeTitle } from "@/components/place-style"
 import { StopSearchResults } from "@/components/stop-search"
 import { EmptyState, GlassButton, Loading, Muted, SectionHeader } from "@/components/ui"
+import { readable, useLayout } from "@/lib/layout"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { useClosestStops } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
@@ -41,11 +43,14 @@ export default function HomeTab() {
     const location = useUserLocation()
     const nearby = useClosestStops(coordinateOf(location))
     const nearbyStops = (nearby.data ?? []).filter((s) => !saved.isSaved(s.stop_id)).slice(0, 3)
+    // Wide windows (iOS Home at regular width): "Your stops" and "Near you" side by side.
+    const { wide } = useLayout()
+    const page = readable(wide, HOME_MAX_WIDTH)
     const date = new Intl.DateTimeFormat("en-NZ", { timeZone: region.timeZone, weekday: "long", day: "numeric", month: "long" }).format(new Date())
 
     return (
         <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
-            <View style={styles.topRow}>
+            <View style={[styles.topRow, page]}>
                 <View style={[styles.search, { backgroundColor: colors.background, borderColor: colors.border }]}>
                     <Search size={14} color={colors.mutedForeground} />
                     <TextInput
@@ -63,16 +68,16 @@ export default function HomeTab() {
             </View>
 
             {searching ? (
-                <StopSearchResults query={query.trim()} onPick={() => setQuery("")} />
+                <View style={[{ flex: 1 }, readable(wide)]}><StopSearchResults query={query.trim()} onPick={() => setQuery("")} /></View>
             ) : (
-                <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+                <ScrollView contentContainerStyle={[styles.scroll, page]} keyboardShouldPersistTaps="handled">
                     <Text accessibilityRole="header" style={[type.display, { color: colors.foreground, marginTop: 4 }]}>{greeting(region.timeZone)}</Text>
                     <Text style={[type.meta, { color: colors.mutedForeground, marginTop: 2 }]}>{date} · {regionCity(region.displayName)}</Text>
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.launcher}>
                         <RoundButton label="Find vehicle" onPress={() => router.push("/find-vehicle")} bg={colors.primary} fg={colors.primaryForeground} icon={ScanLine} />
-                        <PlaceButton place={places.home} kind="home" />
-                        <PlaceButton place={places.work} kind="work" />
+                        {/* Saved places in your order, then saved trips; the add buttons come last so nothing leaves a gap. */}
+                        {places.places.map((p) => <PlaceButton key={p.id} place={p} />)}
                         {trips.trips.map((t) => (
                             <RoundButton
                                 key={t.id}
@@ -83,10 +88,13 @@ export default function HomeTab() {
                                 onPress={() => router.push({ pathname: "/(tabs)/planner", params: { fromLat: String(t.from.lat), fromLon: String(t.from.lon), fromLabel: t.from.label, toLat: String(t.to.lat), toLon: String(t.to.lon), toLabel: t.to.label } })}
                             />
                         ))}
-                        {places.places.filter((p) => p.kind === "other").map((p) => <PlaceButton key={p.id} place={p} kind="other" />)}
+                        {!places.home ? <RoundButton label="Add home" icon={House} dashed onPress={() => router.push({ pathname: "/place", params: { kind: "home" } })} /> : null}
+                        {!places.work ? <RoundButton label="Add work" icon={Briefcase} dashed onPress={() => router.push({ pathname: "/place", params: { kind: "work" } })} /> : null}
                         <RoundButton label="Add" icon={Plus} dashed onPress={() => router.push({ pathname: "/place", params: { kind: "other" } })} />
                     </ScrollView>
 
+                    <View style={wide ? styles.columns : undefined}>
+                    <View style={wide ? styles.column : undefined}>
                     <SectionHeader title="Your stops" action={saved.stops.length ? (editing ? "Done" : "Edit") : undefined} onAction={() => setEditing((e) => !e)} />
                     {saved.stops.length === 0 ? (
                         <EmptyState icon={MapPin} title="No saved stops yet" body="Save the places and stops you use most and their next departures show up here." />
@@ -98,6 +106,8 @@ export default function HomeTab() {
                         </View>
                     )}
 
+                    </View>
+                    <View style={wide ? styles.column : undefined}>
                     <SectionHeader title="Near you" action={location.status === "ok" ? "Map" : undefined} onAction={() => router.push("/(tabs)/map")} />
                     {location.status === "denied" ? (
                         <EmptyState icon={MapPin} title="See live departures from the stops around you." body="Turn on location in Settings." />
@@ -117,6 +127,8 @@ export default function HomeTab() {
                             ))}
                         </View>
                     )}
+                    </View>
+                    </View>
                 </ScrollView>
             )}
         </SafeAreaView>
@@ -166,28 +178,40 @@ function IconAction({ icon: Icon, label, onPress, disabled, danger }: { icon: ty
     )
 }
 
-const PLACE_STYLE = {
-    home: { icon: House, fg: "#0ea5e9", label: "Home", add: "Add home" },
-    work: { icon: Briefcase, fg: "#f59e0b", label: "Work", add: "Add work" },
-    other: { icon: MapPin, fg: "#10b981", label: "", add: "Add" },
-} as const
-
-function PlaceButton({ place, kind }: { place?: SavedPlace; kind: "home" | "work" | "other" }) {
-    const s = PLACE_STYLE[kind]
-    if (!place) return <RoundButton label={s.add} icon={s.icon} dashed onPress={() => router.push({ pathname: "/place", params: { kind } })} />
+/** A saved place in the launcher: tap plans a trip there; long-press to edit, reorder or remove. */
+function PlaceButton({ place }: { place: SavedPlace }) {
+    const { region } = useRegion()
+    const places = useSavedPlaces(getRegionSlug(region))
+    const s = placeStyle(place)
+    const title = placeTitle(place)
+    const menu = () => {
+        const options: { label: string; run: () => void; destructive?: boolean }[] = [
+            { label: `Edit ${title}`, run: () => router.push({ pathname: "/place", params: { id: place.id } }) },
+            { label: "Reorder places", run: () => router.push("/places") },
+            { label: "Remove", run: () => places.remove(place.id), destructive: true },
+        ]
+        if (Platform.OS === "ios") {
+            ActionSheetIOS.showActionSheetWithOptions(
+                { title, options: [...options.map((o) => o.label), "Cancel"], cancelButtonIndex: options.length, destructiveButtonIndex: options.findIndex((o) => o.destructive) },
+                (i) => options[i]?.run(),
+            )
+        } else {
+            Alert.alert(title, undefined, [...options.map((o) => ({ text: o.label, onPress: o.run, style: o.destructive ? ("destructive" as const) : undefined })), { text: "Cancel", style: "cancel" as const }])
+        }
+    }
     return (
         <RoundButton
-            label={kind === "other" ? place.label : s.label}
+            label={title}
             icon={s.icon}
-            bg={s.fg + "33"}
-            fg={s.fg}
+            bg={s.color + "33"}
+            fg={s.color}
             onPress={() => router.push({ pathname: "/(tabs)/planner", params: { toLat: String(place.lat), toLon: String(place.lon), toLabel: place.label } })}
-            onLongPress={() => router.push({ pathname: "/place", params: { kind } })}
+            onLongPress={menu}
         />
     )
 }
 
-function RoundButton({ label, icon: Icon, onPress, onLongPress, bg, fg, dashed }: { label: string; icon: typeof House; onPress: () => void; onLongPress?: () => void; bg?: string; fg?: string; dashed?: boolean }) {
+function RoundButton({ label, icon: Icon, onPress, onLongPress, bg, fg, dashed }: { label: string; icon: LucideIcon; onPress: () => void; onLongPress?: () => void; bg?: string; fg?: string; dashed?: boolean }) {
     const colors = useColors()
     return (
         <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} onLongPress={onLongPress} style={styles.round}>
@@ -199,7 +223,12 @@ function RoundButton({ label, icon: Icon, onPress, onLongPress, bg, fg, dashed }
     )
 }
 
+/** Two board columns at a comfortable width each, not stretched across a 13" iPad. */
+const HOME_MAX_WIDTH = 1040
+
 const styles = StyleSheet.create({
+    columns: { flexDirection: "row", alignItems: "flex-start", gap: spacing.xl },
+    column: { flex: 1, minWidth: 0 },
     topRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.lg, paddingTop: spacing.sm, paddingBottom: spacing.md },
     search: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 44, paddingHorizontal: 12, borderRadius: radius.md, borderWidth: 1 },
     scroll: { paddingHorizontal: spacing.lg, paddingBottom: 130 },

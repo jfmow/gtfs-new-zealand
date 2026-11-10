@@ -9,10 +9,12 @@ import { requestNotifications } from "@/lib/push"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { spacing, useColors } from "@/theme"
+import { readable, useLayout } from "@/lib/layout"
 
 /** A route's service alerts, and following it (the web's /alerts/route/:id). */
 export default function RouteAlerts() {
     const colors = useColors()
+    const { wide } = useLayout()
     const { routeId } = useLocalSearchParams<{ routeId: string }>()
     const { region, ready } = useRegion()
     const alerts = useQuery({ queryKey: ["route-alerts", region.url, routeId], queryFn: async () => (await unwrap(api.alertsForRoute(routeId!))) ?? [], enabled: ready && !!routeId })
@@ -32,7 +34,7 @@ export default function RouteAlerts() {
     return (
         <>
             <Stack.Screen options={{ title: `Route ${routeId}` }} />
-            <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={{ padding: spacing.lg, gap: spacing.md }}>
+            <ScrollView style={{ backgroundColor: colors.background }} contentContainerStyle={[{ padding: spacing.lg, gap: spacing.md }, readable(wide)]}>
                 <Card><Toggle label="Tell me about disruptions" value={following} onChange={(v) => !busy && toggle(v)} /></Card>
                 {alerts.isLoading ? <Loading /> : null}
                 {alerts.error ? <ErrorText>{(alerts.error as Error).message}</ErrorText> : null}

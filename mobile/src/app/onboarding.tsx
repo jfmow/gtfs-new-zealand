@@ -12,10 +12,12 @@ import { notificationsAllowed, requestNotifications } from "@/lib/push"
 import { regions, useRegion } from "@/lib/region"
 import { useSettings } from "@/lib/saved"
 import { spacing, type, useColors } from "@/theme"
+import { readable, useLayout } from "@/lib/layout"
 
 /** First launch - iOS `OnboardingView`: pick a region, then location, notifications and iCloud sync (all optional). */
 export default function Onboarding() {
     const colors = useColors()
+    const { wide } = useLayout()
     const { region, setRegion } = useRegion()
     const [settings, update] = useSettings()
     const [step, setStep] = useState<"region" | "permissions">("region")
@@ -35,7 +37,7 @@ export default function Onboarding() {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-            <ScrollView contentContainerStyle={styles.content}>
+            <ScrollView contentContainerStyle={[styles.content, readable(wide)]}>
                 <Text style={[type.pageTitle, { color: colors.foreground, fontSize: 24 }]}>Welcome to Transit</Text>
                 <Muted style={{ marginTop: spacing.xs }}>Live departures, journey planning and alerts for your trips.</Muted>
 

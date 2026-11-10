@@ -93,6 +93,7 @@ export default function RootLayout() {
                             <Stack.Screen name="settings" options={{ title: "Settings", presentation: "modal" }} />
                             <Stack.Screen name="onboarding" options={{ headerShown: false, presentation: "fullScreenModal", gestureEnabled: false }} />
                             <Stack.Screen name="place" options={{ presentation: "modal" }} />
+                            <Stack.Screen name="places" options={{ presentation: "modal" }} />
                             <Stack.Screen name="alerts/subscribe" options={{ title: "Alerts for this stop", presentation: "modal" }} />
                             <Stack.Screen name="trip/[tripId]" options={{ title: "" }} />
                             <Stack.Screen name="find-vehicle" options={{ presentation: "formSheet", sheetAllowedDetents: [0.6, 1], sheetGrabberVisible: true }} />
