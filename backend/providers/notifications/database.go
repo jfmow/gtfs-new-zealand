@@ -259,6 +259,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             FOREIGN KEY(clientId) REFERENCES notifications(id) ON DELETE CASCADE
         );`,
 		`CREATE INDEX IF NOT EXISTS idx_live_activities_region ON live_activities(region);`,
+		tripActivitiesSchema,
 	}
 
 	for _, stmt := range stmts {

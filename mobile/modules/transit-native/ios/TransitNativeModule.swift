@@ -14,7 +14,7 @@ public class TransitNativeModule: Module {
     public func definition() -> ModuleDefinition {
         Name("TransitNative")
 
-        Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded")
+        Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded", "onTripActivityPushToken", "onTripActivityEnded")
 
         OnStartObserving {
             self.startObserving()
@@ -23,6 +23,7 @@ public class TransitNativeModule: Module {
         OnStopObserving {
             self.observers.forEach { $0.cancel() }
             self.observers = []
+            self.watchedTrips = []
         }
 
         // MARK: app group
@@ -96,6 +97,49 @@ public class TransitNativeModule: Module {
                 await activity.end(nil, dismissalPolicy: .immediate)
             }
         }
+
+        // MARK: Trip Live Activities (one vehicle, to your stop)
+
+        Function("activeTripActivities") { () -> [[String: String]] in
+            Activity<TripActivityAttributes>.activities.map { ["id": $0.id, "tripId": $0.attributes.tripID, "stopId": $0.attributes.stopID] }
+        }
+
+        /// One trip at a time: the same trip and stop is adopted, anything else ends.
+        AsyncFunction("startTripActivity") { (attributesJSON: String, contentJSON: String) -> String in
+            let attributes = try JSONDecoder().decode(TripActivityAttributes.self, from: Data(attributesJSON.utf8))
+            let state = try JSONDecoder().decode(TripActivityAttributes.ContentState.self, from: Data(contentJSON.utf8))
+            for other in Activity<TripActivityAttributes>.activities {
+                if other.attributes.tripID == attributes.tripID, other.attributes.stopID == attributes.stopID, other.attributes.kind == attributes.kind {
+                    self.watchTripToken(other)
+                    await other.update(.init(state: state, staleDate: Date().addingTimeInterval(10 * 60)))
+                    return other.id
+                }
+                await other.end(nil, dismissalPolicy: .immediate)
+            }
+            let activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: state, staleDate: Date().addingTimeInterval(10 * 60)),
+                pushType: .token
+            )
+            self.watchTripToken(activity)
+            return activity.id
+        }
+
+        AsyncFunction("updateTripActivity") { (id: String, contentJSON: String, alertTitle: String?, alertBody: String?) in
+            guard let activity = Activity<TripActivityAttributes>.activities.first(where: { $0.id == id }) else { return }
+            let state = try JSONDecoder().decode(TripActivityAttributes.ContentState.self, from: Data(contentJSON.utf8))
+            var alert: AlertConfiguration?
+            if let alertTitle, let alertBody {
+                alert = AlertConfiguration(title: LocalizedStringResource(stringLiteral: alertTitle), body: LocalizedStringResource(stringLiteral: alertBody), sound: .default)
+            }
+            await activity.update(.init(state: state, staleDate: Date().addingTimeInterval(10 * 60)), alertConfiguration: alert)
+        }
+
+        AsyncFunction("endTripActivity") { (id: String?) in
+            for activity in Activity<TripActivityAttributes>.activities where id == nil || activity.id == id {
+                await activity.end(nil, dismissalPolicy: .immediate)
+            }
+        }
     }
 
     private static func readLegacyStore() -> [String: Any]? {
@@ -155,6 +199,23 @@ public class TransitNativeModule: Module {
         })
     }
 
+    private var watchedTrips = Set<String>()
+
+    private func watchTripToken(_ activity: Activity<TripActivityAttributes>) {
+        guard watchedTrips.insert(activity.id).inserted else { return }
+        observers.append(Task { [weak self] in
+            for await data in activity.pushTokenUpdates {
+                let token = data.map { String(format: "%02x", $0) }.joined()
+                self?.sendEvent("onTripActivityPushToken", ["id": activity.id, "tripId": activity.attributes.tripID, "token": token])
+            }
+        })
+        observers.append(Task { [weak self] in
+            for await state in activity.activityStateUpdates where state == .ended || state == .dismissed {
+                self?.sendEvent("onTripActivityEnded", ["id": activity.id, "tripId": activity.attributes.tripID])
+            }
+        })
+    }
+
     private func startObserving() {
         // Push-to-start: the server starts the activity ahead of a reminder.
         observers.append(Task { [weak self] in
@@ -171,5 +232,6 @@ public class TransitNativeModule: Module {
             }
         })
         for activity in Activity<JourneyActivityAttributes>.activities { watchToken(activity) }
+        for activity in Activity<TripActivityAttributes>.activities { watchTripToken(activity) }
     }
 }

@@ -13,7 +13,7 @@ export function redirectSystemPath({ path }: { path: string; initial: boolean })
         switch (link.kind) {
             case "journey": return `/journey/${encodeURIComponent(link.id)}`
             case "trackJourney": return `/journey/track/${encodeURIComponent(link.id)}`
-            case "trip": return `/trip/${encodeURIComponent(link.tripId)}`
+            case "trip": return `/trip/${encodeURIComponent(link.tripId)}${link.stop ? q({ stop: link.stop }) : ""}`
             case "stop": return `/stop/${encodeURIComponent(link.query)}`
             case "stopAlerts": return `/alerts/stop${q({ stop: link.query })}`
             case "routeAlerts": return `/alerts/route${q({ routeId: link.routeId })}`

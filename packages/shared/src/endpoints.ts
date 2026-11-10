@@ -174,6 +174,7 @@ export function createEndpoints(api: ApiFetchFn) {
         // one-shot trip reminders: "get_off" | "arrival" | "n_stops_away" (with offset)
         addTripReminder: (tripId: string, stopId: string, type: string, offset?: number) =>
             post<null>("notifications/reminder", { tripId, stopId, type, ...(offset !== undefined ? { offset: String(offset) } : {}) }),
+        removeTripReminder: (type: string) => post<null>("notifications/reminder/remove", { type }),
 
         // leave-by reminders
         journeyReminders: () => post<JourneyReminderDTO[]>("notifications/journey-reminders"),
@@ -187,6 +188,11 @@ export function createEndpoints(api: ApiFetchFn) {
         reportLiveActivityLeg: (activityId: string, legIndex: number, phase: string, headphones = false, leftAt?: number) =>
             post<null>("live-activities/leg", { activityId, legIndex: String(legIndex), phase, headphones: headphones ? "1" : "0", ...(leftAt !== undefined ? { leftAt: String(leftAt) } : {}) }),
         endLiveActivity: (activityId: string) => post<null>("live-activities/end", { activityId }),
+        // Trip Live Activities (one vehicle, counted down to your stop)
+        startTripLiveActivity: (f: { activityId: string; pushToken: string; region: string; env: string; tripId: string; stopId: string; stopSequence: number; scheduledUnix: number; kind: string }) =>
+            post<null>("live-activities/trip", { ...f, stopSequence: String(f.stopSequence), scheduledUnix: String(Math.round(f.scheduledUnix)) }),
+        reportTripLiveActivity: (activityId: string) => post<null>("live-activities/trip/report", { activityId }),
+        endTripLiveActivity: (activityId: string) => post<null>("live-activities/trip/end", { activityId }),
     }
 }
 

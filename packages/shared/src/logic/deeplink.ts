@@ -29,7 +29,7 @@ export interface PlanPrefill {
 export type DeepLink =
     | { kind: "journey"; id: string; region?: string }
     | { kind: "trackJourney"; id: string; region?: string }
-    | { kind: "trip"; tripId: string; region?: string }
+    | { kind: "trip"; tripId: string; region?: string; stop?: string }
     | { kind: "stop"; query: string }
     | { kind: "stopAlerts"; query: string }
     | { kind: "routeAlerts"; routeId: string }
@@ -119,7 +119,7 @@ export function parseDeepLink(raw: string): DeepLink | null {
         }
         case "trip":
         case "vehicles":
-            return q.tripId ? { kind: "trip", tripId: q.tripId, region: q.region || undefined } : null
+            return q.tripId ? { kind: "trip", tripId: q.tripId, region: q.region || undefined, stop: q.stop || undefined } : null
         case "":
         case "stop":
             return q.s ? { kind: "stop", query: q.s } : null

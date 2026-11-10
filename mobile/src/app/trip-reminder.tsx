@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { api } from "@/lib/api"
 import { requestNotifications } from "@/lib/push"
+import { setTripReminder } from "@/lib/trip-live"
 import { radius, spacing, type, useColors } from "@/theme"
 
 /**
@@ -12,7 +13,7 @@ import { radius, spacing, type, useColors } from "@/theme"
  */
 export default function TripReminderSheet() {
     const colors = useColors()
-    const { tripId, stopId, stopName, getOff } = useLocalSearchParams<{ tripId: string; stopId: string; stopName?: string; getOff?: string }>()
+    const { tripId, stopId, stopName, getOff, seq } = useLocalSearchParams<{ tripId: string; stopId: string; stopName?: string; getOff?: string; seq?: string }>()
     /** Off when set from a board - you're getting on there, not off. */
     const offersGetOff = getOff === "1"
     const [stops, setStops] = useState(2)
@@ -24,10 +25,14 @@ export default function TripReminderSheet() {
             return
         }
         setBusy(true)
-        const res = await api.addTripReminder(tripId!, stopId!, kind, kind === "n_stops_away" ? stops : undefined)
+        const offset = kind === "n_stops_away" ? stops : undefined
+        // From the trip tracker: the stop becomes the trip's "your stop" (and its Live Activity's).
+        const error = seq
+            ? await setTripReminder(tripId!, { seq: Number(seq), stopId: stopId!, name: stopName ?? "" }, kind, offset)
+            : await api.addTripReminder(tripId!, stopId!, kind, offset).then((res) => (res.ok ? null : res.error))
         setBusy(false)
-        if (!res.ok) {
-            Alert.alert("Couldn't set the reminder", res.error)
+        if (error) {
+            Alert.alert("Couldn't set the reminder", error)
             return
         }
         router.back()

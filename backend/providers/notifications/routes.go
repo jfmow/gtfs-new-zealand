@@ -358,6 +358,8 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 				sort.Slice(reminders, func(i, j int) bool {
 					return reminders[i].StopSequence < reminders[j].StopSequence
 				})
+				// Built on first use - most ticks fire no reminder.
+				var tripLookup tripActivityLookup
 				for _, reminder := range reminders {
 					tripUpdate, err := updates.ByTripID(reminder.TripId)
 					if err != nil {
@@ -415,7 +417,18 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 							continue
 						}
 
-						if client.SendNotification(body, title, data, "high") == nil {
+						// With a trip Live Activity running, the reminder is its
+						// alert (the Dynamic Island expands) - a banner only when
+						// that push can't be made.
+						if tripLookup == nil {
+							tripLookup = newTripActivityLookup(realtime, stopsForTripCache, parentStopsCache, localTimeZone)
+						}
+						if alertTripActivity(notificationDB, reminder.ClientId, reminder.TripId, tripLookup, title, body, time.Now()) {
+							client.AppendToRecentNotifications(
+								fmt.Sprintf("reminder-%d-%s-%s", reminder.ClientId, reminder.TripId, reminder.Type),
+								title, body, data["url"],
+							)
+						} else if client.SendNotification(body, title, data, "high") == nil {
 							client.AppendToRecentNotifications(
 								fmt.Sprintf("reminder-%d-%s-%s", reminder.ClientId, reminder.TripId, reminder.Type),
 								title, body, data["url"],
@@ -462,6 +475,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 		}
 		defer liveActivitiesCronMutex.Unlock()
 		runLiveActivitiesCron(notificationDB, region, planLookup, realtime, stopsForTripCache, parentStopsCache, localTimeZone, time.Now(), findNext)
+		runTripActivitiesCron(notificationDB, region, newTripActivityLookup(realtime, stopsForTripCache, parentStopsCache, localTimeZone), time.Now())
 	})
 
 	c.Start()
@@ -815,6 +829,22 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			Message: "reminder set",
 			Data:    nil,
 		})
+	})
+
+	// Cancels one of the device's trip reminders (the tracker's "your stop" cleared).
+	notificationRoute.POST("/reminder/remove", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		typeOfReminder := c.FormValue("type")
+		if typeOfReminder != "get_off" && typeOfReminder != "arrival" && typeOfReminder != "n_stops_away" {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid type of reminder"})
+		}
+		if err := notificationDB.DeleteReminder(client.Id, typeOfReminder); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to remove reminder"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "reminder removed"})
 	})
 
 	notificationRoute.POST("/route/add", func(c echo.Context) error {
@@ -1396,6 +1426,68 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to update leg"})
 		}
 		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})
+	})
+
+	// ─────────────── Trip Live Activities (one vehicle, to your stop) ───────────────
+	// Started by the app's trip tracker when a reminder is set; kept current
+	// by runTripActivitiesCron while the app isn't writing it.
+
+	primaryRoute.POST("/live-activities/trip", func(c echo.Context) error {
+		client, err := notificationDB.ResolveOrCreateClient(identityFromRequest(c), gtfsData)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid device"})
+		}
+		a := TripLiveActivity{
+			ClientId:   client.Id,
+			Region:     c.FormValue("region"),
+			TripId:     c.FormValue("tripId"),
+			StopId:     c.FormValue("stopId"),
+			Kind:       c.FormValue("kind"),
+			ActivityId: c.FormValue("activityId"),
+			PushToken:  c.FormValue("pushToken"),
+			ApnsEnv:    c.FormValue("env"),
+		}
+		if a.TripId == "" || a.StopId == "" || a.ActivityId == "" || a.PushToken == "" || len(a.TripId) > 200 || len(a.StopId) > 200 || len(a.ActivityId) > 200 || len(a.PushToken) > 400 {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "tripId, stopId, activityId and pushToken are required"})
+		}
+		if a.Region == "" {
+			a.Region = region
+		}
+		if a.Kind != "get_off" {
+			a.Kind = "arrival"
+		}
+		if a.ApnsEnv != "sandbox" && a.ApnsEnv != "production" {
+			a.ApnsEnv = client.ApnsEnv
+		}
+		a.StopSeq, _ = strconv.Atoi(c.FormValue("stopSequence"))
+		a.Scheduled, _ = strconv.ParseInt(c.FormValue("scheduledUnix"), 10, 64)
+		if err := notificationDB.CreateTripLiveActivity(a); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to register live activity"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "registered"})
+	})
+
+	// The app wrote the activity itself - the cron leaves it alone for a bit.
+	primaryRoute.POST("/live-activities/trip/report", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		if err := notificationDB.ReportTripLiveActivity(client.Id, c.FormValue("activityId")); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to report"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "updated"})
+	})
+
+	primaryRoute.POST("/live-activities/trip/end", func(c echo.Context) error {
+		client, err := notificationDB.ResolveClient(identityFromRequest(c), "")
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "no subscription found"})
+		}
+		if err := notificationDB.DeleteTripLiveActivity(client.Id, c.FormValue("activityId")); err != nil {
+			return c.JSON(http.StatusInternalServerError, Response{Code: http.StatusInternalServerError, Message: "failed to end"})
+		}
+		return c.JSON(http.StatusOK, Response{Code: http.StatusOK, Message: "ended"})
 	})
 
 	primaryRoute.POST("/live-activities/end", func(c echo.Context) error {

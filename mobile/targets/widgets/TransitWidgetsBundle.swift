@@ -5,6 +5,7 @@ import SwiftUI
 struct TransitWidgetsBundle: WidgetBundle {
     var body: some Widget {
         JourneyLiveActivity()
+        TripLiveActivity()
         DeparturesWidget()
     }
 }

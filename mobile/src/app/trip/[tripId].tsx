@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 import { headsignDisplay } from "@transit/shared/formatting"
+import { getRegionSlug } from "@transit/shared/regions"
 import { VehicleProgressRatchet } from "@transit/shared/logic/basics"
 import { laClock } from "@transit/shared/logic/journey-live"
 import { lineCoordinates, tripStopLabel, type StopTimeUpdate, type TripStopRef } from "@transit/shared/models"
@@ -14,9 +15,11 @@ import { TransitMap, type MapCamera, type MapMarker } from "@/components/transit
 import { FitRow, GlassButton, ModeIcon, RouteBadge, hexColor, textOn } from "@/components/ui"
 import { api } from "@/lib/api"
 import { useMapFilter } from "@/lib/map-filter"
+import { requestNotifications } from "@/lib/push"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { useTrackerCamera, type TrackerCameraMode } from "@/lib/tracker-camera"
+import { activityKind, clearTripTarget, setTripReminder, updateTripLive, useTripTarget, type TripActivityContent } from "@/lib/trip-live"
 import { spacing, type, useColors } from "@/theme"
 
 type StopState = "passed" | "current" | "next" | "upcoming"
@@ -26,6 +29,11 @@ type StopState = "passed" | "current" | "next" | "upcoming"
  * the route and vehicle, and a drawer with the countdown to your stop (or
  * the next one), a progress strip, the vehicle's status and every stop with
  * a bell.
+ *
+ * "Your stop" is the board's stop it was opened from, or one the rider
+ * picks: tapping a stop sets an arrival reminder there, the bell offers the
+ * other reminders. With a reminder set, an iOS Live Activity counts the
+ * vehicle down to it (lib/trip-live.ts).
  */
 export default function TripTracker() {
     const colors = useColors()
@@ -35,7 +43,7 @@ export default function TripTracker() {
     const tz = region.timeZone
     const [filter, setFilter] = useMapFilter()
     const [ratchet] = useState(() => new VehicleProgressRatchet())
-    const [reminded, setReminded] = useState<Set<number>>(new Set())
+    const target = useTripTarget(tripId)
     const [showEarlier, setShowEarlier] = useState(false)
     const camera = useRef<MapCamera>(null)
     const [now, setNow] = useState(() => Date.now())
@@ -90,7 +98,7 @@ export default function TripTracker() {
         if (currentSeq === undefined && t && (t.arrival_time || t.departure_time) < now - 60_000) return "passed"
         return "upcoming"
     }
-    const isYours = (s: TripStopRef) => !!fromStop && (s.child_stop_id === fromStop || s.parent_stop_id === fromStop)
+    const isYours = (s: TripStopRef) => (target ? s.sequence === target.stopSeq : !!fromStop && (s.child_stop_id === fromStop || s.parent_stop_id === fromStop))
     const passedRows = rows.filter((s) => stateOf(s) === "passed")
     const aheadRows = rows.filter((s) => stateOf(s) !== "passed")
     const yourRow = rows.find((s) => isYours(s) && stateOf(s) !== "passed") ?? null
@@ -130,14 +138,69 @@ export default function TripTracker() {
         if (Platform.OS === "ios") ActionSheetIOS.showActionSheetWithOptions({ options: [...options.map((o) => o.label), "Cancel"], cancelButtonIndex: options.length }, (i) => options[i]?.run())
         else Alert.alert("More", undefined, [...options.map((o) => ({ text: o.label, onPress: o.run })), { text: "Cancel", style: "cancel" as const }])
     }
+    const headsign = headsignDisplay(v?.trip?.headsign || (rows.length ? tripStopLabel(rows[rows.length - 1]) : ""))
     const bell = (s: TripStopRef) => {
-        setReminded((r) => new Set(r).add(s.sequence))
-        router.push({ pathname: "/trip-reminder", params: { tripId: tripId!, stopId: s.parent_stop_id || s.child_stop_id, stopName: tripStopLabel(s), getOff: "1" } })
+        router.push({ pathname: "/trip-reminder", params: { tripId: tripId!, stopId: s.parent_stop_id || s.child_stop_id, stopName: tripStopLabel(s), getOff: "1", seq: String(s.sequence) } })
     }
+    /** Tapping a stop makes it yours, with a reminder as the vehicle arrives; tapping yours again clears it. */
+    const [picking, setPicking] = useState(false)
+    const pick = async (s: TripStopRef) => {
+        if (picking) return
+        if (target && target.stopSeq === s.sequence) {
+            clearTripTarget(tripId!)
+            return
+        }
+        if (!(await requestNotifications())) {
+            Alert.alert("Notifications are off", "Turn them on for Transit in Settings to get told when it's arriving.")
+            return
+        }
+        setPicking(true)
+        const error = await setTripReminder(tripId!, { seq: s.sequence, stopId: s.parent_stop_id || s.child_stop_id, name: tripStopLabel(s) }, "arrival")
+        setPicking(false)
+        if (error) Alert.alert("Couldn't set your stop", error)
+    }
+
+    // The Live Activity: your stop with a reminder set, while the trip is live.
+    const targetRow = target ? rows.find((s) => s.sequence === target.stopSeq) : undefined
+    const targetTime = targetRow ? timeBySeq.get(targetRow.sequence) : undefined
+    useEffect(() => {
+        if (!target || !targetRow || !target.reminders.length || region.realtime === false) return
+        const dueMs = targetTime ? targetTime.arrival_time || targetTime.departure_time : 0
+        if (!dueMs) return
+        const scheduledMs = targetTime?.scheduled_time || dueMs
+        const passed = stateOf(targetRow) === "passed"
+        const away = v ? rows.filter((s) => s.sequence >= startSeq && s.sequence < targetRow.sequence).length : undefined
+        const nextRow = nextSeq !== undefined ? rows.find((s) => s.sequence === nextSeq) : undefined
+        const content: TripActivityContent = {
+            version: 1,
+            phase: passed ? "gone" : away === 0 ? "next" : "coming",
+            targetUnix: dueMs / 1000,
+            delayMinutes: Math.round((dueMs - scheduledMs) / 60_000),
+            stopsAway: passed ? undefined : away,
+            nextStopName: nextRow ? tripStopLabel(nextRow) : undefined,
+            hasVehicle: !!v,
+            isRealtime: !!v,
+            skipped: !!targetTime?.skipped,
+            occupancy: v && v.occupancy >= 0 ? v.occupancy : undefined,
+            updatedUnix: Math.floor(now / 1000),
+        }
+        updateTripLive({
+            tripID: tripId!,
+            regionSlug: getRegionSlug(region),
+            stopID: target.stopId,
+            stopName: target.stopName,
+            routeShortName: v?.route.name ?? route?.route_short_name ?? "",
+            routeColorHex: routeHex.replace("#", ""),
+            headsign,
+            vehicleMode: v?.type ?? "",
+            kind: activityKind(target),
+        }, content, scheduledMs / 1000, target.stopSeq)
+        // Re-run when the feed or the clock moves - the derived values above come from these.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [target, targetRow?.sequence, targetTime, v, now, region])
 
     const shapeCoords = shape.data ? lineCoordinates(shape.data.geojson) : []
     const center = v ? { lat: v.position.lat, lon: v.position.lon } : rows[0] ? { lat: rows[0].lat, lon: rows[0].lon } : { lat: region.defaultMapCenter[0], lon: region.defaultMapCenter[1] }
-    const headsign = headsignDisplay(v?.trip?.headsign || (rows.length ? tripStopLabel(rows[rows.length - 1]) : ""))
     const fg = textOn(routeHex)
 
     return (
@@ -263,7 +326,15 @@ export default function TripTracker() {
                         const detail = [st === "current" ? "At this stop" : st === "next" ? "Next stop" : null, yours ? "Your stop" : null, t?.skipped ? "Skipped" : null, s.platform ? `Platform ${s.platform}` : null].filter(Boolean).join("  ")
                         const highlight = st === "next" ? colors.live : st === "current" ? colors.warning : null
                         return (
-                            <View key={`${s.sequence}`} style={[styles.stopRow, highlight ? { backgroundColor: highlight + "12" } : null, passed && { opacity: 0.7 }]} testID={st === "next" ? "tracker-next-stop" : "tracker-stop"}>
+                            <Pressable
+                                key={`${s.sequence}`}
+                                disabled={passed || region.realtime === false}
+                                onPress={() => pick(s)}
+                                accessibilityRole="button"
+                                accessibilityHint={yours ? "Clears your stop" : "Makes this your stop, with a reminder as it arrives"}
+                                style={({ pressed }) => [styles.stopRow, highlight ? { backgroundColor: highlight + "12" } : null, pressed && { backgroundColor: colors.muted }, passed && { opacity: 0.7 }]}
+                                testID={st === "next" ? "tracker-next-stop" : "tracker-stop"}
+                            >
                                 <View style={styles.rail}>
                                     <View style={[styles.railLine, { backgroundColor: isFirst ? "transparent" : routeHex, opacity: passed || st === "current" ? 0.3 : 1 }]} />
                                     <View style={[styles.railLine, { backgroundColor: isLast ? "transparent" : routeHex, opacity: passed ? 0.3 : 1 }]} />
@@ -284,11 +355,11 @@ export default function TripTracker() {
                                     </View>
                                 ) : null}
                                 {!passed && region.realtime !== false ? (
-                                    <Pressable accessibilityRole="button" accessibilityLabel={reminded.has(s.sequence) ? `Reminder set for ${tripStopLabel(s)}` : `Remind me about ${tripStopLabel(s)}`} onPress={() => bell(s)} style={styles.bell}>
-                                        {reminded.has(s.sequence) ? <BellRing size={18} color={colors.live} /> : <Bell size={18} color={colors.mutedForeground} />}
+                                    <Pressable accessibilityRole="button" accessibilityLabel={yours && target?.reminders.length ? `Reminder set for ${tripStopLabel(s)}` : `Remind me about ${tripStopLabel(s)}`} onPress={() => bell(s)} style={styles.bell}>
+                                        {yours && target?.reminders.length ? <BellRing size={18} color={colors.live} /> : <Bell size={18} color={colors.mutedForeground} />}
                                     </Pressable>
                                 ) : <View style={{ width: 44 }} />}
-                            </View>
+                            </Pressable>
                         )
                     })}
                 </BottomSheetScrollView>

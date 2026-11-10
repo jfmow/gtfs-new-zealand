@@ -36,7 +36,7 @@ export function routeTo(link: DeepLink) {
             router.push({ pathname: "/journey/track/[id]", params: { id: link.id } })
             break
         case "trip":
-            router.push({ pathname: "/trip/[tripId]", params: { tripId: link.tripId } })
+            router.push({ pathname: "/trip/[tripId]", params: { tripId: link.tripId, ...(link.stop ? { stop: link.stop } : {}) } })
             break
         case "stop":
             router.push({ pathname: "/stop/[query]", params: { query: link.query } })
