@@ -6,7 +6,8 @@ import { stopJourneyLocation } from "./journey-location"
 import { clearJourneyPack, journeyPackStore, packIsComplete, saveJourneyPack, seedFromPack, useJourneyPack } from "./journey-pack"
 import { endLiveSurface, updateLiveSurface } from "./live-surface"
 import { resetMoments, scheduleMoments } from "./moments"
-import { planContext, usePlan } from "./plans"
+import { planContext, queryClient, usePlan } from "./plans"
+import { recordGoTrip } from "./go-history"
 import { useRegion } from "./region"
 import { cleanStopName } from "@transit/shared/formatting"
 import { getRegionSlug } from "@transit/shared/regions"
@@ -45,6 +46,9 @@ export function startJourney(planId: string, regionUrl: string) {
     if (current?.planId === planId) return
     if (current) stopJourney()
     activeJourneyStore.set({ planId, region: regionUrl, startedAt: Date.now(), setOffAt: null, alightedThroughLeg: -1, rides: {} })
+    // Home's Go bar learns where you go when.
+    const plan = queryClient.getQueryData<JourneyType>(["plan", planId])
+    if (plan) recordGoTrip(plan, regionUrl)
 }
 
 /** End the journey: tracking, reminders and the Lock Screen surface. */
