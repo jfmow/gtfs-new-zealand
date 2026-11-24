@@ -7,7 +7,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import { rankedPlans } from "@transit/shared/easy-planner"
 import type { JourneyPlanRequest } from "@transit/shared/endpoints"
 import { pruneDominatedPlans } from "@transit/shared/logic/basics"
-import { planAxis, planChange, planSignature, type PlanChange } from "@transit/shared/logic/plan-compare"
+import { planChange, planSignature, type PlanChange } from "@transit/shared/logic/plan-compare"
 import { laClock } from "@transit/shared/logic/journey-live"
 import { latestDeparture, leaveTime } from "@transit/shared/logic/reminders"
 import { goTime } from "@transit/shared/models"
@@ -16,7 +16,7 @@ import type { JourneyType } from "@transit/shared/types/journey"
 import { normalizeWalkSpeed } from "@transit/shared/walk-speed"
 import { placeStyle, placeTitle } from "@/components/place-style"
 import { EasyPlannerFlow } from "@/components/easy-planner-flow"
-import { PlanCard, TimeAxis, hasLeft } from "@/components/journey"
+import { PlanCard, hasLeft } from "@/components/journey"
 import { JourneyDetailView } from "@/components/journey-detail"
 import { LocationResults, placeName, type PickedPlace } from "@/components/location-search"
 import { Button, EmptyState, ErrorText, GlassButton, Loading, Muted } from "@/components/ui"
@@ -141,7 +141,6 @@ function Planner({ params }: { params: PlannerParams }) {
         return [ranked[0], ...rest.sort((a, b) => firstRideTime(a) - firstRideTime(b))]
     })()
     const fares = useFares(results.map((p) => p.ID))
-    const axis = planAxis(results)
     const savedAlready = !!to && !!start && trips.trips.some((t) => Math.abs(t.to.lat - to.lat) < 1e-5 && Math.abs(t.to.lon - to.lon) < 1e-5 && Math.abs(t.from.lat - start.lat) < 1e-5 && Math.abs(t.from.lon - start.lon) < 1e-5)
     const arriveBy = when.mode === "arriveat"
     const latest = arriveBy ? latestDeparture(results) : null
@@ -340,12 +339,10 @@ function Planner({ params }: { params: PlannerParams }) {
                             </View>
                         ) : null}
                         {plansList && results.length === 0 ? <EmptyState title="No way found" body="Try leaving at a different time, or change the options." /> : null}
-                        {axis && results.length > 1 ? <TimeAxis axis={axis} tz={tz} /> : null}
                         <View style={{ gap: spacing.md }}>
                             {results.map((p) => (
                                 <View key={p.ID} style={p.ID === selectedId ? [styles.selected, { borderColor: colors.primary }] : undefined} accessibilityState={{ selected: p.ID === selectedId }}>
                                     <PlanCard plan={p} tz={tz} fare={fares[p.ID]?.label} missed={hasLeft(p)}
-                                        axis={results.length > 1 ? axis : null}
                                         change={changes[p.ID]}
                                         onLeaveLater={p.LeaveLater ? () => open(p.LeaveLater!.ID) : undefined}
                                         onRemind={p.Legs.some((l) => l.Mode === "transit") && !hasLeft(p) ? () => router.push({ pathname: "/leave-reminder", params: { id: p.ID } }) : undefined}

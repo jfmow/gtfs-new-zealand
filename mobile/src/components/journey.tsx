@@ -5,7 +5,7 @@ import { formatDistance, formatDuration } from "@transit/shared/logic/basics"
 import { laClock } from "@transit/shared/logic/journey-live"
 import { goTime, lineCoordinates, type Coordinate } from "@transit/shared/models"
 import type { ReliabilityConnection } from "@transit/shared/reliability"
-import { axisFraction, leaveLaterMinutes, stripSegments, tightChanges, type PlanAxis, type PlanChange } from "@transit/shared/logic/plan-compare"
+import { leaveLaterMinutes, tightChanges, type PlanChange } from "@transit/shared/logic/plan-compare"
 import type { JourneyType, Leg } from "@transit/shared/types/journey"
 import { radius, spacing, type, useColors } from "@/theme"
 import { TransitMap, boundsOf, type MapMarker } from "./transit-map"
@@ -126,15 +126,13 @@ function leaveIn(dep: Date | null, now: number): string | null {
     return mins < 60 ? `Leave in ${mins} min` : `Leave in ${Math.floor(mins / 60)} h ${mins % 60} min`
 }
 
-export function PlanCard({ plan, tz, fare, missed, onRemind, onPress, axis, change, onLeaveLater }: {
+export function PlanCard({ plan, tz, fare, missed, onRemind, onPress, change, onLeaveLater }: {
     plan: JourneyType
     tz: string
     fare?: string | null
     missed?: boolean
     onRemind?: () => void
     onPress: () => void
-    /** The results' shared clock: draws the journey as a strip on it instead of the leg chips. */
-    axis?: PlanAxis | null
     /** How it moved since the results last refreshed. */
     change?: PlanChange | null
     /** Opens the same journey with a later first ride (plan.LeaveLater). */
@@ -189,7 +187,7 @@ export function PlanCard({ plan, tz, fare, missed, onRemind, onPress, axis, chan
                         </Pressable>
                     ) : null}
                 </View>
-                {axis ? <TimeStrip plan={plan} axis={axis} /> : <LegChain legs={plan.Legs} />}
+                <JourneyLegBar plan={plan} />
                 {tight && !missed ? (
                     <View style={styles.inline}>
                         <TriangleAlert size={12} color={colors.warning} />
@@ -213,62 +211,6 @@ export function PlanCard({ plan, tz, fare, missed, onRemind, onPress, axis, chan
                 ) : null}
             </View>
         </Pressable>
-    )
-}
-
-/**
- * The journey on the results' shared clock. Rides are slim pills in their
- * route colour, walks are dotted, and a wait is the faint line between -
- * drawn only from leaving to arriving, so the rest of the clock stays empty.
- */
-export function TimeStrip({ plan, axis }: { plan: JourneyType; axis: PlanAxis }) {
-    const colors = useColors()
-    const [width, setWidth] = useState(0)
-    const segments = stripSegments(plan, axis)
-    const a11y = segments.map((s) => (s.kind === "walk" ? `walk ${legMinutes(s.leg)} minutes` : `${legModeName(s.leg)} ${legRouteName(s.leg)}`)).join(", then ")
-    const first = segments[0]
-    const last = segments[segments.length - 1]
-    return (
-        <View accessible accessibilityLabel={a11y} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={styles.strip}>
-            {first && last ? (
-                <View style={[styles.span, { left: `${first.left * 100}%`, width: `${(last.left + last.width - first.left) * 100}%`, backgroundColor: colors.border }]} />
-            ) : null}
-            {segments.map((s) => {
-                const pos = { left: `${s.left * 100}%` as const, width: `${s.width * 100}%` as const }
-                if (s.kind === "walk") return <View key={s.index} style={[styles.walkSeg, pos, { borderColor: colors.mutedForeground }]} />
-                const hex = legHex(s.leg)
-                const name = legRouteName(s.leg)
-                const fits = width * s.width >= name.length * 7 + 12
-                return (
-                    <View key={s.index} style={[styles.rideSeg, pos, { backgroundColor: hex, opacity: s.leg.trip_usable ? 1 : 0.45 }]}>
-                        {fits ? <Text style={[type.badge, { fontSize: 10, color: textOn(hex) }]} numberOfLines={1}>{name}</Text> : null}
-                    </View>
-                )
-            })}
-        </View>
-    )
-}
-
-/** The shared clock's labels, above the result cards (inset to line up with TimeStrip inside them). */
-export function TimeAxis({ axis, tz }: { axis: PlanAxis; tz: string }) {
-    const colors = useColors()
-    const now = useNow()
-    const nowFrac = now > axis.start && now < axis.end ? axisFraction(axis, now) : null
-    return (
-        <View style={styles.axis} importantForAccessibility="no-hide-descendants" accessibilityElementsHidden>
-            <View style={{ flex: 1 }}>
-                {axis.ticks.map((t) => {
-                    const f = axisFraction(axis, t)
-                    return (
-                        <View key={t} style={[styles.tick, { left: `${f * 100}%` }]}>
-                            <Text style={[type.meta, styles.tickLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{laClock(new Date(t), tz)}</Text>
-                            <View style={[styles.tickMark, { backgroundColor: colors.border }]} />
-                        </View>
-                    )
-                })}
-                {nowFrac !== null ? <View style={[styles.nowTick, { left: `${nowFrac * 100}%`, backgroundColor: colors.live }]} /> : null}
-            </View>
-        </View>
     )
 }
 
@@ -563,16 +505,6 @@ const styles = StyleSheet.create({
     cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
     remind: { width: 30, height: 26, alignItems: "center", justifyContent: "center" },
     later: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radius.md },
-    strip: { height: 16, justifyContent: "center" },
-    span: { position: "absolute", height: StyleSheet.hairlineWidth * 2 },
-    walkSeg: { position: "absolute", height: 0, borderTopWidth: 2, borderStyle: "dotted", opacity: 0.7 },
-    rideSeg: { position: "absolute", top: 0, bottom: 0, minWidth: 6, borderRadius: 8, alignItems: "center", justifyContent: "center", overflow: "hidden" },
-    // Inset like a card's content (hairline border + 14 padding) so the ticks line up with the strips.
-    axis: { flexDirection: "row", height: 22, marginHorizontal: 14 + StyleSheet.hairlineWidth, marginBottom: 4 },
-    tick: { position: "absolute", top: 0, width: 64, marginLeft: -32, alignItems: "center" },
-    tickLabel: { textAlign: "center", fontSize: 11 },
-    tickMark: { width: StyleSheet.hairlineWidth * 2, height: 4, marginTop: 3 },
-    nowTick: { position: "absolute", bottom: 0, width: 2, height: 6, marginLeft: -1, borderRadius: 1 },
     bar: { flexDirection: "row", gap: 3, height: 26 },
     piece: { flexBasis: 0, borderRadius: 6, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 4 },
     youAreHere: { position: "absolute", top: 0, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 8, borderLeftColor: "transparent", borderRightColor: "transparent" },
