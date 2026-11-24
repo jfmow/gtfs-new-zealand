@@ -5,7 +5,7 @@ import { cleanStopName, headsignDisplay } from "@/lib/formating"
 import { RouteBadge } from "@/components/home/home-stop-row"
 import { OccupancyIcons, getOccupancyShort } from "../occupancy"
 import { useServiceTrackerContext } from "./use-service-tracker"
-import { findRiderStop, findRiderStopTime, shareTrip } from "./helpers"
+import { findRiderStop, findRiderStopTime, notStartedYet, shareTrip } from "./helpers"
 
 /** White or near-black text, whichever reads on the route colour. */
 function textOn(hex: string) {
@@ -49,6 +49,7 @@ export function TrackerHero() {
         : target ? stopTimes?.find((st) => st.child_stop_id === target.child_stop_id) ?? stopTimes?.find((st) => st.parent_stop_id === target.parent_stop_id) : undefined
     const minutes = targetTime?.arrival_time ? Math.max(0, Math.ceil((targetTime.arrival_time - now) / 60_000)) : null
     const caption = yoursAhead ? "To your stop" : isAtStop ? "At" : "Next stop"
+    const notStarted = notStartedYet(vehicle, stops, stopTimes, now)
 
     // Stops still to go, counting the target itself.
     const toGo = vehicle && stops && target && startSeq !== undefined
@@ -80,15 +81,24 @@ export function TrackerHero() {
                     </div>
                     {minutes !== null && targetTime && (
                         <div className="shrink-0 text-right">
+                            {/* A countdown only within 90 min (as the app); further off, "404 min" reads as nonsense - show the time instead. */}
                             <p className="font-mono text-[26px] font-medium leading-none tabular-nums text-blue-600 dark:text-blue-400">
-                                {minutes === 0 ? "Now" : `${minutes} min`}
+                                {minutes === 0 ? "Now" : minutes < 90 ? `${minutes} min` : new Date(targetTime.arrival_time).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
                             </p>
-                            <p className="mt-1 text-[13px] text-muted-foreground">
-                                {new Date(targetTime.arrival_time).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
-                            </p>
+                            {minutes < 90 && (
+                                <p className="mt-1 text-[13px] text-muted-foreground">
+                                    {new Date(targetTime.arrival_time).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                                </p>
+                            )}
                         </div>
                     )}
                 </div>
+            )}
+
+            {notStarted && (
+                <p className="text-[13px] font-medium text-muted-foreground">
+                    Not started yet · leaves {cleanStopName(notStarted.name)} at {new Date(notStarted.at).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}
+                </p>
             )}
 
             {vehicle && toGo !== null && (

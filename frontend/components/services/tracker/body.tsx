@@ -3,6 +3,8 @@ import StopsList from "./stops-list"
 import TrackerMap from "./tracker-map"
 import { TrackerHero } from "./hero"
 import { useServiceTrackerContext } from "./use-service-tracker"
+import { notStartedYet } from "./helpers"
+import { cleanStopName } from "@/lib/formating"
 import { ApiFetch } from "@/lib/url-context"
 import { TriangleAlertIcon, X, CalendarClockIcon, RadioIcon } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -53,7 +55,7 @@ const ServiceTrackerContent = memo(function ServiceTrackerContent() {
             <TrackerHero />
 
             {vehicle?.state === "Unknown" && <TrackingNotice level="limited" hasVehicle />}
-            {!vehicle && <TrackingNotice level={tripUpdateTracking ? "limited" : "scheduled"} />}
+            {!vehicle && <TrackingNotice level={tripUpdateTracking ? "limited" : "scheduled"} notStarted={notStartedYet(vehicle, stops, stopTimes, Date.now())} />}
 
             {!hideMap && <TrackerMap height={mapHeight} />}
 
@@ -76,12 +78,18 @@ export default ServiceTrackerContent
 function TrackingNotice({
     level,
     hasVehicle = false,
+    notStarted,
 }: {
+    /** The trip hasn't left its first stop yet - says when it does instead. */
+    notStarted?: { name: string; at: number } | null
     level: "scheduled" | "limited"
     /** In "limited" mode: true when a vehicle position exists but is stale/unreliable, false when there's no position at all. */
     hasVehicle?: boolean
 }) {
     const scheduled = level === "scheduled"
+    const startsText = notStarted
+        ? `This service starts at ${cleanStopName(notStarted.name)} at ${new Date(notStarted.at).toLocaleTimeString("en-NZ", { hour: "numeric", minute: "2-digit" })}. Live tracking begins once it's running.`
+        : null
     const limitedText = hasVehicle
         ? "We're getting arrival updates for this trip, but its live position is unreliable right now — the map may be approximate."
         : "Arrival times below are live predictions for this trip. There's no vehicle position, so the map shows the route only."
@@ -106,12 +114,12 @@ function TrackingNotice({
                         scheduled ? "text-foreground" : "text-amber-800 dark:text-amber-200",
                     )}
                 >
-                    {scheduled ? "Timetable only" : "Limited tracking"}
+                    {notStarted ? "Not started yet" : scheduled ? "Timetable only" : "Limited tracking"}
                 </p>
                 <p className={scheduled ? "text-muted-foreground" : "text-amber-700 dark:text-amber-300/90"}>
-                    {scheduled
+                    {startsText ?? (scheduled
                         ? "This service isn't reporting its position. Times below come from the schedule, not a live vehicle."
-                        : limitedText}
+                        : limitedText)}
                 </p>
             </div>
         </div>

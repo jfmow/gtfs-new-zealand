@@ -119,6 +119,14 @@ export default function TripTracker() {
     }
     const startSeq = isAtStop ? currentSeq ?? 0 : nextSeq ?? currentSeq ?? 0
     const between = focus ? rows.filter((s) => s.sequence >= startSeq && s.sequence < focus.sequence).length : 0
+    // AT publishes predictions for trips hours before they run: with no
+    // vehicle and the first stop still ahead, the trip hasn't started - say
+    // when it leaves rather than counting stops ("2 stops to go" at 4:30 pm
+    // for a train leaving Kingsland at 11:06 pm).
+    const firstRow = rows.length ? rows.reduce((a, b) => (b.sequence < a.sequence ? b : a)) : null
+    const firstTime = firstRow ? timeBySeq.get(firstRow.sequence) : undefined
+    const firstMs = firstTime && !firstTime.passed ? firstTime.departure_time || firstTime.arrival_time : 0
+    const notStarted = !v && !!firstRow && firstMs > now ? { name: tripStopLabel(firstRow), at: firstMs } : null
     const stopsToGo = (n: number) => (isAtStop && n <= 1 && focus?.sequence === currentSeq ? "At the stop" : n <= 1 ? (yourRow ? "Your stop is next" : "Next stop") : `${n} stops to go`)
 
     // iOS `VehicleQuickLookView`: follow the vehicle (700 m across to start);
@@ -282,7 +290,7 @@ export default function TripTracker() {
                                 <>
                                     <View style={styles.focus} onLayout={(e) => setFocusBottom(e.nativeEvent.layout.y + e.nativeEvent.layout.height)}>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={[type.meta, { color: colors.mutedForeground }]}>{yourRow ? "To your stop" : isAtStop && focus.sequence === currentSeq ? "At" : "Next stop"}</Text>
+                                            <Text style={[type.meta, { color: colors.mutedForeground }]}>{yourRow ? "To your stop" : notStarted ? "Starts at" : isAtStop && focus.sequence === currentSeq ? "At" : "Next stop"}</Text>
                                             <Text style={[type.pageTitle, { color: colors.foreground, fontSize: 20 }]} numberOfLines={1}>{tripStopLabel(focus)}</Text>
                                         </View>
                                         {focusMs ? (
@@ -292,6 +300,9 @@ export default function TripTracker() {
                                             </View>
                                         ) : null}
                                     </View>
+                                    {notStarted ? (
+                                        <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Not started yet · leaves {notStarted.name} at {laClock(new Date(notStarted.at), tz)}</Text>
+                                    ) : <>
                                     <View style={styles.strip} accessibilityLabel={stopsToGo(between + 1)}>
                                         <View style={[styles.stripVehicle, { backgroundColor: routeHex }]}><ModeIcon mode={v?.type ?? "bus"} size={13} color={fg} /></View>
                                         {Array.from({ length: Math.min(between, 14) }).flatMap((_, i) => [
@@ -302,6 +313,7 @@ export default function TripTracker() {
                                         {yourRow ? <MapPin size={22} color="#fff" fill={colors.danger} /> : <View style={[styles.stripEnd, { borderColor: routeHex }]}><View style={[styles.stripEndDot, { backgroundColor: routeHex }]} /></View>}
                                     </View>
                                     <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>{stopsToGo(between + 1)}</Text>
+                                    </>}
                                 </>
                             ) : null}
                             {/* One quiet line: live or timetable, then what's known - lower-priority items drop off rather than wrap. */}
@@ -320,7 +332,7 @@ export default function TripTracker() {
                                 v.cars ? <Text key="cars" style={[type.meta, { color: colors.mutedForeground }]}>{v.cars} cars</Text> : null,
                                 v.trip?.next_stop?.platform ? <Text key="plat" style={[type.meta, { color: colors.mutedForeground }]}>Platform {v.trip.next_stop.platform}</Text> : null,
                             ] : hasLoaded ? [
-                                <View key="tt" style={styles.statusItem}><WifiOff size={13} color={colors.mutedForeground} /><Text style={[type.meta, { color: colors.mutedForeground }]}>Timetable times - no live position</Text></View>,
+                                <View key="tt" style={styles.statusItem}><WifiOff size={13} color={colors.mutedForeground} /><Text style={[type.meta, { color: colors.mutedForeground }]}>{notStarted ? "Live tracking starts once it's running" : "Timetable times - no live position"}</Text></View>,
                             ] : []).filter(Boolean)} />
                         </>
                     )}

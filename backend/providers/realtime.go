@@ -714,7 +714,12 @@ func setupRealtimeRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			}
 			data.ChildStopId = stop.StopId
 
-			if hasTripUpdate && nextStopSequenceNumber > (stop.Sequence-lowestSequence) {
+			// AT publishes trip updates for trips that haven't started (often
+			// the rest of the day's timetable), with no prediction for the
+			// early stops - so the "next stop" it implies is mid-route. Only a
+			// running trip has passed anything: an 11 pm train looked like it
+			// was already at Kingsland at 4:30 pm.
+			if hasTripUpdate && !notStarted && nextStopSequenceNumber > (stop.Sequence-lowestSequence) {
 				data.Passed = true
 			}
 

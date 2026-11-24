@@ -158,3 +158,24 @@ export async function shareTrip(tripId: string, vehicle?: VehiclesResponse) {
 }
 
 export type { ServicesStop }
+
+/**
+ * The trip's first stop and when it leaves, while the trip hasn't started:
+ * no live vehicle and the first stop still ahead. AT publishes predictions
+ * for trips hours before they run, so without this a train that leaves
+ * Kingsland at 11:06 pm read as "Next stop: Kingsland, 2 stops to go" at
+ * 4:30 pm. Null once it's running (or the times aren't known).
+ */
+export function notStartedYet(
+    vehicle: VehiclesResponse | null | undefined,
+    stops: ServicesStop[] | null | undefined,
+    stopTimes: StopTimes[] | null | undefined,
+    now: number,
+): { name: string; at: number } | null {
+    if (vehicle || !stops?.length || !stopTimes?.length) return null
+    const first = [...stops].sort((a, b) => a.sequence - b.sequence)[0]
+    const st = stopTimes.find((t) => t.child_stop_id === first.child_stop_id) ?? stopTimes.find((t) => t.parent_stop_id === first.parent_stop_id)
+    const at = st ? st.departure_time || st.arrival_time : 0
+    if (!at || st!.passed || at <= now) return null
+    return { name: first.name, at }
+}

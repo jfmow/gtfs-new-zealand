@@ -5,7 +5,7 @@ import { clearTripTarget, markTripTarget, setTripReminder } from "@/lib/trip-tar
 import { cn } from "@/lib/utils"
 import { StopReminderDialog, type StopReminderTarget } from "../stop-reminder-dialog"
 import { useServiceTrackerContext } from "./use-service-tracker"
-import { findRiderStop } from "./helpers"
+import { findRiderStop, notStartedYet } from "./helpers"
 import type { ServicesStop, StopTimes, VehiclesResponse } from "."
 import { inRegion } from "@/lib/region-time"
 import { cleanStopName } from "@/lib/formating"
@@ -69,15 +69,17 @@ export default function StopsList({
     // Limited tracking (trip-update predictions, no live vehicle): the backend
     // still marks each stop `passed`, so progress comes from that instead.
     const limited = !vehicle && !!stops && !!stopTimes?.length
+    // A trip that hasn't set off has no "next stop" yet - its first stop isn't one.
+    const notStarted = !!notStartedYet(vehicle, stops, stopTimes, Date.now())
     const limitedNextKey = useMemo(() => {
-        if (!limited) return null
+        if (!limited || notStarted) return null
         const next = stops!.find((s) => {
             const st = getStopTime(s)
             return st && !st.passed && !st.skipped
         })
         return next ? `${next.parent_stop_id}|${next.platform}` : null
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [limited, stops, stopTimes])
+    }, [limited, notStarted, stops, stopTimes])
 
     const stateOf = (stop: ServicesStop): StopState => {
         const key = `${stop.parent_stop_id}|${stop.platform}`
