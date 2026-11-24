@@ -58,3 +58,6 @@ google-services.json
 # EAS credentials (credentials.json + keystore) - never commit
 credentials.json
 credentials/
+
+# Xcode per-user state (Xcode Cloud workspace)
+/xcode-cloud/**/xcuserdata/
