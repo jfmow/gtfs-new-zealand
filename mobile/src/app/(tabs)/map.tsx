@@ -8,7 +8,7 @@ import { boardQuery } from "@transit/shared/models"
 import { hasRealtime } from "@transit/shared/regions"
 import { PANEL_TOP, panelInset } from "@/components/map-drawer"
 import { StopBoardView } from "@/components/stop-board"
-import { buildIndex, clusterMarker, clustersIn, stopMarker, vehicleMarker, type Bounds, type StopPoint, type VehiclePoint } from "@/components/map-markers"
+import { buildIndex, clusterMarker, clustersIn, isMajorStop, majorStopsIn, stopMarker, vehicleMarker, type Bounds, type StopPoint, type VehiclePoint } from "@/components/map-markers"
 import { TransitMap, lngLat, type MapCamera } from "@/components/transit-map"
 import { GlassButton } from "@/components/ui"
 import { api } from "@/lib/api"
@@ -54,10 +54,11 @@ export default function MapTab() {
         refetchInterval: 15_000,
     })
 
-    const stopIndex = useMemo(
-        () => buildIndex<StopPoint>((stops.data ?? []).map((s) => ({ kind: "stop", id: s.stop_id, query: boardQuery(s), name: s.stop_name, type: s.stop_type, lat: s.stop_lat, lon: s.stop_lon }))),
-        [stops.data],
-    )
+    // Stations and terminals stay out of the clusters so they're always visible landmarks; bus stops cluster.
+    const { stopIndex, majorStops } = useMemo(() => {
+        const points: StopPoint[] = (stops.data ?? []).map((s) => ({ kind: "stop", id: s.stop_id, query: boardQuery(s), name: s.stop_name, type: s.stop_type, lat: s.stop_lat, lon: s.stop_lon }))
+        return { stopIndex: buildIndex<StopPoint>(points.filter((p) => !isMajorStop(p))), majorStops: points.filter(isMajorStop) }
+    }, [stops.data])
     const routeKey = filter.routes.map((r) => r.id).join(",")
     const vehicleIndex = useMemo(() => {
         const only = new Set(routeKey ? routeKey.split(",") : [])
@@ -77,7 +78,7 @@ export default function MapTab() {
         if (zoomTarget) camera.current?.easeTo({ center: [zoomTarget.lon, zoomTarget.lat], zoom: zoomTarget.zoom, duration: 350 })
     }, [zoomTarget])
     const zoomInto = (lat: number, lon: number) => setZoomTarget({ lat, lon, zoom: Math.min(17, zoom + 2) })
-    const stopItems = showStops ? clustersIn(stopIndex, bounds, zoom) : []
+    const stopItems = showStops ? [...clustersIn(stopIndex, bounds, zoom), ...(zoom >= 11 ? majorStopsIn(majorStops, bounds) : [])] : []
     const vehicleItems = mode === "vehicles" ? clustersIn(vehicleIndex, bounds, zoom) : []
 
     const openFilter = () => {

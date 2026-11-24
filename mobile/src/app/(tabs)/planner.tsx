@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { router, useLocalSearchParams } from "expo-router"
-import { type LucideIcon, Plus, ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, House, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { type LucideIcon, Plus, ArrowUpDown, Bookmark, Briefcase, ChevronDown, ChevronRight, Clock, History, House, Route as RouteIcon, Search, Settings as Gear, SlidersHorizontal } from "@/components/icons"
+import { useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { rankedPlans } from "@transit/shared/easy-planner"
@@ -22,7 +22,7 @@ import { Button, EmptyState, ErrorText, GlassButton, Loading, Muted } from "@/co
 import { api } from "@/lib/api"
 import { readable, useLayout } from "@/lib/layout"
 import { coordinateOf, useUserLocation } from "@/lib/location"
-import { optionsChanged, plannerWhenStore, usePlannerOptions, whenLabel } from "@/lib/planner-store"
+import { optionsChanged, plannerWhenStore, usePlannerOptions, useRecentDestinations, whenLabel } from "@/lib/planner-store"
 import { contextFor, rememberPlans, useFares } from "@/lib/plans"
 import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
@@ -52,6 +52,9 @@ function Planner({ params }: { params: PlannerParams }) {
     const when = useSyncExternalStore(plannerWhenStore.subscribe, plannerWhenStore.get)
     const places = useSavedPlaces(slug)
     const trips = useSavedTrips(slug)
+    const recentStore = useRecentDestinations(slug)
+    // Saved places already have their own rows - don't list them twice.
+    const recents = { ...recentStore, recent: recentStore.recent.filter((r) => !places.places.some((p) => Math.abs(p.lat - r.lat) < 1e-4 && Math.abs(p.lon - r.lon) < 1e-4)) }
     const here = coordinateOf(useUserLocation())
 
     const [to, setTo] = useState<PickedPlace | null>(params.toLat && params.toLon ? { label: params.toLabel || "Destination", lat: Number(params.toLat), lon: Number(params.toLon) } : null)
@@ -93,7 +96,13 @@ function Planner({ params }: { params: PlannerParams }) {
         enabled: ready && !!request && !editingFrom,
         staleTime: 60_000,
     })
-    const results = [...(plans.data ?? []), ...later.filter((l) => !(plans.data ?? []).some((p) => p.ID === l.ID))]
+    // The recommendation stays first; everything else (later departures too) in departure order.
+    const results = (() => {
+        const ranked = plans.data ?? []
+        if (!ranked.length) return []
+        const rest = [...ranked.slice(1), ...later.filter((l) => !ranked.some((p) => p.ID === l.ID))]
+        return [ranked[0], ...rest.sort((a, b) => firstRideTime(a) - firstRideTime(b))]
+    })()
     const fares = useFares(results.map((p) => p.ID))
     const savedAlready = !!to && !!start && trips.trips.some((t) => Math.abs(t.to.lat - to.lat) < 1e-5 && Math.abs(t.to.lon - to.lon) < 1e-5 && Math.abs(t.from.lat - start.lat) < 1e-5 && Math.abs(t.from.lon - start.lon) < 1e-5)
     const arriveBy = when.mode === "arriveat"
@@ -101,23 +110,37 @@ function Planner({ params }: { params: PlannerParams }) {
 
     const pick = (p: PickedPlace) => {
         if (editingFrom) setFrom(p)
-        else setTo(p)
+        else {
+            setTo(p)
+            recents.add(p)
+        }
         setQuery("")
         setEditingFrom(false)
         setLater([])
     }
     const loadLater = async () => {
-        const last = results[results.length - 1]
-        const dep = last ? goTime(last.Legs.find((l) => l.Mode === "transit")?.DepartureTime as unknown as string) ?? goTime(last.DepartureTime as unknown as string) : null
-        if (!request || !dep) return
+        // The latest first ride so far - results are ranked, not time-ordered.
+        const after = results.reduce((t, p) => Math.max(t, firstRideTime(p)), 0)
+        if (!request || !after) return
         setLoadingLater(true)
-        const res = await api.plan({ ...request, timeType: "departat", date: new Date(dep.getTime() + 60_000) })
+        const res = await api.plan({ ...request, timeType: "departat", date: new Date(after + 60_000) })
         setLoadingLater(false)
         if (res.ok && res.data) {
             rememberPlans(res.data, context ?? undefined)
             setLater((prev) => [...prev, ...res.data.filter((p) => !results.some((r) => r.ID === p.ID))])
         }
     }
+    // Pruning dominated plans can leave a busy corridor with one option.
+    // Top it up once, in the background, with the departures after it - the
+    // first result still shows straight away.
+    const toppedUp = useRef(0)
+    useEffect(() => {
+        if (!plans.data || plans.data.length === 0 || plans.data.length >= 3 || when.mode === "arriveat") return
+        if (toppedUp.current === plans.dataUpdatedAt || later.length > 0 || loadingLater) return
+        toppedUp.current = plans.dataUpdatedAt
+        loadLater()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [plans.data, plans.dataUpdatedAt])
     const searching = !to || editingFrom || query.length > 0
     // Wide windows (iOS's planner split): results on the left, the picked
     // journey beside them - the first one until you pick another. While
@@ -208,6 +231,20 @@ function Planner({ params }: { params: PlannerParams }) {
                                     {!places.work ? <PlaceRow icon={Briefcase} tint="#f59e0b" title="Add work" border={places.places.length > 0 || !places.home} onPress={() => router.push({ pathname: "/place", params: { kind: "work" } })} /> : null}
                                     <PlaceRow icon={Plus} tint="#10b981" title="Add a place" border onPress={() => router.push({ pathname: "/place", params: { kind: "other" } })} />
                                 </View>
+                                {!editingFrom && recents.recent.length ? (
+                                    <>
+                                        <View style={styles.groupHead}>
+                                            <Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Recent</Text>
+                                            <Pressable accessibilityRole="button" accessibilityLabel="Clear recent destinations" hitSlop={8} onPress={recents.clear}><Text style={[type.metaMedium, { color: colors.mutedForeground }]}>Clear</Text></Pressable>
+                                        </View>
+                                        <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                            {recents.recent.map((r, i) => (
+                                                <PlaceRow key={`${r.lat},${r.lon}`} icon={History} tint="#64748b" title={r.label} border={i > 0}
+                                                    onPress={() => pick({ label: r.label, lat: r.lat, lon: r.lon })} />
+                                            ))}
+                                        </View>
+                                    </>
+                                ) : null}
                                 {/* Like iOS, the section only appears once there's a saved trip. */}
                                 {trips.trips.length ? (
                                     <>
@@ -284,6 +321,12 @@ function Planner({ params }: { params: PlannerParams }) {
             ) : null}
         </SafeAreaView>
     )
+}
+
+/** When a plan's first ride leaves (its start time if it's all walking), as epoch ms; 0 if unknown. */
+function firstRideTime(p: JourneyType): number {
+    const d = goTime(p.Legs.find((l) => l.Mode === "transit")?.DepartureTime as unknown as string) ?? goTime(p.DepartureTime as unknown as string)
+    return d?.getTime() ?? 0
 }
 
 function Pill({ icon: Icon, label, onPress, trailing, active }: { icon: typeof Clock; label: string; onPress: () => void; trailing?: boolean; active?: boolean }) {

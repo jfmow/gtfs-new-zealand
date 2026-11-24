@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import * as Linking from "expo-linking"
 import { router } from "expo-router"
-import { Bell, ChevronLeft, EllipsisCircle, Star, TriangleAlert, X } from "@/components/icons"
+import { Bell, ChevronLeft, ChevronRight, EllipsisCircle, MapPinOff, Star, TriangleAlert, X } from "@/components/icons"
 import { useState } from "react"
 import { ActionSheetIOS, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
@@ -10,9 +10,9 @@ import { cleanStopName } from "@transit/shared/formatting"
 import { alertStatus, filterAndSortDepartures } from "@transit/shared/logic/basics"
 import { getRegionSlug, hasRealtime } from "@transit/shared/regions"
 import { DepartureRow } from "@/components/departures"
-import { Capsule, CapsuleButton, Chip, EmptyState, ErrorText, GlassButton, Loading, Muted } from "@/components/ui"
+import { Button, Capsule, CapsuleButton, Chip, EmptyState, GlassButton, Loading, Muted } from "@/components/ui"
 import { api } from "@/lib/api"
-import { unwrap, useDepartures, useStopAlerts } from "@/lib/queries"
+import { unwrap, useDepartures, useStopAlerts, useStopMatches } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { useSavedStops } from "@/lib/saved"
 import { radius, spacing, type, useColors } from "@/theme"
@@ -25,6 +25,12 @@ function nextDays(tz: string) {
         const label = i === 0 ? "Today" : i === 1 ? "Tomorrow" : new Intl.DateTimeFormat("en-NZ", { timeZone: tz, weekday: "short", day: "numeric" }).format(d)
         return { date: d, label }
     })
+}
+
+/** "Bus stop · 11814" - which stop this is, since several can share a name. */
+function stopKindLabel(type: string, code: string): string {
+    const kind = type === "train" ? "Train station" : type === "ferry" ? "Ferry terminal" : type === "bus" ? "Bus stop" : "Stop"
+    return code ? `${kind} · ${code}` : kind
 }
 
 /**
@@ -40,6 +46,7 @@ export function StopBoardView({ query, embedded, onClose }: { query: string; emb
     const saved = useSavedStops(getRegionSlug(region))
     const board = useDepartures(query || null)
     const alerts = useStopAlerts(query || null, true)
+    const matches = useStopMatches(query || null)
     const [platform, setPlatform] = useState<string | null>(null)
     const [scheduleDay, setScheduleDay] = useState<Date | null>(null)
     const schedule = useQuery({
@@ -55,6 +62,11 @@ export function StopBoardView({ query, embedded, onClose }: { query: string; emb
     const rows = (scheduleDay ? schedule.data : board.data) ?? []
     const platforms = [...new Set((board.data ?? []).map((d) => d.platform).filter((p) => p && p !== "no platform"))].sort()
     const shown = platform ? rows.filter((d) => d.platform === platform) : rows
+    const boardError = !scheduleDay && board.error ? (board.error as Error).message : null
+    // The backend 400s with "invalid stop id" when the name doesn't resolve to a stop.
+    const notFound = !!boardError && /invalid stop|not found/i.test(boardError)
+    const info = matches.data?.find((m) => m.name === query) ?? matches.data?.find((m) => cleanStopName(m.name) === cleanStopName(query ?? ""))
+    const suggestions = notFound ? (matches.data ?? []).filter((m) => m.name !== query).slice(0, 6) : []
 
     const toggleSave = () => {
         if (savedEntry) saved.remove(savedEntry.stopId)
@@ -79,12 +91,15 @@ export function StopBoardView({ query, embedded, onClose }: { query: string; emb
                 {embedded
                     ? <GlassButton icon={X} label="Close" onPress={() => onClose?.()} size={44} />
                     : <GlassButton icon={ChevronLeft} label="Back" onPress={() => (onClose ? onClose() : router.back())} size={44} />}
-                <Text style={[type.pageTitle, { flex: 1, color: colors.foreground, fontSize: 17 }]} numberOfLines={1}>{cleanStopName(query ?? "Stop")}</Text>
-                <Capsule>
+                <View style={{ flex: 1 }}>
+                    <Text style={[type.pageTitle, { color: colors.foreground, fontSize: 17 }]} numberOfLines={1}>{cleanStopName(query ?? "Stop")}</Text>
+                    {info && !notFound ? <Text style={[type.meta, { color: colors.mutedForeground }]} numberOfLines={1}>{stopKindLabel(info.type_of_stop, info.stop_code)}</Text> : null}
+                </View>
+                {notFound ? null : <Capsule>
                     {hasRealtime(region) ? <CapsuleButton icon={Bell} label="Get alerts for this stop" onPress={() => router.push({ pathname: "/alerts/subscribe", params: { stop: query } })} /> : null}
                     <CapsuleButton icon={Star} label={savedEntry ? "Remove from saved" : "Save stop"} onPress={toggleSave} color={savedEntry ? "#eab308" : undefined} fill={savedEntry ? "#eab308" : undefined} />
                     <CapsuleButton icon={EllipsisCircle} label="More" onPress={more} />
-                </Capsule>
+                </Capsule>}
             </View>
 
             {scheduleDay ? (
@@ -122,8 +137,27 @@ export function StopBoardView({ query, embedded, onClose }: { query: string; emb
                 ) : null}
 
                 {(scheduleDay ? schedule.isLoading : board.isLoading) ? <Loading /> : null}
-                {board.error && !scheduleDay ? <ErrorText>{(board.error as Error).message}</ErrorText> : null}
-                {!board.isLoading && shown.length === 0 ? <EmptyState title={scheduleDay ? "No services that day" : "No more departures today"} /> : null}
+                {notFound ? (
+                    <>
+                        <EmptyState icon={MapPinOff} title="We couldn't find this stop" body={suggestions.length > 0 ? "It may have been renamed. Did you mean one of these?" : "It may have been renamed or removed. Try searching for it again."} action={suggestions.length === 0 ? <Button title="Go back" variant="secondary" onPress={() => (onClose ? onClose() : router.back())} /> : undefined} />
+                        {suggestions.length > 0 ? (
+                            <View style={[styles.list, { backgroundColor: colors.card, borderColor: colors.border, marginTop: spacing.md }]}>
+                                {suggestions.map((m, i) => (
+                                    <Pressable key={m.stop_id} accessibilityRole="button" onPress={() => router.replace({ pathname: "/stop/[query]", params: { query: m.name } })} style={({ pressed }) => [styles.suggestion, i > 0 && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }, pressed && { opacity: 0.6 }]}>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={[type.bodyMedium, { color: colors.foreground }]} numberOfLines={1}>{cleanStopName(m.name)}</Text>
+                                            <Muted>{stopKindLabel(m.type_of_stop, m.stop_code)}</Muted>
+                                        </View>
+                                        <ChevronRight size={14} color={colors.mutedForeground} />
+                                    </Pressable>
+                                ))}
+                            </View>
+                        ) : null}
+                    </>
+                ) : boardError ? (
+                    <EmptyState icon={TriangleAlert} title="Couldn't load departures" body="Check your connection and try again." action={<Button title="Try again" variant="secondary" onPress={() => { board.refetch() }} />} />
+                ) : null}
+                {!boardError && !board.isLoading && shown.length === 0 ? <EmptyState title={scheduleDay ? "No services that day" : "No more departures today"} /> : null}
                 {shown.length > 0 ? (
                     <View style={[styles.list, { backgroundColor: colors.card, borderColor: colors.border }]}>
                         {shown.map((d, i) => (
@@ -146,5 +180,6 @@ const styles = StyleSheet.create({
     list: { borderRadius: radius.xl, borderWidth: 1, overflow: "hidden" },
     alert: { flexDirection: "row", alignItems: "center", gap: spacing.sm, padding: spacing.md, borderRadius: radius.lg, borderWidth: 1, marginBottom: spacing.md },
     scheduleBar: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginHorizontal: spacing.lg, padding: spacing.sm, borderRadius: radius.lg },
+    suggestion: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: 12, paddingHorizontal: 14 },
     backToLive: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: 16 },
 })

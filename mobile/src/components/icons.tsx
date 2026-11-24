@@ -117,6 +117,7 @@ export const User = make("person.fill", "person")
 
 // Time, alerts and status
 export const Clock = make("clock", "schedule", { filled: "clock.fill" })
+export const History = make("clock.arrow.circlepath", "history")
 export const AlarmClock = make("alarm", "alarm", { filled: "alarm.fill" })
 export const Bell = make("bell", "notifications", { filled: "bell.fill" })
 export const BellRing = make("bell.badge", "notifications_active", { filled: "bell.badge.fill" })

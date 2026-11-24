@@ -31,7 +31,7 @@ export default function UpdatesTab() {
     const [inbox, setInbox] = useState(true)
     const { wide } = useLayout()
     return (
-        <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.grouped }}>
+        <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
             {/* Service alerts splits the full width on wide windows; the inbox stays a readable column. */}
             <View style={[styles.topRow, readable(wide && (inbox || !hasRealtime))]}>
                 {hasRealtime ? (
@@ -81,7 +81,7 @@ function Inbox() {
 
     return (
         <ScrollView contentContainerStyle={[styles.scroll, readable(wide)]} refreshControl={<RefreshControl refreshing={mine.isRefetching} onRefresh={() => { mine.refetch() }} />}>
-            <Pressable accessibilityRole="button" onPress={() => router.push("/manage-notifications")} style={[styles.group, styles.manage, { backgroundColor: colors.card }]}>
+            <Pressable accessibilityRole="button" onPress={() => router.push("/manage-notifications")} style={[styles.group, styles.manage, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth }]}>
                 <BellRing size={20} color={colors.primary} />
                 <Text style={[type.body, { flex: 1, fontSize: 17, color: colors.foreground }]}>Alerts & reminders</Text>
                 <ChevronRight size={18} color={colors.mutedForeground} />
@@ -93,7 +93,7 @@ function Inbox() {
             {groups.map((g) => (
                 <View key={g.title}>
                     <Text style={[type.metaMedium, styles.groupHeader, { color: colors.mutedForeground }]}>{g.title}</Text>
-                    <View style={[styles.group, { backgroundColor: colors.card }]}>
+                    <View style={[styles.group, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: StyleSheet.hairlineWidth }]}>
                         {g.items.map((n, i) => (
                             <Pressable key={n.id} accessibilityRole="button" accessibilityHint={n.url ? "Opens it. Long-press to dismiss." : "Long-press to dismiss."}
                                 onPress={() => n.url && parseDeepLink(n.url) && openDeepLink(n.url)} onLongPress={() => longPress(n.id)}

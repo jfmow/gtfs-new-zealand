@@ -15,8 +15,8 @@ export type Bounds = [west: number, south: number, east: number, north: number]
 export type MarkerView =
     /** A dark balloon with a count: a cluster of stops or vehicles. */
     | { type: "cluster"; count: number; color: string }
-    /** A stop: a mode icon on its mode's colour. */
-    | { type: "stop"; mode: string }
+    /** A stop: a mode icon on its mode's colour. `major` (train stations, ferry terminals) draws it bigger. */
+    | { type: "stop"; mode: string; major?: boolean }
     /** A live vehicle on the Map tab: route name and heading on the route colour. */
     | { type: "vehicleTag"; label: string; color: string; mode: string; bearing?: number | null }
     /**

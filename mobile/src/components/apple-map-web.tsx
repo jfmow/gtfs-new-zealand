@@ -91,7 +91,8 @@ function markerHTML(v: MarkerView): string {
                 <div style="width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid ${v.color};margin-top:-2px"></div></div>`
         case "stop": {
             const k = modeKey(v.mode)
-            return `<div style="width:28px;height:28px;box-sizing:border-box;border-radius:14px;background:${MODE_COLORS[k]};border:2.5px solid #fff;display:flex;align-items:center;justify-content:center;${SHADOW}">${icon(k, 14, "#fff")}</div>`
+            const d = v.major ? 34 : 28
+            return `<div style="width:${d}px;height:${d}px;box-sizing:border-box;border-radius:${d / 2}px;background:${MODE_COLORS[k]};border:${v.major ? 3 : 2.5}px solid #fff;display:flex;align-items:center;justify-content:center;${SHADOW}">${icon(k, v.major ? 17 : 14, "#fff")}</div>`
         }
         case "vehicleTag": {
             const bg = hex(v.color, "#0D1A12")
@@ -118,7 +119,7 @@ function markerHTML(v: MarkerView): string {
 function heightOf(v: MarkerView): number {
     switch (v.type) {
         case "cluster": return 34
-        case "stop": return 28
+        case "stop": return v.major ? 34 : 28
         case "vehicleTag": return 26
         case "vehicle": return 58
         case "dot": return v.size

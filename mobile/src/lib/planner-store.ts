@@ -51,3 +51,30 @@ export function whenLabel(w: PlannerWhen, clock: (d: Date) => string): string {
 export function optionsChanged(o: PlannerOptions): boolean {
     return o.maxWalkKm !== DEFAULT_PLANNER_OPTIONS.maxWalkKm || o.maxTransfers !== DEFAULT_PLANNER_OPTIONS.maxTransfers || o.modes.length > 0 || o.onlyRoutes.length > 0
 }
+
+/** A destination the rider searched for and picked - the Planner's "Recent" list. */
+export interface RecentDestination {
+    region: string
+    label: string
+    lat: number
+    lon: number
+    at: number
+}
+
+const recentStore = stored<RecentDestination[]>("planner-recent", [])
+const MAX_RECENT = 5
+
+/** The last few destinations picked in this region, newest first (same spot = same entry). */
+export function useRecentDestinations(region: string) {
+    const [all, set] = useStored(recentStore)
+    const same = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => Math.abs(a.lat - b.lat) < 1e-4 && Math.abs(a.lon - b.lon) < 1e-4
+    return {
+        recent: all.filter((r) => r.region === region).sort((a, b) => b.at - a.at).slice(0, MAX_RECENT),
+        add: (p: { label: string; lat: number; lon: number }) =>
+            set((prev) => {
+                const mine = [{ region, label: p.label, lat: p.lat, lon: p.lon, at: Date.now() }, ...prev.filter((r) => r.region === region && !same(r, p))].slice(0, MAX_RECENT)
+                return [...prev.filter((r) => r.region !== region), ...mine]
+            }),
+        clear: () => set((prev) => prev.filter((r) => r.region !== region)),
+    }
+}

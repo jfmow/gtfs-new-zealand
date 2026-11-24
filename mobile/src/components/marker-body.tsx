@@ -23,7 +23,7 @@ export const MarkerBody = memo(function MarkerBody({ view, mapHeading = 0 }: { v
             )
         case "stop": {
             const bg = view.mode === "train" ? MODE_COLORS.train : view.mode === "ferry" ? MODE_COLORS.ferry : MODE_COLORS.bus
-            return <View style={[styles.stop, { backgroundColor: bg }]}><ModeIcon mode={view.mode} size={14} color="#fff" /></View>
+            return <View style={[styles.stop, view.major && styles.majorStop, { backgroundColor: bg }]}><ModeIcon mode={view.mode} size={view.major ? 17 : 14} color="#fff" /></View>
         }
         case "vehicleTag": {
             const bg = hexColor(view.color, "#0D1A12")
@@ -70,6 +70,7 @@ const styles = StyleSheet.create({
     pointer: { width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 6, borderLeftColor: "transparent", borderRightColor: "transparent", marginTop: -2 },
     count: { color: "#fff", fontFamily: "Geist-SemiBold", fontSize: 13 },
     stop: { width: 28, height: 28, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 2.5, borderColor: "#fff", ...shadow },
+    majorStop: { width: 34, height: 34, borderRadius: 17, borderWidth: 3 },
     tag: { flexDirection: "row", alignItems: "center", gap: 3, paddingHorizontal: 7, height: 26, borderRadius: 13, borderWidth: 2, borderColor: "#fff", ...shadow },
     tagLabel: { fontFamily: "Geist-Bold", fontSize: 12 },
     vehicleWrap: { width: VEHICLE_WRAP, height: VEHICLE_WRAP, alignItems: "center", justifyContent: "center" },

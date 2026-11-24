@@ -58,7 +58,8 @@ export function DepartureRow({ d, compact = false, preview = false, stopName }: 
     else if (hasPlatform) details.push({ text: `Platform ${d.platform}` })
     if (live && d.stops_away <= 0 && d.stop_state === "AtStop") details.push({ text: "At the stop", color: colors.live })
     else if (live && d.stops_away > 0) details.push({ text: `${d.stops_away} ${d.stops_away === 1 ? "stop" : "stops"} away` })
-    if (!preview && tracking === "scheduled") details.push({ text: "Timetable only" })
+    // No "Timetable only" on every untracked row: live rows are the marked ones (live icon + coloured countdown),
+    // as on Home, and boards in regions without realtime say so once at the foot.
     if (!preview && !d.canceled) details.push({ text: clock12(d.arrival_time) ?? d.arrival_time })
     if (live && d.cars) details.push({ text: `${d.cars} cars` })
     if (live && d.location_tracking && d.occupancy >= 0 && occupancyShort(d.occupancy)) details.push({ text: occupancyShort(d.occupancy) })

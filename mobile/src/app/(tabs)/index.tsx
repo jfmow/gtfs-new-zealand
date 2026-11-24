@@ -1,7 +1,7 @@
 import { router } from "expo-router"
-import { type LucideIcon, ArrowDown, ArrowUp, Briefcase, House, MapPin, Palette, Plus, Route as RouteIcon, ScanLine, Search, Settings as Gear, Trash2 } from "@/components/icons"
+import { type LucideIcon, ArrowDown, ArrowUp, Briefcase, House, MapPin, Palette, Plus, Route as RouteIcon, ScanLine, Search, Settings as Gear, Star, Trash2 } from "@/components/icons"
 import { useState } from "react"
-import { ActionSheetIOS, Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
+import { ActionSheetIOS, ActivityIndicator, Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import { SWATCH_COLORS } from "@transit/shared/colors"
 import { cleanStopName } from "@transit/shared/formatting"
@@ -10,7 +10,7 @@ import { getRegionSlug } from "@transit/shared/regions"
 import { MiniBoard, StarTile } from "@/components/departures"
 import { placeStyle, placeTitle } from "@/components/place-style"
 import { LocationResults } from "@/components/location-search"
-import { EmptyState, GlassButton, Loading, Muted, SectionHeader } from "@/components/ui"
+import { Button, EmptyState, GlassButton, Muted, SectionHeader } from "@/components/ui"
 import { readable, useLayout } from "@/lib/layout"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { useClosestStops } from "@/lib/queries"
@@ -47,6 +47,52 @@ export default function HomeTab() {
     const { wide } = useLayout()
     const page = readable(wide, HOME_MAX_WIDTH)
     const date = new Intl.DateTimeFormat("en-NZ", { timeZone: region.timeZone, weekday: "long", day: "numeric", month: "long" }).format(new Date())
+
+    const yourStopsSection = (
+        <View style={wide ? styles.column : undefined}>
+            <SectionHeader title="Your stops" action={saved.stops.length ? (editing ? "Done" : "Edit") : undefined} onAction={() => setEditing((e) => !e)} />
+            {saved.stops.length === 0 ? (
+                <View style={[styles.tip, { borderColor: colors.border }]}>
+                    <Star size={14} color={colors.mutedForeground} />
+                    <Text style={[type.meta, { flex: 1, color: colors.mutedForeground }]}>Tap the star on any stop to pin its next departures here.</Text>
+                </View>
+            ) : editing ? (
+                <EditStops />
+            ) : (
+                <View style={{ gap: spacing.md }}>
+                    {saved.stops.map((s) => <MiniBoard key={s.stopId} query={s.query} name={s.name} color={s.color} saved />)}
+                </View>
+            )}
+        </View>
+    )
+    const nearYouSection = (
+        <View style={wide ? styles.column : undefined}>
+            <SectionHeader title="Near you" action={location.status === "ok" ? "Map" : undefined} onAction={() => router.push("/(tabs)/map")} />
+            {location.status === "denied" ? (
+                <EmptyState icon={MapPin} title="See live departures from the stops around you" body="Allow location access to see the stops near you." action={<Button title="Open Settings" variant="secondary" onPress={() => Linking.openSettings()} />} />
+            ) : nearby.isLoading || location.status === "unknown" ? (
+                <View style={styles.finding}>
+                    <ActivityIndicator color={colors.mutedForeground} />
+                    <Muted>{location.status === "unknown" ? "Finding your location…" : "Finding stops near you…"}</Muted>
+                </View>
+            ) : nearby.error ? (
+                <EmptyState title="Couldn't load stops near you" body="Check your connection and try again." action={<Button title="Try again" variant="secondary" onPress={() => { nearby.refetch() }} />} />
+            ) : nearbyStops.length === 0 ? (
+                <Muted>No stops nearby.</Muted>
+            ) : (
+                <View style={{ gap: spacing.md }}>
+                    {nearbyStops.map((s) => (
+                        <MiniBoard
+                            key={s.stop_id}
+                            query={boardQuery(s)}
+                            name={s.stop_name}
+                            onToggleSave={() => saved.toggle({ query: boardQuery(s), stopId: s.stop_id, name: s.stop_name, code: s.stop_code, lat: s.stop_lat, lon: s.stop_lon, type: s.stop_type })}
+                        />
+                    ))}
+                </View>
+            )}
+        </View>
+    )
 
     return (
         <SafeAreaView edges={["top", "left", "right"]} style={{ flex: 1, backgroundColor: colors.background }}>
@@ -103,40 +149,8 @@ export default function HomeTab() {
                     </ScrollView>
 
                     <View style={wide ? styles.columns : undefined}>
-                    <View style={wide ? styles.column : undefined}>
-                    <SectionHeader title="Your stops" action={saved.stops.length ? (editing ? "Done" : "Edit") : undefined} onAction={() => setEditing((e) => !e)} />
-                    {saved.stops.length === 0 ? (
-                        <EmptyState icon={MapPin} title="No saved stops yet" body="Save the places and stops you use most and their next departures show up here." />
-                    ) : editing ? (
-                        <EditStops />
-                    ) : (
-                        <View style={{ gap: spacing.md }}>
-                            {saved.stops.map((s) => <MiniBoard key={s.stopId} query={s.query} name={s.name} color={s.color} saved />)}
-                        </View>
-                    )}
-
-                    </View>
-                    <View style={wide ? styles.column : undefined}>
-                    <SectionHeader title="Near you" action={location.status === "ok" ? "Map" : undefined} onAction={() => router.push("/(tabs)/map")} />
-                    {location.status === "denied" ? (
-                        <EmptyState icon={MapPin} title="See live departures from the stops around you." body="Turn on location in Settings." />
-                    ) : nearby.isLoading || location.status === "unknown" ? (
-                        <Loading />
-                    ) : nearbyStops.length === 0 ? (
-                        <Muted>No stops nearby.</Muted>
-                    ) : (
-                        <View style={{ gap: spacing.md }}>
-                            {nearbyStops.map((s) => (
-                                <MiniBoard
-                                    key={s.stop_id}
-                                    query={boardQuery(s)}
-                                    name={s.stop_name}
-                                    onToggleSave={() => saved.toggle({ query: boardQuery(s), stopId: s.stop_id, name: s.stop_name, code: s.stop_code, lat: s.stop_lat, lon: s.stop_lon, type: s.stop_type })}
-                                />
-                            ))}
-                        </View>
-                    )}
-                    </View>
+                        {/* Nothing saved yet: what's around you comes first, with a one-line tip instead of a big empty card. */}
+                        {saved.stops.length === 0 ? <>{nearYouSection}{yourStopsSection}</> : <>{yourStopsSection}{nearYouSection}</>}
                     </View>
                 </ScrollView>
             )}
@@ -246,4 +260,6 @@ const styles = StyleSheet.create({
     circle: { width: 56, height: 56, borderRadius: 28, alignItems: "center", justifyContent: "center" },
     editList: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, overflow: "hidden" },
     editRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+    tip: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 14, paddingVertical: 12, borderRadius: radius.lg, borderWidth: 1, borderStyle: "dashed" },
+    finding: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm, paddingVertical: spacing.lg },
 })

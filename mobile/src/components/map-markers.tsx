@@ -35,9 +35,23 @@ export const clusterMarker = (c: { id: number; count: number; lat: number; lon: 
     view: { type: "cluster", count: c.count, color }, accessibilityLabel: `${c.count} ${prefix === "vc" ? "vehicles" : "stops"}, zoom in`, onPress,
 })
 
-export const stopMarker = (stop: StopPoint, onPress: () => void): MapMarker => ({
-    id: `s-${stop.id}`, coordinate: { lat: stop.lat, lon: stop.lon }, view: { type: "stop", mode: stop.type }, accessibilityLabel: stop.name, onPress,
-})
+/** Train stations and ferry terminals: few, and what people orient by - never clustered, drawn bigger and on top. */
+export const isMajorStop = (stop: Pick<StopPoint, "type">) => stop.type === "train" || stop.type === "ferry"
+
+/** The major stops inside `bounds` (a little padded so they don't pop at the edges). */
+export function majorStopsIn(stops: StopPoint[], bounds: Bounds): StopPoint[] {
+    const padLon = (bounds[2] - bounds[0]) * 0.1
+    const padLat = (bounds[3] - bounds[1]) * 0.1
+    return stops.filter((s) => s.lon >= bounds[0] - padLon && s.lon <= bounds[2] + padLon && s.lat >= bounds[1] - padLat && s.lat <= bounds[3] + padLat)
+}
+
+export const stopMarker = (stop: StopPoint, onPress: () => void): MapMarker => {
+    const major = isMajorStop(stop)
+    return {
+        id: `s-${stop.id}`, coordinate: { lat: stop.lat, lon: stop.lon }, zIndex: major ? 1 : undefined,
+        view: { type: "stop", mode: stop.type, major }, accessibilityLabel: stop.name, onPress,
+    }
+}
 
 export const vehicleMarker = (v: VehiclePoint, onPress: () => void): MapMarker => ({
     id: `v-${v.id}`, coordinate: { lat: v.lat, lon: v.lon }, zIndex: 2,

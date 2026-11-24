@@ -1,5 +1,5 @@
 import { AlarmClock, ArrowLeftRight, ArrowRight, ChevronRight, Clock, Flag, Footprints, Rss, TriangleAlert, WifiOff } from "@/components/icons"
-import type { ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
 import { formatDistance, formatDuration } from "@transit/shared/logic/basics"
 import { laClock } from "@transit/shared/logic/journey-live"
@@ -69,7 +69,7 @@ export function LegChain({ legs }: { legs: Leg[] }) {
                     {it.kind === "walk" ? (
                         <View style={styles.inline}>
                             <Footprints size={13} color={colors.mutedForeground} />
-                            <Text style={[type.meta, { fontSize: 13, color: colors.mutedForeground }]}>{it.minutes}</Text>
+                            <Text style={[type.meta, { fontSize: 13, color: colors.mutedForeground }]}>{it.minutes} min</Text>
                         </View>
                     ) : it.kind === "ride" ? (
                         <View style={styles.inline}>
@@ -106,10 +106,31 @@ export function Badge({ text, variant = "secondary" }: { text: string; variant?:
 }
 
 /** One planner result - iOS `JourneyResultCard`. */
+/** The current time, re-read every 30 s so countdowns stay right while the screen sits open. */
+function useNow(intervalMs = 30_000): number {
+    const [now, setNow] = useState(() => Date.now())
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), intervalMs)
+        return () => clearInterval(id)
+    }, [intervalMs])
+    return now
+}
+
+/** "Leave now" / "Leave in 6 min" / "Leave in 1 h 5 min" - null once it's over two hours off or already gone. */
+function leaveIn(dep: Date | null, now: number): string | null {
+    if (!dep) return null
+    const mins = Math.round((dep.getTime() - now) / 60_000)
+    if (mins < 0 || mins > 120) return null
+    if (mins === 0) return "Leave now"
+    return mins < 60 ? `Leave in ${mins} min` : `Leave in ${Math.floor(mins / 60)} h ${mins % 60} min`
+}
+
 export function PlanCard({ plan, tz, fare, missed, onRemind, onPress }: { plan: JourneyType; tz: string; fare?: string | null; missed?: boolean; onRemind?: () => void; onPress: () => void }) {
     const colors = useColors()
     const dep = legDate(plan.DepartureTime)
     const arr = legDate(plan.ArrivalTime)
+    const now = useNow()
+    const countdown = missed ? null : leaveIn(dep, now)
     return (
         <Pressable
             accessibilityRole="button"
@@ -126,12 +147,15 @@ export function PlanCard({ plan, tz, fare, missed, onRemind, onPress }: { plan: 
             <View style={{ padding: 14, gap: 10 }}>
                 <View style={styles.cardHead}>
                     <View style={{ flex: 1, gap: 3 }}>
-                        <Text style={[type.number, { fontSize: 19, color: colors.foreground }]}>{formatDuration(plan.TotalDuration)}</Text>
+                        <View style={[styles.inline, { gap: 8 }]}>
+                            <Text style={[type.number, { fontSize: 19, color: colors.foreground }]}>{formatDuration(plan.TotalDuration)}</Text>
+                            {countdown ? <Text style={[type.metaMedium, { color: colors.live }]}>{countdown}</Text> : null}
+                        </View>
                         {dep && arr ? (
                             <View style={styles.inline}>
-                                <Text style={[type.meta, { color: colors.mutedForeground }]}>{laClock(dep, tz)}</Text>
+                                <Text style={[type.meta, { color: colors.mutedForeground }]}>Leave {laClock(dep, tz)}</Text>
                                 <ArrowRight size={10} color={colors.mutedForeground} />
-                                <Text style={[type.meta, { color: colors.mutedForeground }]}>{laClock(arr, tz)}</Text>
+                                <Text style={[type.meta, { color: colors.mutedForeground }]}>arrive {laClock(arr, tz)}</Text>
                                 {fare ? <Text style={[type.metaMedium, { color: colors.foreground, marginLeft: 4 }]}>{fare}</Text> : null}
                             </View>
                         ) : null}

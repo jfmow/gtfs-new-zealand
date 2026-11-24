@@ -55,3 +55,30 @@ export function useStopAlerts(stopQuery: string | null, todayOnly = false) {
         staleTime: 60_000,
     })
 }
+
+/**
+ * Stops matching a board query's name - `GET stops/find-stop`. The board
+ * uses it to label the stop (mode + code) and, when the board 400s because
+ * the name doesn't resolve, to suggest the stops the user probably meant.
+ */
+export function useStopMatches(stopQuery: string | null) {
+    const { region, ready } = useRegion()
+    const name = stopQuery?.replace(/\s+\d{3,6}$/, "").trim() ?? ""
+    return useQuery({
+        queryKey: ["find-stop", region.url, name],
+        queryFn: async () => {
+            // No match comes back as a 400 ("invalid stop"), not an empty list.
+            const find = async (q: string) => {
+                const res = await api.findStop(q)
+                return res.ok ? res.data ?? [] : []
+            }
+            const hits = await find(name)
+            if (hits.length) return hits
+            // "Britomart Train Station" -> "Britomart": a renamed station still matches its neighbours.
+            const shorter = name.replace(/\s*\b(train|bus|ferry)?\s*(station|stop|terminal|wharf)\b.*$/i, "").trim()
+            return shorter && shorter !== name && shorter.length > 1 ? find(shorter) : []
+        },
+        enabled: ready && name.length > 1,
+        staleTime: 10 * 60_000,
+    })
+}
