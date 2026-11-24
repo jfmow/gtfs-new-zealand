@@ -33,11 +33,11 @@ const SearchInput = React.forwardRef<HTMLInputElement, React.ComponentProps<"inp
         "flex min-h-9 items-center rounded-md border border-input bg-transparent px-3 py-1 shadow-sm focus-visible:ring-1 focus-visible:ring-ring",
         className
       )}>
-        <SearchIcon className="w-4 h-4" />
+        <SearchIcon className="w-4 h-4 shrink-0" />
         <input
           type={type}
           className={cn(
-            "flex pl-2 bg-transparent  w-full  text-base  transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none  disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+            "flex min-w-0 flex-1 truncate pl-2 bg-transparent text-base  transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground focus-visible:outline-none  disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
           )}
           ref={ref}
           {...props}

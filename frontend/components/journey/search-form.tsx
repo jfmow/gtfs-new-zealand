@@ -104,14 +104,14 @@ export function SearchForm({
                 <button
                     type="button"
                     onClick={() => setEditingFrom(true)}
-                    className="flex items-center gap-1.5 pl-1 text-[13px] text-muted-foreground"
+                    className="flex w-full min-w-0 max-w-full items-center gap-1.5 pl-1 text-left text-[13px] text-muted-foreground"
                     aria-label={`From ${startLocation?.label ?? "not set"}. Change`}
                 >
-                    {fromIsHere ? <Navigation className="h-3 w-3 fill-current" /> : <Circle className="h-2 w-2 fill-current" />}
-                    <span className="truncate">
+                    {fromIsHere ? <Navigation className="h-3 w-3 shrink-0 fill-current" /> : <Circle className="h-2 w-2 shrink-0 fill-current" />}
+                    <span className="min-w-0 truncate">
                         From {isLocating === 'start' ? "your location…" : startLocation?.label ?? "…choose a start"}
                     </span>
-                    <span className="text-foreground underline underline-offset-2">Change</span>
+                    <span className="shrink-0 text-foreground underline underline-offset-2">Change</span>
                 </button>
             )}
 

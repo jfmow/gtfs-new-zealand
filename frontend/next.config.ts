@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import path from "node:path";
 import pkg from "./package.json";
 
 const nextConfig: NextConfig = {
@@ -7,6 +8,9 @@ const nextConfig: NextConfig = {
   devIndicators: false,
   // packages/shared ships TypeScript source (no build step), so Next compiles it.
   transpilePackages: ["@transit/shared"],
+  // It's symlinked from ../packages/shared; Turbopack only follows links inside
+  // its root, so the root is the repo, not frontend/.
+  turbopack: { root: path.join(__dirname, "..") },
   // Shown at the foot of Settings.
   env: { NEXT_PUBLIC_APP_VERSION: pkg.version },
   // /stops and /vehicles became the Map tab's two modes. Query strings pass

@@ -208,11 +208,11 @@ export function LocationSearchInput({
                     }}
                     autoFocus={autoFocus}
                     className={cn(
+                        "min-w-0",
                         bare
-                            ? "flex h-11 w-full bg-transparent pr-8 text-base"
-                            : "flex h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors",
-                        "placeholder:text-muted-foreground",
-                        "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                            // The surrounding card is the box - no second border/shadow/ring.
+                            ? "h-11 w-full rounded-none border-0 bg-transparent pr-8 text-base shadow-none"
+                            : "h-10 w-full rounded-lg border border-input bg-background px-3 pr-8 text-sm transition-colors focus-within:ring-1 focus-within:ring-ring",
                         "disabled:cursor-not-allowed disabled:opacity-50"
                     )}
                 />
