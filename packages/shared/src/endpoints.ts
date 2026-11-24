@@ -53,6 +53,8 @@ export interface JourneyPlanRequest {
     onlyRoutes?: string[]
     modes?: TravelMode[]
     minTransferSec?: number
+    /** Easier access: short walks, changes within a stop or station, more time to change. */
+    accessible?: boolean
 }
 
 /** The planner's query string, matching iOS `JourneyPlanRequest.queryItems`. */
@@ -72,6 +74,7 @@ export function planQuery(r: JourneyPlanRequest): string {
         onlyRoutes: r.onlyRoutes?.length ? r.onlyRoutes.join(",") : undefined,
         modes,
         minTransferSec: r.minTransferSec && r.minTransferSec > 0 ? r.minTransferSec : undefined,
+        access: r.accessible ? 1 : undefined,
     })
 }
 

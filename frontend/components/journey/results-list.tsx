@@ -4,7 +4,8 @@ import { useEffect, useState } from "react"
 import { useFares } from "@/lib/fares"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { AlarmClock, AlertTriangle, ArrowLeftRight, ArrowRight, Bus, ChevronRight, Flag, Footprints, Loader2, RefreshCw, Ship, TrainFront } from "lucide-react"
+import { AlarmClock, AlertTriangle, ArrowLeftRight, ArrowRight, Bus, ChevronRight, Clock, Flag, Footprints, Loader2, RefreshCw, Ship, TrainFront } from "lucide-react"
+import { axisFraction, leaveLaterMinutes, planAxis, stripSegments, tightChanges, type PlanAxis, type PlanChange } from "@transit/shared/logic/plan-compare"
 import { cn } from "@/lib/utils"
 import type { JourneyType, Leg } from "./types"
 import { formatDuration, formatTime, getFirstTransitLeg } from "./helpers"
@@ -28,6 +29,10 @@ interface ResultsListProps {
     isLoadingMore?: boolean
     /** Highlighted - the journey shown in the detail column (wide screens). */
     selectedId?: string
+    /** Opens a journey's "leave later" alternative (route.LeaveLater). */
+    onLeaveLater?: (route: JourneyType) => void
+    /** How each journey moved since the results last refreshed themselves, by id. */
+    changes?: Record<string, PlanChange>
 }
 
 /**
@@ -47,6 +52,8 @@ export function ResultsList({
     loadMoreLabel = "Later departures",
     isLoadingMore,
     selectedId,
+    onLeaveLater,
+    changes = {},
 }: ResultsListProps) {
     const [now, setNow] = useState(() => Date.now())
     useEffect(() => {
@@ -58,6 +65,9 @@ export function ResultsList({
 
     if (routes.length === 0) return null
     const stale = !!canGoStale && !!plannedAt && now - plannedAt.getTime() > STALE_MS
+    // One clock shared by every card, so a later start, a shorter ride or a
+    // long wait at a change stands out without reading the times.
+    const axis = routes.length > 1 ? planAxis(routes) : null
 
     return (
         <div id="journey-results" className="mt-6 space-y-2 scroll-mt-20">
@@ -74,6 +84,7 @@ export function ResultsList({
                     </>
                 )}
             </div>
+            {axis && <TimeAxis axis={axis} now={now} />}
             <div className="space-y-2">
                 {routes.map((route) => {
                     const hasDisruption = route.Legs.some((l) => l.Mode === "transit" && l.trip_usable === false)
@@ -82,6 +93,9 @@ export function ResultsList({
                     const canRemind =
                         !!onRemindToLeave && !!firstRide && new Date(route.DepartureTime).getTime() > now + 60_000
                     const selected = selectedId === route.ID
+                    const laterMin = leaveLaterMinutes(route)
+                    const tight = tightChanges(route).length > 0
+                    const change = changes[route.ID]
                     return (
                         <div
                             key={route.ID + route.DepartureTime}
@@ -106,7 +120,14 @@ export function ResultsList({
                             <div className="pointer-events-none relative flex flex-col gap-2.5 p-3.5">
                                 <div className="flex items-start gap-2">
                                     <div className="flex flex-1 flex-col">
-                                        <span className="font-mono text-lg font-semibold leading-none">{formatDuration(route.TotalDuration)}</span>
+                                        <span className="flex items-baseline gap-2">
+                                            <span className="font-mono text-lg font-semibold leading-none">{formatDuration(route.TotalDuration)}</span>
+                                            {change && (
+                                                <span aria-live="polite" className={cn("text-xs font-medium", change.arrivalDeltaMin > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400")}>
+                                                    {change.arrivalDeltaMin > 0 ? `${change.arrivalDeltaMin} min later than before` : `${-change.arrivalDeltaMin} min sooner than before`}
+                                                </span>
+                                            )}
+                                        </span>
                                         <span className="mt-1 text-xs tabular-nums text-muted-foreground">
                                             {formatTime(route.DepartureTime)}
                                             <ArrowRight className="mx-1 inline h-3 w-3" />
@@ -133,7 +154,23 @@ export function ResultsList({
                                         </button>
                                     )}
                                 </div>
-                                <LegChain legs={route.Legs} />
+                                {axis ? <TimeStrip route={route} axis={axis} /> : <LegChain legs={route.Legs} />}
+                                {tight && !missed && (
+                                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                                        <AlertTriangle className="h-3 w-3 text-amber-600" /> Tight change - a small delay could miss it
+                                    </span>
+                                )}
+                                {laterMin > 0 && onLeaveLater && !missed && (
+                                    <button
+                                        type="button"
+                                        onClick={() => onLeaveLater(route)}
+                                        className="pointer-events-auto relative z-10 flex items-center gap-1.5 rounded-lg bg-muted px-2.5 py-1.5 text-left text-xs font-medium transition-colors hover:bg-accent"
+                                    >
+                                        <Clock className="h-3.5 w-3.5" />
+                                        <span className="flex-1">Leave {laterMin} min later, same arrival</span>
+                                        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                                    </button>
+                                )}
                             </div>
                         </div>
                     )
@@ -145,6 +182,58 @@ export function ResultsList({
                     {loadMoreLabel}
                 </Button>
             )}
+        </div>
+    )
+}
+
+/**
+ * The journey on the results' shared clock: rides in their route colour,
+ * walks as a thin line, and waiting as the gap between. Faint gridlines at
+ * the axis ticks line the cards up with each other and the header.
+ */
+function TimeStrip({ route, axis }: { route: JourneyType; axis: PlanAxis }) {
+    const segments = stripSegments(route, axis)
+    const spoken = segments.map((s) => (s.kind === "walk" ? `walk ${Math.max(1, Math.round(s.leg.Duration / 6e10))} minutes` : `${modeOf(s.leg)} ${s.leg.Route?.route_short_name || s.leg.RouteID}`)).join(", then ")
+    return (
+        <div className="relative h-[22px]" role="img" aria-label={spoken}>
+            {axis.ticks.map((t) => (
+                <span key={t} className="absolute -bottom-1 -top-1 w-px bg-border" style={{ left: `${axisFraction(axis, t) * 100}%` }} />
+            ))}
+            <span className="absolute inset-x-0 top-1/2 h-px bg-border" />
+            {segments.map((s) =>
+                s.kind === "walk" ? (
+                    <span key={s.index} className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/60" style={{ left: `${s.left * 100}%`, width: `${s.width * 100}%` }} />
+                ) : (
+                    <span
+                        key={s.index}
+                        className="absolute inset-y-0 flex min-w-1 items-center justify-center overflow-hidden rounded-[5px] px-0.5 text-[11px] font-bold leading-none [container-type:inline-size]"
+                        style={{
+                            left: `${s.left * 100}%`,
+                            width: `${s.width * 100}%`,
+                            background: "#" + (s.leg.Route?.route_color || "424242"),
+                            color: s.leg.Route?.route_text_color ? `#${s.leg.Route.route_text_color}` : "#ffffff",
+                            opacity: s.leg.trip_usable === false ? 0.45 : 1,
+                        }}
+                    >
+                        <span className="truncate">{s.leg.Route?.route_short_name || s.leg.RouteID}</span>
+                    </span>
+                ),
+            )}
+        </div>
+    )
+}
+
+/** The shared clock's labels, above the cards (inset like a card's content so the ticks line up). */
+function TimeAxis({ axis, now }: { axis: PlanAxis; now: number }) {
+    const nowFrac = now > axis.start && now < axis.end ? axisFraction(axis, now) : null
+    return (
+        <div className="relative mx-[15px] h-4" aria-hidden>
+            {axis.ticks.map((t) => (
+                <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground" style={{ left: `${axisFraction(axis, t) * 100}%` }}>
+                    {formatTime(new Date(t))}
+                </span>
+            ))}
+            {nowFrac !== null && <span className="absolute bottom-0 h-1.5 w-0.5 -translate-x-1/2 rounded-full bg-blue-600 dark:bg-blue-400" style={{ left: `${nowFrac * 100}%` }} />}
         </div>
     )
 }

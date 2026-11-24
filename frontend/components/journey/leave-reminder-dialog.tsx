@@ -33,6 +33,8 @@ export interface LeaveReminderContext {
     onlyRoutes: RouteOption[]
     /** Transport the search was limited to ("bus", "train", "ferry"); empty = any. */
     modes?: string[]
+    /** Easier access was on for the search. */
+    accessible?: boolean
     timeType: "now" | "leaveat" | "arriveat"
     selectedDate: Date
 }
@@ -211,6 +213,7 @@ export function LeaveReminderDialog({
             maxTransfers: requestContext.maxTransfers,
             onlyRoutes: requestContext.onlyRoutes.map((r) => r.route_id),
             modes,
+            accessible: requestContext.accessible,
             offsets: usableOffsets,
             alertMode,
         }

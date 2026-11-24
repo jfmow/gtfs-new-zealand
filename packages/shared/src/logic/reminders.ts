@@ -27,6 +27,8 @@ export interface JourneyReminderRequest {
     onlyRoutes: string[]
     modes: TravelMode[]
     minTransferSec: number
+    /** Plan with easier access (short walks, changes within a stop or station). */
+    accessible?: boolean
     /** Minutes before leaving; 0 = "when to leave". For `changes`, one value: how long before leaving to start watching. */
     offsets: number[]
     alertMode: "leave" | "changes"
@@ -63,6 +65,7 @@ export function reminderFormFields(r: JourneyReminderRequest): Record<string, st
     if (r.alertMode !== "leave") form.alertMode = r.alertMode
     if (r.modes.length) form.modes = TRAVEL_MODES.filter((m) => r.modes.includes(m)).join(",")
     if (r.minTransferSec > 0) form.minTransferSec = String(r.minTransferSec)
+    if (r.accessible) form.access = "1"
     if (r.recurrence) form.recurrence = r.recurrence
     if (r.recurrenceUntil) form.recurrenceUntil = r.recurrenceUntil
     if (r.serviceDate !== undefined) form.serviceDate = r.serviceDate
@@ -115,6 +118,7 @@ export function makeReminderRequest(a: {
     onlyRoutes: string[]
     modes?: TravelMode[]
     minTransferSec?: number
+    accessible?: boolean
     offsets: number[]
     /** Seven 0/1 chars Mon..Sun; "" = once. */
     recurrence: string
@@ -134,7 +138,7 @@ export function makeReminderRequest(a: {
         timeType: a.arriveBy ? "arriveat" : "departat",
         targetHHMM: regionHHMM(target, a.tz),
         maxWalkKm: a.maxWalkKm, walkSpeed: a.walkSpeed, maxTransfers: a.maxTransfers,
-        onlyRoutes: a.onlyRoutes, modes: a.modes ?? [], minTransferSec: a.minTransferSec ?? 0,
+        onlyRoutes: a.onlyRoutes, modes: a.modes ?? [], minTransferSec: a.minTransferSec ?? 0, accessible: a.accessible,
         offsets: a.offsets, alertMode: a.alertMode ?? "leave", deeplink: "",
     }
     if (!a.recurrence) {
