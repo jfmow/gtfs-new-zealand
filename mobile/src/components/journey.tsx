@@ -217,31 +217,31 @@ export function PlanCard({ plan, tz, fare, missed, onRemind, onPress, axis, chan
 }
 
 /**
- * The journey on the results' shared clock: rides in their route colour,
- * walks as a thin line, and waiting as the gap between. Faint gridlines at
- * the axis ticks line the cards up with each other and the header.
+ * The journey on the results' shared clock. Rides are slim pills in their
+ * route colour, walks are dotted, and a wait is the faint line between -
+ * drawn only from leaving to arriving, so the rest of the clock stays empty.
  */
 export function TimeStrip({ plan, axis }: { plan: JourneyType; axis: PlanAxis }) {
     const colors = useColors()
     const [width, setWidth] = useState(0)
     const segments = stripSegments(plan, axis)
     const a11y = segments.map((s) => (s.kind === "walk" ? `walk ${legMinutes(s.leg)} minutes` : `${legModeName(s.leg)} ${legRouteName(s.leg)}`)).join(", then ")
+    const first = segments[0]
+    const last = segments[segments.length - 1]
     return (
         <View accessible accessibilityLabel={a11y} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={styles.strip}>
-            {axis.ticks.map((t) => (
-                <View key={t} style={[styles.gridline, { left: `${axisFraction(axis, t) * 100}%`, backgroundColor: colors.border }]} />
-            ))}
-            <View style={[styles.track, { backgroundColor: colors.border }]} />
+            {first && last ? (
+                <View style={[styles.span, { left: `${first.left * 100}%`, width: `${(last.left + last.width - first.left) * 100}%`, backgroundColor: colors.border }]} />
+            ) : null}
             {segments.map((s) => {
-                const style = { left: `${s.left * 100}%` as const, width: `${s.width * 100}%` as const }
-                if (s.kind === "walk") return <View key={s.index} style={[styles.walkSeg, style, { backgroundColor: colors.mutedForeground }]} />
+                const pos = { left: `${s.left * 100}%` as const, width: `${s.width * 100}%` as const }
+                if (s.kind === "walk") return <View key={s.index} style={[styles.walkSeg, pos, { borderColor: colors.mutedForeground }]} />
                 const hex = legHex(s.leg)
                 const name = legRouteName(s.leg)
-                // Room for the route name: about 8 px a character plus padding.
-                const fits = width * s.width >= name.length * 8 + 10
+                const fits = width * s.width >= name.length * 7 + 12
                 return (
-                    <View key={s.index} style={[styles.rideSeg, style, { backgroundColor: hex, opacity: s.leg.trip_usable ? 1 : 0.45 }]}>
-                        {fits ? <Text style={[type.badge, { fontSize: 11, color: textOn(hex) }]} numberOfLines={1}>{name}</Text> : null}
+                    <View key={s.index} style={[styles.rideSeg, pos, { backgroundColor: hex, opacity: s.leg.trip_usable ? 1 : 0.45 }]}>
+                        {fits ? <Text style={[type.badge, { fontSize: 10, color: textOn(hex) }]} numberOfLines={1}>{name}</Text> : null}
                     </View>
                 )
             })}
@@ -260,9 +260,10 @@ export function TimeAxis({ axis, tz }: { axis: PlanAxis; tz: string }) {
                 {axis.ticks.map((t) => {
                     const f = axisFraction(axis, t)
                     return (
-                        <Text key={t} style={[type.meta, styles.tickLabel, { left: `${f * 100}%`, color: colors.mutedForeground }]} numberOfLines={1}>
-                            {laClock(new Date(t), tz)}
-                        </Text>
+                        <View key={t} style={[styles.tick, { left: `${f * 100}%` }]}>
+                            <Text style={[type.meta, styles.tickLabel, { color: colors.mutedForeground }]} numberOfLines={1}>{laClock(new Date(t), tz)}</Text>
+                            <View style={[styles.tickMark, { backgroundColor: colors.border }]} />
+                        </View>
                     )
                 })}
                 {nowFrac !== null ? <View style={[styles.nowTick, { left: `${nowFrac * 100}%`, backgroundColor: colors.live }]} /> : null}
@@ -562,14 +563,15 @@ const styles = StyleSheet.create({
     cardHead: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
     remind: { width: 30, height: 26, alignItems: "center", justifyContent: "center" },
     later: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 10, paddingVertical: 7, borderRadius: radius.md },
-    strip: { height: 22, justifyContent: "center" },
-    track: { position: "absolute", left: 0, right: 0, height: StyleSheet.hairlineWidth },
-    gridline: { position: "absolute", top: -4, bottom: -4, width: StyleSheet.hairlineWidth, opacity: 0.8 },
-    walkSeg: { position: "absolute", height: 2, borderRadius: 1, opacity: 0.6 },
-    rideSeg: { position: "absolute", top: 0, bottom: 0, minWidth: 4, borderRadius: 5, alignItems: "center", justifyContent: "center", paddingHorizontal: 3, overflow: "hidden" },
-    // Inset like a card's content (hairline border + 14 padding) so ticks sit over the strips' gridlines.
-    axis: { flexDirection: "row", height: 18, marginHorizontal: 14 + StyleSheet.hairlineWidth, marginBottom: 4 },
-    tickLabel: { position: "absolute", width: 64, marginLeft: -32, textAlign: "center", fontSize: 11 },
+    strip: { height: 16, justifyContent: "center" },
+    span: { position: "absolute", height: StyleSheet.hairlineWidth * 2 },
+    walkSeg: { position: "absolute", height: 0, borderTopWidth: 2, borderStyle: "dotted", opacity: 0.7 },
+    rideSeg: { position: "absolute", top: 0, bottom: 0, minWidth: 6, borderRadius: 8, alignItems: "center", justifyContent: "center", overflow: "hidden" },
+    // Inset like a card's content (hairline border + 14 padding) so the ticks line up with the strips.
+    axis: { flexDirection: "row", height: 22, marginHorizontal: 14 + StyleSheet.hairlineWidth, marginBottom: 4 },
+    tick: { position: "absolute", top: 0, width: 64, marginLeft: -32, alignItems: "center" },
+    tickLabel: { textAlign: "center", fontSize: 11 },
+    tickMark: { width: StyleSheet.hairlineWidth * 2, height: 4, marginTop: 3 },
     nowTick: { position: "absolute", bottom: 0, width: 2, height: 6, marginLeft: -1, borderRadius: 1 },
     bar: { flexDirection: "row", gap: 3, height: 26 },
     piece: { flexBasis: 0, borderRadius: 6, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 3, paddingHorizontal: 4 },

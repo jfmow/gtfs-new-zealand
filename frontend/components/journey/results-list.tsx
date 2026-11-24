@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useFares } from "@/lib/fares"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -187,38 +187,51 @@ export function ResultsList({
 }
 
 /**
- * The journey on the results' shared clock: rides in their route colour,
- * walks as a thin line, and waiting as the gap between. Faint gridlines at
- * the axis ticks line the cards up with each other and the header.
+ * The journey on the results' shared clock. Rides are slim pills in their
+ * route colour, walks are dotted, and a wait is the faint line between -
+ * drawn only from leaving to arriving, so the rest of the clock stays empty.
  */
 function TimeStrip({ route, axis }: { route: JourneyType; axis: PlanAxis }) {
     const segments = stripSegments(route, axis)
+    const ref = useRef<HTMLDivElement>(null)
+    const [width, setWidth] = useState(0)
+    useEffect(() => {
+        const el = ref.current
+        if (!el) return
+        const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width))
+        ro.observe(el)
+        return () => ro.disconnect()
+    }, [])
     const spoken = segments.map((s) => (s.kind === "walk" ? `walk ${Math.max(1, Math.round(s.leg.Duration / 6e10))} minutes` : `${modeOf(s.leg)} ${s.leg.Route?.route_short_name || s.leg.RouteID}`)).join(", then ")
+    const first = segments[0]
+    const last = segments[segments.length - 1]
     return (
-        <div className="relative h-[22px]" role="img" aria-label={spoken}>
-            {axis.ticks.map((t) => (
-                <span key={t} className="absolute -bottom-1 -top-1 w-px bg-border" style={{ left: `${axisFraction(axis, t) * 100}%` }} />
-            ))}
-            <span className="absolute inset-x-0 top-1/2 h-px bg-border" />
-            {segments.map((s) =>
-                s.kind === "walk" ? (
-                    <span key={s.index} className="absolute top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-muted-foreground/60" style={{ left: `${s.left * 100}%`, width: `${s.width * 100}%` }} />
-                ) : (
+        <div ref={ref} className="relative h-4" role="img" aria-label={spoken}>
+            {first && last && (
+                <span className="absolute top-1/2 h-px -translate-y-1/2 bg-border" style={{ left: `${first.left * 100}%`, width: `${(last.left + last.width - first.left) * 100}%` }} />
+            )}
+            {segments.map((s) => {
+                const pos = { left: `${s.left * 100}%`, width: `${s.width * 100}%` }
+                if (s.kind === "walk") {
+                    return <span key={s.index} className="absolute top-1/2 h-0 -translate-y-1/2 border-t-2 border-dotted border-muted-foreground/70" style={pos} />
+                }
+                const name = s.leg.Route?.route_short_name || s.leg.RouteID
+                const fits = width * s.width >= name.length * 7 + 12
+                return (
                     <span
                         key={s.index}
-                        className="absolute inset-y-0 flex min-w-1 items-center justify-center overflow-hidden rounded-[5px] px-0.5 text-[11px] font-bold leading-none [container-type:inline-size]"
+                        className="absolute inset-y-0 flex min-w-1.5 items-center justify-center overflow-hidden rounded-full text-[10px] font-bold leading-none"
                         style={{
-                            left: `${s.left * 100}%`,
-                            width: `${s.width * 100}%`,
-                            background: "#" + (s.leg.Route?.route_color || "424242"),
+                            ...pos,
+                            background: "#" + (s.leg.Route?.route_color || "525252"),
                             color: s.leg.Route?.route_text_color ? `#${s.leg.Route.route_text_color}` : "#ffffff",
                             opacity: s.leg.trip_usable === false ? 0.45 : 1,
                         }}
                     >
-                        <span className="truncate">{s.leg.Route?.route_short_name || s.leg.RouteID}</span>
+                        {fits ? name : null}
                     </span>
-                ),
-            )}
+                )
+            })}
         </div>
     )
 }
@@ -227,10 +240,11 @@ function TimeStrip({ route, axis }: { route: JourneyType; axis: PlanAxis }) {
 function TimeAxis({ axis, now }: { axis: PlanAxis; now: number }) {
     const nowFrac = now > axis.start && now < axis.end ? axisFraction(axis, now) : null
     return (
-        <div className="relative mx-[15px] h-4" aria-hidden>
+        <div className="relative mx-[15px] h-5" aria-hidden>
             {axis.ticks.map((t) => (
-                <span key={t} className="absolute -translate-x-1/2 whitespace-nowrap text-[11px] tabular-nums text-muted-foreground" style={{ left: `${axisFraction(axis, t) * 100}%` }}>
-                    {formatTime(new Date(t))}
+                <span key={t} className="absolute top-0 flex -translate-x-1/2 flex-col items-center" style={{ left: `${axisFraction(axis, t) * 100}%` }}>
+                    <span className="whitespace-nowrap text-[11px] tabular-nums leading-none text-muted-foreground">{formatTime(new Date(t))}</span>
+                    <span className="mt-1 h-1 w-px bg-border" />
                 </span>
             ))}
             {nowFrac !== null && <span className="absolute bottom-0 h-1.5 w-0.5 -translate-x-1/2 rounded-full bg-blue-600 dark:bg-blue-400" style={{ left: `${nowFrac * 100}%` }} />}
