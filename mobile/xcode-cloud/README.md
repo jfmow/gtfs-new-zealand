@@ -10,6 +10,12 @@ what Xcode Cloud needs instead:
 - `Transit.xcworkspace` - a committed workspace pointing at `../ios/Transit.xcodeproj`
   and `../ios/Pods/Pods.xcodeproj` (the same two projects CocoaPods' own
   workspace lists). Xcode Cloud workflows use this path.
+- `Transit.xcworkspace/xcshareddata/xcschemes/Transit Cloud.xcscheme` - the
+  scheme workflows must use. Xcode Cloud looks up the workflow's scheme
+  before `ci_post_clone.sh` runs; the generated project's own `Transit`
+  scheme isn't in the repo then, which fails with "Project
+  Transit.xcodeproj does not exist at ios/Transit.xcodeproj". This copy lives
+  in the committed workspace (container `../ios/Transit.xcodeproj`).
 - `ci_scripts/ci_post_clone.sh` - runs after Xcode Cloud clones the repo:
   installs Node 24 + CocoaPods, `npm ci`, `APP_VARIANT=production expo prebuild`,
   `pod install`, and sets the build number. Xcode Cloud only runs
@@ -39,7 +45,7 @@ EAS still sees a managed (CNG) project.
      and `packages/shared/` (so backend/web commits don't trigger a build).
    - **Environment**: latest release Xcode, latest macOS. Optional variable
      `XCC_BUILD_OFFSET` (see below).
-   - **Actions**: Archive - iOS, scheme `Transit`, distribution
+   - **Actions**: Archive - iOS, scheme **`Transit Cloud`** (not `Transit`), distribution
      **App Store Connect**.
    - **Post-actions**: TestFlight Internal Testing, pick a group.
 5. Signing: Xcode Cloud manages signing automatically for team 2A422A733W.
