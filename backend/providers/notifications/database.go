@@ -208,6 +208,7 @@ func (d *Database) ensureSchema(ctx context.Context) error {
             only_route_ids TEXT NOT NULL DEFAULT '[]',
             route_types TEXT NOT NULL DEFAULT '[]',
             min_transfer_sec INTEGER NOT NULL DEFAULT 0,
+            accessible INTEGER NOT NULL DEFAULT 0,
             -- prep_buffer_seconds: removed. The leave anchor is now the journey's
             -- real walk-out time; older DBs keep the (ignored) column.
             offsets TEXT NOT NULL DEFAULT '[30,15,5,0]',
@@ -317,6 +318,9 @@ func (d *Database) ensureSchema(ctx context.Context) error {
 		// "leave" (the leave-by pushes) or "changes" (only when something
 		// changes - see jrAlertChanges).
 		{"alert_mode", `ALTER TABLE journey_reminders ADD COLUMN alert_mode TEXT NOT NULL DEFAULT 'leave';`},
+		// The planner's "easier access" option, so a reminder re-plans the
+		// same way.
+		{"accessible", `ALTER TABLE journey_reminders ADD COLUMN accessible INTEGER NOT NULL DEFAULT 0;`},
 	}
 	for _, m := range jrMigrations {
 		if jrExistingColumns[m.column] {
