@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { randomId } from "@/lib/utils"
 import { Bookmark, Briefcase, Building, Bus, Coffee, Dumbbell, Flag, GraduationCap, Heart, Hospital, House, MapPin, Plane, ShoppingCart, Star, TrainFront, Trees, User, Utensils, type LucideIcon } from "lucide-react"
 import { SWATCH_COLORS } from "@/lib/colors"
 import { useUrl } from "@/lib/url-context"
@@ -115,7 +116,7 @@ export function useSavedPlaces() {
     const places = all.filter((p) => p.region === region)
 
     const addPlace = (place: Omit<SavedPlace, "id" | "createdAt" | "region">): SavedPlace => {
-        const created: SavedPlace = { ...place, id: crypto.randomUUID(), createdAt: new Date().toISOString(), region }
+        const created: SavedPlace = { ...place, id: randomId(), createdAt: new Date().toISOString(), region }
         writePlaces([...readPlaces(), created])
         return created
     }

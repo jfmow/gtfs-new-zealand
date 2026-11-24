@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { randomId } from "@/lib/utils"
 import { SWATCH_COLORS } from "@/lib/colors"
 import type { Location } from "./types"
 import type { RouteOption } from "./route-filter"
@@ -62,7 +63,7 @@ export function useSavedTrips() {
         const current = readTrips()
         const newTrip: SavedTrip = {
             ...trip,
-            id: crypto.randomUUID(),
+            id: randomId(),
             savedAt: new Date().toISOString(),
             color: SWATCH_COLORS[current.length % SWATCH_COLORS.length].value,
         }

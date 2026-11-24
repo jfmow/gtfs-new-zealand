@@ -1,4 +1,5 @@
 import type React from "react"
+import { randomId } from "@/lib/utils"
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react"
 import { createApiClient, type ApiResult } from "@transit/shared/api"
 import { UrlOption, urlOptions, urlStore } from "./url-store"
@@ -51,7 +52,7 @@ const TRACE_ID_KEY = "trace-id";
 function getOrCreateTraceId(): string {
     let traceId = localStorage.getItem(TRACE_ID_KEY);
     if (!traceId) {
-        traceId = crypto.randomUUID();
+        traceId = randomId();
         localStorage.setItem(TRACE_ID_KEY, traceId);
     }
     return traceId;

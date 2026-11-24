@@ -6,7 +6,7 @@ import { ApiFetch } from "./url-context";
     ***Set stopIdOrName to "" to remove all subscriptions**
 */
 export async function removeSubscription(stopIdOrName: string) {
-    const sw = await navigator.serviceWorker.getRegistration("/pwa/sw.js")
+    const sw = await getSwRegistration()
     if (!sw) return false
     const subscription = await sw.pushManager.getSubscription()
     const form = new FormData();
@@ -51,7 +51,9 @@ export async function register(swPath: string, options: RegistrationOptions) {
     }
 }
 
-async function getSwRegistration() {
+/** Undefined where service workers don't exist - e.g. a plain-http dev origin that isn't localhost. */
+async function getSwRegistration(): Promise<ServiceWorkerRegistration | undefined> {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return undefined
     let registration = await navigator.serviceWorker.getRegistration("/pwa/sw.js")
     if (!registration) {
         register("/pwa/sw.js", {})
@@ -62,6 +64,7 @@ async function getSwRegistration() {
 
 async function createNewSubscription() {
     const sw = await getSwRegistration()
+    if (!sw) throw new Error("Notifications need HTTPS (service workers aren't available here)")
     const newSubscription = await sw.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUB || ""),
@@ -72,6 +75,7 @@ async function createNewSubscription() {
 
 async function getNotificationPermissionState() {
     const sw = await getSwRegistration()
+    if (!sw) return "cannot send"
     const state = await sw.pushManager.permissionState({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUB || ""),
@@ -523,7 +527,7 @@ export async function checkRouteSubscription(routeId: string): Promise<{ has: bo
 
 /** This browser's push subscription, created if permission allows. */
 export async function ensureSubscription(): Promise<PushSubscription | undefined> {
-    const existing = await (await getSwRegistration()).pushManager.getSubscription()
+    const existing = await (await getSwRegistration())?.pushManager.getSubscription()
     if (existing) return existing
     const state = await getNotificationPermissionState()
     if (state === "cannot send") return undefined
@@ -579,7 +583,7 @@ export async function updateRouteSub(routeId: string, filters?: SubscriptionFilt
 }
 
 export async function removeRouteSubscription(routeId: string) {
-    const subscription = await (await getSwRegistration()).pushManager.getSubscription()
+    const subscription = await (await getSwRegistration())?.pushManager.getSubscription()
     if (!subscription) return false
 
     const form = new FormData();
@@ -603,7 +607,7 @@ export async function removeRouteSubscription(routeId: string) {
 
 /** Every stop + route subscription for the current device, plus recent notification history - powers the manage-subscriptions view and the nav bell/badge. */
 export async function getMySubscriptions(): Promise<MySubscriptions | null> {
-    const subscription = await (await getSwRegistration()).pushManager.getSubscription()
+    const subscription = await (await getSwRegistration())?.pushManager.getSubscription()
     if (!subscription) return null
 
     const form = new FormData();

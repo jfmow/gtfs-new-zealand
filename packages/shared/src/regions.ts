@@ -47,8 +47,10 @@ export const PRODUCTION_REGIONS: UrlOption[] = [
     { url: "https://trainapi.suddsy.dev/seq", displayName: "South East Queensland – Translink", logoUrl: "/provider logos/translink.png", textColor: "#ff0000", defaultMapCenter: [-27.4698, 153.0251], country: "AU", timeZone: "Australia/Brisbane" },
 ]
 
-/** Same regions against a local backend. `localhost` only works from a simulator or browser on the dev machine. */
-export function devRegions(host = "http://localhost:8090"): UrlOption[] {
+/** Same regions against the dev machine's backend, by its Tailscale name so any device on the tailnet can reach it (the web app's default; the Expo app passes its own host). */
+export const DEV_API_HOST = "http://jamess-macbook-pro.tail4520a7.ts.net:8090"
+
+export function devRegions(host = DEV_API_HOST): UrlOption[] {
     return [
         { url: `${host}/at`, displayName: "Dev – Auckland", logoUrl: "/provider logos/at.png", textColor: "#0073bd", defaultMapCenter: [-36.85405453502828, 174.76303318519342], country: "NZ", timeZone: "Pacific/Auckland" },
         { url: `${host}/wel`, displayName: "Dev – Wellington", logoUrl: "/provider logos/metlink.png", textColor: "#ced940", defaultMapCenter: [-41.292395707702504, 174.77880205575084], country: "NZ", timeZone: "Pacific/Auckland" },

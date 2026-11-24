@@ -5,6 +5,8 @@ import pkg from "./package.json";
 const nextConfig: NextConfig = {
   /* config options here */
   reactStrictMode: false,
+  // The dev server is opened by its Tailscale name, not localhost.
+  allowedDevOrigins: ["jamess-macbook-pro.tail4520a7.ts.net"],
   devIndicators: false,
   // packages/shared ships TypeScript source (no build step), so Next compiles it.
   transpilePackages: ["@transit/shared"],
