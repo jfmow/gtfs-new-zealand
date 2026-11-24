@@ -70,7 +70,7 @@ export default function LeaveReminder() {
         const req = makeReminderRequest({
             plan, start: startPlace, end: endPlace, arriveBy: ctx?.arriveBy ?? false,
             maxWalkKm: ctx?.maxWalkKm ?? 1, walkSpeed: ctx?.walkSpeed ?? Number(normalizeWalkSpeed(settings.walkSpeed)),
-            maxTransfers: ctx?.maxTransfers ?? 5, onlyRoutes: ctx?.onlyRoutes ?? [], modes: ctx?.modes, minTransferSec: ctx?.minTransferSec,
+            maxTransfers: ctx?.maxTransfers ?? 5, onlyRoutes: ctx?.onlyRoutes ?? [], modes: ctx?.modes, minTransferSec: ctx?.minTransferSec, accessible: ctx?.accessible,
             offsets: usable, recurrence: mask,
             recurrenceUntil: hasUntil && mask ? `${until.getFullYear()}-${String(until.getMonth() + 1).padStart(2, "0")}-${String(until.getDate()).padStart(2, "0")}` : null,
             alertMode: mode, regionSlug: getRegionSlug(region), tz,

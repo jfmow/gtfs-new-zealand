@@ -46,6 +46,9 @@ export default function PlannerOptions() {
                         onMinus={() => setOptions({ maxTransfers: Math.max(0, options.maxTransfers - 1) })}
                         onPlus={() => setOptions({ maxTransfers: Math.min(5, options.maxTransfers + 1) })} />
                 </Card>
+                <Card title="Easier access" note="Walks of 500 m or less, changes only at the same stop or station, and more time at each change.">
+                    <Segmented options={[{ value: "off", label: "Off" }, { value: "on", label: "On" }]} value={options.accessible ? "on" : "off"} onChange={(v) => setOptions({ accessible: v === "on" })} />
+                </Card>
                 <Card title="Transport" note="Leave all off to use any transport.">
                     <View style={styles.wrap}>
                         {TRAVEL_MODES.map((m) => <Chip key={m} icon={MODE_ICON[m]} label={m[0].toUpperCase() + m.slice(1)} selected={options.modes.includes(m)} onPress={() => toggleMode(m)} />)}

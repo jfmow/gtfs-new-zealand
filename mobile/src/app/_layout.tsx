@@ -10,6 +10,7 @@ import { regionBySlug } from "@transit/shared/regions"
 import { ResumeJourneyBar } from "@/components/resume-journey"
 import "@/lib/journey-location" // defines the background GPS task at startup, before iOS wakes the app for a fix
 import { JourneyRunner } from "@/lib/journey-runner"
+import { useOfflineTripPlans } from "@/lib/offline-trips"
 import { setRegionSwitcher } from "@/lib/links"
 import { syncWidgetData } from "@/lib/live-surface"
 import { startCloudSync } from "@/lib/cloud-sync"
@@ -139,6 +140,9 @@ function AppEffects() {
         registerForPush().catch(() => {})
         return listenForNotificationTaps()
     }, [setRegion])
+
+    // Saved trips planned ahead, for planning with no signal.
+    useOfflineTripPlans(region)
 
     // Widgets and Siri read the region and saved stops from the app group.
     useEffect(() => {

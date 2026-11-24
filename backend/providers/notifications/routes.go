@@ -1141,6 +1141,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			return c.JSON(http.StatusBadRequest, Response{Code: http.StatusBadRequest, Message: "invalid modes"})
 		}
 		minTransferSec, _ := strconv.Atoi(c.FormValue("minTransferSec"))
+		accessible := c.FormValue("access") == "1"
 
 		reminder := JourneyReminder{
 			ClientId:        client.Id,
@@ -1161,6 +1162,7 @@ func SetupNotificationsRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, 
 			OnlyRouteIDs:    onlyRouteIDs,
 			RouteTypes:      routeTypes,
 			MinTransferSec:  ClampMinTransferSec(minTransferSec),
+			Accessible:      accessible,
 			Offsets:         offsets,
 			AlertMode:       alertMode,
 			Recurrence:      recurrence,

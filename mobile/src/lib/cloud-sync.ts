@@ -2,19 +2,48 @@ import AsyncStorage from "@react-native-async-storage/async-storage"
 import { AppState } from "react-native"
 import { docFromList, listFromDoc, mergeDocs, parseDoc, type SyncDoc } from "@transit/shared/sync-merge"
 import { TransitNative } from "../../modules/transit-native/src"
+import { driveStore } from "./drive-store"
 import { savedPlacesStore, savedStopsStore, savedTripsStore, settingsStore } from "./saved"
 import { stored, useStored, type Stored } from "./storage"
 
 /**
- * iCloud sync of saved stops, places and trips (iOS) - what SwiftData +
- * CloudKit did for the SwiftUI app (`CloudSyncMonitor`). Each list is one
- * JSON doc in the iCloud key-value store, merged item by item
- * (`@transit/shared/sync-merge`). Android has no sync yet.
+ * Sync of saved stops, places and trips: iCloud on iOS - what SwiftData +
+ * CloudKit did for the SwiftUI app (`CloudSyncMonitor`) - and Google Drive's
+ * hidden app folder on Android (drive-store.ts). Each list is one JSON doc in
+ * the store, merged item by item (`@transit/shared/sync-merge`).
  *
  * Runs after a local change (debounced), when iCloud says another device
  * changed something, and when the app comes to the front. The switch is
- * Settings > iCloud sync (`settings.iCloudSync`).
+ * Settings > iCloud sync (`settings.iCloudSync`, on by default) or Google
+ * Drive sync (`settings.driveSync`, off until the rider connects Drive).
  */
+
+/** Where the docs live. */
+interface Backend {
+    enabled(): boolean
+    signedIn(): Promise<boolean>
+    get(key: string): Promise<string | null>
+    set(key: string, json: string): Promise<void>
+}
+
+const icloud: Backend = {
+    enabled: () => settingsStore.get().iCloudSync,
+    signedIn: async () => TransitNative.cloudSignedIn(),
+    get: async (key) => TransitNative.cloudGet(key),
+    set: async (key, json) => TransitNative.cloudSet(key, json),
+}
+
+const drive: Backend = {
+    enabled: () => settingsStore.get().driveSync,
+    signedIn: () => driveStore.connected(),
+    get: (key) => driveStore.get(key),
+    set: (key, json) => driveStore.set(key, json),
+}
+
+const backend: Backend | null = TransitNative.cloudAvailable ? icloud : TransitNative.driveAvailable ? drive : null
+
+/** Which sync this build has: "icloud" (iOS), "drive" (Android) or none. */
+export const cloudSyncKind: "icloud" | "drive" | null = backend === icloud ? "icloud" : backend === drive ? "drive" : null
 
 interface Collection {
     /** The iCloud key-value store key. */
@@ -48,7 +77,7 @@ export interface CloudSyncStatus {
     lastSynced?: number
 }
 
-export const cloudSyncStatus = stored<CloudSyncStatus>("cloud-sync-status", { state: TransitNative.cloudAvailable ? "syncing" : "unsupported" })
+export const cloudSyncStatus = stored<CloudSyncStatus>("cloud-sync-status", { state: backend ? "syncing" : "unsupported" })
 
 export function useCloudSyncStatus() {
     return useStored(cloudSyncStatus)[0]
@@ -64,7 +93,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 
 /** Starts syncing (once). Call after the stores have loaded and the SwiftUI-app migration has run. */
 export async function startCloudSync() {
-    if (!TransitNative.cloudAvailable || started) return
+    if (!backend || started) return
     started = true
     await Promise.all([...COLLECTIONS.map((c) => c.store.ready), settingsStore.ready])
     try {
@@ -77,17 +106,19 @@ export async function startCloudSync() {
             if (!applying) schedule(1000)
         })
     }
-    let enabled = settingsStore.get().iCloudSync
+    let enabled = backend.enabled()
     settingsStore.subscribe(() => {
-        const now = settingsStore.get().iCloudSync
+        const now = backend.enabled()
         if (now === enabled) return
         enabled = now
         syncCloudNow()
     })
-    TransitNative.addListener("onCloudChange", ({ reason }) => {
-        quotaHit = reason === 2
-        syncCloudNow()
-    })
+    if (backend === icloud) {
+        TransitNative.addListener("onCloudChange", ({ reason }) => {
+            quotaHit = reason === 2
+            syncCloudNow()
+        })
+    }
     AppState.addEventListener("change", (state) => {
         if (state === "active") {
             TransitNative.cloudSynchronize()
@@ -106,6 +137,15 @@ function schedule(delay: number) {
     }, delay)
 }
 
+/** Android: connects Google Drive (Google's consent screen) and turns sync on. False if the rider didn't allow it. */
+export async function connectDriveSync(): Promise<boolean> {
+    if (backend !== drive) return false
+    const ok = await driveStore.connect()
+    settingsStore.set((prev) => ({ ...prev, driveSync: ok }))
+    if (ok) await syncCloudNow()
+    return ok
+}
+
 /** Syncs now; overlapping calls run once more after the current one. */
 export function syncCloudNow(): Promise<void> {
     if (running) {
@@ -116,9 +156,10 @@ export function syncCloudNow(): Promise<void> {
         do {
             again = false
             try {
-                syncOnce()
+                await syncOnce()
             } catch (e) {
-                console.warn("iCloud sync failed", e)
+                if (backend === drive && driveStore.isAuthError(e)) setStatus({ state: "signedOut" })
+                else console.warn("Cloud sync failed", e)
             }
         } while (again)
     })().finally(() => {
@@ -127,16 +168,17 @@ export function syncCloudNow(): Promise<void> {
     return running
 }
 
-function syncOnce() {
-    if (!settingsStore.get().iCloudSync) return setStatus({ state: "disabled" })
-    if (!TransitNative.cloudSignedIn()) return setStatus({ state: "signedOut" })
+async function syncOnce() {
+    if (!backend) return
+    if (!backend.enabled()) return setStatus({ state: "disabled" })
+    if (!(await backend.signedIn())) return setStatus({ state: "signedOut" })
     const now = Date.now()
     for (const c of COLLECTIONS) {
         const local = c.store.get()
         const base = meta.docs[c.cloudKey] ?? null
         // Never synced: date items by when they were saved, so a delete made on another device since still wins.
         const mine = docFromList(local, c.key, base, now, (item) => item.addedAt ?? 0)
-        const remoteJSON = TransitNative.cloudGet(c.cloudKey)
+        const remoteJSON = await backend.get(c.cloudKey)
         const remote = parseDoc<unknown>(remoteJSON)
         const merged = remote ? mergeDocs(mine, remote, now) : mine
         const list = listFromDoc(merged)
@@ -149,7 +191,7 @@ function syncOnce() {
             }
         }
         const mergedJSON = JSON.stringify(merged)
-        if (mergedJSON !== remoteJSON) TransitNative.cloudSet(c.cloudKey, mergedJSON)
+        if (mergedJSON !== remoteJSON) await backend.set(c.cloudKey, mergedJSON)
         meta.docs[c.cloudKey] = merged
     }
     meta.lastSynced = now

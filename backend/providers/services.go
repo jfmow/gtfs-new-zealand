@@ -61,6 +61,23 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 	// Durable L2 for shared "?id=" links so they survive a restart (nil-tolerant).
 	planStore := getPlanStore()
 
+	// rememberPlan caches a plan (and its leave-later alternative, which the
+	// apps can open and track like any other) under its ID.
+	var rememberPlan func(plan gtfs.JourneyPlan)
+	rememberPlan = func(plan gtfs.JourneyPlan) {
+		if plan.ID == "" {
+			return
+		}
+		planCacheMu.Lock()
+		planCache[plan.ID] = cachedJourneyPlan{plan: plan, expiresAt: plan.ArrivalTime.Add(30 * time.Minute)}
+		evictOldestPlanCacheEntries(planCache)
+		planCacheMu.Unlock()
+		planStore.put(plan)
+		if plan.LeaveLater != nil {
+			rememberPlan(*plan.LeaveLater)
+		}
+	}
+
 	go func() {
 		ticker := time.NewTicker(10 * time.Minute)
 		defer ticker.Stop()
@@ -387,6 +404,9 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			return JsonApiResponse(c, http.StatusBadRequest, "invalid minTransferSec", nil,
 				ResponseDetails("minTransferSec", c.QueryParam("minTransferSec"), "error", err.Error()))
 		}
+		// access=1: easier access - short walks, changes within a stop or
+		// station, more time to change (see gtfs JourneyRequest.Accessible).
+		accessible := queryBool(c, "access")
 		jplan := gtfs.JourneyRequest{
 			StartLat:          startLat,
 			StartLon:          startLon,
@@ -403,7 +423,12 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 			OnlyRouteIDs:      onlyRoutes,
 			AllowedRouteTypes: routeTypes,
 			MinTransferSec:    notifications.ClampMinTransferSec(minTransferSec),
-			Realtime:          &realtime,
+			Accessible:        accessible,
+			// Walks come back as straight lines so the results aren't held up
+			// by OSRM; they're filled in the background below, and on demand
+			// by GET /plan/:id for a plan opened before that finishes.
+			StraightWalks: true,
+			Realtime:      &realtime,
 		}
 
 		switch timeType {
@@ -435,19 +460,20 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		}
 
 		if plans != nil {
-			planCacheMu.Lock()
 			for _, plan := range *plans {
-				if plan.ID == "" {
-					continue
-				}
-				planCache[plan.ID] = cachedJourneyPlan{
-					plan:      plan,
-					expiresAt: plan.ArrivalTime.Add(30 * time.Minute),
-				}
-				planStore.put(plan)
+				rememberPlan(plan)
 			}
-			evictOldestPlanCacheEntries(planCache)
-			planCacheMu.Unlock()
+			// Fill in the walking routes in the background, best plan
+			// first (the one most likely to be opened).
+			pending := append([]gtfs.JourneyPlan(nil), (*plans)...)
+			go func() {
+				for i := range pending {
+					if pending[i].WalkRoutesPending {
+						gtfsData.AddWalkRoutes(&pending[i], osrmApiUrl)
+						rememberPlan(pending[i])
+					}
+				}
+			}()
 		}
 
 		return JsonApiResponse(c, http.StatusOK, "", plans)
@@ -463,15 +489,23 @@ func setupServicesRoutes(primaryRoute *echo.Group, gtfsData gtfs.Database, realt
 		cp, ok := planCache[id]
 		planCacheMu.RUnlock()
 
+		plan := cp.plan
 		if !ok || time.Now().After(cp.expiresAt) {
 			// L1 miss - fall back to the durable store (survives restarts).
-			if p, found := planStore.get(id); found {
-				return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{p})
+			p, found := planStore.get(id)
+			if !found {
+				return JsonApiResponse(c, http.StatusNotFound, "journey plan not found or expired", nil, ResponseDetails("id", id))
 			}
-			return JsonApiResponse(c, http.StatusNotFound, "journey plan not found or expired", nil, ResponseDetails("id", id))
+			plan = p
+		}
+		// Opened before the background fill got to it: add the walking
+		// routes now (OSRM results are cached, so a race costs little).
+		if plan.WalkRoutesPending {
+			gtfsData.AddWalkRoutes(&plan, osrmApiUrl)
+			rememberPlan(plan)
 		}
 
-		return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{cp.plan})
+		return JsonApiResponse(c, http.StatusOK, "", []gtfs.JourneyPlan{plan})
 	})
 }
 
@@ -497,6 +531,12 @@ func evictOldestPlanCacheEntries(planCache map[string]cachedJourneyPlan) {
 		}
 		delete(planCache, oldestID)
 	}
+}
+
+// queryBool reads a "1"/"true" flag.
+func queryBool(c echo.Context, key string) bool {
+	v := strings.ToLower(c.QueryParam(key))
+	return v == "1" || v == "true"
 }
 
 func queryFloat(c echo.Context, key string, def float64) (float64, error) {

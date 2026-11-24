@@ -95,6 +95,7 @@ type JourneyReminder struct {
 	OnlyRouteIDs       []string
 	RouteTypes         []int // the rider's chosen modes as GTFS route types; empty = any
 	MinTransferSec     int
+	Accessible         bool // re-plan with easier access (gtfs JourneyRequest.Accessible)
 	Offsets            []int
 	Recurrence         string
 	RecurrenceUntil    string
@@ -131,7 +132,7 @@ const jrColumns = `
 	id, clientId, region, dedup_key, kind, status,
 	start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 	time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-	only_route_ids, route_types, min_transfer_sec,
+	only_route_ids, route_types, min_transfer_sec, accessible,
 	offsets, recurrence, recurrence_until, deeplink,
 	service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 	scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
@@ -150,7 +151,7 @@ func scanJourneyReminder(rows *sql.Rows) (JourneyReminder, error) {
 		&r.Id, &r.ClientId, &r.Region, &r.DedupKey, &r.Kind, &r.Status,
 		&r.StartLat, &r.StartLon, &r.StartLabel, &r.EndLat, &r.EndLon, &r.EndLabel,
 		&r.TimeType, &r.TargetHHMM, &r.MaxWalkKm, &r.WalkSpeed, &r.MaxTransfers,
-		&onlyRouteIDsRaw, &routeTypesRaw, &r.MinTransferSec,
+		&onlyRouteIDsRaw, &routeTypesRaw, &r.MinTransferSec, &r.Accessible,
 		&offsetsRaw, &r.Recurrence, &r.RecurrenceUntil, &r.Deeplink,
 		&r.ServiceDate, &r.TargetUnix, &r.BoardTripID, &r.BoardStopID, &r.BoardStopSequence,
 		&r.ScheduledDepartureUnix, &r.AccessSeconds, &r.RouteShortName, &r.BoardStopName,
@@ -288,13 +289,13 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			clientId, region, dedup_key, kind, status,
 			start_lat, start_lon, start_label, end_lat, end_lon, end_label,
 			time_type, target_hhmm, max_walk_km, walk_speed, max_transfers,
-			only_route_ids, route_types, min_transfer_sec,
+			only_route_ids, route_types, min_transfer_sec, accessible,
 			offsets, recurrence, recurrence_until, deeplink,
 			service_date, target_unix, board_trip_id, board_stop_id, board_stop_sequence,
 			scheduled_departure_unix, access_seconds, route_short_name, board_stop_name,
 			sent_offsets, baseline_leave_unix, resolve_attempts, last_error, created, updated,
 			alert_mode
-		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?, ?)
+		) VALUES (?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?,?, ?)
 		ON CONFLICT(clientId, dedup_key) DO UPDATE SET
 			region=excluded.region, kind=excluded.kind, status=excluded.status,
 			start_lat=excluded.start_lat, start_lon=excluded.start_lon, start_label=excluded.start_label,
@@ -302,7 +303,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 			time_type=excluded.time_type, target_hhmm=excluded.target_hhmm,
 			max_walk_km=excluded.max_walk_km, walk_speed=excluded.walk_speed, max_transfers=excluded.max_transfers,
 			only_route_ids=excluded.only_route_ids,
-			route_types=excluded.route_types, min_transfer_sec=excluded.min_transfer_sec,
+			route_types=excluded.route_types, min_transfer_sec=excluded.min_transfer_sec, accessible=excluded.accessible,
 			offsets=excluded.offsets,
 			recurrence=excluded.recurrence, recurrence_until=excluded.recurrence_until, deeplink=excluded.deeplink,
 			service_date=excluded.service_date, target_unix=excluded.target_unix,
@@ -315,7 +316,7 @@ func (v *Database) UpsertJourneyReminder(r JourneyReminder) (int64, error) {
 		r.ClientId, r.Region, r.DedupKey, r.Kind, r.Status,
 		r.StartLat, r.StartLon, r.StartLabel, r.EndLat, r.EndLon, r.EndLabel,
 		r.TimeType, r.TargetHHMM, r.MaxWalkKm, r.WalkSpeed, r.MaxTransfers,
-		encodeStringSlice(r.OnlyRouteIDs), encodeIntSlice(r.RouteTypes), r.MinTransferSec,
+		encodeStringSlice(r.OnlyRouteIDs), encodeIntSlice(r.RouteTypes), r.MinTransferSec, r.Accessible,
 		encodeIntSlice(r.Offsets), r.Recurrence, r.RecurrenceUntil, r.Deeplink,
 		r.ServiceDate, r.TargetUnix, r.BoardTripID, r.BoardStopID, r.BoardStopSequence,
 		r.ScheduledDepartureUnix, r.AccessSeconds, r.RouteShortName, r.BoardStopName,

@@ -34,6 +34,8 @@ export interface PlannerOptions {
     minResults: string
     onlyRoutes: RouteOption[]
     modes: TravelMode[]
+    /** Easier access: short walks, changes within a stop or station, more time to change. */
+    accessible: boolean
 }
 
 export interface PlannerOptionsHandlers {
@@ -45,6 +47,7 @@ export interface PlannerOptionsHandlers {
     onMinResultsChange: (v: string) => void
     onOnlyRoutesChange: (routes: RouteOption[]) => void
     onModesChange: (modes: TravelMode[]) => void
+    onAccessibleChange: (on: boolean) => void
 }
 
 /** Every option in a few words - "Leave now · 1 km walk · Normal · up to 5 transfers". */
@@ -57,6 +60,7 @@ export function optionsSummary(o: PlannerOptions): string {
     parts.push(o.maxTransfers === "0" ? "Direct only" : `up to ${o.maxTransfers} transfer${o.maxTransfers === "1" ? "" : "s"}`)
     if (o.onlyRoutes.length > 0) parts.push(`${o.onlyRoutes.length} route${o.onlyRoutes.length === 1 ? "" : "s"} only`)
     if (o.modes.length > 0) parts.push(TRAVEL_MODES.filter((m) => o.modes.includes(m.value)).map((m) => m.label).join("/") + " only")
+    if (o.accessible) parts.push("easier access")
     return parts.join(" · ")
 }
 
@@ -99,6 +103,7 @@ export function PlannerOptionsChips(props: PlannerOptions & PlannerOptionsHandle
     if (props.maxTransfers !== "5") changed++
     if (props.onlyRoutes.length > 0) changed++
     if (props.modes.length > 0) changed++
+    if (props.accessible) changed++
     const chip = (active: boolean) => cn(
         "inline-flex h-8 items-center gap-1.5 rounded-full border px-3 text-[13px] font-medium transition-colors",
         active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-foreground hover:bg-accent",
@@ -141,6 +146,7 @@ function PlannerOptionsDialog({ open, onOpenChange, ...o }: PlannerOptions & Pla
         o.onMinResultsChange("3")
         o.onOnlyRoutesChange([])
         o.onModesChange([])
+        o.onAccessibleChange(false)
     }
 
     const body = (
@@ -214,6 +220,21 @@ function PlannerOptionsDialog({ open, onOpenChange, ...o }: PlannerOptions & Pla
                         )
                     })}
                 </div>
+            </Section>
+
+            <Section title="Easier access" footer="Walks of 500 m or less, changes only at the same stop or station, and more time at each change.">
+                <button
+                    type="button"
+                    role="switch"
+                    aria-checked={o.accessible}
+                    onClick={() => o.onAccessibleChange(!o.accessible)}
+                    className={cn(
+                        "flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm font-medium transition-colors",
+                        o.accessible ? "border-primary bg-primary text-primary-foreground" : "border-input bg-background hover:bg-accent",
+                    )}
+                >
+                    {o.accessible ? "On" : "Off"}
+                </button>
             </Section>
 
             <Section title="Only these routes" footer="Leave empty to use any route.">

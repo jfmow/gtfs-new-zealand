@@ -281,6 +281,8 @@ export interface JourneyReminderInput {
     onlyRoutes?: string[]
     /** "bus,train,ferry" subset - empty/absent means any transport. */
     modes?: string
+    /** Plan with easier access (short walks, changes within a stop or station). */
+    accessible?: boolean
     /** Leave-by heads-up minutes - or, for alertMode "changes", [minutes before leaving to start watching]. */
     offsets: number[]
     alertMode?: JourneyReminderAlertMode
@@ -332,6 +334,7 @@ export async function addJourneyReminder(
     form.set("maxTransfers", p.maxTransfers)
     if (p.onlyRoutes && p.onlyRoutes.length > 0) form.set("onlyRoutes", JSON.stringify(p.onlyRoutes))
     if (p.modes) form.set("modes", p.modes)
+    if (p.accessible) form.set("access", "1")
     form.set("offsets", JSON.stringify(p.offsets))
     if (p.alertMode) form.set("alertMode", p.alertMode)
     if (p.recurrence) form.set("recurrence", p.recurrence)

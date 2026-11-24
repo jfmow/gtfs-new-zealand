@@ -617,6 +617,7 @@ func buildJourneyRequest(r JourneyReminder, osrmURL string, rt *realtime.Realtim
 		OnlyRouteIDs:      r.OnlyRouteIDs,
 		AllowedRouteTypes: r.RouteTypes,
 		MinTransferSec:    r.MinTransferSec,
+		Accessible:        r.Accessible,
 		Realtime:          rt,
 	}
 	target := time.Unix(r.TargetUnix, 0).In(tz)

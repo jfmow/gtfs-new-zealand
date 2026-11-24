@@ -33,4 +33,6 @@ dependencies {
   // ships that module prebuilt (its local-maven-repo), at its package's version.
   compileOnly "host.exp.exponent:expo.modules.notifications:${expoNotificationsVersion()}"
   implementation 'com.google.firebase:firebase-messaging:25.0.1'
+  // Google Drive sync: Identity AuthorizationClient for the drive.appdata scope.
+  implementation 'com.google.android.gms:play-services-auth:21.3.0'
 }

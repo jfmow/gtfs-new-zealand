@@ -18,6 +18,7 @@ import type { Location, JourneyType } from "@/components/journey/types"
 import { resolveRouteIds, type RouteOption } from "@/components/journey/route-filter"
 import { useSavedTrips } from "@/components/journey/use-saved-trips"
 import { formatTime, getTransitTripIds, latestDeparture, pruneDominatedPlans } from "@/components/journey/helpers"
+import { planChange, planSignature, type PlanChange } from "@transit/shared/logic/plan-compare"
 import { SearchForm } from "@/components/journey/search-form"
 import { QuickTripsRail } from "@/components/journey/quick-trips-rail"
 import { ResultsList } from "@/components/journey/results-list"
@@ -93,6 +94,7 @@ function StandardPlanner() {
     const [minResults, setMinResults] = useState("3")
     const [onlyRoutes, setOnlyRoutes] = useState<RouteOption[]>([])
     const [modes, setModes] = useState<TravelMode[]>([])
+    const [accessible, setAccessible] = useState(false)
     const [selectedDate, setSelectedDate] = useState<Date>(new Date())
     const [timeType, setTimeType] = useState<"now" | "leaveat" | "arriveat">("now")
 
@@ -415,6 +417,7 @@ function StandardPlanner() {
                 url += `&onlyRoutes=${encodeURIComponent(onlyRoutes.map((r) => r.route_id).join(","))}`
             }
             if (modes.length > 0) url += `&modes=${modes.join(",")}`
+            if (accessible) url += "&access=1"
             const response = await ApiFetch<JourneyType[]>(url)
             if (response.ok) return { plans: pruneDominatedPlans(response.data), error: null }
             return { plans: null, error: response.error || "Couldn't plan that journey." }
@@ -422,10 +425,11 @@ function StandardPlanner() {
             console.error("Error planning journey:", error)
             return { plans: null, error: "Something went wrong reaching the planner. Check your connection and try again." }
         }
-    }, [maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, modes])
+    }, [maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, modes, accessible])
 
     const planJourney = async () => {
         if (!startLocation || !endLocation) return
+        setChanges({})
 
         const searchDate = timeType === "now" ? new Date() : selectedDate
         setSelectedDate(searchDate)
@@ -450,7 +454,7 @@ function StandardPlanner() {
     const planKey = startLocation && endLocation
         ? [startLocation.lat, startLocation.lon, endLocation.lat, endLocation.lon, timeType,
             timeType === "now" ? "" : selectedDate.getTime(), maxWalkKm, walkSpeed, maxTransfers, minResults,
-            onlyRoutes.map((r) => r.route_id).join(","), modes.join(",")].join("|")
+            onlyRoutes.map((r) => r.route_id).join(","), modes.join(","), accessible ? "a" : ""].join("|")
         : null
     const plannedKeyRef = useRef<string | null>(null)
     useEffect(() => {
@@ -527,6 +531,51 @@ function StandardPlanner() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [lastSearch, isRouteMapOpen, isSearching, isWide, selectedRoute])
 
+    // "Leave now" results keep themselves current while the page is in view:
+    // every 30 s the same search runs again quietly, the list is swapped in
+    // place, and each journey says how far it moved. The open journey stays
+    // open (matched by its rides, since a refreshed plan has a new id).
+    const [changes, setChanges] = useState<Record<string, PlanChange>>({})
+    useEffect(() => {
+        if (!lastSearch || lastSearch.timeType !== "now") return
+        const tick = async () => {
+            if (document.visibilityState !== "visible" || isSearching || isLoadingMore) return
+            const { plans } = await fetchPlans(lastSearch.from, lastSearch.to, new Date(), "now")
+            if (!plans || plans.length === 0) return
+            setApiResponse((before) => {
+                const bySig = new Map(before.map((p) => [planSignature(p), p]))
+                const next: Record<string, PlanChange> = {}
+                for (const p of plans) {
+                    const c = planChange(bySig.get(planSignature(p)), p)
+                    if (c) next[p.ID] = c
+                }
+                setChanges(next)
+                return plans
+            })
+            setSelectedRoute((current) => current ? plans.find((p) => planSignature(p) === planSignature(current)) ?? current : current)
+            setLastSearch((prev) => (prev ? { ...prev, at: new Date() } : prev))
+        }
+        const id = setInterval(tick, 30_000)
+        return () => clearInterval(id)
+    }, [lastSearch, fetchPlans, isSearching, isLoadingMore])
+
+    // Plans come back with straight-line walks (so results show sooner); the
+    // server fills in the walking routes, so fetch the open one by id. Only
+    // the map lines are taken.
+    useEffect(() => {
+        if (!selectedRoute?.WalkRoutesPending) return
+        const id = selectedRoute.ID
+        let cancelled = false
+        ApiFetch<JourneyType[]>(`/services/plan/${encodeURIComponent(id)}`).then((res) => {
+            const full = res.ok ? res.data?.[0] : undefined
+            if (cancelled || !full || full.WalkRoutesPending) return
+            const fill = (p: JourneyType) => (p.ID === id ? { ...p, RouteGeoJSON: full.RouteGeoJSON, WalkRoutesPending: false } : p)
+            setSelectedRoute((r) => (r ? fill(r) : r))
+            setApiResponse((list) => list.map(fill))
+        }).catch(() => { })
+        return () => { cancelled = true }
+    }, [selectedRoute?.ID, selectedRoute?.WalkRoutesPending])
+
     // Wide screens: keep a journey selected for the detail column - the first
     // one when the results change and the selection isn't among them.
     useEffect(() => {
@@ -543,7 +592,7 @@ function StandardPlanner() {
         if (!endLocation) return
         setReplanSnapshot({ route: selectedRoute, results: apiResponse, start: startLocation, timeType, date: selectedDate })
         plannedKeyRef.current = [origin.lat, origin.lon, endLocation.lat, endLocation.lon, "leaveat", departAt.getTime(),
-            maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes.map((r) => r.route_id).join(","), modes.join(",")].join("|")
+            maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes.map((r) => r.route_id).join(","), modes.join(","), accessible ? "a" : ""].join("|")
         setStartLocation({ lat: origin.lat, lon: origin.lon, label: origin.label })
         setTimeType("leaveat")
         setSelectedDate(departAt)
@@ -559,7 +608,7 @@ function StandardPlanner() {
         } else setPlanError(error)
         setIsSearching(false)
         setTimeout(() => document.getElementById("journey-results")?.scrollIntoView({ behavior: "smooth" }), 100)
-    }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate, maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, modes])
+    }, [endLocation, fetchPlans, selectedRoute, apiResponse, startLocation, timeType, selectedDate, maxWalkKm, walkSpeed, maxTransfers, minResults, onlyRoutes, modes, accessible])
 
     // Bail out of a mid-journey re-plan: restore the route (and form) they were on.
     const restoreReplan = useCallback(() => {
@@ -630,6 +679,8 @@ function StandardPlanner() {
                     onOnlyRoutesChange={setOnlyRoutes}
                     modes={modes}
                     onModesChange={setModes}
+                    accessible={accessible}
+                    onAccessibleChange={setAccessible}
                     isSearching={isSearching}
                 />
 
@@ -722,6 +773,12 @@ function StandardPlanner() {
                     loadMoreLabel={lastSearch?.timeType === "arriveat" ? "Earlier journeys" : "Later departures"}
                     isLoadingMore={isLoadingMore}
                     selectedId={isWide ? selectedRoute?.ID : undefined}
+                    changes={changes}
+                    onLeaveLater={(route) => {
+                        if (!route.LeaveLater) return
+                        setSelectedRoute(route.LeaveLater)
+                        if (!isWide) setIsRouteMapOpen(true)
+                    }}
                 />
             </main>
 
@@ -781,6 +838,7 @@ function StandardPlanner() {
                     maxTransfers,
                     onlyRoutes,
                     modes,
+                    accessible,
                     timeType,
                     selectedDate,
                 }}

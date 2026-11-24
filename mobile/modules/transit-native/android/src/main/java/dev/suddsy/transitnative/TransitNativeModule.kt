@@ -2,6 +2,10 @@ package dev.suddsy.transitnative
 
 import android.content.Context
 import androidx.core.app.NotificationManagerCompat
+import com.google.android.gms.auth.api.identity.AuthorizationRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.common.api.Scope
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import org.json.JSONObject
@@ -14,6 +18,9 @@ import org.json.JSONObject
 class TransitNativeModule : Module() {
   private val context: Context get() = appContext.reactContext ?: throw IllegalStateException("no context")
 
+  /** A Drive authorization waiting on Google's consent screen. */
+  private var pendingDriveAuth: Promise? = null
+
   override fun definition() = ModuleDefinition {
     Name("TransitNative")
     Events("onActivityPushToken", "onPushToStartToken", "onActivityStarted", "onActivityEnded", "onTripActivityPushToken", "onTripActivityEnded")
@@ -24,7 +31,48 @@ class TransitNativeModule : Module() {
     Function("setSharedJSON") { key: String, json: String ->
       prefs().edit().putString(key, json).apply()
     }
-    Function("reloadWidgets") { }
+    Function("reloadWidgets") { DeparturesWidget.reloadAll(context) }
+
+    // ─── Google Drive sync (src/lib/cloud-sync.ts) ───
+    // An access token for the app's hidden Drive folder (drive.appdata), or
+    // null. `interactive` may show Google's account/consent screen; without
+    // it, only a token already granted comes back.
+    AsyncFunction("driveAuthorize") { interactive: Boolean, promise: Promise ->
+      val request = AuthorizationRequest.builder().setRequestedScopes(listOf(Scope(DRIVE_APPDATA))).build()
+      Identity.getAuthorizationClient(context).authorize(request)
+        .addOnSuccessListener { result ->
+          val intent = result.pendingIntent
+          if (result.hasResolution() && intent != null) {
+            val activity = appContext.currentActivity
+            if (!interactive || activity == null) {
+              promise.resolve(null)
+              return@addOnSuccessListener
+            }
+            pendingDriveAuth?.resolve(null)
+            pendingDriveAuth = promise
+            try {
+              activity.startIntentSenderForResult(intent.intentSender, DRIVE_AUTH_REQUEST, null, 0, 0, 0)
+            } catch (e: Exception) {
+              pendingDriveAuth = null
+              promise.resolve(null)
+            }
+          } else {
+            promise.resolve(result.accessToken)
+          }
+        }
+        .addOnFailureListener { promise.resolve(null) }
+    }
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode != DRIVE_AUTH_REQUEST) return@OnActivityResult
+      val promise = pendingDriveAuth ?: return@OnActivityResult
+      pendingDriveAuth = null
+      try {
+        promise.resolve(Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(payload.data).accessToken)
+      } catch (e: Exception) {
+        promise.resolve(null)
+      }
+    }
 
     Function("liveActivitiesEnabled") { NotificationManagerCompat.from(context).areNotificationsEnabled() }
 
@@ -57,4 +105,9 @@ class TransitNativeModule : Module() {
     title?.takeIf { it.isNotEmpty() }?.let { LiveNotifications.Alert(it, body.orEmpty()) }
 
   private fun prefs() = context.getSharedPreferences("transit_shared", Context.MODE_PRIVATE)
+
+  companion object {
+    private const val DRIVE_APPDATA = "https://www.googleapis.com/auth/drive.appdata"
+    private const val DRIVE_AUTH_REQUEST = 0x7D51
+  }
 }

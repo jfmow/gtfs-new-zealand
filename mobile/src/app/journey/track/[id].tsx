@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics"
 import { router, useLocalSearchParams } from "expo-router"
-import { ArrowDownCircle, ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, WifiOff } from "@/components/icons"
+import { ArrowDownCircle, ArrowUp, ChevronLeft, CircleCheck, CornerUpLeft, CornerUpRight, Ellipsis, Flag, Footprints, LocateFixed, MapPin, Navigation, RefreshCw, Share2, TriangleAlert, Undo2, WifiOff } from "@/components/icons"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ActionSheetIOS, ActivityIndicator, Alert, Platform, Pressable, Share, StyleSheet, Text, View, useWindowDimensions } from "react-native"
@@ -20,7 +20,8 @@ import { destinationLabel, startJourney, stopJourney, useJourneyTick } from "@/l
 import { activeRide, trackerSummary, type StatusTone } from "@/lib/journey-status"
 import { journeyWebLink } from "@/lib/links"
 import { useMapFilter } from "@/lib/map-filter"
-import { usePlan } from "@/lib/plans"
+import { planContext, usePlan } from "@/lib/plans"
+import { replanAfterMissed } from "@/lib/missed-ride"
 import { unwrap } from "@/lib/queries"
 import { setJourneyTrackerOpen } from "@/lib/push"
 import { useRegion } from "@/lib/region"
@@ -45,6 +46,7 @@ export default function JourneyTracker() {
     const pack = useJourneyPack(plan?.ID)
     const [now, setNow] = useState(() => Date.now())
     const [filter, setFilter] = useMapFilter()
+    const [replanning, setReplanning] = useState(false)
 
     // The journey as it stands: the plan re-timed from live data, where you
     // are in it, and the vehicle for the ride you're on or about to catch
@@ -113,6 +115,29 @@ export default function JourneyTracker() {
         vehicleNextStop: vehicle?.trip?.next_stop ? { name: vehicle.trip.next_stop.name, coordinate: { lat: vehicle.trip.next_stop.lat, lon: vehicle.trip.next_stop.lon } } : null,
         vehicleNextStopETA: null, userLocation: user, tz,
     }) : []
+    // "I missed it": the ride you were heading for has gone. Plan again from
+    // where you are, without that ride, and track the new journey instead.
+    const canMiss = !!ride && !snap?.journeyArrived && snap?.phase !== "onboard"
+    const missedIt = async () => {
+        if (!ride || replanning) return
+        const end = legs[legs.length - 1]
+        const to = { label: destination, lat: display.EndLat || end?.ToStop?.stop_lat || 0, lon: display.EndLon || end?.ToStop?.stop_lon || 0 }
+        const from = user ?? (ride.FromStop ? { lat: ride.FromStop.stop_lat, lon: ride.FromStop.stop_lon } : null)
+        if (!from) {
+            Alert.alert("Waiting for your location", "Try again in a moment.")
+            return
+        }
+        setReplanning(true)
+        const result = await replanAfterMissed({ missed: ride, from, to, context: planContext(plan.ID) })
+        setReplanning(false)
+        if (result.kind === "error") {
+            Alert.alert(result.title, result.message)
+            return
+        }
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+        stopJourney()
+        router.replace({ pathname: "/journey/track/[id]", params: { id: result.plan.ID } })
+    }
     const share = () => Share.share({ message: `Follow my journey\n${journeyWebLink(plan.ID, getRegionSlug(region), true)}` })
     const replan = () => {
         const end = legs[legs.length - 1]
@@ -231,11 +256,18 @@ export default function JourneyTracker() {
                                     )
                                 })} />
                             ) : null}
+                            {canMiss ? (
+                                <Pressable accessibilityRole="button" accessibilityLabel={`I missed the ${legRouteName(ride!)}. Plan again from here`} disabled={replanning} onPress={missedIt}
+                                    style={[styles.action, { backgroundColor: summary.replanUrgent ? colors.danger : colors.card, borderColor: summary.replanUrgent ? colors.danger : colors.border }]}>
+                                    {replanning ? <ActivityIndicator color={summary.replanUrgent ? "#fff" : colors.foreground} /> : <Undo2 size={16} color={summary.replanUrgent ? "#fff" : colors.foreground} />}
+                                    <Text style={[type.bodyMedium, { color: summary.replanUrgent ? "#fff" : colors.foreground }]}>{replanning ? "Finding the next way…" : `I missed the ${legRouteName(ride!)}`}</Text>
+                                </Pressable>
+                            ) : null}
                             <View style={styles.actions}>
                                 {choices.length ? (
-                                    <Pressable accessibilityRole="button" onPress={replan} style={[styles.action, { flex: 1, backgroundColor: summary.replanUrgent ? colors.danger : colors.card, borderColor: summary.replanUrgent ? colors.danger : colors.border }]}>
-                                        <RefreshCw size={16} color={summary.replanUrgent ? "#fff" : colors.foreground} />
-                                        <Text style={[type.bodyMedium, { color: summary.replanUrgent ? "#fff" : colors.foreground }]}>Find a better route</Text>
+                                    <Pressable accessibilityRole="button" onPress={replan} style={[styles.action, { flex: 1, backgroundColor: summary.replanUrgent && !canMiss ? colors.danger : colors.card, borderColor: summary.replanUrgent && !canMiss ? colors.danger : colors.border }]}>
+                                        <RefreshCw size={16} color={summary.replanUrgent && !canMiss ? "#fff" : colors.foreground} />
+                                        <Text style={[type.bodyMedium, { color: summary.replanUrgent && !canMiss ? "#fff" : colors.foreground }]}>Find a better route</Text>
                                     </Pressable>
                                 ) : null}
                                 <Pressable accessibilityRole="button" accessibilityLabel="Share journey" onPress={share} style={[styles.action, choices.length ? { width: 48 } : { flex: 1 }, { backgroundColor: colors.card, borderColor: colors.border }]}>

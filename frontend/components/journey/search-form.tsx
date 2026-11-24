@@ -35,6 +35,8 @@ interface SearchFormProps {
     onOnlyRoutesChange: (routes: RouteOption[]) => void
     modes: TravelMode[]
     onModesChange: (modes: TravelMode[]) => void
+    accessible: boolean
+    onAccessibleChange: (on: boolean) => void
 
     isSearching: boolean
 }

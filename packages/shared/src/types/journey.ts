@@ -50,4 +50,8 @@ export interface JourneyType {
     Legs: Leg[]
     RouteGeoJSON: GeoJSON
     ID: string
+    /** The same journey with a later first ride that still makes the same change: arrive at the same time, wait less. Depart-after plans only. */
+    LeaveLater?: JourneyType
+    /** Walk legs in RouteGeoJSON are straight lines until the walking routes are filled in - refetch `services/plan/:id` for them. */
+    WalkRoutesPending?: boolean
 }
