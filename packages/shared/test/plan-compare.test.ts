@@ -65,15 +65,30 @@ describe("leaveLaterMinutes", () => {
 describe("likelyDestination", () => {
     const home = { kind: "home" as const, label: "Home", lat: -36.9, lon: 174.7 }
     const work = { kind: "work" as const, label: "Work", lat: -36.85, lon: 174.76 }
+    const gym = { kind: "other" as const, label: "Gym", lat: -36.87, lon: 174.74 }
+    const elsewhere = { lat: -36.8, lon: 174.8 }
+    const base = { weekend: false, now: 1_800_000_000_000 }
     it("swaps between home and work by where you are, else by the time of day", () => {
-        expect(likelyDestination([home, work], { lat: home.lat, lon: home.lon }, 18)?.label).toBe("Work")
-        expect(likelyDestination([home, work], { lat: work.lat, lon: work.lon }, 8)?.label).toBe("Home")
-        expect(likelyDestination([home, work], { lat: -36.8, lon: 174.8 }, 8)?.label).toBe("Work")
-        expect(likelyDestination([home, work], null, 17)?.label).toBe("Home")
+        expect(likelyDestination({ ...base, places: [home, work], here: home, hour: 18 })?.label).toBe("Work")
+        expect(likelyDestination({ ...base, places: [home, work], here: work, hour: 8 })?.label).toBe("Home")
+        expect(likelyDestination({ ...base, places: [home, work], here: elsewhere, hour: 8 })?.label).toBe("Work")
+        expect(likelyDestination({ ...base, places: [home, work], here: null, hour: 17 })?.label).toBe("Home")
     })
-    it("falls back to a recent place you aren't at", () => {
+    it("picks another saved place you usually go to at this time", () => {
+        const trip = (hour: number, weekend = false) => ({ lat: gym.lat, lon: gym.lon, hour, weekend, at: base.now - 86_400_000 })
+        const trips = [trip(18), trip(17.5)]
+        expect(likelyDestination({ ...base, places: [home, work, gym], here: work, hour: 18, trips })?.label).toBe("Gym")
+        // Other times, other days, or once only: the Home/Work rule.
+        expect(likelyDestination({ ...base, places: [home, work, gym], here: work, hour: 8, trips })?.label).toBe("Home")
+        expect(likelyDestination({ ...base, weekend: true, places: [home, work, gym], here: work, hour: 18, trips })?.label).toBe("Home")
+        expect(likelyDestination({ ...base, places: [home, work, gym], here: work, hour: 18, trips: [trip(18)] })?.label).toBe("Home")
+        // Never where you already are.
+        expect(likelyDestination({ ...base, places: [home, work, gym], here: gym, hour: 18, trips })?.label).not.toBe("Gym")
+    })
+    it("falls back to other saved places, then a recent place you aren't at", () => {
         const cafe = { kind: "other" as const, label: "Cafe", lat: -36.88, lon: 174.75 }
-        expect(likelyDestination([home], { lat: home.lat, lon: home.lon }, 9, [cafe])?.label).toBe("Cafe")
-        expect(likelyDestination([], null, 9)).toBeNull()
+        expect(likelyDestination({ ...base, places: [home, gym], here: home, hour: 9 })?.label).toBe("Gym")
+        expect(likelyDestination({ ...base, places: [home], here: home, hour: 9, recent: [cafe] })?.label).toBe("Cafe")
+        expect(likelyDestination({ ...base, places: [], here: null, hour: 9 })).toBeNull()
     })
 })

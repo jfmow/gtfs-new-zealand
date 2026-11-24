@@ -14,6 +14,7 @@ import { legDate, legRouteName } from "@/components/journey"
 import { placeTitle } from "@/components/place-style"
 import { api } from "@/lib/api"
 import { useAppActive } from "@/lib/app-active"
+import { clockOf, useGoTrips } from "@/lib/go-history"
 import { coordinateOf, useUserLocation } from "@/lib/location"
 import { usePlannerOptions, useRecentDestinations } from "@/lib/planner-store"
 import { contextFor, rememberPlans } from "@/lib/plans"
@@ -21,11 +22,6 @@ import { unwrap } from "@/lib/queries"
 import { useRegion } from "@/lib/region"
 import { useSavedPlaces, useSettings } from "@/lib/saved"
 import { radius, spacing, type, useColors } from "@/theme"
-
-/** Hour of the day on the region's clock. */
-function localHour(tz: string): number {
-    return Number(new Intl.DateTimeFormat("en-NZ", { timeZone: tz, hour: "numeric", hourCycle: "h23" }).format(new Date()))
-}
 
 /** "leave now" / "leave in 6 min" / "leave 9:40am". */
 function leaveText(dep: Date | null, tz: string, now = Date.now()): string {
@@ -37,8 +33,9 @@ function leaveText(dep: Date | null, tz: string, now = Date.now()): string {
 
 /**
  * Home's one-tap journey: plans from here to where you most likely want to
- * be (work in the morning, home later, or whichever of the two you're not
- * at) and shows the answer live. Tapping starts that journey; nothing shows
+ * be - the saved place you usually head to at this time, else work in the
+ * morning and home later (whichever you're not at), else another saved
+ * place - and shows the answer live. Tapping starts that journey; nothing shows
  * until there's a place and a plan.
  */
 export function GoBar() {
@@ -54,8 +51,15 @@ export function GoBar() {
     const focused = useIsFocused()
     const active = useAppActive()
 
+    const trips = useGoTrips(region.url)
     const goPlaces: GoPlace[] = places.places.map((p) => ({ kind: p.kind, label: placeTitle(p), lat: p.lat, lon: p.lon }))
-    const dest = likelyDestination(goPlaces, here, localHour(tz), recents.recent.map((r) => ({ kind: "other", label: r.label, lat: r.lat, lon: r.lon })))
+    const dest = likelyDestination({
+        places: goPlaces,
+        here,
+        ...clockOf(new Date(), tz),
+        recent: recents.recent.map((r) => ({ kind: "other", label: r.label, lat: r.lat, lon: r.lon })),
+        trips,
+    })
     // Rounded so walking around the block doesn't re-plan.
     const from = here ? { lat: Math.round(here.lat * 2000) / 2000, lon: Math.round(here.lon * 2000) / 2000 } : null
     const request: JourneyPlanRequest | null = from && dest ? {
