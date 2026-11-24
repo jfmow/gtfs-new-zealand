@@ -6,9 +6,10 @@
 # `expo prebuild` the production variant, `pod install`. The committed
 # workspace beside this folder (Transit.xcworkspace) points at ../ios.
 #
-# Build numbers: CFBundleVersion = CI_BUILD_NUMBER + XCC_BUILD_OFFSET
-# (default 200), so Xcode Cloud builds sort above the EAS builds (124 when
-# this was set up). Override XCC_BUILD_OFFSET in the workflow's environment.
+# Build numbers: CFBundleVersion is the build's UTC time, YYMMDDHHMM (e.g.
+# 2611242005), so every build - a Rebuild too, which reuses CI_BUILD_NUMBER -
+# is higher than the last upload, and above EAS's numbers (124 when this was
+# set up). Set XCC_BUILD_NUMBER in the workflow's environment to force one.
 set -euo pipefail
 
 MOBILE="$CI_PRIMARY_REPOSITORY_PATH/mobile"
@@ -36,7 +37,7 @@ echo "export NODE_BINARY=$(command -v node)" > .xcode.env.local
 pod install
 
 echo "== Build number"
-BUILD=$(( ${CI_BUILD_NUMBER:-0} + ${XCC_BUILD_OFFSET:-200} ))
+BUILD=${XCC_BUILD_NUMBER:-$(date -u +%y%m%d%H%M)}
 sed -i '' -E "s/CURRENT_PROJECT_VERSION = [^;]+;/CURRENT_PROJECT_VERSION = $BUILD;/g" Transit.xcodeproj/project.pbxproj
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" Transit/Info.plist
 echo "CFBundleVersion $BUILD"

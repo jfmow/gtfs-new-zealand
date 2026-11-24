@@ -57,8 +57,14 @@ EAS still sees a managed (CNG) project.
 
 ## Build numbers
 
-CFBundleVersion = `CI_BUILD_NUMBER` + `XCC_BUILD_OFFSET` (default 200).
-EAS's remote build number was 124 when this was set up, so the first Xcode
-Cloud build is 201. If you keep building with EAS too, both pipelines must
-stay above each other's latest upload for the same version - simplest is to
-use one or the other. Bump `version` in app.json for a new App Store version.
+CFBundleVersion is the build's UTC time as `YYMMDDHHMM` (e.g. `2611242005`),
+set for the app and the widget by `ci_post_clone.sh`. It goes up with every
+build, including a **Rebuild** - which reuses the earlier run's
+`CI_BUILD_NUMBER`, so the old `CI_BUILD_NUMBER + 200` scheme uploaded a
+number App Store Connect already had ("The bundle version must be higher
+than the previously uploaded version"). Set `XCC_BUILD_NUMBER` in the
+workflow's environment to force a number.
+
+It's far above EAS's remote build number (124 when this was set up), so an
+EAS build after an Xcode Cloud one would be rejected - use one pipeline per
+app version. Bump `version` in app.json for a new App Store version.
