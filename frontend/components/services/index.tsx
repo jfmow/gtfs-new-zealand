@@ -458,8 +458,11 @@ function ServiceRow({
     // and would falsely tell a rider the bus has seats or is two stops out.
     // A cancelled or skipped service still carries a stale sequence from the
     // feed; don't dress "Cancelled" up with "6 stops away".
+    // AT also publishes predictions for trips that haven't set off (hours
+    // ahead): their stops_away is just the stop's place on the route, so
+    // position details wait until the trip has started.
     const isLive =
-        !displayingSchedulePreview && !isCanceled && !isSkipped &&
+        !displayingSchedulePreview && !isCanceled && !isSkipped && service.trip_started &&
         (service.location_tracking || service.trip_update_tracking)
     const showOccupancy = isLive && service.location_tracking && service.occupancy >= 0
 
@@ -581,7 +584,8 @@ function BoardTime({
         return <span className="text-sm font-bold text-amber-600 dark:text-amber-400">Departed</span>
     }
 
-    const tracked = service.location_tracking || service.trip_update_tracking
+    // Blue = live: a vehicle position, or predictions for a trip that's running.
+    const tracked = service.location_tracking || (service.trip_update_tracking && service.trip_started)
     return (
         <span
             className={cn(

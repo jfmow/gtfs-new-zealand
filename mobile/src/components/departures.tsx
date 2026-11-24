@@ -23,7 +23,8 @@ type Tracking = "live" | "limited" | "scheduled" | "none"
 function trackingOf(d: Departure): Tracking {
     if (d.canceled || d.skipped) return "none"
     if (d.location_tracking) return "live"
-    if (d.trip_update_tracking) return "limited"
+    // AT publishes predictions for trips hours before they run - those aren't live yet.
+    if (d.trip_update_tracking && d.trip_started) return "limited"
     return "scheduled"
 }
 
@@ -48,7 +49,9 @@ function BoardTime({ d, preview, compact }: { d: Departure; preview?: boolean; c
 export function DepartureRow({ d, compact = false, preview = false, stopName }: { d: Departure; compact?: boolean; preview?: boolean; stopName?: string }) {
     const colors = useColors()
     const tracking = trackingOf(d)
-    const live = !preview && !d.canceled && !d.skipped && (d.location_tracking || d.trip_update_tracking)
+    // Position details ("N stops away", at the stop, cars) only once the trip has started:
+    // before that stops_away is just the stop's place along the route.
+    const live = !preview && !d.canceled && !d.skipped && d.trip_started && (d.location_tracking || d.trip_update_tracking)
     const hasPlatform = !!d.platform && d.platform !== "no platform"
     const departed = !preview && (d.departed || d.time_till_arrival < 0)
     const trackable = isTrackable(d)
