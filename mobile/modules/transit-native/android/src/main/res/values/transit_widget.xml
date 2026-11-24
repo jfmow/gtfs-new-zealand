@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- The app's "Bush" palette (src/theme/index.ts), light. -->
+  <color name="transit_widget_card">#FFFFFF</color>
+  <color name="transit_widget_foreground">#0D1A12</color>
+  <color name="transit_widget_muted">#5E6F64</color>
+  <color name="transit_widget_border">#D9E3DB</color>
+  <color name="transit_widget_live">#2563EB</color>
+  <string name="transit_widget_departures_name">Departures</string>
+  <string name="transit_widget_departures_description">The next services from one of your saved stops.</string>
+</resources>

@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <!-- Android 16 Live Updates: lets the journey/trip notification ask to be promoted. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.INTERNET" />
 
   <application>
     <!-- Ahead of expo-notifications' service (priority -1): draws live-update pushes, hands the rest on. -->
@@ -11,5 +12,17 @@
         <action android:name="com.google.firebase.MESSAGING_EVENT" />
       </intent-filter>
     </service>
+    <!-- Home-screen widget: next departures from a saved stop (DeparturesWidget.kt). -->
+    <receiver
+      android:name="dev.suddsy.transitnative.DeparturesWidget"
+      android:exported="false"
+      android:label="@string/transit_widget_departures_name">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/transit_widget_departures_info" />
+    </receiver>
   </application>
 </manifest>

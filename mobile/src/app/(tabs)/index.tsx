@@ -8,6 +8,7 @@ import { cleanStopName } from "@transit/shared/formatting"
 import { boardQuery } from "@transit/shared/models"
 import { getRegionSlug } from "@transit/shared/regions"
 import { MiniBoard, StarTile } from "@/components/departures"
+import { GoBar } from "@/components/go-bar"
 import { placeStyle, placeTitle } from "@/components/place-style"
 import { LocationResults } from "@/components/location-search"
 import { Button, EmptyState, GlassButton, Muted, SectionHeader } from "@/components/ui"
@@ -128,6 +129,8 @@ export default function HomeTab() {
                 <ScrollView contentContainerStyle={[styles.scroll, page]} keyboardShouldPersistTaps="handled">
                     <Text accessibilityRole="header" style={[type.display, { color: colors.foreground, marginTop: 4 }]}>{greeting(region.timeZone)}</Text>
                     <Text style={[type.meta, { color: colors.mutedForeground, marginTop: 2 }]}>{date} · {regionCity(region.displayName)}</Text>
+
+                    <GoBar />
 
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.launcher}>
                         <RoundButton label="Find vehicle" onPress={() => router.push("/find-vehicle")} bg={colors.primary} fg={colors.primaryForeground} icon={ScanLine} />

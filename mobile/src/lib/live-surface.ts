@@ -1,3 +1,4 @@
+import Constants from "expo-constants"
 import { Platform } from "react-native"
 import type { LiveActivityContent } from "@transit/shared/logic/live-content"
 import type { JourneyProgressSnapshot } from "@transit/shared/logic/tracking"
@@ -173,6 +174,9 @@ let endedAt = 0
 export function syncWidgetData(region: Region) {
     const slug = getRegionSlug(region)
     TransitNative.setSharedString("regionSlug", slug)
+    // The Android widget opens stops with the app's own link scheme (it differs per build variant).
+    const scheme = Constants.expoConfig?.scheme
+    TransitNative.setSharedString("scheme", (Array.isArray(scheme) ? scheme[0] : scheme) ?? "transit")
     const stops = savedStopsStore.get().filter((s) => s.region === slug).map((s) => ({ query: s.query, title: s.name, colorHex: (s.color ?? "").replace("#", "") }))
     TransitNative.setSharedJSON("savedStops", stops)
     TransitNative.reloadWidgets()

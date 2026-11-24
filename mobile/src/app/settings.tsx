@@ -2,7 +2,6 @@ import { useQuery } from "@tanstack/react-query"
 import Constants from "expo-constants"
 import { router } from "expo-router"
 import { BellRing, Check, ChevronRight } from "@/components/icons"
-import { TransitNative } from "../../modules/transit-native/src"
 import { useEffect, useState } from "react"
 import { Alert, AppState, Linking, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import { ADULT_ONLY, type FareType } from "@transit/shared/fares"
@@ -11,7 +10,7 @@ import { WALK_SPEED_OPTIONS, normalizeWalkSpeed } from "@transit/shared/walk-spe
 import { Toggle } from "@/components/alerts"
 import { Button, Card, Divider, Muted, SectionLabel, Segmented } from "@/components/ui"
 import { api } from "@/lib/api"
-import { useCloudSyncStatus, type CloudSyncStatus } from "@/lib/cloud-sync"
+import { cloudSyncKind, connectDriveSync, syncCloudNow, useCloudSyncStatus, type CloudSyncStatus } from "@/lib/cloud-sync"
 import { notificationsAllowed, requestNotifications } from "@/lib/push"
 import { unwrap } from "@/lib/queries"
 import { regions, useRegion } from "@/lib/region"
@@ -115,12 +114,30 @@ export default function SettingsScreen() {
             <Segmented<"standard" | "easy"> options={[{ value: "standard", label: "Standard" }, { value: "easy", label: "Step by step" }]} value={settings.easyPlanner ? "easy" : "standard"} onChange={(v) => update({ easyPlanner: v === "easy" })} />
             <Muted style={{ marginTop: spacing.xs, marginLeft: spacing.xs }}>Step by step asks 4 simple questions, with large buttons.</Muted>
 
-            {TransitNative.cloudAvailable ? (
+            {cloudSyncKind === "icloud" ? (
                 <>
                     <SectionLabel>iCloud</SectionLabel>
                     <Card style={{ paddingVertical: 0 }}>
                         <Toggle label="iCloud sync" detail={cloudSyncDetail(settings.iCloudSync, cloud)} value={settings.iCloudSync} onChange={(v) => update({ iCloudSync: v })} />
                     </Card>
+                </>
+            ) : cloudSyncKind === "drive" ? (
+                <>
+                    <SectionLabel>Sync</SectionLabel>
+                    <Card style={{ paddingVertical: 0 }}>
+                        <Toggle
+                            label="Google Drive sync"
+                            detail={driveSyncDetail(settings.driveSync, cloud)}
+                            value={settings.driveSync}
+                            onChange={async (on) => {
+                                if (!on) return update({ driveSync: false })
+                                if (!(await connectDriveSync())) Alert.alert("Google Drive not connected", "Sync needs permission to keep a small file in Transit's private Drive folder.")
+                            }}
+                        />
+                    </Card>
+                    {settings.driveSync && cloud.state === "signedOut" ? (
+                        <Button title="Reconnect Google Drive" variant="secondary" onPress={() => connectDriveSync().then(() => syncCloudNow())} style={{ marginTop: spacing.sm }} />
+                    ) : null}
                 </>
             ) : null}
 
@@ -158,6 +175,13 @@ export default function SettingsScreen() {
             </Card>
         </ScrollView>
     )
+}
+
+/** Android's Google Drive row. */
+function driveSyncDetail(enabled: boolean, status: CloudSyncStatus): string {
+    if (!enabled) return "Off - saved stops, places and trips stay on this phone"
+    if (status.state === "signedOut") return "Google Drive isn't connected - reconnect to keep syncing"
+    return status.lastSynced ? `Saved stops, places and trips - synced ${ago(status.lastSynced)}` : "Syncing saved stops, places and trips"
 }
 
 /** iOS `SettingsView.iCloudRow`'s wording. */

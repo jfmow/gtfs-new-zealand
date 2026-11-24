@@ -26,6 +26,7 @@ export interface PlanContext {
     onlyRoutes: string[]
     modes?: TravelMode[]
     minTransferSec?: number
+    accessible?: boolean
 }
 
 const contexts = new Map<string, PlanContext>()
@@ -35,6 +36,8 @@ export function rememberPlans(plans: JourneyType[], context?: PlanContext) {
     for (const p of plans) {
         queryClient.setQueryData(["plan", p.ID], p)
         if (context) contexts.set(p.ID, context)
+        // "Leave later" opens and tracks like any other plan.
+        if (p.LeaveLater) rememberPlans([p.LeaveLater], context)
     }
 }
 
@@ -55,13 +58,14 @@ export function contextFor(req: JourneyPlanRequest, start: { label: string; lat:
         onlyRoutes: req.onlyRoutes ?? [],
         modes: req.modes,
         minTransferSec: req.minTransferSec,
+        accessible: req.accessible,
     }
 }
 
 /** A plan by id: from this session's results, else `services/plan/:id` (shared links, reminders). */
 export function usePlan(id: string | undefined) {
     const { region, ready } = useRegion()
-    return useQuery({
+    const q = useQuery({
         queryKey: ["plan", id],
         queryFn: async () => {
             const plans = (await unwrap(api.planById(id!))) ?? []
@@ -72,6 +76,24 @@ export function usePlan(id: string | undefined) {
         staleTime: Infinity,
         meta: { region: region.url },
     })
+    // Search results come back with straight-line walks (so they show
+    // sooner); the server fills in the walking routes when the plan is
+    // fetched by id. Only the map lines are taken, so the plan's times stay
+    // as the rider saw them.
+    useQuery({
+        queryKey: ["plan-walks", id],
+        queryFn: async () => {
+            const full = ((await unwrap(api.planById(id!))) ?? [])[0]
+            if (full && !full.WalkRoutesPending) {
+                queryClient.setQueryData<JourneyType>(["plan", id], (old) => (old ? { ...old, RouteGeoJSON: full.RouteGeoJSON, WalkRoutesPending: false } : full))
+            }
+            return true
+        },
+        enabled: ready && !!id && !!q.data?.WalkRoutesPending,
+        staleTime: Infinity,
+        retry: 1,
+    })
+    return q
 }
 
 /** Fare estimates for plans, by id - empty while Show fares is off or the server has no fares. */

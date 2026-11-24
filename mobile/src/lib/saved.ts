@@ -152,6 +152,8 @@ export interface Settings {
     notificationsAsked: boolean
     /** Sync saved stops, places and trips through iCloud (iOS) - on unless turned off. */
     iCloudSync: boolean
+    /** Android: sync saved stops, places and trips through Google Drive (off until connected). */
+    driveSync: boolean
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -166,6 +168,7 @@ const DEFAULT_SETTINGS: Settings = {
     onboarded: false,
     notificationsAsked: false,
     iCloudSync: true,
+    driveSync: false,
 }
 
 /** New fields get their defaults when an older saved value loads. */

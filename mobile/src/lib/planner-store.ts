@@ -17,9 +17,11 @@ export interface PlannerOptions {
     maxTransfers: number
     modes: TravelMode[]
     onlyRoutes: { id: string; name: string }[]
+    /** Easier access: short walks, changes within a stop or station, more time to change. */
+    accessible: boolean
 }
 
-export const DEFAULT_PLANNER_OPTIONS: PlannerOptions = { maxWalkKm: 1, maxTransfers: 5, modes: [], onlyRoutes: [] }
+export const DEFAULT_PLANNER_OPTIONS: PlannerOptions = { maxWalkKm: 1, maxTransfers: 5, modes: [], onlyRoutes: [], accessible: false }
 
 let when: PlannerWhen = { mode: "now", at: null }
 const whenListeners = new Set<() => void>()
@@ -49,7 +51,7 @@ export function whenLabel(w: PlannerWhen, clock: (d: Date) => string): string {
 }
 
 export function optionsChanged(o: PlannerOptions): boolean {
-    return o.maxWalkKm !== DEFAULT_PLANNER_OPTIONS.maxWalkKm || o.maxTransfers !== DEFAULT_PLANNER_OPTIONS.maxTransfers || o.modes.length > 0 || o.onlyRoutes.length > 0
+    return o.maxWalkKm !== DEFAULT_PLANNER_OPTIONS.maxWalkKm || o.maxTransfers !== DEFAULT_PLANNER_OPTIONS.maxTransfers || o.modes.length > 0 || o.onlyRoutes.length > 0 || o.accessible
 }
 
 /** A destination the rider searched for and picked - the Planner's "Recent" list. */

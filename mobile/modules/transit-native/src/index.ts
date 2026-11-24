@@ -36,6 +36,7 @@ interface Native {
     cloudSet?(key: string, json: string): void
     cloudSynchronize?(): boolean
     cloudSignedIn?(): boolean
+    driveAuthorize?(interactive: boolean): Promise<string | null>
     addListener<K extends keyof Events>(name: K, listener: Events[K]): EventSubscription
 }
 
@@ -72,6 +73,10 @@ export const TransitNative = {
     cloudSet: (key: string, json: string) => native?.cloudSet?.(key, json),
     cloudSynchronize: () => native?.cloudSynchronize?.() ?? false,
     cloudSignedIn: () => native?.cloudSignedIn?.() ?? false,
+    /** Android: Google Drive sync is possible (Play services build). */
+    driveAvailable: Platform.OS === "android" && typeof native?.driveAuthorize === "function",
+    /** Android: a drive.appdata access token, or null (interactive may show Google's consent screen). */
+    driveAuthorize: async (interactive: boolean): Promise<string | null> => (native?.driveAuthorize ? native.driveAuthorize(interactive) : null),
     addListener<K extends keyof Events>(name: K, listener: Events[K]): EventSubscription | null {
         return native ? native.addListener(name, listener) : null
     },
